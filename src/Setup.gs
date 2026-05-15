@@ -79,40 +79,63 @@ function firstTimeSetup() {
     if (resp !== ui.Button.YES) return;
   }
 
-  // Order matters because some setups reference others (e.g. placeholder
-  // rows need staff_id to already exist).
-  setupConfigSheet_();
-  setupStaffSheet_();
-  setupAttendanceSheet_();
-  setupTillSessionsSheet_();
-  setupSalesSheet_();
-  setupPaymentsSheet_();
-  setupPaymentItemsSheet_();
-  setupBonusesSheet_();
-  setupCommissionRulesSheet_();
-  setupCommissionRunsSheet_();
-  setupAuditLogSheet_();
-  setupPosExtractedSheet_();
-  setupCloverBatchesSheet_();
-  setupValidationResultsSheet_();
+  // Run each setup call wrapped in try/catch so one failure doesn't
+  // abort the rest. Report results at the end.
+  const steps = [
+    ['config',             setupConfigSheet_],
+    ['staff',              setupStaffSheet_],
+    ['attendance',         setupAttendanceSheet_],
+    ['till_sessions',      setupTillSessionsSheet_],
+    ['sales',              setupSalesSheet_],
+    ['payments',           setupPaymentsSheet_],
+    ['payment_items',      setupPaymentItemsSheet_],
+    ['bonuses',            setupBonusesSheet_],
+    ['commission_rules',   setupCommissionRulesSheet_],
+    ['commission_runs',    setupCommissionRunsSheet_],
+    ['audit_log',          setupAuditLogSheet_],
+    ['pos_extracted',      setupPosExtractedSheet_],
+    ['clover_batches',     setupCloverBatchesSheet_],
+    ['validation_results', setupValidationResultsSheet_],
+  ];
+
+  const succeeded = [];
+  const failed = [];
+  steps.forEach(([name, fn]) => {
+    try {
+      fn();
+      succeeded.push(name);
+    } catch (e) {
+      failed.push({ name: name, error: e.message + (e.stack ? '\n' + e.stack.split('\n').slice(0, 3).join('\n') : '') });
+      console.error('Setup failed for ' + name + ': ' + e.message);
+    }
+  });
 
   // Remove the default "Sheet1" if it's still empty
   const sheet1 = ss.getSheetByName('Sheet1');
   if (sheet1 && sheet1.getLastRow() <= 1 && sheet1.getLastColumn() <= 1) {
-    ss.deleteSheet(sheet1);
+    try { ss.deleteSheet(sheet1); } catch (e) { /* ignore */ }
   }
 
-  ui.alert(
-    '✅  Setup complete',
-    'All 14 sheets created with proper schema + placeholder rows ' +
-    '(highlighted in yellow).\n\n' +
-    'Next steps:\n' +
-    '  1. Open the "staff" sheet\n' +
-    '  2. Replace the placeholder row with your real admin info\n' +
-    '  3. Delete other placeholder rows once you\'re happy with the shape\n' +
-    '  4. Add more staff rows (one per person)\n' +
-    '  5. Deploy the web app from Apps Script editor',
-    ui.ButtonSet.OK);
+  // Build a clear report
+  let msg;
+  if (failed.length === 0) {
+    msg = '✅  Setup complete\n\n' +
+          'All ' + succeeded.length + ' sheets created with proper schema + ' +
+          'placeholder rows (highlighted in yellow).\n\n' +
+          'Next steps:\n' +
+          '  1. Open the "staff" sheet\n' +
+          '  2. Replace the placeholder row with your real admin info\n' +
+          '  3. Delete other placeholder rows once you\'re happy with the shape\n' +
+          '  4. Add more staff rows (one per person)\n' +
+          '  5. Deploy the web app from Apps Script editor';
+  } else {
+    msg = '⚠️  Setup partially completed\n\n' +
+          'Created (' + succeeded.length + '): ' + succeeded.join(', ') + '\n\n' +
+          'FAILED (' + failed.length + '):\n' +
+          failed.map(f => '  • ' + f.name + ' — ' + f.error).join('\n\n') +
+          '\n\nFix the error(s) and re-run setup. Existing sheets will be skipped.';
+  }
+  ui.alert(msg);
 }
 
 // ============================================================
@@ -193,7 +216,6 @@ function setupStaffSheet_() {
   sh.setColumnWidth(10, 150);
   sh.setColumnWidth(11, 280);
   sh.setFrozenRows(2);
-  sh.setFrozenColumns(2);
 }
 
 function setupAttendanceSheet_() {
@@ -236,7 +258,6 @@ function setupAttendanceSheet_() {
 
   setColWidths_(sh, [180, 80, 100, 100, 100, 150, 150, 90, 110, 110, 200, 90, 150, 90, 150]);
   sh.setFrozenRows(2);
-  sh.setFrozenColumns(3);
 }
 
 function setupTillSessionsSheet_() {
@@ -279,7 +300,6 @@ function setupTillSessionsSheet_() {
 
   setColWidths_(sh, [180, 180, 80, 80, 100, 90, 150, 150, 110, 100, 200, 130, 110, 130, 110, 110, 130, 200]);
   sh.setFrozenRows(2);
-  sh.setFrozenColumns(4);
 }
 
 function setupSalesSheet_() {
@@ -315,7 +335,6 @@ function setupSalesSheet_() {
 
   setColWidths_(sh, [180, 180, 80, 80, 100, 110, 130, 130, 120, 120, 120, 110, 130, 130, 130, 220]);
   sh.setFrozenRows(2);
-  sh.setFrozenColumns(5);
 }
 
 function setupPaymentsSheet_() {
