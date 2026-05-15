@@ -46,20 +46,91 @@ const RULE_APPLIES = ['all_staff', 'specific_staff'];
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('🏪 StoreOps')
-    .addItem('⚙️ First-time Setup',        'firstTimeSetup')
+    .addItem('⚙️ First-time Setup',                'firstTimeSetup')
     .addSeparator()
-    .addItem('🔄 Run Commission Engine',   'runCommissionEngineMenuAction')
+    .addItem('🔄 Run Commission Engine (last week)', 'menu_runCommissionEngine')
+    .addItem('🗓️ Install Weekly Auto-Trigger',      'menu_installCommissionTrigger')
+    .addItem('🛑 Remove Weekly Auto-Trigger',        'menu_removeCommissionTrigger')
     .addSeparator()
-    .addItem('⚠️ Reset Data (keeps schema)', 'resetDataTables')
+    .addItem('⚠️ Reset Data (keeps schema)',         'resetDataTables')
     .addToUi();
 }
 
-// Stub — wired up in batch 3 when Commissions.gs exists
-function runCommissionEngineMenuAction() {
-  SpreadsheetApp.getUi().alert(
-    'Commission engine not yet available',
-    'This will be wired up in a later batch. The schema is ready.',
-    SpreadsheetApp.getUi().ButtonSet.OK);
+// Run the commission engine manually for the previous calendar week.
+function menu_runCommissionEngine() {
+  const ui = SpreadsheetApp.getUi();
+  const range = Util.getPreviousWeekRange(new Date());
+  const existing = Commissions.findRunForWeek(range.start);
+  let force = false;
+  if (existing) {
+    const resp = ui.alert(
+      'Commission run already exists',
+      'A commission run for the week of ' + Util.formatDate(range.start) +
+      ' → ' + Util.formatDate(range.end) + ' already exists (' + existing.runId + ').\n\n' +
+      'Run again? This will create DUPLICATE bonus rows for the same week.',
+      ui.ButtonSet.YES_NO);
+    if (resp !== ui.Button.YES) return;
+    force = true;
+  }
+  try {
+    const result = Commissions.runForWeek({
+      weekStart: range.start,
+      weekEnd: range.end,
+      actorId: 'MANUAL_TRIGGER',
+      force,
+    });
+    if (result.skipped) {
+      ui.alert(result.reason);
+      return;
+    }
+    ui.alert(
+      'Commission run complete',
+      'Week: ' + Util.formatDate(range.start) + ' → ' + Util.formatDate(range.end) + '\n' +
+      'Staff with commission: ' + result.staffCount + '\n' +
+      'Bonuses created: ' + result.bonusesProposed.length + '\n' +
+      'Total: ' + Util.formatMoney(result.totalAmount) + '\n\n' +
+      'Bonuses are in "proposed" status. Approve them in the Bonuses tab ' +
+      'or via the web app (batch 4).',
+      ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', 'Commission run failed: ' + e.message, ui.ButtonSet.OK);
+  }
+}
+
+function menu_installCommissionTrigger() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    if (Commissions.isTriggerInstalled()) {
+      const resp = ui.alert(
+        'Trigger already installed',
+        'A weekly commission trigger is already installed. Reinstall it (e.g. to pick up a new run hour)?',
+        ui.ButtonSet.YES_NO);
+      if (resp !== ui.Button.YES) return;
+    }
+    const result = Commissions.installWeeklyTrigger();
+    ui.alert(
+      'Trigger installed',
+      'The commission engine will run every ' + result.dayOfWeek +
+      ' at ' + result.hour + ':00.\n\n' +
+      'To change the time, edit `commission_run_hour` in the config tab and reinstall.',
+      ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', 'Trigger install failed: ' + e.message, ui.ButtonSet.OK);
+  }
+}
+
+function menu_removeCommissionTrigger() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const result = Commissions.removeWeeklyTrigger();
+    if (result.removed === 0) {
+      ui.alert('No trigger to remove.');
+    } else {
+      ui.alert('Removed ' + result.removed + ' trigger(s).');
+    }
+  } catch (e) {
+    ui.alert('Error', 'Trigger remove failed: ' + e.message, ui.ButtonSet.OK);
+  }
 }
 
 // ============================================================
