@@ -1,0 +1,12 @@
+.clasp.json
+node_modules/
+*.log
+.env
+.env.local
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.bak
+*.swp

@@ -1,0 +1,17 @@
+{
+  "name": "storeops",
+  "version": "1.0.0",
+  "description": "StoreOps — Apps Script project for scheduling, payroll, sales reconciliation",
+  "private": true,
+  "scripts": {
+    "push": "clasp push",
+    "pull": "clasp pull",
+    "deploy": "clasp deploy",
+    "open": "clasp open",
+    "logs": "clasp logs --watch"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2",
+    "@types/google-apps-script": "^1.0.83"
+  }
+}
