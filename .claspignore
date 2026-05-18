@@ -1,4 +1,3 @@
-**/**
-!appsscript.json
-!src/**
-src/**/*.md
+**/*.md
+**/.git/**
+**/node_modules/**
