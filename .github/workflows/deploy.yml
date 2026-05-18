@@ -26,5 +26,8 @@ jobs:
       - name: Push to Apps Script
         run: clasp push --force
       
-      - name: Create new deployment (optional)
-        run: clasp deploy --description "Auto-deploy from $(git rev-parse --short HEAD)"
+      - name: Deploy web app
+        run: |
+          clasp deploy \
+            --deploymentId AKfycbzaGNKGV1L-OoYI3QP43J_33at3w9j4PkHT1E_96YUMW7fzHFPB52x0oTpE7QLeJCaA \
+            --description "Auto-deploy $(git rev-parse --short HEAD)"
