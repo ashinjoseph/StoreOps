@@ -186,7 +186,7 @@ const Payments = (() => {
       if (remaining > 0.005) {
         unpaidShifts.push({
           attendanceId: a.attendanceId,
-          date: a.date,
+          date: a.date ? a.date.toISOString() : null,
           dateStr: a.date ? Util.formatDate(a.date) : '',
           hoursWorked: a.hoursWorked,
           rate: a.rateAtAttendance,
@@ -211,7 +211,7 @@ const Payments = (() => {
           amount: b.amount,
           paid: paid,
           remaining: remaining,
-          date: b.date,
+          date: b.date ? b.date.toISOString() : null,
           dateStr: b.date ? Util.formatDate(b.date) : '',
           reason: b.reason,
           company: b.company,

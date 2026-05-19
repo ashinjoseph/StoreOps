@@ -85,14 +85,24 @@ function rpcGetMe(token) {
  * attendance summary, recent history.
  */
 function rpcGetMyShiftState(token) {
+  try {
+    return _rpcGetMyShiftState(token);
+  } catch (e) {
+    // Log to Apps Script execution log AND re-throw with a useful message
+    console.error('rpcGetMyShiftState failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcGetMyShiftState: ' + e.message);
+  }
+}
+
+function _rpcGetMyShiftState(token) {
   const session = _session(token);
   const staffId = session.staffId;
   const today = Util.todayMidnight();
 
   // Per-company open session for me (if any)
-  const myOpen = TillSessions.getOpenForStaff(staffId);
+  const myOpen = TillSessions.getOpenForStaff(staffId) || [];
   const openByCompany = {};
-  myOpen.forEach(s => { openByCompany[s.company] = s; });
+  myOpen.forEach(s => { if (s && s.company) openByCompany[s.company] = s; });
 
   // Who's currently holding the company tills (could be someone else).
   // getOpenForCompany returns the single open session or null.
@@ -104,8 +114,9 @@ function rpcGetMyShiftState(token) {
 
   // Recent shifts (last 7 days, mine, all closed)
   const sevenDaysAgo = Util.addDays(today, -7);
-  const recentTill = TillSessions.getForDateRange(sevenDaysAgo, today)
-    .filter(s => s.staffId === staffId && (s.status === 'closed' || s.status === 'validated'))
+  const allInRange = TillSessions.getForDateRange(sevenDaysAgo, today) || [];
+  const recentTill = allInRange
+    .filter(s => s && s.staffId === staffId && (s.status === 'closed' || s.status === 'validated'))
     .sort((a, b) => (b.startTime || 0) - (a.startTime || 0))
     .slice(0, 10);
 
@@ -114,7 +125,7 @@ function rpcGetMyShiftState(token) {
     const mine = openByCompany[company];
     const occupied = company === 'cstore' ? cstoreOpen : vapeOpen;
     const expectedFloat = TillSessions.getExpectedFloat(company);
-    const authorized = session.companiesAuthorized.indexOf(company) !== -1;
+    const authorized = (session.companiesAuthorized || []).indexOf(company) !== -1;
 
     let state = 'closed';
     let detail = null;
@@ -123,31 +134,31 @@ function rpcGetMyShiftState(token) {
       state = 'open_by_me';
       detail = {
         sessionId: mine.sessionId,
-        startTime: mine.startTime,
-        openingFloat: mine.openingFloat,
+        startTime: mine.startTime ? mine.startTime.toISOString() : null,
+        openingFloat: mine.openingFloat || 0,
       };
     } else if (occupied && occupied.staffId !== staffId) {
       state = 'open_by_other';
       const names = _staffNameMap();
       detail = {
         staffName: names[occupied.staffId] || occupied.staffId,
-        startTime: occupied.startTime,
+        startTime: occupied.startTime ? occupied.startTime.toISOString() : null,
       };
     }
 
-    return { company, state, authorized, expectedFloat, detail };
+    return { company, state, authorized, expectedFloat: expectedFloat || 0, detail };
   });
 
   // Today summary (only meaningful if attendance row exists)
   let todaySummary = null;
   if (attendance) {
-    const sessionsToday = TillSessions.getForAttendance(attendance.attendanceId);
+    const sessionsToday = TillSessions.getForAttendance(attendance.attendanceId) || [];
     todaySummary = {
       attendanceId: attendance.attendanceId,
       status: attendance.status,
-      actualStart: attendance.actualStart,
-      actualEnd: attendance.actualEnd,
-      hoursWorked: attendance.hoursWorked,
+      actualStart: attendance.actualStart ? attendance.actualStart.toISOString() : null,
+      actualEnd: attendance.actualEnd ? attendance.actualEnd.toISOString() : null,
+      hoursWorked: attendance.hoursWorked || 0,
       sessionsOpen: sessionsToday.filter(s => s.status === 'open').length,
       sessionsClosed: sessionsToday.filter(s => s.status === 'closed' || s.status === 'validated').length,
     };
@@ -155,16 +166,16 @@ function rpcGetMyShiftState(token) {
 
   return {
     today: Util.formatDate(today),
-    cards,
-    todaySummary,
+    cards: cards,
+    todaySummary: todaySummary,
     recentTill: recentTill.map(s => ({
       sessionId: s.sessionId,
       company: s.company,
-      date: Util.formatDate(s.date),
-      startTime: s.startTime,
-      endTime: s.endTime,
-      variance: s.closingVariance,
-      varianceStatus: s.varianceStatus,
+      date: s.date ? Util.formatDate(s.date) : null,
+      startTime: s.startTime ? s.startTime.toISOString() : null,
+      endTime: s.endTime ? s.endTime.toISOString() : null,
+      variance: s.closingVariance || 0,
+      varianceStatus: s.varianceStatus || null,
     })),
   };
 }
@@ -292,28 +303,56 @@ function rpcEditAttendanceTimes(token, input) {
 // ── Payroll tab ───────────────────────────────────────────
 
 function rpcGetPayrollOverview(token) {
-  const session = _session(token);
-  Auth.require(session, ['admin']);   // only admin sees the full overview
-  const staff = Staff.getActive();
-  return staff.map(s => {
-    const owed = Payments.getOwedSummary(s.staffId);
-    return {
-      staffId: s.staffId,
-      staffName: s.name,
-      hourlyRate: s.hourlyRate,
-      shiftsOwed: owed.shiftsOwed,
-      bonusesOwed: owed.bonusesOwed,
-      totalOwed: owed.totalOwed,
-      unpaidShiftCount: owed.unpaidShifts.length,
-      pendingBonusCount: owed.pendingBonuses.length,
-    };
-  });
+  try {
+    const session = _session(token);
+    Auth.require(session, ['admin']);
+    const staff = Staff.getActive() || [];
+    return staff.map(s => {
+      let owed;
+      try {
+        owed = Payments.getOwedSummary(s.staffId) || {};
+      } catch (e) {
+        console.error('getOwedSummary failed for ' + s.staffId + ': ' + e.message);
+        owed = {};
+      }
+      return {
+        staffId: s.staffId,
+        staffName: s.name,
+        hourlyRate: s.hourlyRate,
+        shiftsOwed: owed.shiftsOwed || 0,
+        bonusesOwed: owed.bonusesOwed || 0,
+        totalOwed: owed.totalOwed || 0,
+        unpaidShiftCount: (owed.unpaidShifts || []).length,
+        pendingBonusCount: (owed.pendingBonuses || []).length,
+      };
+    });
+  } catch (e) {
+    console.error('rpcGetPayrollOverview failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcGetPayrollOverview: ' + e.message);
+  }
 }
 
 function rpcGetOwedSummary(token, staffId) {
-  const session = _session(token);
-  Auth.require(session, ['admin']);
-  return Payments.getOwedSummary(staffId);
+  try {
+    const session = _session(token);
+    Auth.require(session, ['admin']);
+    const result = Payments.getOwedSummary(staffId);
+    if (!result) {
+      // Should never happen — fail loud
+      throw new Error('getOwedSummary returned null for ' + staffId);
+    }
+    return {
+      staffId: result.staffId || staffId,
+      shiftsOwed: result.shiftsOwed || 0,
+      bonusesOwed: result.bonusesOwed || 0,
+      totalOwed: result.totalOwed || 0,
+      unpaidShifts: result.unpaidShifts || [],
+      pendingBonuses: result.pendingBonuses || [],
+    };
+  } catch (e) {
+    console.error('rpcGetOwedSummary(' + staffId + ') failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcGetOwedSummary: ' + e.message);
+  }
 }
 
 function rpcPayShifts(token, input) {
@@ -349,9 +388,29 @@ function rpcUndoPayment(token, paymentId) {
 // ── Bonuses (proposed/pending) ────────────────────────────
 
 function rpcGetProposedBonuses(token) {
-  const session = _session(token);
-  Auth.require(session, ['admin']);
-  return _enrichStaffNames(Bonuses.getProposed());
+  try {
+    const session = _session(token);
+    Auth.require(session, ['admin']);
+    const names = _staffNameMap();
+    return Bonuses.getProposed().map(b => ({
+      bonusId: b.bonusId,
+      staffId: b.staffId,
+      staffName: names[b.staffId] || b.staffId,
+      type: b.type,
+      amount: b.amount || 0,
+      reason: b.reason || '',
+      date: b.date ? b.date.toISOString() : null,
+      status: b.status,
+      periodStart: b.periodStart ? b.periodStart.toISOString() : null,
+      periodEnd: b.periodEnd ? b.periodEnd.toISOString() : null,
+      company: b.company || '',
+      sourceRunId: b.sourceRunId || '',
+      notes: b.notes || '',
+    }));
+  } catch (e) {
+    console.error('rpcGetProposedBonuses failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcGetProposedBonuses: ' + e.message);
+  }
 }
 
 function rpcApproveBonus(token, bonusId) {
@@ -410,39 +469,73 @@ function rpcGetSalesDashboard(token, filters) {
 // ── History tab ───────────────────────────────────────────
 
 function rpcGetPaymentHistory(token, limit) {
-  const session = _session(token);
-  limit = Number(limit) || 25;
+  try {
+    const session = _session(token);
+    limit = Number(limit) || 25;
 
-  // Employees see only their own payments
-  if (session.role === 'employee') {
-    return Payments.getPaymentsForStaff(session.staffId)
-      .slice(0, limit)
-      .map(p => ({
-        ...p,
-        staffName: session.name,
-        items: Payments.getItemsForPayment(p.paymentId),
-      }));
+    function normalizePayment(p, staffName) {
+      return {
+        paymentId: p.paymentId,
+        staffId: p.staffId,
+        staffName: staffName,
+        paidOn: p.paidOn ? p.paidOn.toISOString() : null,
+        totalAmount: p.totalAmount || 0,
+        method: p.method || '',
+        recordedBy: p.recordedBy || '',
+        notes: p.notes || '',
+        items: Payments.getItemsForPayment(p.paymentId).map(it => ({
+          itemId: it.itemId,
+          paymentId: it.paymentId,
+          itemType: it.itemType,
+          refId: it.refId,
+          amount: it.amount || 0,
+          notes: it.notes || '',
+        })),
+      };
+    }
+
+    // Employees see only their own payments
+    if (session.role === 'employee') {
+      return Payments.getPaymentsForStaff(session.staffId)
+        .slice(0, limit)
+        .map(p => normalizePayment(p, session.name));
+    }
+
+    // Admin + manager see everything
+    const payments = Payments.getRecent(limit);
+    const names = _staffNameMap();
+    return payments.map(p => normalizePayment(p, names[p.staffId] || p.staffId));
+  } catch (e) {
+    console.error('rpcGetPaymentHistory failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcGetPaymentHistory: ' + e.message);
   }
-
-  // Admin + manager see everything
-  const payments = Payments.getRecent(limit);
-  const names = _staffNameMap();
-  return payments.map(p => ({
-    ...p,
-    staffName: names[p.staffId] || p.staffId,
-    items: Payments.getItemsForPayment(p.paymentId),
-  }));
 }
 
 // ── Commission engine (admin trigger from web app) ────────
 
 function rpcGetCommissionRuns(token, limit) {
-  const session = _session(token);
-  Auth.require(session, ['admin', 'manager']);
-  limit = Number(limit) || 12;
-  return Commissions.getAllRuns()
-    .sort((a, b) => (b.computedAt || 0) - (a.computedAt || 0))
-    .slice(0, limit);
+  try {
+    const session = _session(token);
+    Auth.require(session, ['admin', 'manager']);
+    limit = Number(limit) || 12;
+    return Commissions.getAllRuns()
+      .sort((a, b) => (b.computedAt || 0) - (a.computedAt || 0))
+      .slice(0, limit)
+      .map(r => ({
+        runId: r.runId,
+        weekStart: r.weekStart ? r.weekStart.toISOString() : null,
+        weekEnd: r.weekEnd ? r.weekEnd.toISOString() : null,
+        staffCount: r.staffCount || 0,
+        bonusesCreated: r.bonusesCreated || 0,
+        totalCommissionAmount: r.totalCommissionAmount || 0,
+        computedAt: r.computedAt ? r.computedAt.toISOString() : null,
+        computedBy: r.computedBy || '',
+        notes: r.notes || '',
+      }));
+  } catch (e) {
+    console.error('rpcGetCommissionRuns failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcGetCommissionRuns: ' + e.message);
+  }
 }
 
 function rpcRunCommissionEngine(token, force) {
