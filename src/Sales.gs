@@ -223,17 +223,18 @@ const Sales = (() => {
     rows.sort((a, b) => b.date - a.date);
 
     const totals = {
-      cash: 0, credit: 0, debit: 0, total: 0,
+      cash: 0, credit: 0, debit: 0, misc: 0, total: 0,
       cashback: 0, sessionCount: rows.length,
     };
     rows.forEach(r => {
-      totals.cash   += (r.cashSales || 0) + (r.miscCashSales || 0);
-      totals.credit += (r.creditCardSales || 0) + (r.miscCreditSales || 0);
-      totals.debit  += (r.debitCardSales || 0) + (r.miscDebitSales || 0);
+      totals.cash   += r.cashSales || 0;
+      totals.credit += r.creditCardSales || 0;
+      totals.debit  += r.debitCardSales || 0;
+      totals.misc   += (r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0);
       totals.cashback += r.cashbackPaid || 0;
     });
-    totals.total = totals.cash + totals.credit + totals.debit;
-    ['cash','credit','debit','total','cashback'].forEach(k => {
+    totals.total = totals.cash + totals.credit + totals.debit + totals.misc;
+    ['cash','credit','debit','misc','total','cashback'].forEach(k => {
       totals[k] = Util.roundMoney(totals[k]);
     });
 
@@ -254,9 +255,10 @@ const Sales = (() => {
         staffName: staffMap[r.staffId] || r.staffId,
         company: r.company,
         date: r.date ? Util.formatDate(r.date) : null,
-        cash: Util.roundMoney((r.cashSales || 0) + (r.miscCashSales || 0)),
-        credit: Util.roundMoney((r.creditCardSales || 0) + (r.miscCreditSales || 0)),
-        debit: Util.roundMoney((r.debitCardSales || 0) + (r.miscDebitSales || 0)),
+        cash: Util.roundMoney(r.cashSales || 0),
+        credit: Util.roundMoney(r.creditCardSales || 0),
+        debit: Util.roundMoney(r.debitCardSales || 0),
+        misc: Util.roundMoney((r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0)),
         cashback: r.cashbackPaid || 0,
         total: totalForRow_(r),
         miscNotes: r.miscNotes,

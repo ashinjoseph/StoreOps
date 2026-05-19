@@ -77,6 +77,19 @@ function rpcGetMe(token) {
   };
 }
 
+/**
+ * Minimal staff directory for any authenticated user. Returns only
+ * { staffId, name, active } — safe for populating filter dropdowns
+ * (no rates, login codes, emails). Includes inactive staff so historical
+ * data (e.g. sales) can still be filtered by former employees.
+ */
+function rpcGetStaffDirectory(token) {
+  _session(token);
+  return Staff.getAll()
+    .map(s => ({ staffId: s.staffId, name: s.name, active: s.active }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // ── My Shift tab ──────────────────────────────────────────
 
 /**

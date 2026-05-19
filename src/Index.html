@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="StoreOps">
 <meta name="theme-color" content="#1a2540">
-<title>StoreOps</title>
+<title>StoreOperations</title>
 <style>
   /* ── Reset + base ──────────────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -387,7 +387,7 @@
   .filter-field input, .filter-field select { width: 100%; padding: 9px 10px; border: 1px solid #d8dae1; border-radius: 8px; font-size: 13px; }
 
   .sales-totals {
-    display: grid; grid-template-columns: 1fr 1fr 1fr 1fr;
+    display: grid; grid-template-columns: repeat(5, 1fr);
     gap: 8px; margin-bottom: 12px;
   }
   .sales-total-card {
@@ -407,7 +407,7 @@
   }
   .sales-row {
     display: grid;
-    grid-template-columns: 1.2fr 0.8fr 1.2fr 1fr 1fr;
+    grid-template-columns: 1.1fr 0.7fr 1.1fr 0.85fr 0.85fr 0.85fr 0.85fr 1fr;
     padding: 9px 12px;
     font-size: 12px;
     border-bottom: 1px solid #f0f1f5;
@@ -604,7 +604,7 @@
 <!-- ── LOGIN ─────────────────────────────────────────── -->
 <div id="loginScreen" class="screen active">
   <div class="login-card">
-    <div class="login-title">StoreOps</div>
+    <div class="login-title">Store Operations</div>
     <div class="login-subtitle">Sign in to continue</div>
     <div class="login-error" id="loginError"></div>
     <div class="field">
@@ -623,7 +623,7 @@
 <!-- ── MAIN APP ──────────────────────────────────────── -->
 <div id="appScreen" class="screen">
   <header class="header">
-    <div class="header-title" id="headerTitle">StoreOps</div>
+    <div class="header-title" id="headerTitle">Store Operations</div>
     <div class="header-user">
       <div class="user-pill" id="userPill">—</div>
       <button class="logout-btn" id="logoutBtn" title="Sign out">⏻</button>
@@ -1778,20 +1778,19 @@
   }
 
   async function wireSalesFilters() {
-    // Populate staff dropdown
+    // Populate staff dropdown — uses rpcGetStaffDirectory which is open
+    // to any authenticated user (admin + manager + employee).
     try {
-      const staff = await call('rpcGetAllStaff', state.token).catch(async () => {
-        // Manager doesn't have rpcGetAllStaff — derive from sales data once loaded
-        return [];
-      });
+      const staff = await call('rpcGetStaffDirectory', state.token);
       const sel = $('fStaff');
       staff.forEach(s => {
         const o = document.createElement('option');
-        o.value = s.staffId; o.textContent = s.name;
+        o.value = s.staffId;
+        o.textContent = s.active ? s.name : s.name + ' (inactive)';
         sel.appendChild(o);
       });
       sel.value = state.salesFilters.staffId || '';
-    } catch (e) { /* manager case — leave All */ }
+    } catch (e) { /* leave "All staff" if lookup fails */ }
     $('fCompany').value = state.salesFilters.company || '';
 
     $('applyFilters').onclick = () => {
@@ -1811,19 +1810,26 @@
       '<div class="sales-total-card"><div class="sales-total-label">Cash</div><div class="sales-total-amount">' + money(t.cash) + '</div></div>' +
       '<div class="sales-total-card"><div class="sales-total-label">Credit</div><div class="sales-total-amount">' + money(t.credit) + '</div></div>' +
       '<div class="sales-total-card"><div class="sales-total-label">Debit</div><div class="sales-total-amount">' + money(t.debit) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Misc</div><div class="sales-total-amount">' + money(t.misc) + '</div></div>' +
     '</div>';
 
     html += '<div class="sales-table">';
     html += '<div class="sales-row header">' +
-      '<div>Date</div><div>Company</div><div>Staff</div><div class="right">Cash</div><div class="right">Total</div>' +
+      '<div>Date</div><div>Company</div><div>Staff</div>' +
+      '<div class="right">Cash</div><div class="right">Credit</div><div class="right">Debit</div><div class="right">Misc</div>' +
+      '<div class="right">Total</div>' +
     '</div>';
 
     (data.rows || []).forEach(r => {
+      const miscTitle = r.miscNotes ? ' title="' + esc(r.miscNotes) + '"' : '';
       html += '<div class="sales-row">' +
         '<div>' + esc(r.dateStr || r.date || '—') + '</div>' +
         '<div>' + esc((r.company || '').toUpperCase()) + '</div>' +
         '<div>' + esc(r.staffName || '—') + '</div>' +
         '<div class="right">' + money(r.cash) + '</div>' +
+        '<div class="right">' + money(r.credit) + '</div>' +
+        '<div class="right">' + money(r.debit) + '</div>' +
+        '<div class="right"' + miscTitle + '>' + money(r.misc) + '</div>' +
         '<div class="right"><strong>' + money(r.total) + '</strong></div>' +
       '</div>';
     });
