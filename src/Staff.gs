@@ -15,6 +15,19 @@ const Staff = (() => {
   const NUM_COLS = 11;
   const DATA_START_ROW = 3;
 
+  const STAFF_CACHE_KEY = 'storeops:staff';
+  const STAFF_CACHE_TTL = 600; // 10 minutes
+
+  function bustCache_() {
+    try { CacheService.getScriptCache().remove(STAFF_CACHE_KEY); } catch (e) {}
+  }
+
+  function reviveRecord_(r) {
+    if (r.startDate && !(r.startDate instanceof Date)) r.startDate = new Date(r.startDate);
+    if (r.createdAt && !(r.createdAt instanceof Date)) r.createdAt = new Date(r.createdAt);
+    return r;
+  }
+
   function sheet_() {
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.STAFF);
     if (!sh) throw new Error('staff sheet not found — run First-time Setup');
@@ -42,13 +55,22 @@ const Staff = (() => {
   }
 
   function getAll_(includeInactive) {
-    const sh = sheet_();
-    const last = sh.getLastRow();
-    if (last < DATA_START_ROW) return [];
-    const data = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS).getValues();
-    return data
-      .map((row, i) => rowToRecord_(row, i + DATA_START_ROW))
-      .filter(r => r.staffId && (includeInactive || r.active));
+    let records;
+    try {
+      const raw = CacheService.getScriptCache().get(STAFF_CACHE_KEY);
+      if (raw) records = JSON.parse(raw).map(reviveRecord_);
+    } catch (e) {}
+    if (!records) {
+      const sh = sheet_();
+      const last = sh.getLastRow();
+      records = last < DATA_START_ROW ? [] :
+        sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS)
+          .getValues()
+          .map((row, i) => rowToRecord_(row, i + DATA_START_ROW))
+          .filter(r => r.staffId);
+      try { CacheService.getScriptCache().put(STAFF_CACHE_KEY, JSON.stringify(records), STAFF_CACHE_TTL); } catch (e) {}
+    }
+    return includeInactive ? records : records.filter(r => r.active);
   }
 
   function getById_(staffId) {
@@ -125,6 +147,7 @@ const Staff = (() => {
       input.notes || ''
     ]]);
 
+    bustCache_();
     return getById_(staffId);
   }
 

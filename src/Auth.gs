@@ -15,17 +15,30 @@ const Auth = (() => {
     return PropertiesService.getScriptProperties();
   }
 
-  function configValue_(key, defaultValue) {
+  function getConfigMap_() {
+    const CACHE_KEY = 'storeops:config';
+    try {
+      const raw = CacheService.getScriptCache().get(CACHE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
     try {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const sh = ss.getSheetByName(SHEETS.CONFIG);
-      if (!sh) return defaultValue;
+      if (!sh) return {};
       const data = sh.getRange(3, 1, sh.getLastRow() - 2, 2).getValues();
-      const row = data.find(r => r[0] === key);
-      return row && row[1] !== '' ? row[1] : defaultValue;
+      const map = {};
+      data.forEach(r => { if (r[0]) map[String(r[0])] = r[1]; });
+      try { CacheService.getScriptCache().put(CACHE_KEY, JSON.stringify(map), 300); } catch (e) {}
+      return map;
     } catch (e) {
-      return defaultValue;
+      return {};
     }
+  }
+
+  function configValue_(key, defaultValue) {
+    const map = getConfigMap_();
+    const val = map[key];
+    return (val !== undefined && val !== '') ? val : defaultValue;
   }
 
   // ── Login ───────────────────────────────────────────────

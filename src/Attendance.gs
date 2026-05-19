@@ -28,6 +28,10 @@ const Attendance = (() => {
   const NUM_COLS = 15;
   const DATA_START_ROW = 3;
 
+  let _attCache = null;
+
+  function bustAttCache_() { _attCache = null; }
+
   function sheet_() {
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.ATTENDANCE);
     if (!sh) throw new Error('attendance sheet not found — run First-time Setup');
@@ -56,13 +60,15 @@ const Attendance = (() => {
   }
 
   function getAll_() {
+    if (_attCache) return _attCache;
     const sh = sheet_();
     const last = sh.getLastRow();
-    if (last < DATA_START_ROW) return [];
-    const data = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS).getValues();
-    return data
-      .map((row, i) => rowToRecord_(row, i + DATA_START_ROW))
-      .filter(r => r.attendanceId && r.staffId);
+    _attCache = last < DATA_START_ROW ? [] :
+      sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS)
+        .getValues()
+        .map((row, i) => rowToRecord_(row, i + DATA_START_ROW))
+        .filter(r => r.attendanceId && r.staffId);
+    return _attCache;
   }
 
   function getById_(attendanceId) {
@@ -181,6 +187,7 @@ const Attendance = (() => {
         after: { status: 'in_progress', actualStart: now },
       });
 
+      bustAttCache_();
       return getById_(attendanceId);
     }
 
@@ -214,6 +221,7 @@ const Attendance = (() => {
       },
     });
 
+    bustAttCache_();
     return getById_(attendanceId);
   }
 
@@ -272,6 +280,7 @@ const Attendance = (() => {
           scheduledEnd: input.scheduledEnd,
         },
       });
+      bustAttCache_();
       return getById_(attendanceId);
     }
 
@@ -306,6 +315,7 @@ const Attendance = (() => {
       },
     });
 
+    bustAttCache_();
     return getById_(attendanceId);
   }
 
@@ -362,6 +372,7 @@ const Attendance = (() => {
       after: { status: 'worked', hoursWorked: hours, rate },
     });
 
+    bustAttCache_();
     return getById_(attendanceId);
   }
 
@@ -399,6 +410,7 @@ const Attendance = (() => {
       after: { status: 'cancelled', reason: reason || '' },
     });
 
+    bustAttCache_();
     return getById_(attendanceId);
   }
 
@@ -447,6 +459,7 @@ const Attendance = (() => {
       after: { actualStart: start, actualEnd: end, hoursWorked: hours },
     });
 
+    bustAttCache_();
     return getById_(attendanceId);
   }
 

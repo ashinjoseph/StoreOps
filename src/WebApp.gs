@@ -181,47 +181,77 @@ function _rpcGetMyShiftState(token) {
 }
 
 function rpcOpenShift(token, input) {
-  const session = _session(token);
-  // Cashier opens their OWN shift. Admin can technically open on
-  // behalf of someone (e.g. for testing), but not allowed via this RPC.
-  const staffId = input.staffId || session.staffId;
-  if (staffId !== session.staffId && session.role !== 'admin') {
-    throw new Error('FORBIDDEN: can only open your own shift');
+  try {
+    const session = _session(token);
+    // Cashier opens their OWN shift. Admin can technically open on
+    // behalf of someone (e.g. for testing), but not allowed via this RPC.
+    const staffId = input.staffId || session.staffId;
+    if (staffId !== session.staffId && session.role !== 'admin') {
+      throw new Error('FORBIDDEN: can only open your own shift');
+    }
+    const result = TillSessions.open({
+      staffId,
+      company: input.company,
+      openingCount: Number(input.openingCount),
+      openingNote: input.openingNote || '',
+      actorId: session.staffId,
+    });
+    if (!result) throw new Error('TillSessions.open returned null');
+    return {
+      sessionId:    result.sessionId,
+      company:      result.company,
+      staffId:      result.staffId,
+      status:       result.status,
+      openingFloat: Number(result.openingFloat) || 0,
+      startTime:    result.startTime ? result.startTime.toISOString() : null,
+    };
+  } catch (e) {
+    console.error('rpcOpenShift failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcOpenShift: ' + e.message);
   }
-  return TillSessions.open({
-    staffId,
-    company: input.company,
-    openingCount: Number(input.openingCount),
-    openingNote: input.openingNote || '',
-    actorId: session.staffId,
-  });
 }
 
 function rpcCloseShift(token, input) {
-  const session = _session(token);
-  // Cashier closes own shift; manager/admin can close any
-  const target = TillSessions.getById(input.sessionId);
-  if (!target) throw new Error('Session not found: ' + input.sessionId);
-  if (target.staffId !== session.staffId &&
-      session.role !== 'admin' &&
-      session.role !== 'manager') {
-    throw new Error('FORBIDDEN: only the cashier who opened, or an admin/manager, can close this shift');
+  try {
+    const session = _session(token);
+    // Cashier closes own shift; manager/admin can close any
+    const target = TillSessions.getById(input.sessionId);
+    if (!target) throw new Error('Session not found: ' + input.sessionId);
+    if (target.staffId !== session.staffId &&
+        session.role !== 'admin' &&
+        session.role !== 'manager') {
+      throw new Error('FORBIDDEN: only the cashier who opened, or an admin/manager, can close this shift');
+    }
+    // Translate UI field names to TillSessions.close's expected names
+    const result = TillSessions.close({
+      sessionId:     input.sessionId,
+      cashSales:     Number(input.cashSales) || 0,
+      creditCard:    Number(input.creditCardSales) || 0,
+      debitCard:     Number(input.debitCardSales) || 0,
+      cashback:      Number(input.cashbackPaid) || 0,
+      miscCash:      Number(input.miscCashSales) || 0,
+      miscCredit:    Number(input.miscCreditSales) || 0,
+      miscDebit:     Number(input.miscDebitSales) || 0,
+      miscNotes:     input.miscNotes || '',
+      physicalCount: Number(input.physicalCount),
+      notes:         input.closingNote || '',
+      actorId:       session.staffId,
+    });
+    if (!result) throw new Error('TillSessions.close returned null');
+    // Normalize for serialization (strip nested session w/ Date fields)
+    return {
+      sessionId:      result.session ? result.session.sessionId : input.sessionId,
+      expectedCash:   Number(result.expectedCash) || 0,
+      counted:        Number(result.counted) || 0,
+      variance:       Number(result.variance) || 0,
+      cashRemoved:    Number(result.cashRemoved) || 0,
+      floatLeft:      Number(result.floatLeft) || 0,
+      varianceStatus: result.varianceStatus || 'OK',
+    };
+  } catch (e) {
+    console.error('rpcCloseShift failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcCloseShift: ' + e.message);
   }
-  // Translate UI field names to TillSessions.close's expected names
-  return TillSessions.close({
-    sessionId: input.sessionId,
-    cashSales:     Number(input.cashSales) || 0,
-    creditCard:    Number(input.creditCardSales) || 0,
-    debitCard:     Number(input.debitCardSales) || 0,
-    cashback:      Number(input.cashbackPaid) || 0,
-    miscCash:      Number(input.miscCashSales) || 0,
-    miscCredit:    Number(input.miscCreditSales) || 0,
-    miscDebit:     Number(input.miscDebitSales) || 0,
-    miscNotes:     input.miscNotes || '',
-    physicalCount: Number(input.physicalCount),
-    notes:         input.closingNote || '',
-    actorId:       session.staffId,
-  });
 }
 
 // ── Schedule tab ──────────────────────────────────────────
@@ -356,27 +386,65 @@ function rpcGetOwedSummary(token, staffId) {
 }
 
 function rpcPayShifts(token, input) {
-  const session = _session(token);
-  Auth.require(session, ['admin']);
-  return Payments.payShifts({
-    staffId: input.staffId,
-    amount: Number(input.amount),
-    method: input.method || 'cash',
-    notes: input.notes || '',
-    actorId: session.staffId,
-  });
+  try {
+    const session = _session(token);
+    Auth.require(session, ['admin']);
+    const result = Payments.payShifts({
+      staffId: input.staffId,
+      amount: Number(input.amount),
+      method: input.method || 'cash',
+      notes: input.notes || '',
+      actorId: session.staffId,
+    });
+    if (!result) throw new Error('payShifts returned null');
+    return {
+      paymentId:    result.paymentId,
+      totalAmount:  Number(result.totalAmount) || 0,
+      kind:         result.kind || 'shifts',
+      itemsCreated: (result.itemsCreated || []).map(it => ({
+        itemId:       it.itemId,
+        attendanceId: it.attendanceId,
+        dateStr:      it.dateStr || '',
+        amount:       Number(it.amount) || 0,
+        isPartial:    !!it.isPartial,
+      })),
+      summary: {
+        shiftsOwedBefore: Number((result.summary || {}).shiftsOwedBefore) || 0,
+        shiftsOwedAfter:  Number((result.summary || {}).shiftsOwedAfter) || 0,
+        fullyPaidCount:   Number((result.summary || {}).fullyPaidCount) || 0,
+        partialCount:     Number((result.summary || {}).partialCount) || 0,
+      },
+    };
+  } catch (e) {
+    console.error('rpcPayShifts failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcPayShifts: ' + e.message);
+  }
 }
 
 function rpcPayBonus(token, input) {
-  const session = _session(token);
-  Auth.require(session, ['admin']);
-  return Payments.payBonus({
-    bonusId: input.bonusId,
-    amount: Number(input.amount),
-    method: input.method || 'cash',
-    notes: input.notes || '',
-    actorId: session.staffId,
-  });
+  try {
+    const session = _session(token);
+    Auth.require(session, ['admin']);
+    const result = Payments.payBonus({
+      bonusId: input.bonusId,
+      amount: Number(input.amount),
+      method: input.method || 'cash',
+      notes: input.notes || '',
+      actorId: session.staffId,
+    });
+    if (!result) throw new Error('payBonus returned null');
+    return {
+      paymentId:       result.paymentId,
+      bonusId:         result.bonusId,
+      amount:          Number(result.amount) || 0,
+      isPartial:       !!result.isPartial,
+      newBonusStatus:  result.newBonusStatus || 'pending',
+      kind:            'bonus',
+    };
+  } catch (e) {
+    console.error('rpcPayBonus failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcPayBonus: ' + e.message);
+  }
 }
 
 function rpcUndoPayment(token, paymentId) {

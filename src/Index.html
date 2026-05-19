@@ -1193,7 +1193,7 @@
           physicalCount: counted,
         });
         closeSheet();
-        const variance = Number(result.variance) || 0;
+        const variance = result && result.variance != null ? Number(result.variance) : 0;
         toast('✓ ' + company.toUpperCase() + ' closed · variance ' + money(variance),
               Math.abs(variance) > 30 ? 'warning' : 'success');
         loadShiftTab();

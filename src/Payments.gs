@@ -37,6 +37,14 @@ const Payments = (() => {
   const I_NUM_COLS = 6;
   const I_DATA_START = 3;
 
+  let _paymentsCache = null;
+  let _itemsCache = null;
+
+  function bustCaches_() {
+    _paymentsCache = null;
+    _itemsCache = null;
+  }
+
   function paymentsSheet_() {
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.PAYMENTS);
     if (!sh) throw new Error('payments sheet not found — run First-time Setup');
@@ -75,23 +83,27 @@ const Payments = (() => {
   }
 
   function getAllPayments_() {
+    if (_paymentsCache) return _paymentsCache;
     const sh = paymentsSheet_();
     const last = sh.getLastRow();
-    if (last < P_DATA_START) return [];
-    const data = sh.getRange(P_DATA_START, 1, last - P_DATA_START + 1, P_NUM_COLS).getValues();
-    return data
-      .map((row, i) => pRowToRecord_(row, i + P_DATA_START))
-      .filter(r => r.paymentId && !r.paymentId.startsWith('P_PLACEHOLDER'));
+    _paymentsCache = last < P_DATA_START ? [] :
+      sh.getRange(P_DATA_START, 1, last - P_DATA_START + 1, P_NUM_COLS)
+        .getValues()
+        .map((row, i) => pRowToRecord_(row, i + P_DATA_START))
+        .filter(r => r.paymentId && !r.paymentId.startsWith('P_PLACEHOLDER'));
+    return _paymentsCache;
   }
 
   function getAllItems_() {
+    if (_itemsCache) return _itemsCache;
     const sh = itemsSheet_();
     const last = sh.getLastRow();
-    if (last < I_DATA_START) return [];
-    const data = sh.getRange(I_DATA_START, 1, last - I_DATA_START + 1, I_NUM_COLS).getValues();
-    return data
-      .map((row, i) => iRowToRecord_(row, i + I_DATA_START))
-      .filter(r => r.itemId && !r.itemId.startsWith('IT_PLACEHOLDER'));
+    _itemsCache = last < I_DATA_START ? [] :
+      sh.getRange(I_DATA_START, 1, last - I_DATA_START + 1, I_NUM_COLS)
+        .getValues()
+        .map((row, i) => iRowToRecord_(row, i + I_DATA_START))
+        .filter(r => r.itemId && !r.itemId.startsWith('IT_PLACEHOLDER'));
+    return _itemsCache;
   }
 
   function getPaymentById_(paymentId) {
@@ -353,6 +365,7 @@ const Payments = (() => {
       itemCount: itemsCreated.length,
     });
 
+    bustCaches_();
     return {
       paymentId,
       totalAmount: amount,
@@ -464,6 +477,7 @@ const Payments = (() => {
       bonusType: bonus.type,
     });
 
+    bustCaches_();
     return {
       paymentId,
       bonusId: bonus.bonusId,
@@ -485,6 +499,7 @@ const Payments = (() => {
     if (!paymentId) throw new Error('paymentId required');
     if (!actorId) throw new Error('actorId required');
 
+    bustCaches_(); // ensure live row indices before row deletions
     const payment = getPaymentById_(paymentId);
     if (!payment) throw new Error('Payment not found: ' + paymentId);
     const items = getItemsForPayment_(paymentId);
@@ -523,6 +538,7 @@ const Payments = (() => {
       },
     });
 
+    bustCaches_(); // row indices shifted after deletions — invalidate
     return {
       success: true,
       removedPaymentId: paymentId,

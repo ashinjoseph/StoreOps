@@ -23,6 +23,10 @@ const Bonuses = (() => {
   const NUM_COLS = 14;
   const DATA_START_ROW = 3;
 
+  let _bonusCache = null;
+
+  function bustBonusCache_() { _bonusCache = null; }
+
   function sheet_() {
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.BONUSES);
     if (!sh) throw new Error('bonuses sheet not found — run First-time Setup');
@@ -50,13 +54,15 @@ const Bonuses = (() => {
   }
 
   function getAll_() {
+    if (_bonusCache) return _bonusCache;
     const sh = sheet_();
     const last = sh.getLastRow();
-    if (last < DATA_START_ROW) return [];
-    const data = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS).getValues();
-    return data
-      .map((row, i) => rowToRecord_(row, i + DATA_START_ROW))
-      .filter(b => b.bonusId);
+    _bonusCache = last < DATA_START_ROW ? [] :
+      sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS)
+        .getValues()
+        .map((row, i) => rowToRecord_(row, i + DATA_START_ROW))
+        .filter(b => b.bonusId);
+    return _bonusCache;
   }
 
   function getById_(bonusId) {
@@ -208,6 +214,7 @@ const Bonuses = (() => {
       },
     });
 
+    bustBonusCache_();
     return getById_(bonusId);
   }
 
@@ -238,6 +245,7 @@ const Bonuses = (() => {
       after: { status: 'pending' },
     });
 
+    bustBonusCache_();
     return getById_(bonusId);
   }
 
@@ -271,6 +279,7 @@ const Bonuses = (() => {
       after: { status: 'cancelled', reason: reason || '' },
     });
 
+    bustBonusCache_();
     return getById_(bonusId);
   }
 
@@ -296,6 +305,7 @@ const Bonuses = (() => {
       after: { status: 'paid' },
     });
 
+    bustBonusCache_();
     return getById_(bonusId);
   }
 
@@ -321,6 +331,7 @@ const Bonuses = (() => {
       details: 'Reverted due to payment undo',
     });
 
+    bustBonusCache_();
     return getById_(bonusId);
   }
 
