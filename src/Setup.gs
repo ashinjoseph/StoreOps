@@ -29,7 +29,7 @@ const COLORS = {
   PLACEHOLDER:  '#FFF8E1',  // soft yellow — visually distinct
 };
 
-const ROLES = ['admin', 'manager', 'employee'];
+const ROLES = ['admin', 'manager', 'employee', 'payroll_admin'];
 const COMPANIES = ['cstore', 'vape'];
 const TILL_STATUSES = ['open', 'closed', 'validated'];
 const ATT_STATUSES = ['scheduled', 'in_progress', 'worked', 'cancelled'];

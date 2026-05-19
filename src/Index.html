@@ -496,6 +496,45 @@
   }
   .mypay-explainer strong { color: #1a2540; }
 
+  /* ── More drawer ──────────────────────────────────── */
+  .more-menu {
+    display: grid; grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .more-item {
+    background: white;
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    display: flex; align-items: center; gap: 14px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .more-item:active { background: #f5f6f8; }
+  .more-item-icon {
+    font-size: 24px; line-height: 1;
+    flex-shrink: 0;
+    width: 36px; text-align: center;
+  }
+  .more-item-body { flex: 1; min-width: 0; }
+  .more-item-title {
+    font-size: 14px; font-weight: 700; color: #1a2540;
+    letter-spacing: -0.2px;
+  }
+  .more-item-meta {
+    font-size: 11px; color: #6a6e79;
+    margin-top: 2px;
+  }
+  .more-item-chevron {
+    color: #b0b6c5; font-size: 18px;
+  }
+  .more-back {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: transparent; padding: 6px 0;
+    font-size: 13px; color: #1a4ca1; font-weight: 600;
+    margin-bottom: 8px;
+  }
+
   /* ── Modal (bottom sheet) ──────────────────────────── */
   .backdrop {
     position: fixed; inset: 0;
@@ -676,16 +715,18 @@
     <div class="view" id="view-mypay"></div>
     <div class="view" id="view-payroll"></div>
     <div class="view" id="view-sales"></div>
+    <div class="view" id="view-commissions"></div>
+    <div class="view" id="view-rules"></div>
     <div class="view" id="view-history"></div>
+    <div class="view" id="view-more"></div>
   </main>
 
   <nav class="tabbar" id="tabbar">
     <button class="tab" data-tab="shift">    <span class="tab-icon">🏪</span><span>My Shift</span></button>
     <button class="tab" data-tab="schedule"> <span class="tab-icon">📅</span><span>Schedule</span></button>
     <button class="tab" data-tab="mypay">    <span class="tab-icon">💵</span><span>My Pay</span></button>
-    <button class="tab" data-tab="payroll">  <span class="tab-icon">💰</span><span>Payroll</span></button>
-    <button class="tab" data-tab="sales">    <span class="tab-icon">📊</span><span>Sales</span></button>
     <button class="tab" data-tab="history">  <span class="tab-icon">📋</span><span>History</span></button>
+    <button class="tab" data-tab="more">     <span class="tab-icon">☰</span><span>More</span></button>
   </nav>
 </div>
 
@@ -911,19 +952,30 @@
     leaveApp();
   };
 
+  // Tabs accessed only via the "More" drawer (not direct buttons on bottom nav).
+  // For employee, history is a top-level bottom tab; for everyone else it lives in the drawer.
+  const DRAWER_TABS = ['payroll', 'sales', 'commissions', 'rules'];
+
+  // Items shown in the "More" drawer, with role visibility.
+  const MORE_ITEMS = [
+    { tab: 'history',     icon: '📋', label: 'History',          meta: 'Payment records',                 roles: ['admin', 'manager', 'payroll_admin'] },
+    { tab: 'sales',       icon: '📊', label: 'Sales',            meta: 'Sales dashboard & filters',       roles: ['admin', 'manager', 'payroll_admin'] },
+    { tab: 'payroll',     icon: '💰', label: 'Payroll',          meta: 'Pay owed shifts & bonuses',       roles: ['admin', 'payroll_admin'] },
+    { tab: 'commissions', icon: '🎯', label: 'Commissions',      meta: 'Run engine, approve runs',        roles: ['admin', 'manager', 'payroll_admin'] },
+    { tab: 'rules',       icon: '⚙️', label: 'Commission Rules', meta: 'Create & manage commission rules', roles: ['admin', 'payroll_admin'] },
+  ];
+
   function setupRoleVisibility() {
     const role = state.me.role;
-    // Tabs:
-    //   employee: shift + history (own)
-    //   manager:  + schedule + sales
-    //   admin:    + payroll
+    // Bottom-bar buttons. The 4th slot is dynamic: employees see History
+    // directly; everyone else sees a "More" button that opens a drawer.
+    const isEmployee = role === 'employee';
     const visible = {
-      shift: true,
-      schedule: role === 'admin' || role === 'manager' || role === 'employee', // employees see schedule read-only
-      mypay: true,        // self-pay view — backend scopes to session.staffId
-      payroll: role === 'admin',
-      sales: role === 'admin' || role === 'manager',
-      history: true,
+      shift:    true,
+      schedule: true,           // all roles; employees see it read-only
+      mypay:    true,           // self-pay view — backend scopes to session.staffId
+      history:  isEmployee,     // top-level only for employees
+      more:     !isEmployee,    // drawer for everyone else
     };
     document.querySelectorAll('.tab').forEach(btn => {
       const t = btn.dataset.tab;
@@ -940,16 +992,29 @@
 
   function switchTab(tab) {
     state.currentTab = tab;
-    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    // For drawer-only views (and history when not an employee), highlight
+    // the "More" bottom button instead of looking for a non-existent button.
+    const isDrawerView = DRAWER_TABS.indexOf(tab) >= 0
+      || (tab === 'history' && state.me.role !== 'employee');
+    const bottomTab = isDrawerView ? 'more' : tab;
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === bottomTab));
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     const view = $('view-' + tab);
     view.classList.add('active');
-    const titles = { shift: 'My Shift', schedule: 'Schedule', mypay: 'My Pay', payroll: 'Payroll', sales: 'Sales', history: 'History' };
+    const titles = {
+      shift: 'My Shift', schedule: 'Schedule', mypay: 'My Pay',
+      payroll: 'Payroll', sales: 'Sales', history: 'History',
+      commissions: 'Commissions', rules: 'Commission Rules', more: 'More',
+    };
     $('headerTitle').textContent = titles[tab] || 'StoreOps';
     // Clear running timers from previous tab
     state.runningTimers.forEach(id => clearInterval(id));
     state.runningTimers = [];
-    const loaders = { shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab, payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab };
+    const loaders = {
+      shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab,
+      payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
+      commissions: loadCommissionsTab, rules: loadRulesTab, more: loadMoreTab,
+    };
     (loaders[tab] || (() => {}))();
   }
 
@@ -1553,53 +1618,75 @@
   }
 
   // ============================================================
+  //  ░░  TAB: MORE  ░░
+  // ============================================================
+  //  Drawer that lists role-appropriate tools (Sales, Payroll,
+  //  Commissions, etc.) as tappable cards. Selecting one calls
+  //  switchTab(target) — the "More" bottom button stays highlighted
+  //  while the user is inside any drawer view.
+  // ============================================================
+  function loadMoreTab() {
+    renderMoreTab();
+  }
+
+  function renderMoreTab() {
+    const view = $('view-more');
+    const role = state.me.role;
+    const items = MORE_ITEMS.filter(it => it.roles.indexOf(role) >= 0);
+    if (items.length === 0) {
+      view.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>Nothing here yet.</div>';
+      return;
+    }
+    let html = '<div class="more-menu">';
+    items.forEach(it => {
+      html += '<div class="more-item" data-go="' + esc(it.tab) + '">' +
+        '<div class="more-item-icon">' + it.icon + '</div>' +
+        '<div class="more-item-body">' +
+          '<div class="more-item-title">' + esc(it.label) + '</div>' +
+          '<div class="more-item-meta">' + esc(it.meta) + '</div>' +
+        '</div>' +
+        '<div class="more-item-chevron">›</div>' +
+      '</div>';
+    });
+    html += '</div>';
+    view.innerHTML = html;
+    view.querySelectorAll('[data-go]').forEach(el => {
+      el.onclick = () => { haptic(); switchTab(el.dataset.go); };
+    });
+  }
+
+  // Render a small "← More" back link at the top of any drawer view.
+  // Returns the HTML string; views call this and prepend it to their content.
+  function moreBack() {
+    return '<button class="more-back" onclick="switchTab(\'more\')">← More</button>';
+  }
+
+  // ============================================================
   //  ░░  TAB: PAYROLL  ░░
   // ============================================================
   async function loadPayrollTab() {
     const view = $('view-payroll');
     view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading payroll…</div>';
     try {
-      const [overview, proposed] = await Promise.all([
-        call('rpcGetPayrollOverview', state.token),
-        call('rpcGetProposedBonuses', state.token).catch(() => []),
-      ]);
-      renderPayrollTab(overview, proposed);
+      const overview = await call('rpcGetPayrollOverview', state.token);
+      renderPayrollTab(overview);
     } catch (e) {
       handleRpcError(e, view);
     }
   }
 
-  function renderPayrollTab(overview, proposed) {
+  function renderPayrollTab(overview) {
     const view = $('view-payroll');
     overview = overview || [];
-    proposed = proposed || [];
     const totalOwed = overview.reduce((s, p) => s + (p.totalOwed || 0), 0);
     const totalShifts = overview.reduce((s, p) => s + (p.unpaidShiftCount || 0), 0);
     const totalStaff = overview.filter(p => p.totalOwed > 0.005).length;
 
-    let html = '<div class="payroll-totals">' +
+    let html = moreBack() + '<div class="payroll-totals">' +
       '<div class="payroll-totals-label">TOTAL OWED</div>' +
       '<div class="payroll-totals-amount">' + money(totalOwed) + '</div>' +
       '<div class="payroll-totals-meta">' + totalShifts + ' unpaid shifts · ' + totalStaff + ' of ' + overview.length + ' staff</div>' +
     '</div>';
-
-    // Proposed commissions (if any)
-    if (proposed && proposed.length > 0) {
-      html += '<div class="recent-title" style="margin-top:6px;margin-bottom:8px">⏳ PROPOSED COMMISSIONS — needs approval</div>';
-      proposed.forEach(p => {
-        html += '<div class="proposed-card">' +
-          '<div class="proposed-card-head">' +
-            '<div class="proposed-name">' + esc(p.staffName) + '</div>' +
-            '<div class="proposed-amount">' + money(p.amount) + '</div>' +
-          '</div>' +
-          '<div class="proposed-meta">' + esc(p.reason || '') + '</div>' +
-          '<div class="proposed-actions">' +
-            '<button class="proposed-btn proposed-btn-cancel" data-cancel="' + esc(p.bonusId) + '">Cancel</button>' +
-            '<button class="proposed-btn proposed-btn-approve" data-approve="' + esc(p.bonusId) + '">Approve</button>' +
-          '</div>' +
-        '</div>';
-      });
-    }
 
     // Per-staff cards
     html += '<div style="margin-top:14px"></div>';
@@ -1635,29 +1722,6 @@
 
     view.innerHTML = html;
 
-    view.querySelectorAll('[data-approve]').forEach(b => {
-      b.onclick = async () => {
-        haptic();
-        b.disabled = true;
-        try {
-          await call('rpcApproveBonus', state.token, b.dataset.approve);
-          toast('✓ Bonus approved', 'success');
-          loadPayrollTab();
-        } catch (e) { toast(e.message, 'error'); b.disabled = false; }
-      };
-    });
-    view.querySelectorAll('[data-cancel]').forEach(b => {
-      b.onclick = async () => {
-        if (!confirm('Cancel this proposed commission?')) return;
-        haptic();
-        b.disabled = true;
-        try {
-          await call('rpcCancelBonus', state.token, b.dataset.cancel, 'Cancelled from payroll UI');
-          toast('Cancelled', 'warning');
-          loadPayrollTab();
-        } catch (e) { toast(e.message, 'error'); b.disabled = false; }
-      };
-    });
     view.querySelectorAll('[data-pay-shifts]').forEach(b => {
       b.onclick = () => { haptic(); openPayShiftsForm(b.dataset.payShifts); };
     });
@@ -1879,6 +1943,423 @@
   }
 
   // ============================================================
+  //  ░░  TAB: COMMISSIONS  ░░
+  // ============================================================
+  //  Drives the commission lifecycle:
+  //    1. Run the engine for the previous week (admin / payroll_admin)
+  //    2. Review past runs (admin / manager / payroll_admin)
+  //    3. Approve / Cancel proposed commissions (admin / payroll_admin)
+  //  After approval, the bonus becomes payable in the Payroll view.
+  // ============================================================
+  async function loadCommissionsTab() {
+    const view = $('view-commissions');
+    view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading commissions…</div>';
+    try {
+      const canSeeProposed = state.me.role === 'admin' || state.me.role === 'payroll_admin';
+      const [runs, proposed] = await Promise.all([
+        call('rpcGetCommissionRuns', state.token, 12),
+        canSeeProposed
+          ? call('rpcGetProposedBonuses', state.token).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+      renderCommissionsTab(runs, proposed);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderCommissionsTab(runs, proposed) {
+    const view = $('view-commissions');
+    runs = runs || [];
+    proposed = proposed || [];
+    const canRun = state.me.role === 'admin' || state.me.role === 'payroll_admin';
+
+    let html = moreBack();
+
+    // Run-engine card
+    if (canRun) {
+      html += '<div class="payroll-totals" style="text-align:left">' +
+        '<div class="payroll-totals-label">RUN COMMISSION ENGINE</div>' +
+        '<div style="font-size:12px;color:#4a4e59;margin:4px 0 10px;line-height:1.5">' +
+          'Computes commissions for the previous full week (Mon–Sun) using all active rules. ' +
+          'Idempotent: if already run this week, nothing happens unless forced.' +
+        '</div>' +
+        '<button class="btn-primary" id="runEngineBtn" style="padding:10px 14px;font-size:13px">▶ Run for last week</button>' +
+        ' <button class="btn-primary" id="runEngineForceBtn" style="padding:10px 14px;font-size:13px;background:#92611a">⟳ Force re-run</button>' +
+      '</div>';
+    }
+
+    // Proposed commissions
+    if (canRun) {
+      html += '<div class="recent-title" style="margin-top:14px;margin-bottom:8px">⏳ PROPOSED COMMISSIONS — NEEDS APPROVAL (' + proposed.length + ')</div>';
+      if (proposed.length === 0) {
+        html += '<div class="empty" style="padding:20px"><div class="empty-icon">✓</div>No proposed commissions awaiting approval.</div>';
+      } else {
+        proposed.forEach(p => {
+          html += '<div class="proposed-card">' +
+            '<div class="proposed-card-head">' +
+              '<div class="proposed-name">' + esc(p.staffName) + '</div>' +
+              '<div class="proposed-amount">' + money(p.amount) + '</div>' +
+            '</div>' +
+            '<div class="proposed-meta">' + esc(p.reason || '') + '</div>' +
+            '<div class="proposed-actions">' +
+              '<button class="proposed-btn proposed-btn-cancel" data-cancel="' + esc(p.bonusId) + '">Cancel</button>' +
+              '<button class="proposed-btn proposed-btn-approve" data-approve="' + esc(p.bonusId) + '">Approve</button>' +
+            '</div>' +
+          '</div>';
+        });
+      }
+    }
+
+    // Past runs
+    html += '<div class="recent-title" style="margin-top:14px;margin-bottom:8px">📜 PAST RUNS (' + runs.length + ')</div>';
+    if (runs.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">🗒️</div>No commission runs yet.</div>';
+    } else {
+      runs.forEach(r => {
+        const ws = r.weekStart ? fmtDate(r.weekStart) : '—';
+        const we = r.weekEnd ? fmtDate(r.weekEnd) : '—';
+        const computedAt = r.computedAt ? fmtDate(r.computedAt) : '—';
+        html += '<div class="history-item">' +
+          '<div class="history-head">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div class="history-name">' + esc(ws) + ' → ' + esc(we) + '</div>' +
+              '<div class="history-meta">' +
+                r.bonusesCreated + ' bonus' + (r.bonusesCreated === 1 ? '' : 'es') + ' · ' +
+                r.staffCount + ' staff · computed ' + esc(computedAt) +
+                (r.computedBy ? ' by ' + esc(r.computedBy) : '') +
+              '</div>' +
+              (r.notes ? '<div class="history-meta" style="font-style:italic">' + esc(r.notes) + '</div>' : '') +
+            '</div>' +
+            '<div class="history-amount">' + money(r.totalCommissionAmount) + '</div>' +
+          '</div>' +
+        '</div>';
+      });
+    }
+
+    view.innerHTML = html;
+
+    if (canRun) {
+      const runBtn = $('runEngineBtn');
+      if (runBtn) runBtn.onclick = () => triggerCommissionRun(false);
+      const forceBtn = $('runEngineForceBtn');
+      if (forceBtn) forceBtn.onclick = () => {
+        if (!confirm('Force re-run? This will compute again for the same week even if a run already exists.')) return;
+        triggerCommissionRun(true);
+      };
+      view.querySelectorAll('[data-approve]').forEach(b => {
+        b.onclick = async () => {
+          haptic();
+          b.disabled = true;
+          try {
+            await call('rpcApproveBonus', state.token, b.dataset.approve);
+            toast('✓ Bonus approved', 'success');
+            loadCommissionsTab();
+          } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+        };
+      });
+      view.querySelectorAll('[data-cancel]').forEach(b => {
+        b.onclick = async () => {
+          if (!confirm('Cancel this proposed commission?')) return;
+          haptic();
+          b.disabled = true;
+          try {
+            await call('rpcCancelBonus', state.token, b.dataset.cancel, 'Cancelled from Commissions view');
+            toast('Cancelled', 'warning');
+            loadCommissionsTab();
+          } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+        };
+      });
+    }
+  }
+
+  async function triggerCommissionRun(force) {
+    const btn = $('runEngineBtn') || $('runEngineForceBtn');
+    if (btn) btn.disabled = true;
+    haptic();
+    try {
+      const result = await call('rpcRunCommissionEngine', state.token, force === true);
+      if (result.skipped) {
+        toast('Already run for this week. Use Force to re-run.', 'warning');
+      } else {
+        toast('✓ Created ' + (result.bonusesProposed ? result.bonusesProposed.length : 0) +
+              ' commission(s), total ' + money(result.totalAmount || 0), 'success');
+      }
+      loadCommissionsTab();
+    } catch (e) {
+      toast(e.message, 'error');
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // ============================================================
+  //  ░░  TAB: COMMISSION RULES  ░░
+  // ============================================================
+  //  Admin / payroll_admin manage the rules that drive the commission
+  //  engine. Soft-delete via active=false (preserves audit trail).
+  //  Some fields (company, appliesTo, staffId, effectiveFrom) are
+  //  locked on edit because the engine treats them as identity —
+  //  to change them, deactivate and create a new rule.
+  // ============================================================
+  async function loadRulesTab() {
+    const view = $('view-rules');
+    view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading rules…</div>';
+    try {
+      const rules = await call('rpcGetCommissionRules', state.token);
+      renderRulesTab(rules);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderRulesTab(rules) {
+    const view = $('view-rules');
+    rules = rules || [];
+    const canEdit = state.me.role === 'admin' || state.me.role === 'payroll_admin';
+    if (state.rulesShowInactive === undefined) state.rulesShowInactive = false;
+    const visible = state.rulesShowInactive ? rules : rules.filter(r => r.active);
+
+    let html = moreBack();
+
+    // Header row with "+ New rule" button
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+      '<div style="font-size:13px;font-weight:700">Commission rules (' + visible.length + ')</div>' +
+      (canEdit ? '<button class="btn-primary" id="newRuleBtn" style="padding:7px 12px;font-size:12px">+ New rule</button>' : '') +
+    '</div>';
+
+    // Show-inactive toggle
+    html += '<label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#6a6e79;margin-bottom:12px">' +
+      '<input type="checkbox" id="showInactiveToggle"' + (state.rulesShowInactive ? ' checked' : '') + '>' +
+      'Show inactive rules</label>';
+
+    if (visible.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">⚙️</div>' +
+        (rules.length === 0
+          ? 'No rules defined yet. Click "+ New rule" to create the first one.'
+          : 'No active rules. Toggle "Show inactive" to see deactivated ones.') +
+      '</div>';
+    } else {
+      visible.forEach(r => {
+        const target = r.appliesTo === 'all_staff'
+          ? 'all staff'
+          : 'staff ' + esc(r.staffId);
+        const badgeClass = r.company === 'vape' ? 'mypay-badge commission' : 'mypay-badge';
+        html += '<div class="payroll-card">' +
+          '<div class="payroll-card-head">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div class="payroll-name">' +
+                '<span class="' + badgeClass + '">' + esc(r.company || '?') + '</span>' +
+                esc(r.name || ('Rule ' + r.ruleId)) +
+              '</div>' +
+              '<div class="payroll-rate">Pay ' + esc(r.percentage) + '% over ' + money(r.threshold) + ' to ' + target + '</div>' +
+            '</div>' +
+            '<div style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;' +
+              (r.active ? 'background:#dcfce7;color:#15803d' : 'background:#f0f1f5;color:#6a6e79') + '">' +
+              (r.active ? 'ACTIVE' : 'INACTIVE') +
+            '</div>' +
+          '</div>' +
+          '<div class="payroll-body">' +
+            '<div class="payroll-body-row"><span class="payroll-body-row-label">Effective</span>' +
+              '<span class="payroll-body-row-value">' +
+                (r.effectiveFrom ? esc(fmtDate(r.effectiveFrom)) : '—') +
+                ' → ' + (r.effectiveTo ? esc(fmtDate(r.effectiveTo)) : 'open') +
+              '</span></div>' +
+            (r.notes ? '<div class="payroll-body-row"><span class="payroll-body-row-label">Notes</span><span class="payroll-body-row-value">' + esc(r.notes) + '</span></div>' : '') +
+          '</div>' +
+          (canEdit
+            ? '<div class="payroll-actions">' +
+                '<button class="payroll-btn payroll-btn-secondary" data-edit-rule="' + esc(r.ruleId) + '">Edit</button>' +
+                (r.active
+                  ? '<button class="payroll-btn payroll-btn-secondary" data-deactivate-rule="' + esc(r.ruleId) + '" style="color:#b91c1c">Deactivate</button>'
+                  : '<button class="payroll-btn payroll-btn-secondary" data-reactivate-rule="' + esc(r.ruleId) + '">Reactivate</button>') +
+              '</div>'
+            : '') +
+        '</div>';
+      });
+    }
+
+    view.innerHTML = html;
+
+    $('showInactiveToggle').onchange = (e) => {
+      state.rulesShowInactive = e.target.checked;
+      renderRulesTab(rules);
+    };
+
+    if (canEdit) {
+      const newBtn = $('newRuleBtn');
+      if (newBtn) newBtn.onclick = () => { haptic(); openRuleForm(null); };
+      view.querySelectorAll('[data-edit-rule]').forEach(b => {
+        b.onclick = () => {
+          haptic();
+          const rule = rules.find(r => r.ruleId === b.dataset.editRule);
+          openRuleForm(rule);
+        };
+      });
+      view.querySelectorAll('[data-deactivate-rule]').forEach(b => {
+        b.onclick = async () => {
+          if (!confirm('Deactivate this rule? It stays in the system but is no longer used by the engine.')) return;
+          haptic();
+          b.disabled = true;
+          try {
+            await call('rpcUpdateCommissionRule', state.token, { ruleId: b.dataset.deactivateRule, active: false });
+            toast('Rule deactivated', 'warning');
+            loadRulesTab();
+          } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+        };
+      });
+      view.querySelectorAll('[data-reactivate-rule]').forEach(b => {
+        b.onclick = async () => {
+          haptic();
+          b.disabled = true;
+          try {
+            await call('rpcUpdateCommissionRule', state.token, { ruleId: b.dataset.reactivateRule, active: true });
+            toast('✓ Rule reactivated', 'success');
+            loadRulesTab();
+          } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+        };
+      });
+    }
+  }
+
+  async function openRuleForm(existingRule) {
+    const isEdit = !!existingRule;
+    openSheet({
+      title: isEdit ? 'Edit rule' : 'New commission rule',
+      subtitle: isEdit ? 'Some fields are locked on edit' : 'Defines when commissions are paid',
+      bodyHTML: '<div class="loading"><div class="spinner"></div>Loading…</div>',
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
+    });
+
+    // Need the staff directory for the "specific staff" picker
+    let staffList = [];
+    try { staffList = await call('rpcGetStaffDirectory', state.token); } catch (e) {}
+
+    const r = existingRule || {};
+    const today = isoDate(todayMidnight());
+    const initial = {
+      name:          r.name || '',
+      company:       r.company || 'cstore',
+      appliesTo:     r.appliesTo || 'all_staff',
+      staffId:       r.staffId || '',
+      threshold:     r.threshold != null ? String(r.threshold) : '',
+      percentage:    r.percentage != null ? String(r.percentage) : '',
+      effectiveFrom: r.effectiveFrom ? isoDate(new Date(r.effectiveFrom)) : today,
+      effectiveTo:   r.effectiveTo ? isoDate(new Date(r.effectiveTo)) : '',
+      notes:         r.notes || '',
+    };
+    const lockedNote = isEdit ? ' <em style="color:#8a8e98;font-size:10px">(locked)</em>' : '';
+    const dis = isEdit ? ' disabled' : '';
+
+    const staffOptions = staffList.map(s =>
+      '<option value="' + esc(s.staffId) + '"' + (initial.staffId === s.staffId ? ' selected' : '') + '>' +
+        esc(s.name) + (s.active ? '' : ' (inactive)') +
+      '</option>'
+    ).join('');
+
+    const bodyHTML =
+      '<div class="sheet-field"><label>Name (optional)</label>' +
+        '<input type="text" id="ruleName" value="' + esc(initial.name) + '" placeholder="e.g. Cstore weekly commission"></div>' +
+
+      '<div class="sheet-field"><label>Store' + lockedNote + '</label>' +
+        '<select id="ruleCompany"' + dis + '>' +
+          '<option value="cstore"' + (initial.company === 'cstore' ? ' selected' : '') + '>Cstore</option>' +
+          '<option value="vape"' + (initial.company === 'vape' ? ' selected' : '') + '>Vape</option>' +
+        '</select></div>' +
+
+      '<div class="sheet-field"><label>Applies to' + lockedNote + '</label>' +
+        '<select id="ruleAppliesTo"' + dis + '>' +
+          '<option value="all_staff"' + (initial.appliesTo === 'all_staff' ? ' selected' : '') + '>All staff</option>' +
+          '<option value="specific_staff"' + (initial.appliesTo === 'specific_staff' ? ' selected' : '') + '>Specific staff</option>' +
+        '</select></div>' +
+
+      '<div class="sheet-field" id="ruleStaffField" style="display:' + (initial.appliesTo === 'specific_staff' ? 'block' : 'none') + '">' +
+        '<label>Staff member' + lockedNote + '</label>' +
+        '<select id="ruleStaffId"' + dis + '>' + staffOptions + '</select></div>' +
+
+      '<div class="sheet-field"><label>Sales threshold ($)</label>' +
+        '<input type="number" step="0.01" id="ruleThreshold" inputmode="decimal" value="' + esc(initial.threshold) + '" placeholder="5000"></div>' +
+
+      '<div class="sheet-field"><label>% Commission (on sales over threshold)</label>' +
+        '<input type="number" step="0.01" id="rulePercentage" inputmode="decimal" value="' + esc(initial.percentage) + '" placeholder="3"></div>' +
+
+      '<div class="sheet-field"><label>Effective from' + lockedNote + '</label>' +
+        '<input type="date" id="ruleEffectiveFrom" value="' + esc(initial.effectiveFrom) + '"' + dis + '></div>' +
+
+      '<div class="sheet-field"><label>Effective to (optional)</label>' +
+        '<input type="date" id="ruleEffectiveTo" value="' + esc(initial.effectiveTo) + '"></div>' +
+
+      '<div class="sheet-field"><label>Notes (optional)</label>' +
+        '<input type="text" id="ruleNotes" value="' + esc(initial.notes) + '"></div>';
+
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-submit" id="ruleSaveBtn">' + (isEdit ? 'Save changes' : 'Create rule') + '</button>';
+
+    openSheet({
+      title: isEdit ? 'Edit rule' : 'New commission rule',
+      subtitle: isEdit ? 'Some fields are locked' : 'Defines when commissions are paid',
+      bodyHTML,
+      actionsHTML,
+    });
+
+    // Toggle staff dropdown when "applies to" changes
+    $('ruleAppliesTo').onchange = () => {
+      $('ruleStaffField').style.display = $('ruleAppliesTo').value === 'specific_staff' ? 'block' : 'none';
+    };
+
+    $('ruleSaveBtn').onclick = async () => {
+      const company    = $('ruleCompany').value;
+      const appliesTo  = $('ruleAppliesTo').value;
+      const staffId    = appliesTo === 'specific_staff' ? $('ruleStaffId').value : '';
+      const threshold  = parseFloat($('ruleThreshold').value);
+      const percentage = parseFloat($('rulePercentage').value);
+      const effFrom    = $('ruleEffectiveFrom').value;
+      const effTo      = $('ruleEffectiveTo').value || null;
+      const notes      = $('ruleNotes').value;
+      const name       = $('ruleName').value || (company + ' ' + percentage + '% over $' + threshold);
+
+      // Validation
+      if (!company) return toast('Store required', 'error');
+      if (appliesTo === 'specific_staff' && !staffId) return toast('Pick a staff member', 'error');
+      if (!Number.isFinite(threshold) || threshold < 0) return toast('Valid threshold required', 'error');
+      if (!Number.isFinite(percentage) || percentage <= 0) return toast('Valid percentage required', 'error');
+      if (!isEdit && !effFrom) return toast('Effective from date required', 'error');
+
+      haptic();
+      const btn = $('ruleSaveBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+
+      try {
+        if (isEdit) {
+          await call('rpcUpdateCommissionRule', state.token, {
+            ruleId: existingRule.ruleId,
+            name, threshold, percentage,
+            effectiveTo: effTo,
+            notes,
+          });
+          toast('✓ Rule updated', 'success');
+        } else {
+          await call('rpcCreateCommissionRule', state.token, {
+            name, company, appliesTo, staffId,
+            threshold, percentage,
+            effectiveFrom: effFrom,
+            effectiveTo: effTo,
+            notes,
+          });
+          toast('✓ Rule created', 'success');
+        }
+        closeSheet();
+        loadRulesTab();
+      } catch (e) {
+        toast(e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = isEdit ? 'Save changes' : 'Create rule';
+      }
+    };
+  }
+
+  // ============================================================
   //  ░░  TAB: SALES DASHBOARD  ░░
   // ============================================================
   async function loadSalesTab() {
@@ -1904,7 +2385,7 @@
 
   function renderSalesScaffold() {
     const f = state.salesFilters;
-    return '<div class="filter-card" id="salesFilterCard">' +
+    return moreBack() + '<div class="filter-card" id="salesFilterCard">' +
       '<div class="filter-row">' +
         '<div class="filter-field"><label>Start date</label><input type="date" id="fStart" value="' + esc(f.startDate || '') + '"></div>' +
         '<div class="filter-field"><label>End date</label><input type="date" id="fEnd" value="' + esc(f.endDate || '') + '"></div>' +
@@ -2013,10 +2494,10 @@
   function renderHistoryTab(items) {
     const view = $('view-history');
     if (!items || items.length === 0) {
-      view.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>No payments yet</div>';
+      view.innerHTML = moreBack() + '<div class="empty"><div class="empty-icon">📋</div>No payments yet</div>';
       return;
     }
-    let html = '';
+    let html = moreBack();
     items.forEach((p, i) => {
       const itemLines = (p.items || []).map(it =>
         '<div>' + esc(it.itemType) + ' · ' + esc(it.refId) + ' · ' + money(it.amount) +
@@ -2032,7 +2513,7 @@
         '</div>' +
         (itemLines ? '<button class="history-toggle" data-toggle="' + i + '">Show items</button>' : '') +
         '<div class="history-items" id="histItems-' + i + '">' + itemLines + '</div>' +
-        (state.me.role === 'admin'
+        (state.me.role === 'admin' || state.me.role === 'payroll_admin'
           ? '<button class="history-toggle" data-undo="' + esc(p.paymentId) + '" style="color:#b91c1c">Undo this payment</button>'
           : '') +
       '</div>';

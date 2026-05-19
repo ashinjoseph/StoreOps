@@ -370,7 +370,7 @@ function rpcEditAttendanceTimes(token, input) {
 function rpcGetPayrollOverview(token) {
   try {
     const session = _session(token);
-    Auth.require(session, ['admin']);
+    Auth.require(session, ['admin', 'payroll_admin']);
     const staff = Staff.getActive() || [];
     return staff.map(s => {
       let owed;
@@ -400,7 +400,7 @@ function rpcGetPayrollOverview(token) {
 function rpcGetOwedSummary(token, staffId) {
   try {
     const session = _session(token);
-    Auth.require(session, ['admin']);
+    Auth.require(session, ['admin', 'payroll_admin']);
     const result = Payments.getOwedSummary(staffId);
     if (!result) {
       // Should never happen — fail loud
@@ -423,7 +423,7 @@ function rpcGetOwedSummary(token, staffId) {
 function rpcPayShifts(token, input) {
   try {
     const session = _session(token);
-    Auth.require(session, ['admin']);
+    Auth.require(session, ['admin', 'payroll_admin']);
     const result = Payments.payShifts({
       staffId: input.staffId,
       amount: Number(input.amount),
@@ -459,7 +459,7 @@ function rpcPayShifts(token, input) {
 function rpcPayBonus(token, input) {
   try {
     const session = _session(token);
-    Auth.require(session, ['admin']);
+    Auth.require(session, ['admin', 'payroll_admin']);
     const result = Payments.payBonus({
       bonusId: input.bonusId,
       amount: Number(input.amount),
@@ -484,7 +484,7 @@ function rpcPayBonus(token, input) {
 
 function rpcUndoPayment(token, paymentId) {
   const session = _session(token);
-  Auth.require(session, ['admin']);
+  Auth.require(session, ['admin', 'payroll_admin']);
   return Payments.undo(paymentId, session.staffId);
 }
 
@@ -493,7 +493,7 @@ function rpcUndoPayment(token, paymentId) {
 function rpcGetProposedBonuses(token) {
   try {
     const session = _session(token);
-    Auth.require(session, ['admin']);
+    Auth.require(session, ['admin', 'payroll_admin']);
     const names = _staffNameMap();
     return Bonuses.getProposed().map(b => ({
       bonusId: b.bonusId,
@@ -518,13 +518,13 @@ function rpcGetProposedBonuses(token) {
 
 function rpcApproveBonus(token, bonusId) {
   const session = _session(token);
-  Auth.require(session, ['admin']);
+  Auth.require(session, ['admin', 'payroll_admin']);
   return Bonuses.approve(bonusId, session.staffId);
 }
 
 function rpcCancelBonus(token, bonusId, reason) {
   const session = _session(token);
-  Auth.require(session, ['admin']);
+  Auth.require(session, ['admin', 'payroll_admin']);
   return Bonuses.cancel(bonusId, session.staffId, reason || '');
 }
 
@@ -547,7 +547,7 @@ function rpcCreateBonus(token, input) {
 
 function rpcGetSalesDashboard(token, filters) {
   const session = _session(token);
-  Auth.require(session, ['admin', 'manager']);
+  Auth.require(session, ['admin', 'manager', 'payroll_admin']);
   filters = filters || {};
   const result = Sales.getDashboard({
     startDate: filters.startDate ? Util.parseDate(filters.startDate) : null,
@@ -619,7 +619,7 @@ function rpcGetPaymentHistory(token, limit) {
 function rpcGetCommissionRuns(token, limit) {
   try {
     const session = _session(token);
-    Auth.require(session, ['admin', 'manager']);
+    Auth.require(session, ['admin', 'manager', 'payroll_admin']);
     limit = Number(limit) || 12;
     return Commissions.getAllRuns()
       .sort((a, b) => (b.computedAt || 0) - (a.computedAt || 0))
@@ -643,7 +643,7 @@ function rpcGetCommissionRuns(token, limit) {
 
 function rpcRunCommissionEngine(token, force) {
   const session = _session(token);
-  Auth.require(session, ['admin']);
+  Auth.require(session, ['admin', 'payroll_admin']);
   const range = Util.getPreviousWeekRange(new Date());
   return Commissions.runForWeek({
     weekStart: range.start,
@@ -657,13 +657,13 @@ function rpcRunCommissionEngine(token, force) {
 
 function rpcGetCommissionRules(token) {
   const session = _session(token);
-  Auth.require(session, ['admin', 'manager']);
+  Auth.require(session, ['admin', 'manager', 'payroll_admin']);
   return CommissionRules.getAll();
 }
 
 function rpcCreateCommissionRule(token, input) {
   const session = _session(token);
-  Auth.require(session, ['admin']);
+  Auth.require(session, ['admin', 'payroll_admin']);
   return CommissionRules.create({
     name: input.name,
     appliesTo: input.appliesTo,
@@ -681,7 +681,7 @@ function rpcCreateCommissionRule(token, input) {
 
 function rpcUpdateCommissionRule(token, input) {
   const session = _session(token);
-  Auth.require(session, ['admin']);
+  Auth.require(session, ['admin', 'payroll_admin']);
   return CommissionRules.update({
     ruleId: input.ruleId,
     name: input.name,
