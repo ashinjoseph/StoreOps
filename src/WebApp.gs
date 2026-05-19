@@ -94,7 +94,8 @@ function rpcGetMyShiftState(token) {
   const openByCompany = {};
   myOpen.forEach(s => { openByCompany[s.company] = s; });
 
-  // Who's currently holding the company tills (could be someone else)
+  // Who's currently holding the company tills (could be someone else).
+  // getOpenForCompany returns the single open session or null.
   const cstoreOpen = TillSessions.getOpenForCompany('cstore');
   const vapeOpen = TillSessions.getOpenForCompany('vape');
 
@@ -111,7 +112,7 @@ function rpcGetMyShiftState(token) {
   // Build per-company card states
   const cards = ['cstore', 'vape'].map(company => {
     const mine = openByCompany[company];
-    const occupied = company === 'cstore' ? cstoreOpen[0] : vapeOpen[0];
+    const occupied = company === 'cstore' ? cstoreOpen : vapeOpen;
     const expectedFloat = TillSessions.getExpectedFloat(company);
     const authorized = session.companiesAuthorized.indexOf(company) !== -1;
 
@@ -195,19 +196,20 @@ function rpcCloseShift(token, input) {
       session.role !== 'manager') {
     throw new Error('FORBIDDEN: only the cashier who opened, or an admin/manager, can close this shift');
   }
+  // Translate UI field names to TillSessions.close's expected names
   return TillSessions.close({
     sessionId: input.sessionId,
-    cashSales: Number(input.cashSales) || 0,
-    creditCardSales: Number(input.creditCardSales) || 0,
-    debitCardSales: Number(input.debitCardSales) || 0,
-    cashbackPaid: Number(input.cashbackPaid) || 0,
-    miscCashSales: Number(input.miscCashSales) || 0,
-    miscCreditSales: Number(input.miscCreditSales) || 0,
-    miscDebitSales: Number(input.miscDebitSales) || 0,
-    miscNotes: input.miscNotes || '',
+    cashSales:     Number(input.cashSales) || 0,
+    creditCard:    Number(input.creditCardSales) || 0,
+    debitCard:     Number(input.debitCardSales) || 0,
+    cashback:      Number(input.cashbackPaid) || 0,
+    miscCash:      Number(input.miscCashSales) || 0,
+    miscCredit:    Number(input.miscCreditSales) || 0,
+    miscDebit:     Number(input.miscDebitSales) || 0,
+    miscNotes:     input.miscNotes || '',
     physicalCount: Number(input.physicalCount),
-    closingNote: input.closingNote || '',
-    actorId: session.staffId,
+    notes:         input.closingNote || '',
+    actorId:       session.staffId,
   });
 }
 
@@ -385,15 +387,24 @@ function rpcGetSalesDashboard(token, filters) {
   const session = _session(token);
   Auth.require(session, ['admin', 'manager']);
   filters = filters || {};
-  return Sales.getDashboard({
+  const result = Sales.getDashboard({
     startDate: filters.startDate ? Util.parseDate(filters.startDate) : null,
     endDate: filters.endDate ? Util.parseDate(filters.endDate) : null,
     staffId: filters.staffId || null,
     company: filters.company || null,
-    groupBy: filters.groupBy || 'day_company',
     page: Number(filters.page) || 1,
     pageSize: Number(filters.pageSize) || 50,
   });
+  // Translate fields for UI compatibility:
+  //   Sales.getDashboard returns `totalCount` but UI expects `rowCount`
+  return {
+    rows: result.rows,
+    page: result.page,
+    pageSize: result.pageSize,
+    pageCount: result.pageCount,
+    rowCount: result.totalCount,
+    totals: result.totals,
+  };
 }
 
 // ── History tab ───────────────────────────────────────────

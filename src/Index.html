@@ -965,9 +965,10 @@
       const action = btn.dataset.action;
       const company = btn.dataset.company;
       const sessionId = btn.dataset.sessionId;
+      const expected = parseFloat(btn.dataset.expected) || 0;
       btn.onclick = () => {
         haptic();
-        if (action === 'open') openShiftForm(company);
+        if (action === 'open') openShiftForm(company, expected);
         else if (action === 'close') closeShiftForm(sessionId, company);
       };
     });
@@ -1015,7 +1016,8 @@
       detailHTML =
         '<div>Expected float: ' + money(card.expectedFloat) + '</div>';
       if (card.authorized) {
-        btnHTML = '<button class="card-btn card-btn-open" data-action="open" data-company="' + esc(card.company) + '">' +
+        btnHTML = '<button class="card-btn card-btn-open" data-action="open" data-company="' + esc(card.company) +
+                  '" data-expected="' + Number(card.expectedFloat || 0) + '">' +
                   'Open ' + esc(companyLabel) + '</button>';
       } else {
         btnHTML = '<button class="card-btn card-btn-disabled" disabled>Not authorized</button>';
@@ -1033,8 +1035,10 @@
   }
 
   // ── Open shift modal ────────────────────────────────────
-  function openShiftForm(company) {
-    const expected = company === 'cstore' ? 250 : 100;  // server confirms anyway
+  function openShiftForm(company, expectedArg) {
+    const expected = expectedArg != null
+      ? expectedArg
+      : (company === 'cstore' ? 250 : 100);  // fallback only
     openSheet({
       title: 'Open ' + company.toUpperCase() + ' shift',
       subtitle: 'Count the cash in the till',
@@ -1729,16 +1733,8 @@
         '</div>' +
       '</div>' +
       '<div class="filter-row">' +
-        '<div class="filter-field"><label>Group by</label>' +
-          '<select id="fGroupBy">' +
-            '<option value="none">None</option>' +
-            '<option value="day">Day</option>' +
-            '<option value="day_company" selected>Day & Company</option>' +
-            '<option value="staff">Staff</option>' +
-          '</select>' +
-        '</div>' +
-        '<div class="filter-field"><label>&nbsp;</label>' +
-          '<button class="btn-primary" id="applyFilters" style="padding:9px;font-size:13px">Apply</button>' +
+        '<div class="filter-field" style="grid-column:1/-1">' +
+          '<button class="btn-primary" id="applyFilters" style="padding:9px;font-size:13px">Apply filters</button>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -1761,14 +1757,12 @@
       sel.value = state.salesFilters.staffId || '';
     } catch (e) { /* manager case — leave All */ }
     $('fCompany').value = state.salesFilters.company || '';
-    $('fGroupBy').value = state.salesFilters.groupBy || 'day_company';
 
     $('applyFilters').onclick = () => {
       state.salesFilters.startDate = $('fStart').value;
       state.salesFilters.endDate = $('fEnd').value;
       state.salesFilters.staffId = $('fStaff').value;
       state.salesFilters.company = $('fCompany').value;
-      state.salesFilters.groupBy = $('fGroupBy').value;
       state.salesFilters.page = 1;
       loadSalesTab();
     };
