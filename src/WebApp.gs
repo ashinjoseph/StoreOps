@@ -261,13 +261,13 @@ function rpcGetWeekSchedule(token, weekStartStr) {
 function rpcScheduleShift(token, input) {
   const session = _session(token);
   Auth.require(session, ['admin', 'manager']);
-  return Attendance.schedule(
-    input.staffId,
-    Util.parseDate(input.date),
-    input.scheduledStart || '',
-    input.scheduledEnd || '',
-    session.staffId
-  );
+  return Attendance.schedule({
+    staffId: input.staffId,
+    date: Util.parseDate(input.date),
+    scheduledStart: input.scheduledStart || '',
+    scheduledEnd: input.scheduledEnd || '',
+    actorId: session.staffId
+  });
 }
 
 function rpcCancelScheduledShift(token, attendanceId, reason) {
