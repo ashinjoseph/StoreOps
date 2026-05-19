@@ -26,13 +26,9 @@ jobs:
       - name: Push to Apps Script
         run: clasp push --force
       
-      - name: Redeploy existing Web App
+      - name: Deploy new Apps Script version
         run: |
-          # 1. Create a fresh version snapshot of the code we just pushed
-          VERSION_NUM=$(clasp version "Auto-version $(git rev-parse --short HEAD)" | grep -oE '[0-9]+' | tail -n 1)
-          
-          # 2. Update your permanent deployment ID to point to this new version
-          clasp redeploy \
-            --id AKfycbyncTiTAQYlOUsVQomapFbpjkh1WiTOA9Ag7JpkWeN0Lhx6Z9bODf1isCbhoT-0pl9D \
-            --version "$VERSION_NUM" \
-            --description "Auto-deploy $(git rev-parse --short HEAD)"
+          clasp deploy \
+            --deploymentId AKfycbyncTiTAQYlOUsVQomapFbpjkh1WiTOA9Ag7JpkWeN0Lhx6Z9bODf1isCbhoT-0pl9D \
+            --description "Auto-deploy $(git rev-parse --short HEAD)"      
+      
