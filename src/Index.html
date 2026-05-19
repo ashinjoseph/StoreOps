@@ -457,6 +457,45 @@
     font-weight: 600;
   }
 
+  /* ── My Pay ───────────────────────────────────────── */
+  .mypay-summary {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 8px; margin-bottom: 14px;
+  }
+  .mypay-section-title {
+    font-size: 13px; font-weight: 700; color: #1a2540;
+    margin: 18px 0 8px; letter-spacing: -0.2px;
+  }
+  .mypay-table {
+    background: white; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 6px;
+  }
+  .mypay-row {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr 0.8fr 0.9fr 0.9fr 1fr;
+    padding: 9px 12px; font-size: 12px;
+    border-bottom: 1px solid #f0f1f5; align-items: center;
+  }
+  .mypay-row.header {
+    background: #f5f6f8; font-weight: 700; color: #6a6e79;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .mypay-row.partial { background: #fffbe6; }
+  .mypay-row .right { text-align: right; }
+  .mypay-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 6px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; background: #e6efff; color: #1a4ca1;
+    margin-right: 6px;
+  }
+  .mypay-badge.commission { background: #fdf3cd; color: #92611a; }
+  .mypay-explainer {
+    background: #f5f6f8; border-radius: 10px;
+    padding: 12px 14px; font-size: 12px; color: #4a4e59;
+    line-height: 1.5; margin-top: 14px;
+  }
+  .mypay-explainer strong { color: #1a2540; }
+
   /* ── Modal (bottom sheet) ──────────────────────────── */
   .backdrop {
     position: fixed; inset: 0;
@@ -634,6 +673,7 @@
   <main>
     <div class="view" id="view-shift"></div>
     <div class="view" id="view-schedule"></div>
+    <div class="view" id="view-mypay"></div>
     <div class="view" id="view-payroll"></div>
     <div class="view" id="view-sales"></div>
     <div class="view" id="view-history"></div>
@@ -642,6 +682,7 @@
   <nav class="tabbar" id="tabbar">
     <button class="tab" data-tab="shift">    <span class="tab-icon">🏪</span><span>My Shift</span></button>
     <button class="tab" data-tab="schedule"> <span class="tab-icon">📅</span><span>Schedule</span></button>
+    <button class="tab" data-tab="mypay">    <span class="tab-icon">💵</span><span>My Pay</span></button>
     <button class="tab" data-tab="payroll">  <span class="tab-icon">💰</span><span>Payroll</span></button>
     <button class="tab" data-tab="sales">    <span class="tab-icon">📊</span><span>Sales</span></button>
     <button class="tab" data-tab="history">  <span class="tab-icon">📋</span><span>History</span></button>
@@ -879,6 +920,7 @@
     const visible = {
       shift: true,
       schedule: role === 'admin' || role === 'manager' || role === 'employee', // employees see schedule read-only
+      mypay: true,        // self-pay view — backend scopes to session.staffId
       payroll: role === 'admin',
       sales: role === 'admin' || role === 'manager',
       history: true,
@@ -902,12 +944,12 @@
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     const view = $('view-' + tab);
     view.classList.add('active');
-    const titles = { shift: 'My Shift', schedule: 'Schedule', payroll: 'Payroll', sales: 'Sales', history: 'History' };
+    const titles = { shift: 'My Shift', schedule: 'Schedule', mypay: 'My Pay', payroll: 'Payroll', sales: 'Sales', history: 'History' };
     $('headerTitle').textContent = titles[tab] || 'StoreOps';
     // Clear running timers from previous tab
     state.runningTimers.forEach(id => clearInterval(id));
     state.runningTimers = [];
-    const loaders = { shift: loadShiftTab, schedule: loadScheduleTab, payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab };
+    const loaders = { shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab, payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab };
     (loaders[tab] || (() => {}))();
   }
 
@@ -1401,6 +1443,113 @@
         cancelBtn.disabled = false;
       }
     };
+  }
+
+  // ============================================================
+  //  ░░  TAB: MY PAY  ░░
+  // ============================================================
+  //  Self-service payroll view. Backend (rpcGetMyOwedSummary) scopes
+  //  to session.staffId so any role can use this and only see their own
+  //  pay. Designed to make the math obvious — shift value = hours × rate,
+  //  bonuses/commissions itemized with the calculation in `reason`.
+  // ============================================================
+  async function loadMyPayTab() {
+    const view = $('view-mypay');
+    view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading your pay…</div>';
+    try {
+      const data = await call('rpcGetMyOwedSummary', state.token);
+      renderMyPayTab(data);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderMyPayTab(data) {
+    const view = $('view-mypay');
+    if (!data) {
+      view.innerHTML = '<div class="empty"><div class="empty-icon">💵</div>Could not load pay info.</div>';
+      return;
+    }
+
+    let html = '';
+
+    // ── Summary cards ────────────────────────────────
+    html += '<div class="mypay-summary">' +
+      '<div class="sales-total-card"><div class="sales-total-label">Hourly Rate</div><div class="sales-total-amount">' + money(data.hourlyRate) + '/hr</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Shifts Owed</div><div class="sales-total-amount">' + money(data.shiftsOwed) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Bonuses Owed</div><div class="sales-total-amount">' + money(data.bonusesOwed) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Total Owed</div><div class="sales-total-amount" style="color:#15803d">' + money(data.totalOwed) + '</div></div>' +
+    '</div>';
+
+    // ── Unpaid shifts breakdown ──────────────────────
+    const shifts = data.unpaidShifts || [];
+    html += '<div class="mypay-section-title">Unpaid shifts (' + shifts.length + ')</div>';
+    if (shifts.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">✓</div>All worked shifts have been paid in full.</div>';
+    } else {
+      html += '<div class="mypay-table">';
+      html += '<div class="mypay-row header">' +
+        '<div>Date</div>' +
+        '<div class="right">Hours</div>' +
+        '<div class="right">Rate</div>' +
+        '<div class="right">Value</div>' +
+        '<div class="right">Paid</div>' +
+        '<div class="right">Remaining</div>' +
+      '</div>';
+      shifts.forEach(s => {
+        const isPartial = Number(s.paid || 0) > 0.005;
+        html += '<div class="mypay-row' + (isPartial ? ' partial' : '') + '">' +
+          '<div>' + esc(s.dateStr || fmtDate(s.date)) + '</div>' +
+          '<div class="right">' + Number(s.hoursWorked || 0).toFixed(2) + 'h</div>' +
+          '<div class="right">' + money(s.rate) + '</div>' +
+          '<div class="right">' + money(s.value) + '</div>' +
+          '<div class="right">' + money(s.paid) + '</div>' +
+          '<div class="right"><strong>' + money(s.remaining) + '</strong></div>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    // ── Pending bonuses & commissions ────────────────
+    const bonuses = data.pendingBonuses || [];
+    html += '<div class="mypay-section-title">Pending bonuses & commissions (' + bonuses.length + ')</div>';
+    if (bonuses.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">🎁</div>No pending bonuses or commissions.</div>';
+    } else {
+      bonuses.forEach(b => {
+        const type = (b.type || 'bonus').toLowerCase();
+        const badgeClass = type === 'commission' ? 'mypay-badge commission' : 'mypay-badge';
+        const partialNote = Number(b.paid || 0) > 0.005
+          ? ' · paid ' + money(b.paid) + ' so far'
+          : '';
+        html += '<div class="history-item">' +
+          '<div class="history-head">' +
+            '<div style="flex:1; min-width:0; padding-right:10px">' +
+              '<div><span class="' + badgeClass + '">' + esc(type) + '</span>' +
+                '<span style="font-weight:600">' + esc(b.reason || '—') + '</span>' +
+              '</div>' +
+              '<div class="history-meta">' +
+                esc(b.dateStr || (b.date ? fmtDate(b.date) : '—')) +
+                (b.company ? ' · ' + esc(b.company) : '') +
+                partialNote +
+              '</div>' +
+            '</div>' +
+            '<div class="history-amount">' + money(b.remaining) + '</div>' +
+          '</div>' +
+        '</div>';
+      });
+    }
+
+    // ── Explainer ────────────────────────────────────
+    html += '<div class="mypay-explainer">' +
+      '<strong>How your pay is calculated:</strong> ' +
+      'Each shift\'s value = <em>hours worked × your hourly rate at the time</em>. ' +
+      'Your rate is snapshotted when a shift is completed, so old shifts keep their original rate even if your rate changes later. ' +
+      'Bonuses and commissions are tracked separately and become payable once approved by an admin. ' +
+      'When a payment is recorded, it is applied to your <strong>oldest unpaid shifts first</strong>.' +
+    '</div>';
+
+    view.innerHTML = html;
   }
 
   // ============================================================

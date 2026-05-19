@@ -90,6 +90,28 @@ function rpcGetStaffDirectory(token) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Self-service owed summary — what the calling user is owed. Scoped to
+ * session.staffId so employees can only see their own pay. Includes
+ * hourly rate so the per-shift calculation (hours × rate = value) is
+ * verifiable by the employee.
+ */
+function rpcGetMyOwedSummary(token) {
+  const session = _session(token);
+  const staff = Staff.getById(session.staffId);
+  const summary = Payments.getOwedSummary(session.staffId);
+  return {
+    staffId:        session.staffId,
+    staffName:      session.name,
+    hourlyRate:     staff ? staff.hourlyRate : 0,
+    shiftsOwed:     summary.shiftsOwed,
+    bonusesOwed:    summary.bonusesOwed,
+    totalOwed:      summary.totalOwed,
+    unpaidShifts:   summary.unpaidShifts,
+    pendingBonuses: summary.pendingBonuses,
+  };
+}
+
 // ── My Shift tab ──────────────────────────────────────────
 
 /**
