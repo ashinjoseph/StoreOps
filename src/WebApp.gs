@@ -658,7 +658,39 @@ function rpcRunCommissionEngine(token, force) {
 function rpcGetCommissionRules(token) {
   const session = _session(token);
   Auth.require(session, ['admin', 'manager', 'payroll_admin']);
-  return CommissionRules.getAll();
+  const rules = CommissionRules.getAll();
+  console.log('rpcGetCommissionRules: role=' + session.role +
+              ' staffId=' + session.staffId +
+              ' returned=' + rules.length + ' rules' +
+              (rules.length > 0 ? ' first=' + JSON.stringify(rules[0]) : ''));
+  return rules;
+}
+
+/**
+ * Diagnostic — run from the Apps Script editor to see what
+ * CommissionRules.getAll() actually reads from the sheet. No auth, no
+ * deployment required: just open the editor, pick this function from
+ * the dropdown, click Run, then View → Logs (or Executions).
+ */
+function debugCommissionRules() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.COMMISSION_RULES);
+  if (!sh) {
+    console.log('DIAG: sheet not found. Expected name: "' + SHEETS.COMMISSION_RULES + '"');
+    const all = SpreadsheetApp.getActiveSpreadsheet().getSheets().map(s => s.getName());
+    console.log('DIAG: sheets in this workbook: ' + JSON.stringify(all));
+    return;
+  }
+  console.log('DIAG: sheet "' + sh.getName() + '" lastRow=' + sh.getLastRow() + ' lastCol=' + sh.getLastColumn());
+  const allValues = sh.getDataRange().getValues();
+  console.log('DIAG: total raw rows = ' + allValues.length);
+  allValues.forEach((row, i) => {
+    console.log('DIAG: row ' + (i + 1) + ' = ' + JSON.stringify(row));
+  });
+  const result = CommissionRules.getAll();
+  console.log('DIAG: CommissionRules.getAll() returned ' + result.length + ' record(s)');
+  result.forEach((r, i) => {
+    console.log('DIAG: record ' + i + ' = ' + JSON.stringify(r));
+  });
 }
 
 function rpcCreateCommissionRule(token, input) {
