@@ -163,9 +163,15 @@ const Auth = (() => {
     const session = peek_(token);
     if (!session) throw new Error('NOT_LOGGED_IN');
 
+    // Rolling expiry, but skip the PropertiesService WRITE on most calls:
+    // only extend when less than half the window remains. This removes a
+    // per-RPC write (a real latency cost) while still keeping sessions alive.
     const sessionHours = Number(configValue_('session_hours', 24)) || 24;
-    session.expiresAt = Date.now() + sessionHours * 3600 * 1000;
-    props_().setProperty(SESSION_KEY_PREFIX + token, JSON.stringify(session));
+    const fullMs = sessionHours * 3600 * 1000;
+    if ((session.expiresAt - Date.now()) < fullMs / 2) {
+      session.expiresAt = Date.now() + fullMs;
+      props_().setProperty(SESSION_KEY_PREFIX + token, JSON.stringify(session));
+    }
 
     return session;
   }

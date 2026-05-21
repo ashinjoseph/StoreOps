@@ -80,14 +80,23 @@ const TillSessions = (() => {
     };
   }
 
+  // In-execution memoization: rpcGetMyShiftState calls getAll_ ~4x per
+  // request (open-for-staff, open-for-company x2, date range). Reusing one
+  // read collapses those to a single sheet read. Write functions call
+  // bustCache_() after each sheet mutation so later reads stay correct.
+  let _tillCache = null;
+  function bustCache_() { _tillCache = null; }
+
   function getAll_() {
+    if (_tillCache) return _tillCache;
     const sh = sheet_();
     const last = sh.getLastRow();
-    if (last < DATA_START_ROW) return [];
-    const data = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS).getValues();
-    return data
-      .map((row, i) => rowToRecord_(row, i + DATA_START_ROW))
-      .filter(r => r.sessionId);
+    _tillCache = last < DATA_START_ROW ? [] :
+      sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS)
+        .getValues()
+        .map((row, i) => rowToRecord_(row, i + DATA_START_ROW))
+        .filter(r => r.sessionId);
+    return _tillCache;
   }
 
   function getById_(sessionId) {
@@ -184,6 +193,7 @@ const TillSessions = (() => {
       0, 0, 0, 0, 0,
       '', input.notes || ''
     ]]);
+    bustCache_();
 
     AuditLog.write({
       actorId: input.actorId,
@@ -293,6 +303,7 @@ const TillSessions = (() => {
     sh.getRange(row, COL.closing_variance).setValue(variance);
     sh.getRange(row, COL.variance_status).setValue(varianceStatus);
     if (input.notes) sh.getRange(row, COL.notes).setValue(input.notes);
+    bustCache_();   // later getForAttendance_/getById_ must see this close
 
     AuditLog.write({
       actorId: input.actorId,
@@ -371,6 +382,7 @@ const TillSessions = (() => {
       sh.getRange(row, COL.closing_cash_counted).setValue(Number(input.closingCashCounted));
     }
     if (input.notes != null) sh.getRange(row, COL.notes).setValue(input.notes);
+    bustCache_();
 
     // Recompute variance if needed
     const updated = getById_(session.sessionId);
@@ -381,6 +393,7 @@ const TillSessions = (() => {
       sh.getRange(row, COL.expected_cash).setValue(Util.roundMoney(expected));
       sh.getRange(row, COL.closing_variance).setValue(variance);
       sh.getRange(row, COL.variance_status).setValue(getVarianceStatus_(variance));
+      bustCache_();
     }
 
     AuditLog.write({

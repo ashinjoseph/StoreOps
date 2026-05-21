@@ -104,7 +104,82 @@ const Notifier = (() => {
     return { dispatched: false, reason: 'no_channel_configured' };
   }
 
+  /**
+   * Collapse a multi-line message into a single line for a WhatsApp
+   * template body parameter ({{1}} can't contain newlines, tabs, or
+   * 4+ consecutive spaces — Meta rejects those at send time).
+   */
+  function flattenForTemplate_(text) {
+    return String(text || '')
+      .replace(/\s*\n\s*/g, ' / ')
+      .replace(/[ \t]{4,}/g, '   ')
+      .trim();
+  }
+
+  /**
+   * Send a free-form message over the WhatsApp Cloud API.
+   *
+   * Reads everything from config:
+   *   notifier_enabled, whatsapp_api_url, whatsapp_api_token,
+   *   whatsapp_target_number, whatsapp_template_name, whatsapp_template_lang
+   *
+   * If whatsapp_template_name is set, sends a template message (body as
+   * {{1}}, flattened); otherwise sends plain text (works inside the 24h
+   * customer-service window). Returns { sent, reason?, detail? } — never
+   * throws, so callers can treat it as best-effort.
+   */
+  function sendWhatsApp_(body) {
+    if (!isEnabled_()) return { sent: false, reason: 'disabled' };
+    const url = configValue_('whatsapp_api_url', '');
+    const token = configValue_('whatsapp_api_token', '');
+    const raw = configValue_('whatsapp_target_number', '');
+    if (!url || !token || !raw) return { sent: false, reason: 'not_configured' };
+
+    // whatsapp_target_number may hold several numbers (comma / semicolon /
+    // space separated). The Cloud API sends to one recipient per request,
+    // so we send the same message to each.
+    const recipients = String(raw).split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+    if (recipients.length === 0) return { sent: false, reason: 'not_configured' };
+
+    const templateName = configValue_('whatsapp_template_name', '');
+    const lang = configValue_('whatsapp_template_lang', 'en') || 'en';
+
+    function buildPayload_(to) {
+      if (templateName) {
+        return {
+          messaging_product: 'whatsapp', to: to, type: 'template',
+          template: {
+            name: templateName, language: { code: lang },
+            components: [{ type: 'body', parameters: [{ type: 'text', text: flattenForTemplate_(body) }] }],
+          },
+        };
+      }
+      return { messaging_product: 'whatsapp', to: to, type: 'text', text: { body: String(body || '') } };
+    }
+
+    let sentCount = 0;
+    const results = [];
+    recipients.forEach(to => {
+      try {
+        const resp = UrlFetchApp.fetch(url, {
+          method: 'post',
+          headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+          payload: JSON.stringify(buildPayload_(to)),
+          muteHttpExceptions: true,
+        });
+        const code = resp.getResponseCode();
+        if (code >= 200 && code < 300) { sentCount++; results.push({ to: to, sent: true }); }
+        else results.push({ to: to, sent: false, reason: 'http_' + code, detail: resp.getContentText().slice(0, 200) });
+      } catch (e) {
+        results.push({ to: to, sent: false, reason: 'exception', detail: e.message });
+      }
+    });
+
+    return { sent: sentCount > 0, sentCount: sentCount, total: recipients.length, results: results };
+  }
+
   return {
     notify: notify_,
+    sendWhatsApp: sendWhatsApp_,
   };
 })();

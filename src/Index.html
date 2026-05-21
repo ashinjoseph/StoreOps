@@ -535,6 +535,49 @@
     margin-bottom: 8px;
   }
 
+  /* ── Shopping list — generated output ──────────────── */
+  .gen-output {
+    background: #f0fdf4; border: 1px solid #bbf7d0;
+    border-radius: 11px; padding: 12px 14px; margin-bottom: 14px;
+  }
+  .gen-text {
+    width: 100%; min-height: 170px; box-sizing: border-box;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+    border: 1px solid #d8dae1; border-radius: 8px; padding: 8px;
+    background: white; resize: vertical; white-space: pre;
+  }
+  /* shopping checklist rows */
+  .shop-row { display: flex; align-items: center; gap: 10px; }
+  .shop-check { width: 20px; height: 20px; flex-shrink: 0; accent-color: #15803d; }
+  .shop-item { flex: 1; min-width: 0; }
+  .shop-done { text-decoration: line-through; color: #9aa0ac; }
+  .shop-remove {
+    flex-shrink: 0; color: #b91c1c; background: transparent;
+    font-size: 16px; padding: 4px 8px; line-height: 1;
+  }
+  /* daily reconciliation panel */
+  .recon-card { background: white; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .recon-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .recon-title { font-size: 13px; font-weight: 800; color: #1a2540; }
+  .recon-btn { font-size: 12px; font-weight: 700; color: #1a4ca1; background: #eef2ff; padding: 6px 10px; border-radius: 7px; }
+  .recon-empty { font-size: 12px; color: #6a6e79; padding: 6px 0; }
+  .recon-group { border-top: 1px solid #f0f1f5; padding-top: 8px; margin-top: 8px; }
+  .recon-group:first-of-type { border-top: 0; margin-top: 0; }
+  .recon-group-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6a6e79; margin-bottom: 4px; }
+  .recon-badge { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 6px; text-transform: uppercase; }
+  .recon-badge.ok { background: #dcfce7; color: #15803d; }
+  .recon-badge.bad { background: #fee2e2; color: #b91c1c; }
+  .recon-badge.warn { background: #fef3c7; color: #92611a; }
+  .recon-line { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .recon-line small { color: #6a6e79; }
+  .recon-ok { color: #15803d !important; }
+  .recon-diff { color: #b91c1c !important; }
+  .recon-hist-title { font-size: 11px; font-weight: 700; color: #6a6e79; text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px; }
+  .recon-table { border-top: 1px solid #f0f1f5; }
+  .recon-trow { display: grid; grid-template-columns: 1.1fr 1.1fr 0.8fr 0.9fr 0.9fr 0.9fr; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f5f6f8; align-items: center; }
+  .recon-trow.head { font-size: 10px; font-weight: 700; color: #6a6e79; text-transform: uppercase; letter-spacing: 0.4px; }
+  .recon-trow .r { text-align: right; }
+
   /* ── Modal (bottom sheet) ──────────────────────────── */
   .backdrop {
     position: fixed; inset: 0;
@@ -690,7 +733,7 @@
       <select id="loginName"></select>
     </div>
     <div class="field">
-      <label>4-digit PIN</label>
+      <label>Input PIN</label>
       <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4"
              id="loginPin" class="pin-input" autocomplete="off">
     </div>
@@ -703,6 +746,7 @@
   <header class="header">
     <div class="header-title" id="headerTitle">Store Operations</div>
     <div class="header-user">
+      <button class="logout-btn" id="refreshBtn" title="Refresh">↻</button>
       <div class="user-pill" id="userPill">—</div>
       <button class="logout-btn" id="logoutBtn" title="Sign out">⏻</button>
     </div>
@@ -717,6 +761,8 @@
     <div class="view" id="view-sales"></div>
     <div class="view" id="view-commissions"></div>
     <div class="view" id="view-rules"></div>
+    <div class="view" id="view-shopping"></div>
+    <div class="view" id="view-suppliers"></div>
     <div class="view" id="view-history"></div>
     <div class="view" id="view-more"></div>
   </main>
@@ -725,7 +771,6 @@
     <button class="tab" data-tab="shift">    <span class="tab-icon">🏪</span><span>My Shift</span></button>
     <button class="tab" data-tab="schedule"> <span class="tab-icon">📅</span><span>Schedule</span></button>
     <button class="tab" data-tab="mypay">    <span class="tab-icon">💵</span><span>My Pay</span></button>
-    <button class="tab" data-tab="history">  <span class="tab-icon">📋</span><span>History</span></button>
     <button class="tab" data-tab="more">     <span class="tab-icon">☰</span><span>More</span></button>
   </nav>
 </div>
@@ -746,17 +791,66 @@
 
 <script>
   // ============================================================
-  //  Promise wrapper around google.script.run
+  //  Client-side RPC cache (cache-first reads, auto-bust on writes)
   // ============================================================
+  //  google.script.run round-trips are slow (~0.5-3s). We cache read
+  //  results (methods starting with "rpcGet") so re-visiting a screen is
+  //  instant. Any WRITE rpc clears the cache on success, so the user's
+  //  OWN change is reflected the moment the screen reloads. Other users'
+  //  changes surface on the next fetch once the TTL lapses.
+  // ============================================================
+  const TTL_REF  = 1800000; // 30 min — reference data that rarely changes
+  const TTL_SEMI = 300000;  // 5 min  — semi-live summaries/lists
+  const TTL_LIVE = 60000;   // 60s    — frequently-changing live data
+
+  const rpcCache = new Map();     // key -> { ts, data }
+  const rpcInflight = new Map();  // key -> Promise (de-dupe concurrent fetches)
+  function _ckey(method, args) { return method + ':' + JSON.stringify(args || []); }
+  function isReadMethod_(method) { return method.indexOf('rpcGet') === 0; }
+
+  // Promise wrapper around google.script.run. A successful non-read RPC
+  // (a write) clears the read cache so own changes show immediately.
   function call(method, ...args) {
     return new Promise((resolve, reject) => {
       google.script.run
-        .withSuccessHandler(resolve)
+        .withSuccessHandler(res => {
+          if (!isReadMethod_(method)) rpcCache.clear();
+          resolve(res);
+        })
         .withFailureHandler(err => {
           const msg = (err && err.message) || String(err);
           reject(new Error(msg));
         })[method](...args);
     });
+  }
+
+  // Cache-first read. Returns cached data if younger than ttlMs; else fetches.
+  // Pass opts.force to bypass the cache (used by the Refresh control).
+  async function cachedCall(method, args, ttlMs, opts) {
+    const key = _ckey(method, args);
+    const force = !!(opts && opts.force);
+    const hit = rpcCache.get(key);
+    if (!force && hit && (Date.now() - hit.ts) < (ttlMs || TTL_SEMI)) return hit.data;
+    // De-dupe: if the same fetch is already in flight (e.g. prefetch + a
+    // navigation racing), reuse the in-flight promise instead of firing twice.
+    if (!force && rpcInflight.has(key)) return rpcInflight.get(key);
+    const p = (async () => {
+      try {
+        const data = await call(method, ...(args || []));
+        rpcCache.set(key, { ts: Date.now(), data });
+        return data;
+      } finally {
+        rpcInflight.delete(key);
+      }
+    })();
+    rpcInflight.set(key, p);
+    return p;
+  }
+
+  // True if there is a fresh cached value (lets loaders skip the spinner).
+  function cacheFresh(method, args, ttlMs) {
+    const hit = rpcCache.get(_ckey(method, args));
+    return !!(hit && (Date.now() - hit.ts) < (ttlMs || TTL_SEMI));
   }
 
   // ============================================================
@@ -775,6 +869,7 @@
       page: 1, pageSize: 50,
     },
     runningTimers: [],  // for the "running 3h 12m" labels
+    lastGenerated: null, // last generated shopping list (text + whatsapp status)
   };
 
   // ============================================================
@@ -935,10 +1030,61 @@
     $('userPill').textContent = state.me.name + ' · ' + state.me.role;
     setupRoleVisibility();
     switchTab(state.currentTab);
+    // Warm the cache for the other tabs in the background so that, by the
+    // time the user navigates, they're cache hits (instant). Delayed so the
+    // landing tab's own fetch isn't competing for the first round-trip.
+    setTimeout(prefetchTabs, 1200);
   }
+
+  // Background cache warm-up. Mirrors each loader's RPC + args so the keys
+  // match (a later navigation becomes a cache hit). Role-gated to avoid
+  // FORBIDDEN calls; errors are ignored. Fired in small batches to avoid
+  // hitting the Apps Script simultaneous-execution limit.
+  async function prefetchTabs() {
+    if (!state.me) return;
+    const role = state.me.role;
+    const has = roles => roles.indexOf(role) >= 0;
+    const mgr = has(['admin', 'manager', 'payroll_admin']);
+    const pay = has(['admin', 'payroll_admin']);
+
+    if (!state.weekStart) state.weekStart = mondayOf(new Date());
+    const f = state.salesFilters;
+    if (!f.startDate) { const t = todayMidnight(); f.startDate = isoDate(addDays(t, -6)); f.endDate = isoDate(t); }
+
+    const jobs = [
+      ['rpcGetWeekSchedule',   [state.token, isoDate(state.weekStart)], TTL_SEMI],
+      ['rpcGetMyOwedSummary',  [state.token],     TTL_SEMI],
+      ['rpcGetShoppingList',   [state.token],     TTL_LIVE],
+      ['rpcGetSuppliers',      [state.token],     TTL_REF],
+      ['rpcGetPaymentHistory', [state.token, 25], TTL_SEMI],
+      ['rpcGetOrderCatalog',   [state.token],     TTL_REF],   // add-item modal
+      ['rpcGetStaffDirectory', [state.token],     TTL_REF],   // sales/rule pickers
+    ];
+    if (mgr) {
+      jobs.push(['rpcGetSalesDashboard', [state.token, f],  TTL_SEMI]);
+      jobs.push(['rpcGetCommissionRuns', [state.token, 12], TTL_SEMI]);
+      jobs.push(['rpcGetReconciliation', [state.token],     TTL_SEMI]);
+    }
+    if (pay) {
+      jobs.push(['rpcGetPayrollOverview', [state.token], TTL_SEMI]);
+      jobs.push(['rpcGetProposedBonuses', [state.token], TTL_SEMI]);
+      jobs.push(['rpcGetCommissionRules', [state.token], TTL_REF]);   // Rules tab
+    }
+
+    const BATCH = 4;
+    for (let i = 0; i < jobs.length; i += BATCH) {
+      await Promise.allSettled(
+        jobs.slice(i, i + BATCH).map(([m, a, ttl]) => cachedCall(m, a, ttl))
+      );
+    }
+  }
+
   function leaveApp() {
     state.token = null;
     state.me = null;
+    rpcCache.clear();   // don't leak one user's cached data into the next login
+    rpcInflight.clear();
+    state.lastGenerated = null;
     sessionStorage.removeItem('storeops_token');
     sessionStorage.removeItem('storeops_me');
     $('appScreen').classList.remove('active');
@@ -952,13 +1098,19 @@
     leaveApp();
   };
 
-  // Tabs accessed only via the "More" drawer (not direct buttons on bottom nav).
-  // For employee, history is a top-level bottom tab; for everyone else it lives in the drawer.
-  const DRAWER_TABS = ['payroll', 'sales', 'commissions', 'rules'];
+  // Order categories (mirror of the server ORDER_CATEGORIES constant).
+  const ORDER_CATEGORIES = ['Grocery', 'Cigarettes', 'Vapes', 'Other'];
+
+  // Tabs accessed only via the "More" drawer (no direct bottom-bar button).
+  // Every role gets the More drawer; History/Shopping/Suppliers live there for all.
+  const DRAWER_TABS = ['shopping', 'suppliers', 'history', 'payroll', 'sales', 'commissions', 'rules'];
 
   // Items shown in the "More" drawer, with role visibility.
+  const ALL_ROLES = ['admin', 'manager', 'payroll_admin', 'employee'];
   const MORE_ITEMS = [
-    { tab: 'history',     icon: '📋', label: 'History',          meta: 'Payment records',                 roles: ['admin', 'manager', 'payroll_admin'] },
+    { tab: 'shopping',    icon: '🛒', label: 'Shopping List',    meta: 'Add items to order',              roles: ALL_ROLES },
+    { tab: 'suppliers',   icon: '🚚', label: 'Suppliers',        meta: 'Where to buy what (reference)',    roles: ALL_ROLES },
+    { tab: 'history',     icon: '📋', label: 'History',          meta: 'Payment records',                 roles: ALL_ROLES },
     { tab: 'sales',       icon: '📊', label: 'Sales',            meta: 'Sales dashboard & filters',       roles: ['admin', 'manager', 'payroll_admin'] },
     { tab: 'payroll',     icon: '💰', label: 'Payroll',          meta: 'Pay owed shifts & bonuses',       roles: ['admin', 'payroll_admin'] },
     { tab: 'commissions', icon: '🎯', label: 'Commissions',      meta: 'Run engine, approve runs',        roles: ['admin', 'manager', 'payroll_admin'] },
@@ -966,17 +1118,9 @@
   ];
 
   function setupRoleVisibility() {
-    const role = state.me.role;
-    // Bottom-bar buttons. The 4th slot is dynamic: employees see History
-    // directly; everyone else sees a "More" button that opens a drawer.
-    const isEmployee = role === 'employee';
-    const visible = {
-      shift:    true,
-      schedule: true,           // all roles; employees see it read-only
-      mypay:    true,           // self-pay view — backend scopes to session.staffId
-      history:  isEmployee,     // top-level only for employees
-      more:     !isEmployee,    // drawer for everyone else
-    };
+    // Bottom bar is the same 4 tabs for everyone: Shift, Schedule, My Pay, More.
+    // Everything role-specific lives in the More drawer (filtered by MORE_ITEMS).
+    const visible = { shift: true, schedule: true, mypay: true, more: true };
     document.querySelectorAll('.tab').forEach(btn => {
       const t = btn.dataset.tab;
       btn.classList.toggle('hidden', !visible[t]);
@@ -990,12 +1134,19 @@
     btn.onclick = () => { haptic(); switchTab(btn.dataset.tab); };
   });
 
+  function tabLoaders_() {
+    return {
+      shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab,
+      payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
+      commissions: loadCommissionsTab, rules: loadRulesTab, more: loadMoreTab,
+      shopping: loadShoppingTab, suppliers: loadSuppliersTab,
+    };
+  }
+
   function switchTab(tab) {
     state.currentTab = tab;
-    // For drawer-only views (and history when not an employee), highlight
-    // the "More" bottom button instead of looking for a non-existent button.
-    const isDrawerView = DRAWER_TABS.indexOf(tab) >= 0
-      || (tab === 'history' && state.me.role !== 'employee');
+    // Drawer views highlight the "More" bottom button (they have no own button).
+    const isDrawerView = DRAWER_TABS.indexOf(tab) >= 0;
     const bottomTab = isDrawerView ? 'more' : tab;
     document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === bottomTab));
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -1005,27 +1156,32 @@
       shift: 'My Shift', schedule: 'Schedule', mypay: 'My Pay',
       payroll: 'Payroll', sales: 'Sales', history: 'History',
       commissions: 'Commissions', rules: 'Commission Rules', more: 'More',
+      shopping: 'Shopping List', suppliers: 'Suppliers',
     };
     $('headerTitle').textContent = titles[tab] || 'StoreOps';
     // Clear running timers from previous tab
     state.runningTimers.forEach(id => clearInterval(id));
     state.runningTimers = [];
-    const loaders = {
-      shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab,
-      payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
-      commissions: loadCommissionsTab, rules: loadRulesTab, more: loadMoreTab,
-    };
-    (loaders[tab] || (() => {}))();
+    (tabLoaders_()[tab] || (() => {}))();
   }
+
+  // Force-refresh the current tab (bypass cache). Wired to the header ↻.
+  function reloadCurrentTab() {
+    const loader = tabLoaders_()[state.currentTab];
+    if (loader) loader(true);   // pass force=true
+  }
+  $('refreshBtn').onclick = () => { haptic(); reloadCurrentTab(); };
 
   // ============================================================
   //  ░░  TAB: MY SHIFT  ░░
   // ============================================================
-  async function loadShiftTab() {
+  async function loadShiftTab(force) {
     const view = $('view-shift');
-    view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading shift…</div>';
+    if (force || !cacheFresh('rpcGetMyShiftState', [state.token], TTL_LIVE)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading shift…</div>';
+    }
     try {
-      const data = await call('rpcGetMyShiftState', state.token);
+      const data = await cachedCall('rpcGetMyShiftState', [state.token], TTL_LIVE, { force });
       renderShiftTab(data);
     } catch (e) {
       handleRpcError(e, view);
@@ -1198,6 +1354,8 @@
         closeSheet();
         toast('✓ ' + company.toUpperCase() + ' shift opened', 'success');
         loadShiftTab();
+        // Async WhatsApp "shift opened" notice (name + till) — never blocks open.
+        call('rpcNotifyShiftOpen', state.token, company).catch(() => {});
       } catch (e) {
         toast(e.message, 'error');
         $('openSubmit').disabled = false;
@@ -1248,7 +1406,7 @@
     let openingFloat = 0;
     (async () => {
       try {
-        const data = await call('rpcGetMyShiftState', state.token);
+        const data = await cachedCall('rpcGetMyShiftState', [state.token], TTL_LIVE);
         const card = (data.cards || []).find(c => c.company === company);
         if (card && card.state === 'open_by_me') openingFloat = Number(card.detail.openingFloat) || 0;
         recalcClose();
@@ -1304,6 +1462,14 @@
         toast('✓ ' + company.toUpperCase() + ' closed · variance ' + money(variance),
               Math.abs(variance) > 30 ? 'warning' : 'success');
         loadShiftTab();
+        // Async follow-up: when all tills are closed for the day, reconcile
+        // against Clover + WhatsApp. Fire-and-forget — never affects the close.
+        call('rpcReconcileDay', state.token, false).then(r => {
+          if (r && r.ready && !r.empty) {
+            toast((r.whatsapp && r.whatsapp.sent) ? '✓ Day reconciled — WhatsApp sent' : '✓ Day reconciled',
+                  'success');
+          }
+        }).catch(() => {});
       } catch (e) {
         toast(e.message, 'error');
         $('closeSubmit').disabled = false;
@@ -1325,12 +1491,15 @@
   // ============================================================
   //  ░░  TAB: SCHEDULE  ░░
   // ============================================================
-  async function loadScheduleTab() {
+  async function loadScheduleTab(force) {
     if (!state.weekStart) state.weekStart = mondayOf(new Date());
     const view = $('view-schedule');
-    view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading schedule…</div>';
+    const args = [state.token, isoDate(state.weekStart)];
+    if (force || !cacheFresh('rpcGetWeekSchedule', args, TTL_SEMI)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading schedule…</div>';
+    }
     try {
-      const data = await call('rpcGetWeekSchedule', state.token, isoDate(state.weekStart));
+      const data = await cachedCall('rpcGetWeekSchedule', args, TTL_SEMI, { force });
       renderScheduleTab(data);
     } catch (e) {
       handleRpcError(e, view);
@@ -1518,11 +1687,13 @@
   //  pay. Designed to make the math obvious — shift value = hours × rate,
   //  bonuses/commissions itemized with the calculation in `reason`.
   // ============================================================
-  async function loadMyPayTab() {
+  async function loadMyPayTab(force) {
     const view = $('view-mypay');
-    view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading your pay…</div>';
+    if (force || !cacheFresh('rpcGetMyOwedSummary', [state.token], TTL_SEMI)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading your pay…</div>';
+    }
     try {
-      const data = await call('rpcGetMyOwedSummary', state.token);
+      const data = await cachedCall('rpcGetMyOwedSummary', [state.token], TTL_SEMI, { force });
       renderMyPayTab(data);
     } catch (e) {
       handleRpcError(e, view);
@@ -1662,13 +1833,334 @@
   }
 
   // ============================================================
+  //  ░░  TAB: SHOPPING LIST  ░░
+  // ============================================================
+  //  Shared "to order" list. Anyone can add (catalog pick or new item);
+  //  manager/payroll_admin/admin can Generate & send (formats text,
+  //  clears pending, sends WhatsApp). Visible to everyone.
+  // ============================================================
+  async function loadShoppingTab(force) {
+    const view = $('view-shopping');
+    if (force || !cacheFresh('rpcGetShoppingList', [state.token], TTL_LIVE)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading list…</div>';
+    }
+    try {
+      const list = await cachedCall('rpcGetShoppingList', [state.token], TTL_LIVE, { force });
+      renderShoppingTab(list);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderShoppingTab(list) {
+    const view = $('view-shopping');
+    list = list || [];
+    const privileged = ['admin', 'manager', 'payroll_admin'].indexOf(state.me.role) >= 0;
+    const toBuy = list.filter(e => !e.bought).length;
+    const doneCount = list.length - toBuy;
+
+    let html = moreBack();
+
+    // Action buttons: Add (all), then Generate + Clear (manager+).
+    html += '<button class="btn-primary" id="addItemBtn" style="width:100%; padding:10px; font-size:13px; margin-bottom:8px">+ Add item</button>';
+    if (privileged) {
+      html += '<div style="display:flex; gap:8px; margin-bottom:12px">' +
+        '<button class="btn-primary" id="genListBtn" style="flex:1; padding:10px; font-size:13px; background:#15803d"' +
+          (toBuy === 0 ? ' disabled' : '') + '>Generate &amp; send</button>' +
+        '<button class="btn-primary" id="clearListBtn" style="flex:1; padding:10px; font-size:13px; background:#b91c1c"' +
+          (list.length === 0 ? ' disabled' : '') + '>Clear list</button>' +
+      '</div>';
+    }
+
+    // Generated output (persists across reloads via state.lastGenerated)
+    html += renderGeneratedOutputHTML_(state.lastGenerated);
+
+    html += '<div class="mypay-section-title">To buy (' + toBuy + ')' +
+      (doneCount > 0 ? ' · ' + doneCount + ' done' : '') + '</div>';
+    if (list.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">🛒</div>Nothing on the list yet. Tap "+ Add item".</div>';
+    } else {
+      const cats = ORDER_CATEGORIES.slice();
+      list.forEach(e => { const c = e.category || 'Other'; if (cats.indexOf(c) === -1) cats.push(c); });
+      cats.forEach(cat => {
+        const inCat = list.filter(e => (e.category || 'Other') === cat);
+        if (inCat.length === 0) return;
+        html += '<div class="recent-title" style="margin:10px 0 6px">' + esc(cat) + '</div>';
+        inCat.forEach(e => {
+          const canRemove = e.addedBy === state.me.staffId || privileged;
+          html += '<div class="history-item shop-row">' +
+            '<input type="checkbox" class="shop-check" data-bought="' + esc(e.entryId) + '"' + (e.bought ? ' checked' : '') + '>' +
+            '<div class="shop-item">' +
+              '<div class="history-name' + (e.bought ? ' shop-done' : '') + '">' + esc(e.itemName) +
+                ' <span style="color:#6a6e79; font-weight:600">× ' + e.quantity + (e.unit ? ' ' + esc(e.unit) : '') + '</span></div>' +
+              '<div class="history-meta">' + (e.note ? esc(e.note) + ' · ' : '') +
+                'by ' + esc(e.addedByName || e.addedBy) + '</div>' +
+            '</div>' +
+            (canRemove ? '<button class="shop-remove" data-remove="' + esc(e.entryId) + '" title="Remove">✕</button>' : '') +
+          '</div>';
+        });
+      });
+    }
+
+    view.innerHTML = html;
+
+    $('addItemBtn').onclick = () => { haptic(); openAddShoppingItem(); };
+    const gen = $('genListBtn');
+    if (gen) gen.onclick = () => { haptic(); generateShoppingList(); };
+    const clr = $('clearListBtn');
+    if (clr) clr.onclick = () => { haptic(); clearShoppingList(); };
+    const copyBtn = $('copyGenBtn');
+    if (copyBtn) copyBtn.onclick = copyGeneratedText_;
+    const dismiss = view.querySelector('[data-dismiss-gen]');
+    if (dismiss) dismiss.onclick = () => { state.lastGenerated = null; loadShoppingTab(); };
+
+    view.querySelectorAll('[data-bought]').forEach(cb => {
+      cb.onchange = async () => {
+        haptic();
+        cb.disabled = true;
+        try {
+          await call('rpcSetShoppingItemBought', state.token, cb.dataset.bought, cb.checked);
+          loadShoppingTab();
+        } catch (e) { toast(e.message, 'error'); cb.checked = !cb.checked; cb.disabled = false; }
+      };
+    });
+    view.querySelectorAll('[data-remove]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('Remove this item from the list?')) return;
+        haptic();
+        b.disabled = true;
+        try {
+          await call('rpcRemoveShoppingListEntry', state.token, b.dataset.remove);
+          toast('Removed', 'warning');
+          loadShoppingTab();
+        } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+      };
+    });
+  }
+
+  async function clearShoppingList() {
+    if (!confirm('Clear the entire list and start fresh? This removes all items (bought and to-buy).')) return;
+    const btn = $('clearListBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Clearing…'; }
+    try {
+      const res = await call('rpcClearShoppingList', state.token);
+      state.lastGenerated = null;
+      toast('Cleared ' + (res.cleared || 0) + ' item(s)', 'warning');
+      loadShoppingTab();
+    } catch (e) {
+      toast(e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Clear list'; }
+    }
+  }
+
+  function renderGeneratedOutputHTML_(result) {
+    if (!result || !result.text) return '';
+    const wa = result.whatsapp || {};
+    const waLine = wa.sent
+      ? '<div style="color:#15803d; font-size:12px; font-weight:600; margin-top:6px">✓ Sent via WhatsApp</div>'
+      : '<div style="color:#92611a; font-size:12px; font-weight:600; margin-top:6px">Not sent via WhatsApp (' +
+        esc(wa.reason || 'unknown') + ') — copy &amp; paste below</div>';
+    return '<div class="gen-output">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">' +
+        '<strong style="font-size:13px">Generated list (' + result.itemCount + ' items)</strong>' +
+        '<button class="more-back" data-dismiss-gen="1" style="margin:0">Dismiss</button>' +
+      '</div>' +
+      '<textarea id="genText" readonly class="gen-text">' + esc(result.text) + '</textarea>' +
+      '<button class="btn-primary" id="copyGenBtn" style="width:100%; padding:9px; font-size:13px; margin-top:8px">📋 Copy</button>' +
+      waLine +
+    '</div>';
+  }
+
+  async function copyGeneratedText_() {
+    const ta = $('genText');
+    if (!ta) return;
+    try {
+      await navigator.clipboard.writeText(ta.value);
+      toast('Copied', 'success');
+    } catch (e) {
+      ta.select();
+      try { document.execCommand('copy'); toast('Copied', 'success'); }
+      catch (e2) { toast('Press and hold to copy', 'warning'); }
+    }
+  }
+
+  async function generateShoppingList() {
+    if (!confirm('Generate the to-buy list and (if configured) send it via WhatsApp?' +
+                 ' The list stays as-is — items only leave when checked off or cleared.')) return;
+    const btn = $('genListBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+    try {
+      const result = await call('rpcGenerateShoppingList', state.token);
+      if (result.empty) {
+        toast('Nothing to order', 'warning');
+        if (btn) { btn.disabled = false; btn.textContent = 'Generate & send'; }
+        return;
+      }
+      state.lastGenerated = result;
+      toast(result.whatsapp && result.whatsapp.sent ? '✓ Generated & sent' : '✓ Generated', 'success');
+      loadShoppingTab();
+    } catch (e) {
+      toast(e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Generate & send'; }
+    }
+  }
+
+  async function openAddShoppingItem() {
+    openSheet({
+      title: 'Add item', subtitle: 'Pick from the catalog or add a new one',
+      bodyHTML: '<div class="loading"><div class="spinner"></div>Loading catalog…</div>',
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
+    });
+    let catalog = [];
+    try { catalog = await cachedCall('rpcGetOrderCatalog', [state.token], TTL_REF); } catch (e) {}
+
+    // Category list = starter set ∪ categories already in the catalog,
+    // plus a "+ New category…" option so users can add their own (e.g. Beer).
+    const cats = ORDER_CATEGORIES.slice();
+    catalog.forEach(i => { if (i.category && cats.indexOf(i.category) === -1) cats.push(i.category); });
+    const catOptions = cats.map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('') +
+      '<option value="__newcat__">+ New category…</option>';
+    const bodyHTML =
+      '<div class="sheet-field"><label>Category</label>' +
+        '<select id="siCategory">' + catOptions + '</select></div>' +
+      '<div class="sheet-field" id="siNewCatWrap" style="display:none"><label>New category name</label>' +
+        '<input type="text" id="siNewCat" placeholder="e.g. Beer"></div>' +
+      '<div class="sheet-field"><label>Item</label>' +
+        '<select id="siItem"></select></div>' +
+      '<div id="siNewWrap" style="display:none">' +
+        '<div class="sheet-field"><label>New item name</label><input type="text" id="siNewName" placeholder="e.g. 2% Milk 1L"></div>' +
+        '<div class="sheet-field"><label>Unit (optional)</label><input type="text" id="siNewUnit" placeholder="each / carton / case"></div>' +
+        '<div class="sheet-field"><label>Unit price $ (optional)</label><input type="number" step="0.01" id="siNewPrice" inputmode="decimal" placeholder="0.00"></div>' +
+        '<div class="sheet-field"><label>Par level — target stock (optional)</label><input type="number" step="1" id="siNewPar" inputmode="numeric" placeholder="e.g. 12"></div>' +
+      '</div>' +
+      '<div class="sheet-field"><label>Quantity to order</label><input type="number" step="0.01" id="siQty" inputmode="decimal" value="1"></div>' +
+      '<div class="sheet-field"><label>Note (optional)</label><input type="text" id="siNote" placeholder="e.g. urgent, the big bags"></div>';
+
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-submit" id="siAddBtn">Add to list</button>';
+
+    openSheet({ title: 'Add item', subtitle: 'Pick from the catalog or add a new one', bodyHTML, actionsHTML });
+
+    function refreshItems() {
+      const cat = $('siCategory').value;
+      const items = catalog.filter(i => i.category === cat);
+      $('siItem').innerHTML = '<option value="__new__">+ Add a new item…</option>' +
+        items.map(i => '<option value="' + esc(i.itemId) + '">' + esc(i.name) +
+          (i.unitPrice > 0 ? ' — ' + money(i.unitPrice) : '') + '</option>').join('');
+      onItemChange();
+    }
+    function onItemChange() {
+      const isNew = $('siItem').value === '__new__';
+      $('siNewWrap').style.display = isNew ? 'block' : 'none';
+      if (!isNew) {
+        const item = catalog.find(i => i.itemId === $('siItem').value);
+        if (item && item.parLevel > 0) $('siQty').value = item.parLevel;
+      }
+    }
+    function onCatChange() {
+      // For a brand-new category there are no existing items, so the item
+      // dropdown naturally collapses to "+ Add a new item…" (new-item mode).
+      $('siNewCatWrap').style.display = $('siCategory').value === '__newcat__' ? 'block' : 'none';
+      refreshItems();
+    }
+    $('siCategory').onchange = onCatChange;
+    $('siItem').onchange = onItemChange;
+    refreshItems();
+
+    $('siAddBtn').onclick = async () => {
+      let category = $('siCategory').value;
+      if (category === '__newcat__') {
+        category = $('siNewCat').value.trim();
+        if (!category) return toast('Enter the new category name', 'error');
+      }
+      const itemSel = $('siItem').value;
+      const isNew = itemSel === '__new__';
+      const qty = parseFloat($('siQty').value);
+      const note = $('siNote').value;
+      if (!Number.isFinite(qty) || qty <= 0) return toast('Enter a valid quantity', 'error');
+
+      const payload = { category, quantity: qty, note };
+      if (isNew) {
+        const name = $('siNewName').value.trim();
+        if (!name) return toast('Enter the new item name', 'error');
+        payload.newItem = true;
+        payload.itemName = name;
+        payload.unit = $('siNewUnit').value.trim();
+        payload.unitPrice = parseFloat($('siNewPrice').value) || 0;
+        payload.parLevel = parseFloat($('siNewPar').value) || 0;
+      } else {
+        const item = catalog.find(i => i.itemId === itemSel);
+        if (!item) return toast('Pick an item', 'error');
+        payload.itemId = item.itemId;
+        payload.itemName = item.name;
+        payload.unit = item.unit;
+      }
+
+      haptic();
+      const btn = $('siAddBtn'); btn.disabled = true; btn.textContent = 'Adding…';
+      try {
+        await call('rpcAddToShoppingList', state.token, payload);
+        closeSheet();
+        toast('✓ Added', 'success');
+        loadShoppingTab();
+      } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Add to list'; }
+    };
+  }
+
+  // ============================================================
+  //  ░░  TAB: SUPPLIERS (reference)  ░░
+  // ============================================================
+  async function loadSuppliersTab(force) {
+    const view = $('view-suppliers');
+    if (force || !cacheFresh('rpcGetSuppliers', [state.token], TTL_REF)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading suppliers…</div>';
+    }
+    try {
+      const suppliers = await cachedCall('rpcGetSuppliers', [state.token], TTL_REF, { force });
+      renderSuppliersTab(suppliers);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderSuppliersTab(suppliers) {
+    const view = $('view-suppliers');
+    suppliers = suppliers || [];
+    let html = moreBack();
+    if (suppliers.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">🚚</div>No suppliers listed.</div>';
+      view.innerHTML = html;
+      return;
+    }
+    const cats = ORDER_CATEGORIES.slice();
+    suppliers.forEach(s => { const c = s.category || 'Other'; if (cats.indexOf(c) === -1) cats.push(c); });
+    cats.forEach(cat => {
+      const inCat = suppliers.filter(s => (s.category || 'Other') === cat);
+      if (inCat.length === 0) return;
+      html += '<div class="mypay-section-title">' + esc(cat) + '</div>';
+      inCat.forEach(s => {
+        html += '<div class="payroll-card">' +
+          '<div class="payroll-name">' + esc(s.name) + '</div>' +
+          (s.products ? '<div style="font-size:12px; color:#4a4e59; margin-top:4px; line-height:1.5">' + esc(s.products) + '</div>' : '') +
+          (s.contact ? '<div style="font-size:12px; color:#1a4ca1; margin-top:4px">' + esc(s.contact) + '</div>' : '') +
+          (s.notes ? '<div style="font-size:11px; color:#92611a; margin-top:4px">' + esc(s.notes) + '</div>' : '') +
+        '</div>';
+      });
+    });
+    view.innerHTML = html;
+  }
+
+  // ============================================================
   //  ░░  TAB: PAYROLL  ░░
   // ============================================================
-  async function loadPayrollTab() {
+  async function loadPayrollTab(force) {
     const view = $('view-payroll');
-    view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading payroll…</div>';
+    if (force || !cacheFresh('rpcGetPayrollOverview', [state.token], TTL_SEMI)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading payroll…</div>';
+    }
     try {
-      const overview = await call('rpcGetPayrollOverview', state.token);
+      const overview = await cachedCall('rpcGetPayrollOverview', [state.token], TTL_SEMI, { force });
       renderPayrollTab(overview);
     } catch (e) {
       handleRpcError(e, view);
@@ -1722,24 +2214,31 @@
 
     view.innerHTML = html;
 
+    // Lookup so modals can read the staff name without re-fetching the overview.
+    const byId = {};
+    overview.forEach(p => { byId[p.staffId] = p; });
+
     view.querySelectorAll('[data-pay-shifts]').forEach(b => {
-      b.onclick = () => { haptic(); openPayShiftsForm(b.dataset.payShifts); };
+      b.onclick = () => { haptic(); openPayShiftsForm(b.dataset.payShifts, byId[b.dataset.payShifts]); };
     });
     view.querySelectorAll('[data-pay-bonus-list]').forEach(b => {
-      b.onclick = () => { haptic(); openPayBonusList(b.dataset.payBonusList); };
+      b.onclick = () => { haptic(); openPayBonusList(b.dataset.payBonusList, byId[b.dataset.payBonusList]); };
     });
   }
 
   // ── Pay shifts modal ────────────────────────────────────
-  async function openPayShiftsForm(staffId) {
+  async function openPayShiftsForm(staffId, staffRow) {
     openSheet({
       title: 'Loading…', subtitle: '',
       bodyHTML: '<div class="loading"><div class="spinner"></div>Loading owed details…</div>',
       actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
     });
     try {
-      const owed = await call('rpcGetOwedSummary', state.token, staffId);
-      const staff = (await call('rpcGetPayrollOverview', state.token)).find(s => s.staffId === staffId);
+      // staffRow comes from the payroll overview already on screen — no need
+      // to re-fetch the whole overview just to get the name (avoids an N+1).
+      const owed = await cachedCall('rpcGetOwedSummary', [state.token, staffId], TTL_SEMI);
+      const staff = staffRow ||
+        (await cachedCall('rpcGetPayrollOverview', [state.token], TTL_SEMI)).find(s => s.staffId === staffId);
       renderPayShiftsForm(owed, staff);
     } catch (e) { toast(e.message, 'error'); closeSheet(); }
   }
@@ -1841,15 +2340,16 @@
   }
 
   // ── Pay bonus list modal ────────────────────────────────
-  async function openPayBonusList(staffId) {
+  async function openPayBonusList(staffId, staffRow) {
     openSheet({
       title: 'Pay bonus', subtitle: '',
       bodyHTML: '<div class="loading"><div class="spinner"></div>Loading…</div>',
       actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
     });
     try {
-      const owed = await call('rpcGetOwedSummary', state.token, staffId);
-      const staff = (await call('rpcGetPayrollOverview', state.token)).find(s => s.staffId === staffId);
+      const owed = await cachedCall('rpcGetOwedSummary', [state.token, staffId], TTL_SEMI);
+      const staff = staffRow ||
+        (await cachedCall('rpcGetPayrollOverview', [state.token], TTL_SEMI)).find(s => s.staffId === staffId);
       if (!owed.pendingBonuses || owed.pendingBonuses.length === 0) {
         $('sheetBody').innerHTML = '<div class="empty"><div class="empty-icon">🎁</div>No pending bonuses for ' + esc(staff.staffName) + '</div>';
         return;
@@ -1951,15 +2451,19 @@
   //    3. Approve / Cancel proposed commissions (admin / payroll_admin)
   //  After approval, the bonus becomes payable in the Payroll view.
   // ============================================================
-  async function loadCommissionsTab() {
+  async function loadCommissionsTab(force) {
     const view = $('view-commissions');
-    view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading commissions…</div>';
+    const canSeeProposed = state.me.role === 'admin' || state.me.role === 'payroll_admin';
+    const fresh = cacheFresh('rpcGetCommissionRuns', [state.token, 12], TTL_SEMI) &&
+      (!canSeeProposed || cacheFresh('rpcGetProposedBonuses', [state.token], TTL_SEMI));
+    if (force || !fresh) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading commissions…</div>';
+    }
     try {
-      const canSeeProposed = state.me.role === 'admin' || state.me.role === 'payroll_admin';
       const [runs, proposed] = await Promise.all([
-        call('rpcGetCommissionRuns', state.token, 12),
+        cachedCall('rpcGetCommissionRuns', [state.token, 12], TTL_SEMI, { force }),
         canSeeProposed
-          ? call('rpcGetProposedBonuses', state.token).catch(() => [])
+          ? cachedCall('rpcGetProposedBonuses', [state.token], TTL_SEMI, { force }).catch(() => [])
           : Promise.resolve([]),
       ]);
       renderCommissionsTab(runs, proposed);
@@ -2101,11 +2605,13 @@
   //  locked on edit because the engine treats them as identity —
   //  to change them, deactivate and create a new rule.
   // ============================================================
-  async function loadRulesTab() {
+  async function loadRulesTab(force) {
     const view = $('view-rules');
-    view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading rules…</div>';
+    if (force || !cacheFresh('rpcGetCommissionRules', [state.token], TTL_REF)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading rules…</div>';
+    }
     try {
-      const rules = await call('rpcGetCommissionRules', state.token);
+      const rules = await cachedCall('rpcGetCommissionRules', [state.token], TTL_REF, { force });
       renderRulesTab(rules);
     } catch (e) {
       handleRpcError(e, view);
@@ -2232,7 +2738,7 @@
 
     // Need the staff directory for the "specific staff" picker
     let staffList = [];
-    try { staffList = await call('rpcGetStaffDirectory', state.token); } catch (e) {}
+    try { staffList = await cachedCall('rpcGetStaffDirectory', [state.token], TTL_REF); } catch (e) {}
 
     const r = existingRule || {};
     const today = isoDate(todayMidnight());
@@ -2362,7 +2868,7 @@
   // ============================================================
   //  ░░  TAB: SALES DASHBOARD  ░░
   // ============================================================
-  async function loadSalesTab() {
+  async function loadSalesTab(force) {
     const f = state.salesFilters;
     if (!f.startDate) {
       const today = todayMidnight();
@@ -2374,18 +2880,121 @@
       view.innerHTML = renderSalesScaffold();
       wireSalesFilters();
     }
-    $('salesResults').innerHTML = '<div class="loading"><div class="spinner"></div>Loading sales…</div>';
+    loadReconPanel(force);
+    const args = [state.token, f];
+    if (force || !cacheFresh('rpcGetSalesDashboard', args, TTL_SEMI)) {
+      $('salesResults').innerHTML = '<div class="loading"><div class="spinner"></div>Loading sales…</div>';
+    }
     try {
-      const data = await call('rpcGetSalesDashboard', state.token, f);
+      const data = await cachedCall('rpcGetSalesDashboard', args, TTL_SEMI, { force });
       renderSalesResults(data);
     } catch (e) {
       handleRpcError(e, $('salesResults'));
     }
   }
 
+  // ── Daily reconciliation panel (cash variance + cards vs Clover) ──
+  async function loadReconPanel(force) {
+    const el = $('reconPanel');
+    if (!el) return;
+    try {
+      const rows = await cachedCall('rpcGetReconciliation', [state.token], TTL_SEMI, { force });
+      renderReconPanel(rows || []);
+    } catch (e) {
+      el.innerHTML = '';  // non-fatal: just hide the panel
+    }
+  }
+
+  function renderReconPanel(rows) {
+    const el = $('reconPanel');
+    if (!el) return;
+    rows = rows || [];
+    const todayStr = isoDate(todayMidnight());
+    const todayRows = rows.filter(r => r.businessDate === todayStr);
+    const pastRows  = rows.filter(r => r.businessDate !== todayStr);
+
+    let html = '<div class="recon-card">' +
+      '<div class="recon-head">' +
+        '<div class="recon-title">Daily reconciliation</div>' +
+        '<button class="recon-btn" id="reconRunBtn">↻ Reconcile today</button>' +
+      '</div>';
+
+    // Today — detailed (credit/debit/total)
+    if (!todayRows.length) {
+      html += '<div class="recon-empty">Not reconciled yet today.</div>';
+    } else {
+      todayRows.forEach(r => { html += reconGroupDetail_(r); });
+    }
+
+    // History — date-wise table
+    if (pastRows.length) {
+      html += '<div class="recon-hist-title">History</div>' +
+        '<div class="recon-table">' +
+        '<div class="recon-trow head"><div>Date</div><div>Store</div>' +
+          '<div class="r">Cash Δ</div><div class="r">Card</div><div class="r">Clover</div><div class="r">Status</div></div>';
+      pastRows.forEach(r => {
+        const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
+        html += '<div class="recon-trow">' +
+          '<div>' + esc(r.businessDate) + '</div>' +
+          '<div>' + esc(r.companies) + '</div>' +
+          '<div class="r">' + signedMoney_(r.cashVariance) + '</div>' +
+          '<div class="r">' + money(r.cashierCard) + '</div>' +
+          '<div class="r">' + money(r.cloverCard) + '</div>' +
+          '<div class="r"><span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+    $('reconRunBtn').onclick = async () => {
+      haptic();
+      const b = $('reconRunBtn'); b.disabled = true; b.textContent = 'Reconciling…';
+      try {
+        const res = await call('rpcReconcileDay', state.token, true);
+        if (res && res.empty) toast('Nothing to reconcile yet', 'warning');
+        else toast((res.whatsapp && res.whatsapp.sent) ? '✓ Reconciled — WhatsApp sent' : '✓ Reconciled', 'success');
+        loadReconPanel(true);
+      } catch (e) { toast(e.message, 'error'); b.disabled = false; b.textContent = '↻ Reconcile today'; }
+    };
+  }
+
+  function reconGroupDetail_(r) {
+    const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
+    let h = '<div class="recon-group">' +
+      '<div class="recon-group-head"><span>' + esc(r.companies) + '</span>' +
+        '<span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
+      '<div class="recon-line"><span>Cash counted</span><span>' + money(r.cashCounted) +
+        ' <small>(var ' + signedMoney_(r.cashVariance) + ')</small></span></div>';
+    if (r.status === 'clover_unavailable') {
+      h += '<div class="recon-line"><span>Card (cashier)</span><span>' + money(r.cashierCard) +
+        ' <small>Clover unavailable</small></span></div>';
+    } else {
+      h += reconRow_('Credit', r.cashierCredit, r.cloverCredit) +
+           reconRow_('Debit',  r.cashierDebit,  r.cloverDebit) +
+           reconRow_('Total',  r.cashierCard,   r.cloverCard);
+    }
+    h += '</div>';
+    return h;
+  }
+
+  function reconRow_(label, cashier, clover) {
+    const diff = Math.round((cashier - clover) * 100) / 100;
+    const ok = Math.abs(diff) < 0.005;
+    return '<div class="recon-line"><span>' + label + '</span>' +
+      '<span>' + money(cashier) + ' vs ' + money(clover) +
+      ' <small class="' + (ok ? 'recon-ok' : 'recon-diff') + '">(' + signedMoney_(diff) + ')</small></span></div>';
+  }
+
+  function signedMoney_(n) {
+    n = Number(n) || 0;
+    return (n < 0 ? '-' : '+') + '$' + Math.abs(n).toFixed(2);
+  }
+
   function renderSalesScaffold() {
     const f = state.salesFilters;
-    return moreBack() + '<div class="filter-card" id="salesFilterCard">' +
+    return moreBack() + '<div id="reconPanel"></div>' + '<div class="filter-card" id="salesFilterCard">' +
       '<div class="filter-row">' +
         '<div class="filter-field"><label>Start date</label><input type="date" id="fStart" value="' + esc(f.startDate || '') + '"></div>' +
         '<div class="filter-field"><label>End date</label><input type="date" id="fEnd" value="' + esc(f.endDate || '') + '"></div>' +
@@ -2409,9 +3018,10 @@
 
   async function wireSalesFilters() {
     // Populate staff dropdown — uses rpcGetStaffDirectory which is open
-    // to any authenticated user (admin + manager + employee).
+    // to any authenticated user (admin + manager + employee). Cached as
+    // reference data so repeated filter applies don't re-fetch it.
     try {
-      const staff = await call('rpcGetStaffDirectory', state.token);
+      const staff = await cachedCall('rpcGetStaffDirectory', [state.token], TTL_REF);
       const sel = $('fStaff');
       staff.forEach(s => {
         const o = document.createElement('option');
@@ -2480,11 +3090,13 @@
   // ============================================================
   //  ░░  TAB: HISTORY  ░░
   // ============================================================
-  async function loadHistoryTab() {
+  async function loadHistoryTab(force) {
     const view = $('view-history');
-    view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading history…</div>';
+    if (force || !cacheFresh('rpcGetPaymentHistory', [state.token, 25], TTL_SEMI)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading history…</div>';
+    }
     try {
-      const items = await call('rpcGetPaymentHistory', state.token, 25);
+      const items = await cachedCall('rpcGetPaymentHistory', [state.token, 25], TTL_SEMI, { force });
       renderHistoryTab(items);
     } catch (e) {
       handleRpcError(e, view);
@@ -2551,9 +3163,14 @@
       state.token = savedToken;
       try {
         state.me = JSON.parse(savedMe);
-        // Validate the token still works
-        const me = await call('rpcGetMe', savedToken);
-        state.me = me;
+        // One round-trip: validate token + fetch the landing shift state.
+        const boot = await call('rpcGetBootstrap', savedToken);
+        state.me = boot.me;
+        // Pre-seed the shift cache so the landing tab renders instantly
+        // (no second round-trip on boot).
+        if (boot.shift) {
+          rpcCache.set(_ckey('rpcGetMyShiftState', [savedToken]), { ts: Date.now(), data: boot.shift });
+        }
         enterApp();
         return;
       } catch (e) {

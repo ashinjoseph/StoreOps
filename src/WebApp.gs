@@ -78,6 +78,30 @@ function rpcGetMe(token) {
 }
 
 /**
+ * One-shot boot payload: validates the token and returns the user profile
+ * plus the landing (My Shift) state in a SINGLE round-trip. Used on page
+ * load / session restore so the app needs one RPC instead of two
+ * (rpcGetMe + rpcGetMyShiftState). If the shift state fails to build, we
+ * still return `me` so the app can render; the shift tab will retry.
+ */
+function rpcGetBootstrap(token) {
+  const session = _session(token);
+  let shift = null;
+  try { shift = _rpcGetMyShiftState(token); } catch (e) {
+    console.error('rpcGetBootstrap shift failed: ' + e.message);
+  }
+  return {
+    me: {
+      staffId: session.staffId,
+      name: session.name,
+      role: session.role,
+      companiesAuthorized: session.companiesAuthorized,
+    },
+    shift: shift,
+  };
+}
+
+/**
  * Minimal staff directory for any authenticated user. Returns only
  * { staffId, name, active } — safe for populating filter dropdowns
  * (no rates, login codes, emails). Includes inactive staff so historical
@@ -244,6 +268,19 @@ function rpcOpenShift(token, input) {
     console.error('rpcOpenShift failed: ' + e.message + '\n' + (e.stack || ''));
     throw new Error('rpcOpenShift: ' + e.message);
   }
+}
+
+/**
+ * Send a WhatsApp "shift opened" notice (name + till). Called fire-and-forget
+ * by the client right after a successful open so it never slows the open.
+ * Best-effort; respects notifier_enabled + whatsapp_target_number (which may
+ * list several recipients).
+ */
+function rpcNotifyShiftOpen(token, company) {
+  const session = _session(token);
+  const label = company === 'vape' ? 'Vape' : (company === 'cstore' ? 'Cstore' : String(company || ''));
+  const msg = '🟢 ' + session.name + ' opened the ' + label + ' till';
+  try { return Notifier.sendWhatsApp(msg); } catch (e) { return { sent: false, reason: 'exception' }; }
 }
 
 function rpcCloseShift(token, input) {
@@ -569,6 +606,28 @@ function rpcGetSalesDashboard(token, filters) {
   };
 }
 
+// ── Clover reconciliation ─────────────────────────────────
+
+/**
+ * Reconcile today's cashier-entered card totals against Clover.
+ * Any authenticated user (auto path fires after any cashier's close).
+ * force=true (manual button) runs even if tills are still open.
+ */
+function rpcReconcileDay(token, force) {
+  const session = _session(token);
+  return Reconcile.reconcileDay(session.staffId, force === true ? 'manual' : 'auto');
+}
+
+/**
+ * Recent reconciliations (latest run per date+merchant, newest first) for
+ * the dashboard's history table. admin / manager / payroll_admin.
+ */
+function rpcGetReconciliation(token, limit) {
+  const session = _session(token);
+  Auth.require(session, ['admin', 'manager', 'payroll_admin']);
+  return Reconcile.getRecent(Number(limit) || 60);
+}
+
 // ── History tab ───────────────────────────────────────────
 
 function rpcGetPaymentHistory(token, limit) {
@@ -744,4 +803,142 @@ function rpcGetAllStaff(token) {
     email: s.email,
     startDate: s.startDate,
   }));
+}
+
+// ── Suppliers reference + Shopping list ───────────────────
+
+/**
+ * Supplier reference (where to buy what). Any authenticated user.
+ */
+function rpcGetSuppliers(token) {
+  _session(token);
+  return Suppliers.getAll();
+}
+
+/**
+ * Order catalog — known items for the picker. Any authenticated user.
+ */
+function rpcGetOrderCatalog(token) {
+  _session(token);
+  return OrderCatalog.getAll().map(i => ({
+    itemId: i.itemId,
+    name: i.name,
+    category: i.category,
+    unit: i.unit,
+    unitPrice: i.unitPrice,
+    parLevel: i.parLevel,
+    suggestedSupplier: i.suggestedSupplier,
+  }));
+}
+
+/**
+ * Add a new catalog item. Any authenticated user (employees curate the
+ * catalog as they discover items to order).
+ */
+function rpcAddCatalogItem(token, input) {
+  const session = _session(token);
+  const item = OrderCatalog.create({
+    name: input.name,
+    category: input.category,
+    unit: input.unit || '',
+    unitPrice: Number(input.unitPrice) || 0,
+    parLevel: Number(input.parLevel) || 0,
+    suggestedSupplier: input.suggestedSupplier || '',
+    notes: input.notes || '',
+    actorId: session.staffId,
+  });
+  return {
+    itemId: item.itemId, name: item.name, category: item.category,
+    unit: item.unit, unitPrice: item.unitPrice, parLevel: item.parLevel,
+  };
+}
+
+/**
+ * The active shopping checklist (still-to-buy + already-checked) — visible
+ * to everyone. `bought` flags checked-off items.
+ */
+function rpcGetShoppingList(token) {
+  _session(token);
+  const names = _staffNameMap();
+  return ShoppingList.getActive().map(e => ({
+    entryId: e.entryId,
+    itemId: e.itemId,
+    itemName: e.itemName,
+    category: e.category,
+    quantity: e.quantity,
+    unit: e.unit,
+    unitPrice: e.unitPrice,
+    note: e.note,
+    bought: e.status === 'bought',
+    addedBy: e.addedBy,
+    addedByName: names[e.addedBy] || e.addedBy,
+    addedAt: e.addedAt ? e.addedAt.toISOString() : null,
+  }));
+}
+
+/**
+ * Check / uncheck an item (mark bought or back to to-buy). Any user.
+ */
+function rpcSetShoppingItemBought(token, entryId, bought) {
+  const session = _session(token);
+  const entry = ShoppingList.setBought(entryId, bought === true, session.staffId);
+  return { entryId: entry.entryId, bought: entry.status === 'bought' };
+}
+
+/**
+ * Clear the whole list (start fresh). Manager / payroll_admin / admin.
+ */
+function rpcClearShoppingList(token) {
+  const session = _session(token);
+  Auth.require(session, ['manager', 'admin', 'payroll_admin']);
+  return ShoppingList.clearAll(session.staffId);
+}
+
+/**
+ * Add an item to the pending list. Any authenticated user.
+ */
+function rpcAddToShoppingList(token, input) {
+  const session = _session(token);
+  const entry = ShoppingList.add({
+    itemId: input.itemId || '',
+    itemName: input.itemName,
+    category: input.category,
+    quantity: Number(input.quantity),
+    unit: input.unit || '',
+    unitPrice: input.unitPrice !== undefined ? Number(input.unitPrice) : undefined,
+    note: input.note || '',
+    newItem: input.newItem === true,
+    parLevel: Number(input.parLevel) || 0,
+    suggestedSupplier: input.suggestedSupplier || '',
+    addedBy: session.staffId,
+  });
+  return {
+    entryId: entry.entryId, itemName: entry.itemName,
+    category: entry.category, quantity: entry.quantity, unit: entry.unit,
+  };
+}
+
+/**
+ * Remove a pending entry. The person who added it, or a manager/
+ * payroll_admin/admin.
+ */
+function rpcRemoveShoppingListEntry(token, entryId) {
+  const session = _session(token);
+  const entry = ShoppingList.getById(entryId);
+  if (!entry) throw new Error('Entry not found: ' + entryId);
+  const privileged = ['manager', 'admin', 'payroll_admin'].indexOf(session.role) !== -1;
+  if (entry.addedBy !== session.staffId && !privileged) {
+    throw new Error('FORBIDDEN: only the person who added this, or a manager/admin, can remove it');
+  }
+  return ShoppingList.removeEntry(entryId, session.staffId);
+}
+
+/**
+ * Generate the shopping list: format + clear pending + WhatsApp.
+ * Manager / payroll_admin / admin only.
+ */
+function rpcGenerateShoppingList(token) {
+  const session = _session(token);
+  Auth.require(session, ['manager', 'admin', 'payroll_admin']);
+  return ShoppingList.generate(session.staffId);
 }

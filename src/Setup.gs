@@ -21,6 +21,9 @@ const SHEETS = {
   POS_EXTRACTED:      'pos_extracted',
   CLOVER_BATCHES:     'clover_batches',
   VALIDATION_RESULTS: 'validation_results',
+  SUPPLIERS:          'suppliers',
+  ORDER_CATALOG:      'order_catalog',
+  SHOPPING_LIST:      'shopping_list',
 };
 
 const COLORS = {
@@ -39,6 +42,8 @@ const BONUS_TYPES = ['bonus', 'commission', 'incentive', 'deduction', 'tip', 'ad
 const BONUS_STATUSES = ['proposed', 'pending', 'paid', 'cancelled'];
 const VARIANCE_STATUSES = ['OK', 'minor', 'investigate', 'pending_validation'];
 const RULE_APPLIES = ['all_staff', 'specific_staff'];
+const ORDER_CATEGORIES = ['Grocery', 'Cigarettes', 'Vapes', 'Other'];
+const SHOPPING_STATUSES = ['pending', 'bought', 'cleared', 'removed'];
 
 // ============================================================
 //  Menu (on sheet open)
@@ -167,6 +172,9 @@ function firstTimeSetup() {
     ['pos_extracted',      setupPosExtractedSheet_],
     ['clover_batches',     setupCloverBatchesSheet_],
     ['validation_results', setupValidationResultsSheet_],
+    ['suppliers',          setupSuppliersSheet_],
+    ['order_catalog',      setupOrderCatalogSheet_],
+    ['shopping_list',      setupShoppingListSheet_],
   ];
 
   const succeeded = [];
@@ -234,9 +242,18 @@ function setupConfigSheet_() {
     ['commission_run_day',           '1',              'Day of week for commission trigger (0=Sun..6=Sat)'],
     ['commission_run_hour',          '9',              'Hour of day for commission trigger (0-23)'],
     ['notifier_enabled',             'false',          'Toggle for WhatsApp / event notifications'],
-    ['whatsapp_target_number',       '',               'Future: phone number for WhatsApp alerts'],
-    ['whatsapp_api_url',             '',               'Future: WhatsApp Cloud API endpoint'],
-    ['whatsapp_api_token',           '',               'Future: WhatsApp API access token'],
+    ['whatsapp_target_number',       '',               'Recipient phone(s), E.164 e.g. 14165551234. Comma-separate for several: 14165551234,14169998888'],
+    ['whatsapp_api_url',             '',               'WhatsApp Cloud API endpoint: https://graph.facebook.com/v21.0/<PHONE_NUMBER_ID>/messages'],
+    ['whatsapp_api_token',           '',               'WhatsApp Cloud API access token (Bearer)'],
+    ['whatsapp_template_name',       '',               'Optional: approved template name for cold-number sends (blank = plain text)'],
+    ['whatsapp_template_lang',       'en',             'Template language code (used only when whatsapp_template_name is set)'],
+    ['clover_enabled',               'false',          'Toggle Clover card reconciliation at end of day'],
+    ['clover_base_url',              'https://api.clover.com', 'Clover REST API base (sandbox: https://sandbox.dev.clover.com)'],
+    ['clover_cstore_merchant_id',    '',               'Clover merchant ID for cstore'],
+    ['clover_cstore_token',          '',               'Clover API token (Bearer) for cstore'],
+    ['clover_vape_merchant_id',      '',               'Clover merchant ID for vape (same as cstore = one shared account)'],
+    ['clover_vape_token',            '',               'Clover API token (Bearer) for vape'],
+    ['card_variance_threshold',      '1',              'Card credit/debit/total mismatch under this = OK (dollars)'],
     ['timezone',                     Session.getScriptTimeZone(), 'Default timezone (script setting overrides)'],
   ];
   sh.getRange(3, 1, defaults.length, 3).setValues(defaults);
@@ -617,17 +634,100 @@ function setupValidationResultsSheet_() {
   if (ss.getSheetByName(SHEETS.VALIDATION_RESULTS)) return;
   const sh = ss.insertSheet(SHEETS.VALIDATION_RESULTS);
 
-  writeHeader_(sh, '✅  Validation Results (Phase 2 placeholder)', 13);
+  writeHeader_(sh, '✅  Validation Results (cashier vs Clover)', 17);
   writeColumnHeaders_(sh, [
-    'validation_id', 'session_id', 'company', 'cashier_cash', 'pos_cash',
-    'cash_diff', 'cashier_card', 'pos_card', 'clover_card',
-    'overall_status', 'validation_status', 'validated_at', 'validated_by'
+    'validation_id', 'business_date', 'merchant', 'companies',
+    'cashier_credit', 'clover_credit', 'cashier_debit', 'clover_debit',
+    'cashier_card', 'clover_card', 'card_variance',
+    'cash_counted', 'cash_variance', 'status', 'mode', 'validated_at', 'validated_by'
   ]);
-  for (const col of [4, 5, 6, 7, 8, 9]) {
+  sh.getRange(3, 2, 5000, 1).setNumberFormat('yyyy-MM-dd');           // business_date
+  for (let col = 5; col <= 13; col++) {                               // money columns
     sh.getRange(3, col, 5000, 1).setNumberFormat('$#,##0.00');
   }
-  sh.getRange(3, 12, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
-  setColWidths_(sh, [180, 180, 80, 110, 110, 110, 110, 110, 110, 130, 130, 150, 100]);
+  sh.getRange(3, 16, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss'); // validated_at
+  setColWidths_(sh, [170, 110, 120, 120, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 80, 150, 100]);
+  sh.setFrozenRows(2);
+}
+
+function setupSuppliersSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName(SHEETS.SUPPLIERS)) return;
+  const sh = ss.insertSheet(SHEETS.SUPPLIERS);
+
+  writeHeader_(sh, '🚚  Suppliers (reference)', 7);
+  writeColumnHeaders_(sh, [
+    'supplier_id', 'name', 'category', 'products', 'contact', 'notes', 'active'
+  ]);
+  applyEnumValidation_(sh, 3, ORDER_CATEGORIES);
+  applyBoolValidation_(sh, 7);
+
+  // Seed from "Convenience Store Suppliers" reference (normalized; edit freely).
+  const seed = [
+    ['SUP_001', 'Cosco Business Center', 'Grocery', 'Bread, Eggs, 2% Milk 1L, Chocolate Milk 500ml, Toilet Paper, Paper Towel, Gum, Candy, Small cans of chips, Water, Perrier glass bottles, Kinder eggs, Kinder chocolate bars, Microwave popcorn, Sesame cake, Other cakes', '', '', true],
+    ['SUP_002', 'S & S Cash and Carry', 'Grocery', 'Mild Beef Patty ($11.99/box)', '', '', true],
+    ['SUP_003', 'Murry Cash and Carry', 'Grocery', 'Arizona drinks, Garbage bags, Bounty dryer sheets (15pcs), Grander, Disposable plates/cups, Margarine, Dish detergent (S/L), Raw, Lighters', '', '', true],
+    ['SUP_004', 'No Frills', 'Grocery', 'On-sale 2L pops, Big bags of chips', '', '', true],
+    ['SUP_005', 'Walmart', 'Grocery', 'Ensure (Vanilla/Chocolate), Cat food (can pate/grill)', '', '', true],
+    ['SUP_006', 'Freshco', 'Grocery', 'Big bags of chips', '', '', true],
+    ['SUP_007', 'Shoppers Drugmart', 'Grocery', 'Laundry detergent (Tide/Gain), Laundry softener, Pops 710ml (Coca Cola, Pepsi, Canada Dry, Crush Orange, Diet Coke, Coke Zero)', '', '', true],
+    ['SUP_008', 'Dollar Store', 'Grocery', 'Chocolate bars, Tide (yellow — check the weight)', '', '', true],
+    ['SUP_009', 'Kenedy Milk (Steve)', 'Grocery', 'Honey, Pills, Raw, Lighters, Bongs, Cigarettes (LD)', 'Store: 416-757-6458, Cell: 647-989-8816', '', true],
+    ['SUP_010', 'RBH', 'Cigarettes', 'Benson & Hedges Prime, Belmont, Next, Tobacco pouch (Next, Drum), Pipe tobacco, Cigar (Sail Classic), IQOS Iluma Terea sticks & devices', '', 'Company program; minimum order 10 cartons', true],
+    ['SUP_011', 'JTI', 'Cigarettes', "LD, Macdonald's, Export A Fine LR, Export A rolling paper", '', 'Company program; minimum order 4 cartons', true],
+    ['SUP_012', 'ITCO Products', 'Cigarettes', 'Dumaurier (from Petro-Canada, 2-pack deals), Pall Mall & others (from May)', 'May: 416-277-7819', 'No company program', true],
+    ['SUP_013', 'Costco Cigarettes', 'Cigarettes', 'Match cigarettes, Windproof lighters', '', '', true],
+    ['SUP_014', 'Amy', 'Cigarettes', 'All brands', 'Cell: 437-974-6789', 'No delivery fee; minimum order $1000', true],
+    ['SUP_015', 'Christina', 'Cigarettes', 'Fox and ZYN (Real)', 'Cell: 437-345-1688', '', true],
+    ['SUP_016', 'Pacific Smoke', 'Vapes', 'Flavour Beast disposable vapes, Pods, E-juice, Vape devices, Allo 3-pack pods', 'www.pacificsmoke.com', 'No delivery fee; minimum order $1000', true],
+    ['SUP_017', 'Genuine Vapes', 'Vapes', 'Elf Bar, AL FAKHER (Crown Bar shisha flavour), Ovns 3K, Z Pods', 'https://genuinevapes.ca', '', true],
+    ['SUP_018', 'Valor Distributions', 'Vapes', 'STLTH pods & STLTH disposable vapes', 'www.valordistributions.com', '', true],
+  ];
+  sh.getRange(3, 1, seed.length, 7).setValues(seed);
+
+  setColWidths_(sh, [90, 180, 110, 420, 200, 240, 70]);
+  sh.setFrozenRows(2);
+}
+
+function setupOrderCatalogSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName(SHEETS.ORDER_CATALOG)) return;
+  const sh = ss.insertSheet(SHEETS.ORDER_CATALOG);
+
+  writeHeader_(sh, '📒  Order Catalog', 11);
+  writeColumnHeaders_(sh, [
+    'item_id', 'name', 'category', 'unit', 'unit_price', 'par_level',
+    'suggested_supplier', 'active', 'created_by', 'created_at', 'notes'
+  ]);
+  applyEnumValidation_(sh, 3, ORDER_CATEGORIES);
+  applyBoolValidation_(sh, 8);
+  sh.getRange(3, 5, 5000, 1).setNumberFormat('$#,##0.00');   // unit_price
+  sh.getRange(3, 6, 5000, 1).setNumberFormat('0.##');         // par_level
+  sh.getRange(3, 10, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+
+  setColWidths_(sh, [90, 200, 110, 90, 100, 90, 160, 70, 100, 150, 220]);
+  sh.setFrozenRows(2);
+}
+
+function setupShoppingListSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName(SHEETS.SHOPPING_LIST)) return;
+  const sh = ss.insertSheet(SHEETS.SHOPPING_LIST);
+
+  writeHeader_(sh, '🛒  Shopping List', 14);
+  writeColumnHeaders_(sh, [
+    'entry_id', 'item_id', 'item_name', 'category', 'quantity', 'unit',
+    'unit_price', 'note', 'status', 'added_by', 'added_at',
+    'batch_id', 'generated_by', 'generated_at'
+  ]);
+  applyEnumValidation_(sh, 4, ORDER_CATEGORIES);
+  applyEnumValidation_(sh, 9, SHOPPING_STATUSES);
+  sh.getRange(3, 5, 5000, 1).setNumberFormat('0.##');         // quantity
+  sh.getRange(3, 7, 5000, 1).setNumberFormat('$#,##0.00');   // unit_price
+  sh.getRange(3, 11, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+  sh.getRange(3, 14, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+
+  setColWidths_(sh, [90, 90, 200, 110, 80, 80, 100, 220, 90, 100, 150, 100, 110, 150]);
   sh.setFrozenRows(2);
 }
 
