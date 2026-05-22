@@ -919,27 +919,26 @@
   }
   function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate()+n); return x; }
 
-  let toastTimer = null;
+  let toastHideTimer = null;
   function toast(msg, kind) {
     const t = $('toast');
     if (!t) return;
-    // Force hide first, then re-show — guarantees the timer starts clean
-    t.classList.remove('show');
-    clearTimeout(toastTimer);
+    // Cancel any pending hide so a new toast always gets a fresh 3s window.
+    clearTimeout(toastHideTimer);
     t.textContent = msg;
     t.className = 'toast' + (kind ? ' ' + kind : '');
-    // Use a small delay to ensure the remove-then-add triggers the CSS transition
-    setTimeout(() => t.classList.add('show'), 10);
-    toastTimer = setTimeout(() => {
-      t.classList.remove('show');
-    }, 3000);
+    // Force a reflow so the show transition restarts cleanly for back-to-back
+    // toasts, then show on the next frame.
+    void t.offsetWidth;
+    requestAnimationFrame(() => t.classList.add('show'));
+    toastHideTimer = setTimeout(() => t.classList.remove('show'), 3000);
   }
   // Dismiss toast on tap
   document.addEventListener('DOMContentLoaded', () => {
     const t = document.getElementById('toast');
     if (t) t.addEventListener('click', () => {
       t.classList.remove('show');
-      clearTimeout(toastTimer);
+      clearTimeout(toastHideTimer);
     });
   });
 
@@ -2582,7 +2581,7 @@
     if (btn) btn.disabled = true;
     haptic();
     try {
-      const result = await call('rpcRunCommissionEngine', state.token, force === true);
+      const result = (await call('rpcRunCommissionEngine', state.token, force === true)) || {};
       if (result.skipped) {
         toast('Already run for this week. Use Force to re-run.', 'warning');
       } else {
@@ -2952,8 +2951,8 @@
       haptic();
       const b = $('reconRunBtn'); b.disabled = true; b.textContent = 'Reconciling…';
       try {
-        const res = await call('rpcReconcileDay', state.token, true);
-        if (res && res.empty) toast('Nothing to reconcile yet', 'warning');
+        const res = (await call('rpcReconcileDay', state.token, true)) || {};
+        if (res.empty) toast('Nothing to reconcile yet', 'warning');
         else toast((res.whatsapp && res.whatsapp.sent) ? '✓ Reconciled — WhatsApp sent' : '✓ Reconciled', 'success');
         loadReconPanel(true);
       } catch (e) { toast(e.message, 'error'); b.disabled = false; b.textContent = '↻ Reconcile today'; }

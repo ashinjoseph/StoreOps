@@ -617,7 +617,11 @@ function rpcGetSalesDashboard(token, filters) {
  */
 function rpcReconcileDay(token, force) {
   const session = _session(token);
-  return Reconcile.reconcileDay(session.staffId, force === true ? 'manual' : 'auto');
+  const r = Reconcile.reconcileDay(session.staffId, force === true ? 'manual' : 'auto');
+  // JSON round-trip: the raw result carries Date objects (merchants[].window
+  // start/end) that google.script.run can't serialize — the client would
+  // otherwise receive null and throw. Stringify converts Dates → ISO strings.
+  return JSON.parse(JSON.stringify(r || {}));
 }
 
 /**
@@ -706,12 +710,15 @@ function rpcRunCommissionEngine(token, force) {
   const session = _session(token);
   Auth.require(session, ['admin', 'payroll_admin']);
   const range = Util.getPreviousWeekRange(new Date());
-  return Commissions.runForWeek({
+  const r = Commissions.runForWeek({
     weekStart: range.start,
     weekEnd: range.end,
     actorId: session.staffId,
     force: force === true,
   });
+  // JSON round-trip — raw result carries Date objects (weekStart/weekEnd)
+  // that google.script.run can't serialize (client would receive null).
+  return JSON.parse(JSON.stringify(r || {}));
 }
 
 // ── Commission rules CRUD ─────────────────────────────────
