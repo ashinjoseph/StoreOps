@@ -50,6 +50,10 @@ const Reconcile = (() => {
   function hhmm_(d) {
     return d instanceof Date ? Utilities.formatDate(d, Session.getScriptTimeZone(), 'HH:mm') : '—';
   }
+  function mark_(d) {
+    const threshold = Number(configValue_('card_variance_threshold', 1)) || 1;
+    return Math.abs(Util.roundMoney(d)) <= threshold ? '✅' : '⚠️';
+  }
 
   function hasOpenSessionsToday_() {
     const today = Util.todayMidnight();
@@ -177,7 +181,7 @@ const Reconcile = (() => {
 
     const message = formatMessage_(today, merchants);
     let whatsapp = { sent: false, reason: 'not_attempted' };
-    try { whatsapp = Notifier.sendWhatsApp(message); } catch (e) { whatsapp = { sent: false, reason: 'exception', detail: e.message }; }
+    try { whatsapp = sendNotifications_(today, merchants); } catch (e) { whatsapp = { sent: false, reason: 'exception', detail: e.message }; }
 
     AuditLog.write({
       actorId: actorId || 'SYSTEM',
@@ -204,9 +208,50 @@ const Reconcile = (() => {
     ]]);
   }
 
+  // One templated message per merchant group (usually just one: cstore+vape
+  // combined). Falls back to per-group plain text when no shift_close
+  // template is configured. Aggregates the per-group send results.
+  function sendNotifications_(dateObj, merchants) {
+    let anySent = false;
+    const perGroup = [];
+    merchants.forEach(m => {
+      const params = reconParams_(dateObj, m);
+      const plain = formatMessage_(dateObj, [m]);
+      let r;
+      try { r = Notifier.sendOp('shift_close', params, plain); }
+      catch (e) { r = { sent: false, reason: 'exception', detail: e.message }; }
+      if (r && r.sent) anySent = true;
+      perGroup.push(r);
+    });
+    return { sent: anySent, perGroup: perGroup };
+  }
+
+  // The 9 ordered params for the shift_close template (matches the Setup
+  // config note). All single-line scalars — the template owns the layout.
+  function reconParams_(dateObj, m) {
+    const friendly = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'EEE d MMM yyyy');
+    const windowStr = hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd);
+    const companies = m.companies.join(' + ');
+    let credit, debit, total, status;
+    if (m.cloverOk) {
+      credit = Util.formatMoney(m.cashierCredit) + ' / ' + Util.formatMoney(m.cloverCredit) + ' (' + signed_(m.creditDiff) + ') ' + mark_(m.creditDiff);
+      debit  = Util.formatMoney(m.cashierDebit) + ' / ' + Util.formatMoney(m.cloverDebit) + ' (' + signed_(m.debitDiff) + ') ' + mark_(m.debitDiff);
+      total  = Util.formatMoney(m.cashierCard) + ' / ' + Util.formatMoney(m.cloverCard) + ' (' + signed_(m.cardDiff) + ') ' + mark_(m.cardDiff);
+      status = m.status === 'OK' ? '✅ All matched' : '⚠️ Review needed';
+    } else {
+      credit = Util.formatMoney(m.cashierCredit) + ' (no Clover)';
+      debit  = Util.formatMoney(m.cashierDebit) + ' (no Clover)';
+      total  = Util.formatMoney(m.cashierCard) + ' (no Clover)';
+      status = '⚠️ Clover unavailable';
+    }
+    return [
+      friendly, companies, windowStr,
+      Util.formatMoney(m.cashCounted), signed_(m.cashVariance),
+      credit, debit, total, status,
+    ];
+  }
+
   function formatMessage_(dateObj, merchants) {
-    const threshold = Number(configValue_('card_variance_threshold', 1)) || 1;
-    const mark = d => (Math.abs(Util.roundMoney(d)) <= threshold ? '✅' : '⚠️');
     const friendly = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'EEE d MMM yyyy');
 
     const lines = ['🧾 *Shift Reconciliation*', '📅 ' + friendly, ''];
@@ -219,9 +264,9 @@ const Reconcile = (() => {
       lines.push('');
       if (m.cloverOk) {
         lines.push('💳 *Cards — cashier vs Clover*');
-        lines.push('Credit  ' + Util.formatMoney(m.cashierCredit) + ' / ' + Util.formatMoney(m.cloverCredit) + '   ' + signed_(m.creditDiff) + ' ' + mark(m.creditDiff));
-        lines.push('Debit   ' + Util.formatMoney(m.cashierDebit) + ' / ' + Util.formatMoney(m.cloverDebit) + '   ' + signed_(m.debitDiff) + ' ' + mark(m.debitDiff));
-        lines.push('Total   ' + Util.formatMoney(m.cashierCard) + ' / ' + Util.formatMoney(m.cloverCard) + '   ' + signed_(m.cardDiff) + ' ' + mark(m.cardDiff));
+        lines.push('Credit  ' + Util.formatMoney(m.cashierCredit) + ' / ' + Util.formatMoney(m.cloverCredit) + '   ' + signed_(m.creditDiff) + ' ' + mark_(m.creditDiff));
+        lines.push('Debit   ' + Util.formatMoney(m.cashierDebit) + ' / ' + Util.formatMoney(m.cloverDebit) + '   ' + signed_(m.debitDiff) + ' ' + mark_(m.debitDiff));
+        lines.push('Total   ' + Util.formatMoney(m.cashierCard) + ' / ' + Util.formatMoney(m.cloverCard) + '   ' + signed_(m.cardDiff) + ' ' + mark_(m.cardDiff));
         lines.push('');
         lines.push(m.status === 'OK' ? '✅ *All matched*' : '⚠️ *Review needed*');
       } else {

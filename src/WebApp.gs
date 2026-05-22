@@ -279,8 +279,10 @@ function rpcOpenShift(token, input) {
 function rpcNotifyShiftOpen(token, company) {
   const session = _session(token);
   const label = company === 'vape' ? 'Vape' : (company === 'cstore' ? 'Cstore' : String(company || ''));
-  const msg = '🟢 ' + session.name + ' opened the ' + label + ' till';
-  try { return Notifier.sendWhatsApp(msg); } catch (e) { return { sent: false, reason: 'exception' }; }
+  const when = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEE d MMM, HH:mm');
+  const params = [session.name, label, when];
+  const plain = '🟢 ' + session.name + ' opened the ' + label + ' till\n🕐 ' + when;
+  try { return Notifier.sendOp('shift_open', params, plain); } catch (e) { return { sent: false, reason: 'exception' }; }
 }
 
 function rpcCloseShift(token, input) {

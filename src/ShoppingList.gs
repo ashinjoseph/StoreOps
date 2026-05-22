@@ -221,9 +221,13 @@ const ShoppingList = (() => {
     const byName = staff ? staff.name : actorId;
     const text = formatList_(pending, byName);
 
-    // Best-effort WhatsApp send (no row mutation)
+    // Best-effort WhatsApp send (no row mutation). The shopping_list template
+    // keeps the header/footer static; the variable item list rides in one
+    // multi-line param. Plain text (full `text`) is the fallback.
+    const parts = formatListParts_(pending, byName);
     let whatsapp = { sent: false, reason: 'not_attempted' };
-    try { whatsapp = Notifier.sendWhatsApp(text); } catch (e) { whatsapp = { sent: false, reason: 'exception', detail: e.message }; }
+    try { whatsapp = Notifier.sendOp('shopping_list', [parts.dateBy, parts.itemsBlock, parts.summary], text); }
+    catch (e) { whatsapp = { sent: false, reason: 'exception', detail: e.message }; }
 
     AuditLog.write({
       actorId: actorId,
@@ -274,6 +278,48 @@ const ShoppingList = (() => {
     if (anyPrice) lines.push('*Estimated total:  ' + Util.formatMoney(Util.roundMoney(total)) + '*');
     lines.push('_' + count + ' item' + (count === 1 ? '' : 's') + '_');
     return lines.join('\n').trim();
+  }
+
+  // Split the list into the 3 shopping_list template params: the date/by
+  // line, the multi-line item block (its line breaks survive Meta validation
+  // as U+2028 once the Notifier flattens the param), and a one-line summary.
+  function formatListParts_(entries, byName) {
+    const friendly = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEE d MMM yyyy');
+    const dateBy = friendly + (byName ? ' · by ' + byName : '');
+
+    const cats = ORDER_CATEGORIES.slice();
+    entries.forEach(e => {
+      const c = e.category || 'Other';
+      if (cats.indexOf(c) === -1) cats.push(c);
+    });
+
+    const lines = [];
+    let total = 0, anyPrice = false, count = 0;
+    cats.forEach(cat => {
+      const inCat = entries.filter(e => (e.category || 'Other') === cat);
+      if (inCat.length === 0) return;
+      lines.push(cat);
+      inCat.forEach(e => {
+        const unit = e.unit ? ' ' + e.unit : '';
+        let line = '• ' + e.itemName + ' ×' + e.quantity + unit;
+        if (e.unitPrice > 0) {
+          const lineCost = Util.roundMoney(e.quantity * e.unitPrice);
+          line += ' — ' + Util.formatMoney(lineCost);
+          total += lineCost;
+          anyPrice = true;
+        }
+        if (e.note) line += ' (' + e.note + ')';
+        lines.push(line);
+        count++;
+      });
+      lines.push('');
+    });
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+
+    let summary = count + ' item' + (count === 1 ? '' : 's');
+    if (anyPrice) summary += ' · est. ' + Util.formatMoney(Util.roundMoney(total));
+
+    return { dateBy: dateBy, itemsBlock: lines.join('\n'), summary: summary };
   }
 
   return {

@@ -125,46 +125,23 @@ const Notifier = (() => {
       .trim();
   }
 
-  /**
-   * Send a free-form message over the WhatsApp Cloud API.
-   *
-   * Reads everything from config:
-   *   notifier_enabled, whatsapp_api_url, whatsapp_api_token,
-   *   whatsapp_target_number, whatsapp_template_name, whatsapp_template_lang
-   *
-   * If whatsapp_template_name is set, sends a template message (body as
-   * {{1}}, flattened); otherwise sends plain text (works inside the 24h
-   * customer-service window). Returns { sent, reason?, detail? } — never
-   * throws, so callers can treat it as best-effort.
-   */
-  function sendWhatsApp_(body) {
+  // whatsapp_target_number may hold several numbers (comma / semicolon /
+  // space separated). The Cloud API sends to one recipient per request.
+  function recipients_() {
+    const raw = configValue_('whatsapp_target_number', '');
+    return String(raw || '').split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+  }
+
+  // Shared send loop. buildPayload(to) returns the Cloud API JSON body for
+  // one recipient; we POST to each. Never throws — returns
+  // { sent, sentCount, total, results } (or a { sent:false, reason } guard).
+  function dispatch_(buildPayload) {
     if (!isEnabled_()) return { sent: false, reason: 'disabled' };
     const url = configValue_('whatsapp_api_url', '');
     const token = configValue_('whatsapp_api_token', '');
-    const raw = configValue_('whatsapp_target_number', '');
-    if (!url || !token || !raw) return { sent: false, reason: 'not_configured' };
-
-    // whatsapp_target_number may hold several numbers (comma / semicolon /
-    // space separated). The Cloud API sends to one recipient per request,
-    // so we send the same message to each.
-    const recipients = String(raw).split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+    if (!url || !token) return { sent: false, reason: 'not_configured' };
+    const recipients = recipients_();
     if (recipients.length === 0) return { sent: false, reason: 'not_configured' };
-
-    const templateName = configValue_('whatsapp_template_name', '');
-    const lang = configValue_('whatsapp_template_lang', 'en') || 'en';
-
-    function buildPayload_(to) {
-      if (templateName) {
-        return {
-          messaging_product: 'whatsapp', to: to, type: 'template',
-          template: {
-            name: templateName, language: { code: lang },
-            components: [{ type: 'body', parameters: [{ type: 'text', text: flattenForTemplate_(body) }] }],
-          },
-        };
-      }
-      return { messaging_product: 'whatsapp', to: to, type: 'text', text: { body: String(body || '') } };
-    }
 
     let sentCount = 0;
     const results = [];
@@ -173,7 +150,7 @@ const Notifier = (() => {
         const resp = UrlFetchApp.fetch(url, {
           method: 'post',
           headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-          payload: JSON.stringify(buildPayload_(to)),
+          payload: JSON.stringify(buildPayload(to)),
           muteHttpExceptions: true,
         });
         const code = resp.getResponseCode();
@@ -187,8 +164,69 @@ const Notifier = (() => {
     return { sent: sentCount > 0, sentCount: sentCount, total: recipients.length, results: results };
   }
 
+  /**
+   * Send a free-form message. If whatsapp_template_name (generic) is set,
+   * wraps the whole body into {{1}} of that template (flattened so it
+   * survives Meta's param validation); otherwise sends plain text (works
+   * inside the 24h customer-service window). Best-effort, never throws.
+   */
+  function sendWhatsApp_(body) {
+    const templateName = configValue_('whatsapp_template_name', '');
+    const lang = configValue_('whatsapp_template_lang', 'en') || 'en';
+    return dispatch_(to => {
+      if (templateName) {
+        return {
+          messaging_product: 'whatsapp', to: to, type: 'template',
+          template: {
+            name: templateName, language: { code: lang },
+            components: [{ type: 'body', parameters: [{ type: 'text', text: flattenForTemplate_(body) }] }],
+          },
+        };
+      }
+      return { messaging_product: 'whatsapp', to: to, type: 'text', text: { body: String(body || '') } };
+    });
+  }
+
+  /**
+   * Send an approved template with an ordered list of body parameters. The
+   * template's STATIC text holds the layout / line breaks; each param is a
+   * single value. Params are sanitized (markdown stripped, line breaks →
+   * U+2028, runs of spaces → U+00A0) so Meta accepts them; an empty param
+   * becomes '—' so the API never rejects the message. Best-effort.
+   */
+  function sendTemplate_(templateName, params) {
+    if (!templateName) return { sent: false, reason: 'no_template' };
+    const lang = configValue_('whatsapp_template_lang', 'en') || 'en';
+    const parameters = (params || []).map(p => {
+      const t = flattenForTemplate_(p);
+      return { type: 'text', text: t === '' ? '—' : t };
+    });
+    return dispatch_(to => ({
+      messaging_product: 'whatsapp', to: to, type: 'template',
+      template: {
+        name: templateName, language: { code: lang },
+        components: parameters.length ? [{ type: 'body', parameters: parameters }] : [],
+      },
+    }));
+  }
+
+  /**
+   * Operation-aware send. Looks up whatsapp_template_<opKey>; if that's set,
+   * sends the per-operation template with `params`. Otherwise falls back to
+   * sendWhatsApp_(plain) — which uses the generic template if configured,
+   * else plain text. Lets each event have its own well-formatted template
+   * while degrading gracefully when templates aren't configured.
+   */
+  function sendOp_(opKey, params, plain) {
+    const name = configValue_('whatsapp_template_' + opKey, '');
+    if (name) return sendTemplate_(name, params);
+    return sendWhatsApp_(plain);
+  }
+
   return {
     notify: notify_,
     sendWhatsApp: sendWhatsApp_,
+    sendTemplate: sendTemplate_,
+    sendOp: sendOp_,
   };
 })();
