@@ -62,17 +62,18 @@ const Clover = (() => {
   }
 
   /**
-   * Sum a merchant's CARD payments for one business day.
+   * Sum a merchant's CARD payments within a time window.
    * @param merchant { merchantId, token, baseUrl }
-   * @param dateMidnight Date (local midnight of the business day)
+   * @param startMs epoch ms (inclusive)
+   * @param endMs   epoch ms (inclusive)
    * @returns { ok:true, credit, debit, total, count } | { ok:false, error, detail? }
    */
-  function getCardTotalsForDay_(merchant, dateMidnight) {
+  function getCardTotals_(merchant, startMs, endMs) {
     if (!merchant || !merchant.merchantId || !merchant.token) {
       return { ok: false, error: 'not_configured' };
     }
-    const start = dateMidnight.getTime();
-    const end = Util.endOfDay(dateMidnight).getTime();
+    const start = startMs;
+    const end = endMs;
     const base = (merchant.baseUrl || 'https://api.clover.com').replace(/\/+$/, '');
     const limit = 1000;
     let offset = 0, credit = 0, debit = 0, total = 0, count = 0;
@@ -119,8 +120,8 @@ const Clover = (() => {
   }
 
   return {
-    isEnabled:           isEnabled_,
-    merchantFor:         merchantFor_,
-    getCardTotalsForDay: getCardTotalsForDay_,
+    isEnabled:     isEnabled_,
+    merchantFor:   merchantFor_,
+    getCardTotals: getCardTotals_,
   };
 })();

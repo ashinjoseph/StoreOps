@@ -2926,16 +2926,16 @@
       todayRows.forEach(r => { html += reconGroupDetail_(r); });
     }
 
-    // History — date-wise table
+    // History — per-shift, newest first
     if (pastRows.length) {
       html += '<div class="recon-hist-title">History</div>' +
         '<div class="recon-table">' +
-        '<div class="recon-trow head"><div>Date</div><div>Store</div>' +
+        '<div class="recon-trow head"><div>When</div><div>Store</div>' +
           '<div class="r">Cash Δ</div><div class="r">Card</div><div class="r">Clover</div><div class="r">Status</div></div>';
       pastRows.forEach(r => {
         const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
         html += '<div class="recon-trow">' +
-          '<div>' + esc(r.businessDate) + '</div>' +
+          '<div>' + esc(r.businessDate) + '<br><small style="color:#9aa0ac">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></div>' +
           '<div>' + esc(r.companies) + '</div>' +
           '<div class="r">' + signedMoney_(r.cashVariance) + '</div>' +
           '<div class="r">' + money(r.cashierCard) + '</div>' +
@@ -2960,10 +2960,19 @@
     };
   }
 
+  function fmtWin_(startIso, endIso) {
+    function t(iso) {
+      if (!iso) return '—';
+      return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+    return t(startIso) + '–' + t(endIso);
+  }
+
   function reconGroupDetail_(r) {
     const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
     let h = '<div class="recon-group">' +
-      '<div class="recon-group-head"><span>' + esc(r.companies) + '</span>' +
+      '<div class="recon-group-head"><span>' + esc(r.companies) +
+        ' <small style="color:#9aa0ac;font-weight:600">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></span>' +
         '<span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
       '<div class="recon-line"><span>Cash counted</span><span>' + money(r.cashCounted) +
         ' <small>(var ' + signedMoney_(r.cashVariance) + ')</small></span></div>';

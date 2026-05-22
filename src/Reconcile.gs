@@ -1,26 +1,30 @@
 // ============================================================
-//  Reconcile.gs — end-of-day cashier vs Clover reconciliation
+//  Reconcile.gs — per-shift cashier vs Clover reconciliation
 // ============================================================
 //  Runs when no till sessions remain open for the day (auto, after a
-//  close) or on demand (manual button). Sums the day's cashier-entered
-//  card totals (cstore+vape), groups companies by Clover merchant,
-//  pulls Clover's card totals, computes variances, writes a
-//  validation_results row per merchant, and sends a WhatsApp summary.
+//  close) or on demand (manual button). Reconciles ONLY the shift that
+//  just closed — the closed sessions not yet reconciled — and pulls
+//  Clover for that shift's exact open→close window, so morning and
+//  evening match independently and never double-count.
 //
-//  Group-by-merchant: companies sharing a merchant_id reconcile
-//  together. Splitting into two merchants later is config-only.
+//  Each run records the session_ids it covered so the next run skips
+//  them. Manual mode re-checks the whole day (all closed sessions).
+//
+//  Group-by-merchant: companies sharing a merchant_id reconcile together
+//  (config-only to split into two merchants later).
 // ============================================================
 
 const Reconcile = (() => {
 
   const COL = {
-    validation_id: 1, business_date: 2, merchant: 3, companies: 4,
-    cashier_credit: 5, clover_credit: 6, cashier_debit: 7, clover_debit: 8,
-    cashier_card: 9, clover_card: 10, card_variance: 11,
-    cash_counted: 12, cash_variance: 13, status: 14, mode: 15,
-    validated_at: 16, validated_by: 17
+    validation_id: 1, business_date: 2, window_start: 3, window_end: 4,
+    merchant: 5, companies: 6,
+    cashier_credit: 7, clover_credit: 8, cashier_debit: 9, clover_debit: 10,
+    cashier_card: 11, clover_card: 12, card_variance: 13,
+    cash_counted: 14, cash_variance: 15, status: 16, mode: 17,
+    session_ids: 18, validated_at: 19, validated_by: 20
   };
-  const NUM_COLS = 17;
+  const NUM_COLS = 20;
   const DATA_START_ROW = 3;
 
   function sheet_() {
@@ -43,6 +47,9 @@ const Reconcile = (() => {
     n = Util.roundMoney(n);
     return (n < 0 ? '-' : '+') + '$' + Math.abs(n).toFixed(2);
   }
+  function hhmm_(d) {
+    return d instanceof Date ? Utilities.formatDate(d, Session.getScriptTimeZone(), 'HH:mm') : '—';
+  }
 
   function hasOpenSessionsToday_() {
     const today = Util.todayMidnight();
@@ -50,67 +57,78 @@ const Reconcile = (() => {
     return sessions.some(s => s.status === 'open');
   }
 
+  // Session IDs already covered by a reconciliation today (to skip on the
+  // next auto run so shifts don't double-count).
+  function reconciledSessionIdsToday_(dateObj) {
+    const sh = sheet_();
+    const last = sh.getLastRow();
+    const set = {};
+    if (last < DATA_START_ROW) return set;
+    const data = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS).getValues();
+    const want = Util.formatDate(dateObj);
+    data.forEach(r => {
+      const bd = r[COL.business_date - 1] instanceof Date
+        ? Util.formatDate(r[COL.business_date - 1]) : (r[COL.business_date - 1] || '').toString();
+      if (bd !== want) return;
+      (r[COL.session_ids - 1] || '').toString().split(',').forEach(id => {
+        const t = id.trim();
+        if (t) set[t] = true;
+      });
+    });
+    return set;
+  }
+
   /**
-   * Reconcile the current business day.
-   * @param actorId staffId triggering it
-   * @param mode 'auto' (post-close) | 'manual' (button)
-   * @returns { ready:false, openCount } | { ready:true, empty:true }
+   * Reconcile the shift that just closed (auto) or the whole day (manual).
+   * @returns { ready:false, ... } | { ready:true, empty:true }
    *        | { ready:true, mode, date, merchants:[...], whatsapp:{sent} }
    */
   function reconcileDay_(actorId, mode) {
-    // Auto path stays dormant until Clover is enabled (no noise for stores
-    // that haven't adopted it). Manual runs regardless (lets you test).
-    if (mode !== 'manual' && !Clover.isEnabled()) {
-      return { ready: false, disabled: true };
-    }
+    if (mode !== 'manual' && !Clover.isEnabled()) return { ready: false, disabled: true };
 
     const today = Util.todayMidnight();
     const todayEnd = Util.endOfDay(today);
     const sessions = TillSessions.getForDateRange(today, todayEnd) || [];
 
-    // Auto path: do nothing while any till is still open.
     const openCount = sessions.filter(s => s.status === 'open').length;
-    if (mode !== 'manual' && openCount > 0) {
-      return { ready: false, openCount: openCount };
+    if (mode !== 'manual' && openCount > 0) return { ready: false, openCount: openCount };
+
+    let closed = sessions.filter(s => s.status === 'closed' || s.status === 'validated');
+
+    // Auto: only the sessions not yet reconciled (this shift). Manual: all.
+    if (mode !== 'manual') {
+      const done = reconciledSessionIdsToday_(today);
+      closed = closed.filter(s => !done[s.sessionId]);
     }
+    if (closed.length === 0) return { ready: true, empty: true };
 
-    const closed = sessions.filter(s => s.status === 'closed' || s.status === 'validated');
+    // Card per session from the sales rows (1:1 with sessions).
+    const salesById = {};
+    (Sales.getForDateRange(today, todayEnd, null) || []).forEach(r => { salesById[r.sessionId] = r; });
 
-    // Card per company (from sales rows); cash per company (from sessions).
-    const sales = Sales.getForDateRange(today, todayEnd, null) || [];
-    const cardByCompany = {};
-    sales.forEach(r => {
-      const c = r.company || 'cstore';
-      if (!cardByCompany[c]) cardByCompany[c] = { credit: 0, debit: 0 };
-      cardByCompany[c].credit += (r.creditCardSales || 0) + (r.miscCreditSales || 0);
-      cardByCompany[c].debit  += (r.debitCardSales || 0) + (r.miscDebitSales || 0);
-    });
-    const cashByCompany = {};
-    closed.forEach(s => {
-      const c = s.company || 'cstore';
-      if (!cashByCompany[c]) cashByCompany[c] = { counted: 0, variance: 0 };
-      cashByCompany[c].counted  += s.closingCashCounted || 0;
-      cashByCompany[c].variance += s.closingVariance || 0;
-    });
-
-    // Group companies by Clover merchant.
+    // Group the in-scope sessions by Clover merchant.
     const groups = {};
-    COMPANIES.forEach(company => {
-      const card = cardByCompany[company];
-      const cash = cashByCompany[company];
-      if (!card && !cash) return;  // no activity today
-      const m = Clover.merchantFor(company);
-      const key = m.merchantId || ('NOCONFIG:' + company);
+    closed.forEach(s => {
+      const m = Clover.merchantFor(s.company);
+      const key = m.merchantId || ('NOCONFIG:' + s.company);
       if (!groups[key]) groups[key] = {
-        merchant: m, companies: [],
+        merchant: m, companies: {}, sessionIds: [],
         cashierCredit: 0, cashierDebit: 0, cashCounted: 0, cashVariance: 0,
+        startMs: Infinity, endMs: 0,
       };
-      groups[key].companies.push(company);
-      if (card) { groups[key].cashierCredit += card.credit; groups[key].cashierDebit += card.debit; }
-      if (cash) { groups[key].cashCounted += cash.counted; groups[key].cashVariance += cash.variance; }
+      const g = groups[key];
+      g.companies[s.company] = true;
+      g.sessionIds.push(s.sessionId);
+      const sale = salesById[s.sessionId];
+      if (sale) {
+        g.cashierCredit += (sale.creditCardSales || 0) + (sale.miscCreditSales || 0);
+        g.cashierDebit  += (sale.debitCardSales || 0) + (sale.miscDebitSales || 0);
+      }
+      g.cashCounted  += s.closingCashCounted || 0;
+      g.cashVariance += s.closingVariance || 0;
+      if (s.startTime instanceof Date) g.startMs = Math.min(g.startMs, s.startTime.getTime());
+      if (s.endTime instanceof Date)   g.endMs   = Math.max(g.endMs, s.endTime.getTime());
     });
-
-    if (Object.keys(groups).length === 0) return { ready: true, empty: true };
 
     const threshold = Number(configValue_('card_variance_threshold', 1)) || 1;
     const now = new Date();
@@ -119,25 +137,31 @@ const Reconcile = (() => {
 
     Object.keys(groups).forEach(key => {
       const g = groups[key];
+      // Fall back to the day if a session is missing a timestamp.
+      const startMs = isFinite(g.startMs) ? g.startMs : today.getTime();
+      const endMs = g.endMs > 0 ? g.endMs : now.getTime();
+
       const cashierCredit = Util.roundMoney(g.cashierCredit);
       const cashierDebit  = Util.roundMoney(g.cashierDebit);
       const cashierCard   = Util.roundMoney(cashierCredit + cashierDebit);
 
       const clover = Clover.isEnabled()
-        ? Clover.getCardTotalsForDay(g.merchant, today)
+        ? Clover.getCardTotals(g.merchant, startMs, endMs)
         : { ok: false, error: 'disabled' };
       const cloverCredit = clover.ok ? clover.credit : 0;
       const cloverDebit  = clover.ok ? clover.debit  : 0;
       const cloverCard   = clover.ok ? clover.total  : 0;
       const cardDiff = Util.roundMoney(cashierCard - cloverCard);
 
-      let status;
-      if (!clover.ok) status = 'clover_unavailable';
-      else status = Math.abs(cardDiff) <= threshold ? 'OK' : 'investigate';
+      const status = !clover.ok ? 'clover_unavailable'
+        : (Math.abs(cardDiff) <= threshold ? 'OK' : 'investigate');
 
       const rec = {
         merchant: g.merchant.merchantId || '(not configured)',
-        companies: g.companies.slice(),
+        companies: Object.keys(g.companies),
+        windowStart: new Date(startMs),
+        windowEnd: new Date(endMs),
+        sessionIds: g.sessionIds.slice(),
         cashierCredit: cashierCredit, cloverCredit: cloverCredit, creditDiff: Util.roundMoney(cashierCredit - cloverCredit),
         cashierDebit: cashierDebit, cloverDebit: cloverDebit, debitDiff: Util.roundMoney(cashierDebit - cloverDebit),
         cashierCard: cashierCard, cloverCard: cloverCard, cardDiff: cardDiff,
@@ -151,7 +175,7 @@ const Reconcile = (() => {
       writeRow_(today, rec, mode, actorId, now);
     });
 
-    const message = formatMessage_(dateStr, merchants);
+    const message = formatMessage_(today, merchants);
     let whatsapp = { sent: false, reason: 'not_attempted' };
     try { whatsapp = Notifier.sendWhatsApp(message); } catch (e) { whatsapp = { sent: false, reason: 'exception', detail: e.message }; }
 
@@ -171,37 +195,49 @@ const Reconcile = (() => {
     const row = sh.getLastRow() + 1;
     sh.getRange(row, 1, 1, NUM_COLS).setValues([[
       Util.newId('VR'),
-      dateObj,
-      rec.merchant,
-      rec.companies.join('+'),
+      dateObj, rec.windowStart, rec.windowEnd,
+      rec.merchant, rec.companies.join('+'),
       rec.cashierCredit, rec.cloverCredit, rec.cashierDebit, rec.cloverDebit,
       rec.cashierCard, rec.cloverCard, rec.cardDiff,
-      rec.cashCounted, rec.cashVariance, rec.status, mode, now, actorId || 'SYSTEM',
+      rec.cashCounted, rec.cashVariance, rec.status, mode,
+      rec.sessionIds.join(','), now, actorId || 'SYSTEM',
     ]]);
   }
 
-  function formatMessage_(dateStr, merchants) {
-    const lines = ['🧾 Daily Close — ' + dateStr, ''];
+  function formatMessage_(dateObj, merchants) {
+    const threshold = Number(configValue_('card_variance_threshold', 1)) || 1;
+    const mark = d => (Math.abs(Util.roundMoney(d)) <= threshold ? '✅' : '⚠️');
+    const friendly = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'EEE d MMM yyyy');
+
+    const lines = ['🧾 *Shift Reconciliation*', '📅 ' + friendly, ''];
     merchants.forEach(m => {
-      const who = m.companies.join('+');
-      const mtag = (m.merchant && m.merchant !== '(not configured)') ? ' (merchant ' + m.merchant + ')' : '';
-      lines.push('— ' + who + mtag + ' —');
-      lines.push('Cash counted ' + Util.formatMoney(m.cashCounted) + ', variance ' + signed_(m.cashVariance));
+      lines.push('🏪 *' + m.companies.join(' + ') + '*   ⏰ ' + hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd));
+      lines.push('');
+      lines.push('💵 *Cash*');
+      lines.push('Counted   ' + Util.formatMoney(m.cashCounted));
+      lines.push('Variance  ' + signed_(m.cashVariance));
+      lines.push('');
       if (m.cloverOk) {
-        lines.push('Credit: cashier ' + Util.formatMoney(m.cashierCredit) + ' vs Clover ' + Util.formatMoney(m.cloverCredit) + ' (' + signed_(m.creditDiff) + ')');
-        lines.push('Debit:  cashier ' + Util.formatMoney(m.cashierDebit) + ' vs Clover ' + Util.formatMoney(m.cloverDebit) + ' (' + signed_(m.debitDiff) + ')');
-        lines.push('Total:  cashier ' + Util.formatMoney(m.cashierCard) + ' vs Clover ' + Util.formatMoney(m.cloverCard) + ' (' + signed_(m.cardDiff) + ')' + (m.status === 'OK' ? ' ✓' : ' ⚠️'));
+        lines.push('💳 *Cards — cashier vs Clover*');
+        lines.push('Credit  ' + Util.formatMoney(m.cashierCredit) + ' / ' + Util.formatMoney(m.cloverCredit) + '   ' + signed_(m.creditDiff) + ' ' + mark(m.creditDiff));
+        lines.push('Debit   ' + Util.formatMoney(m.cashierDebit) + ' / ' + Util.formatMoney(m.cloverDebit) + '   ' + signed_(m.debitDiff) + ' ' + mark(m.debitDiff));
+        lines.push('Total   ' + Util.formatMoney(m.cashierCard) + ' / ' + Util.formatMoney(m.cloverCard) + '   ' + signed_(m.cardDiff) + ' ' + mark(m.cardDiff));
+        lines.push('');
+        lines.push(m.status === 'OK' ? '✅ *All matched*' : '⚠️ *Review needed*');
       } else {
-        lines.push('Card (cashier) ' + Util.formatMoney(m.cashierCard) + ' — Clover unavailable (' + (m.cloverError || '') + ')');
+        lines.push('💳 *Cards*');
+        lines.push('Cashier total  ' + Util.formatMoney(m.cashierCard));
+        lines.push('⚠️ Clover unavailable');
       }
       lines.push('');
     });
+    lines.push('_StoreOps · automated_');
     return lines.join('\n').trim();
   }
 
   /**
-   * Recent reconciliations for the dashboard history table — the latest run
-   * per (business_date, merchant), newest date first, capped at `limit` rows.
+   * Recent reconciliations for the dashboard — newest first, capped at
+   * `limit` rows. One row per shift (auto) or whole-day check (manual).
    */
   function getRecent_(limit) {
     limit = limit || 60;
@@ -209,20 +245,14 @@ const Reconcile = (() => {
     const last = sh.getLastRow();
     if (last < DATA_START_ROW) return [];
     const data = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS).getValues();
-
-    const latest = {};  // 'date|merchant' -> { ts, rec }
-    data.forEach(r => {
-      if (!(r[COL.validation_id - 1] || '').toString()) return;
-      const bd = r[COL.business_date - 1] instanceof Date
-        ? Util.formatDate(r[COL.business_date - 1])
-        : (r[COL.business_date - 1] || '').toString();
-      const merchant = (r[COL.merchant - 1] || '').toString();
-      const ts = r[COL.validated_at - 1] instanceof Date ? r[COL.validated_at - 1].getTime() : 0;
-      const key = bd + '|' + merchant;
-      if (latest[key] && ts <= latest[key].ts) return;
-      latest[key] = { ts: ts, rec: {
-        businessDate: bd,
-        merchant: merchant,
+    const toIso = d => d instanceof Date ? d.toISOString() : null;
+    return data
+      .filter(r => (r[COL.validation_id - 1] || '').toString())
+      .map(r => ({
+        businessDate: r[COL.business_date - 1] instanceof Date ? Util.formatDate(r[COL.business_date - 1]) : (r[COL.business_date - 1] || '').toString(),
+        windowStart:  toIso(r[COL.window_start - 1]),
+        windowEnd:    toIso(r[COL.window_end - 1]),
+        merchant:     (r[COL.merchant - 1] || '').toString(),
         companies:    (r[COL.companies - 1] || '').toString(),
         cashierCredit: Number(r[COL.cashier_credit - 1]) || 0,
         cloverCredit:  Number(r[COL.clover_credit - 1]) || 0,
@@ -235,15 +265,13 @@ const Reconcile = (() => {
         cashVariance:  Number(r[COL.cash_variance - 1]) || 0,
         status:       (r[COL.status - 1] || '').toString(),
         mode:         (r[COL.mode - 1] || '').toString(),
-        validatedAt:   ts ? new Date(ts).toISOString() : null,
+        validatedAt:   toIso(r[COL.validated_at - 1]),
         validatedBy:  (r[COL.validated_by - 1] || '').toString(),
-      }};
-    });
-
-    return Object.keys(latest)
-      .map(k => latest[k].rec)
-      .sort((a, b) => (a.businessDate < b.businessDate ? 1 : (a.businessDate > b.businessDate ? -1 : 0)))
-      .slice(0, limit);
+        _ts:           r[COL.validated_at - 1] instanceof Date ? r[COL.validated_at - 1].getTime() : 0,
+      }))
+      .sort((a, b) => b._ts - a._ts)
+      .slice(0, limit)
+      .map(r => { delete r._ts; return r; });
   }
 
   return {

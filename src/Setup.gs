@@ -634,19 +634,20 @@ function setupValidationResultsSheet_() {
   if (ss.getSheetByName(SHEETS.VALIDATION_RESULTS)) return;
   const sh = ss.insertSheet(SHEETS.VALIDATION_RESULTS);
 
-  writeHeader_(sh, '✅  Validation Results (cashier vs Clover)', 17);
+  writeHeader_(sh, '✅  Validation Results (cashier vs Clover, per shift)', 20);
   writeColumnHeaders_(sh, [
-    'validation_id', 'business_date', 'merchant', 'companies',
+    'validation_id', 'business_date', 'window_start', 'window_end', 'merchant', 'companies',
     'cashier_credit', 'clover_credit', 'cashier_debit', 'clover_debit',
     'cashier_card', 'clover_card', 'card_variance',
-    'cash_counted', 'cash_variance', 'status', 'mode', 'validated_at', 'validated_by'
+    'cash_counted', 'cash_variance', 'status', 'mode', 'session_ids', 'validated_at', 'validated_by'
   ]);
-  sh.getRange(3, 2, 5000, 1).setNumberFormat('yyyy-MM-dd');           // business_date
-  for (let col = 5; col <= 13; col++) {                               // money columns
+  sh.getRange(3, 2, 5000, 1).setNumberFormat('yyyy-MM-dd');            // business_date
+  sh.getRange(3, 3, 5000, 2).setNumberFormat('yyyy-MM-dd HH:mm:ss');   // window_start, window_end
+  for (let col = 7; col <= 15; col++) {                                // money columns
     sh.getRange(3, col, 5000, 1).setNumberFormat('$#,##0.00');
   }
-  sh.getRange(3, 16, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss'); // validated_at
-  setColWidths_(sh, [170, 110, 120, 120, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110, 80, 150, 100]);
+  sh.getRange(3, 19, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');  // validated_at
+  setColWidths_(sh, [170, 100, 140, 140, 110, 120, 105, 105, 105, 105, 105, 105, 105, 105, 105, 100, 70, 200, 150, 100]);
   sh.setFrozenRows(2);
 }
 

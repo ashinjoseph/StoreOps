@@ -717,12 +717,22 @@ function rpcRunCommissionEngine(token, force) {
 function rpcGetCommissionRules(token) {
   const session = _session(token);
   Auth.require(session, ['admin', 'manager', 'payroll_admin']);
-  const rules = CommissionRules.getAll();
-  console.log('rpcGetCommissionRules: role=' + session.role +
-              ' staffId=' + session.staffId +
-              ' returned=' + rules.length + ' rules' +
-              (rules.length > 0 ? ' first=' + JSON.stringify(rules[0]) : ''));
-  return rules;
+  // Return a clean, JSON-serializable shape — raw records carry Date
+  // objects + _rowIndex which google.script.run can fail to serialize
+  // (the client then receives "[Ljava.lang.Object;@…" instead of an array).
+  return CommissionRules.getAll().map(r => ({
+    ruleId:        r.ruleId,
+    name:          r.name,
+    appliesTo:     r.appliesTo,
+    staffId:       r.staffId,
+    company:       r.company,
+    threshold:     r.threshold,
+    percentage:    r.percentage,
+    active:        r.active,
+    effectiveFrom: r.effectiveFrom ? r.effectiveFrom.toISOString() : null,
+    effectiveTo:   r.effectiveTo ? r.effectiveTo.toISOString() : null,
+    notes:         r.notes,
+  }));
 }
 
 /**
