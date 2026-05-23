@@ -207,6 +207,47 @@ const ShoppingList = (() => {
   }
 
   /**
+   * Edit an active entry's name / quantity / note. Only the fields present on
+   * `input` are changed. "Active" = status 'pending' or 'bought' (mirrors
+   * setBought_). Permission (added-by or manager/admin) is enforced at the RPC.
+   */
+  function edit_(input) {
+    if (!input.entryId) throw new Error('entryId required');
+    const existing = getById_(input.entryId);
+    if (!existing) throw new Error('Entry not found: ' + input.entryId);
+    if (existing.status !== 'pending' && existing.status !== 'bought') {
+      throw new Error('Entry is not on the active list');
+    }
+    const sh = sheet_();
+    const before = { itemName: existing.itemName, quantity: existing.quantity, note: existing.note };
+
+    if (input.itemName !== undefined) {
+      const name = (input.itemName || '').toString().trim();
+      if (!name) throw new Error('itemName cannot be empty');
+      sh.getRange(existing._rowIndex, COL.item_name).setValue(name);
+    }
+    if (input.quantity !== undefined) {
+      const qty = Number(input.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error('quantity must be a positive number');
+      sh.getRange(existing._rowIndex, COL.quantity).setValue(qty);
+    }
+    if (input.note !== undefined) {
+      sh.getRange(existing._rowIndex, COL.note).setValue((input.note || '').toString());
+    }
+
+    AuditLog.write({
+      actorId: input.actorId || 'SYSTEM',
+      action: 'shopping_list.edit',
+      targetType: 'shopping_list',
+      targetId: input.entryId,
+      before: before,
+      after: { itemName: input.itemName, quantity: input.quantity, note: input.note },
+    });
+
+    return getById_(input.entryId);
+  }
+
+  /**
    * Generate the shopping list: format the still-to-buy (pending) items
    * into text and send via WhatsApp (best-effort). READ-ONLY — does NOT
    * clear or change the list. Items leave the list only when checked off
@@ -327,6 +368,7 @@ const ShoppingList = (() => {
     getActive:   getActive_,
     getById:     getById_,
     add:         add_,
+    edit:        edit_,
     removeEntry: removeEntry_,
     setBought:   setBought_,
     clearAll:    clearAll_,

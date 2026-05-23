@@ -555,6 +555,10 @@
     flex-shrink: 0; color: #b91c1c; background: transparent;
     font-size: 16px; padding: 4px 8px; line-height: 1;
   }
+  .shop-edit {
+    flex-shrink: 0; color: #1a4ca1; background: transparent;
+    font-size: 15px; padding: 4px 6px; line-height: 1;
+  }
   /* daily reconciliation panel */
   .recon-card { background: white; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
   .recon-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -1895,6 +1899,7 @@
               '<div class="history-meta">' + (e.note ? esc(e.note) + ' · ' : '') +
                 'by ' + esc(e.addedByName || e.addedBy) + '</div>' +
             '</div>' +
+            (canRemove ? '<button class="shop-edit" data-edit="' + esc(e.entryId) + '" title="Edit">✎</button>' : '') +
             (canRemove ? '<button class="shop-remove" data-remove="' + esc(e.entryId) + '" title="Remove">✕</button>' : '') +
           '</div>';
         });
@@ -1934,6 +1939,9 @@
           loadShoppingTab();
         } catch (e) { toast(e.message, 'error'); b.disabled = false; }
       };
+    });
+    view.querySelectorAll('[data-edit]').forEach(b => {
+      b.onclick = () => { haptic(); openEditShoppingItem(list.find(x => x.entryId === b.dataset.edit)); };
     });
   }
 
@@ -2104,6 +2112,42 @@
         toast('✓ Added', 'success');
         loadShoppingTab();
       } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Add to list'; }
+    };
+  }
+
+  // Edit an existing item's name / quantity / note (modal sheet). Values are
+  // set via JS after render to avoid HTML-attribute escaping issues.
+  function openEditShoppingItem(entry) {
+    if (!entry) return;
+    const bodyHTML =
+      '<div class="sheet-field"><label>Item name</label><input type="text" id="seName"></div>' +
+      '<div class="sheet-field"><label>Quantity</label><input type="number" step="0.01" id="seQty" inputmode="decimal"></div>' +
+      '<div class="sheet-field"><label>Note (optional)</label><input type="text" id="seNote"></div>';
+    openSheet({
+      title: 'Edit item', subtitle: entry.itemName,
+      bodyHTML,
+      actionsHTML:
+        '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+        '<button class="sheet-submit" id="seSaveBtn">Save</button>',
+    });
+    $('seName').value = entry.itemName;
+    $('seQty').value = entry.quantity;
+    $('seNote').value = entry.note || '';
+
+    $('seSaveBtn').onclick = async () => {
+      const itemName = $('seName').value.trim();
+      const qty = parseFloat($('seQty').value);
+      const note = $('seNote').value;
+      if (!itemName) return toast('Enter the item name', 'error');
+      if (!Number.isFinite(qty) || qty <= 0) return toast('Enter a valid quantity', 'error');
+      haptic();
+      const btn = $('seSaveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        await call('rpcEditShoppingListEntry', state.token, entry.entryId, { itemName, quantity: qty, note });
+        closeSheet();
+        toast('✓ Saved', 'success');
+        loadShoppingTab();
+      } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Save'; }
     };
   }
 
@@ -2530,7 +2574,7 @@
               '<div class="history-meta">' +
                 r.bonusesCreated + ' bonus' + (r.bonusesCreated === 1 ? '' : 'es') + ' · ' +
                 r.staffCount + ' staff · computed ' + esc(computedAt) +
-                (r.computedBy ? ' by ' + esc(r.computedBy) : '') +
+                (r.computedByName ? ' by ' + esc(r.computedByName) : '') +
               '</div>' +
               (r.notes ? '<div class="history-meta" style="font-style:italic">' + esc(r.notes) + '</div>' : '') +
             '</div>' +
@@ -2583,7 +2627,9 @@
     try {
       const result = (await call('rpcRunCommissionEngine', state.token, force === true)) || {};
       if (result.skipped) {
-        toast('Already run for this week. Use Force to re-run.', 'warning');
+        const range = (result.weekStart && result.weekEnd)
+          ? fmtDate(result.weekStart) + '–' + fmtDate(result.weekEnd) : 'that week';
+        toast('Commissions for ' + range + ' were already computed. Tap "⟳ Force re-run" to recompute.', 'warning');
       } else {
         toast('✓ Created ' + (result.bonusesProposed ? result.bonusesProposed.length : 0) +
               ' commission(s), total ' + money(result.totalAmount || 0), 'success');
@@ -2899,6 +2945,20 @@
     try {
       const rows = await cachedCall('rpcGetReconciliation', [state.token], TTL_SEMI, { force });
       renderReconPanel(rows || []);
+      // Self-heal: a close-time reconcile (fire-and-forget) can be lost if the
+      // app is closed before it finishes. If nothing is reconciled for today
+      // yet, retry once on dashboard open. Direct google.script.run so it does
+      // NOT clear the client RPC cache (call() would, hurting perf); the server
+      // call is idempotent and early-returns cheaply when nothing's pending.
+      const todayStr = isoDate(todayMidnight());
+      const hasToday = (rows || []).some(r => r.businessDate === todayStr);
+      if (!hasToday && !state.reconHealing) {
+        state.reconHealing = true;
+        google.script.run
+          .withSuccessHandler(r => { state.reconHealing = false; if (r && r.ready && !r.empty) loadReconPanel(true); })
+          .withFailureHandler(() => { state.reconHealing = false; })
+          .rpcReconcileDay(state.token, false);
+      }
     } catch (e) {
       el.innerHTML = '';  // non-fatal: just hide the panel
     }

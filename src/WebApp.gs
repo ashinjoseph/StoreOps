@@ -686,6 +686,7 @@ function rpcGetCommissionRuns(token, limit) {
     const session = _session(token);
     Auth.require(session, ['admin', 'manager', 'payroll_admin']);
     limit = Number(limit) || 12;
+    const names = _staffNameMap();
     return Commissions.getAllRuns()
       .sort((a, b) => (b.computedAt || 0) - (a.computedAt || 0))
       .slice(0, limit)
@@ -698,6 +699,7 @@ function rpcGetCommissionRuns(token, limit) {
         totalCommissionAmount: r.totalCommissionAmount || 0,
         computedAt: r.computedAt ? r.computedAt.toISOString() : null,
         computedBy: r.computedBy || '',
+        computedByName: names[r.computedBy] || r.computedBy || '',
         notes: r.notes || '',
       }));
   } catch (e) {
@@ -950,6 +952,28 @@ function rpcRemoveShoppingListEntry(token, entryId) {
     throw new Error('FORBIDDEN: only the person who added this, or a manager/admin, can remove it');
   }
   return ShoppingList.removeEntry(entryId, session.staffId);
+}
+
+/**
+ * Edit an active entry's name / quantity / note. The person who added it, or
+ * a manager/payroll_admin/admin (mirrors remove).
+ */
+function rpcEditShoppingListEntry(token, entryId, patch) {
+  const session = _session(token);
+  const entry = ShoppingList.getById(entryId);
+  if (!entry) throw new Error('Entry not found: ' + entryId);
+  const privileged = ['manager', 'admin', 'payroll_admin'].indexOf(session.role) !== -1;
+  if (entry.addedBy !== session.staffId && !privileged) {
+    throw new Error('FORBIDDEN: only the person who added this, or a manager/admin, can edit it');
+  }
+  patch = patch || {};
+  return ShoppingList.edit({
+    entryId: entryId,
+    itemName: patch.itemName,
+    quantity: patch.quantity !== undefined ? Number(patch.quantity) : undefined,
+    note: patch.note,
+    actorId: session.staffId,
+  });
 }
 
 /**
