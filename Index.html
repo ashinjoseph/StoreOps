@@ -1,0 +1,3741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="StoreOps">
+<meta name="theme-color" content="#1a2540">
+<title>StoreOperations</title>
+<style>
+  /* ── Reset + base ──────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: #f5f6f8;
+    color: #1a1a1a;
+    line-height: 1.45;
+    overscroll-behavior-y: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  input, textarea { user-select: text; -webkit-user-select: text; }
+
+  /* tabular numbers for money + counts */
+  .num, .money, input[type="number"] { font-variant-numeric: tabular-nums; }
+
+  button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  input, select, textarea { font: inherit; }
+
+  /* ── Layout: login + main app ──────────────────────── */
+  .screen { display: none; }
+  .screen.active { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+
+  /* ── LOGIN SCREEN ──────────────────────────────────── */
+  #loginScreen {
+    background: linear-gradient(160deg, #1a2540 0%, #2a3960 100%);
+    color: white;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+  }
+  .login-card {
+    background: white;
+    color: #1a1a1a;
+    border-radius: 18px;
+    padding: 28px 24px;
+    width: 100%; max-width: 360px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  }
+  .login-title {
+    text-align: center;
+    font-size: 22px; font-weight: 700;
+    margin-bottom: 4px;
+    letter-spacing: -0.5px;
+  }
+  .login-subtitle {
+    text-align: center;
+    color: #7a7e89; font-size: 13px;
+    margin-bottom: 22px;
+  }
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block; font-size: 11px; font-weight: 700;
+    color: #6a6e79; letter-spacing: 0.8px; text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .field select,
+  .field input {
+    display: block; width: 100%;
+    padding: 13px 14px;
+    border: 1.5px solid #d8dae1;
+    border-radius: 11px;
+    font-size: 16px;
+    outline: none;
+    background: white;
+    transition: border-color 0.15s;
+  }
+  .field input:focus, .field select:focus { border-color: #1a2540; }
+  .pin-input { letter-spacing: 8px; font-weight: 600; text-align: center; }
+  .btn-primary {
+    display: block; width: 100%;
+    padding: 14px;
+    background: #1a2540;
+    color: white;
+    border-radius: 11px;
+    font-size: 16px; font-weight: 700;
+    letter-spacing: 0.2px;
+  }
+  .btn-primary:active { background: #0e1830; }
+  .btn-primary:disabled { background: #b0b6c5; cursor: not-allowed; }
+  .login-error {
+    background: #fdecec; color: #b91c1c;
+    padding: 10px 12px; border-radius: 9px;
+    font-size: 13px; margin-bottom: 12px;
+    display: none;
+  }
+  .login-error.show { display: block; }
+
+  /* ── MAIN APP ──────────────────────────────────────── */
+  #appScreen { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  .header {
+    background: #1a2540;
+    color: white;
+    padding: 14px 18px;
+    padding-top: calc(14px + env(safe-area-inset-top));
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 10;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.08);
+  }
+  .header-title { font-size: 16px; font-weight: 700; letter-spacing: -0.2px; }
+  .header-user { display: flex; align-items: center; gap: 10px; }
+  .user-pill {
+    background: rgba(255,255,255,0.12);
+    padding: 5px 11px; border-radius: 100px;
+    font-size: 12px; font-weight: 600;
+  }
+  .logout-btn {
+    width: 32px; height: 32px; border-radius: 16px;
+    background: rgba(255,255,255,0.12);
+    color: white; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logout-btn:active { background: rgba(255,255,255,0.24); }
+
+  /* ── Tabs (bottom nav) ─────────────────────────────── */
+  .tabbar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: white;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid #e2e4ea;
+    display: flex;
+    z-index: 50;
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.05);
+  }
+  .tab {
+    flex: 1;
+    padding: 9px 4px 11px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    color: #8a8e98; font-size: 11px; font-weight: 600;
+  }
+  .tab.active { color: #1a2540; }
+  .tab-icon { font-size: 21px; line-height: 1; }
+  .tab.hidden { display: none; }
+
+  /* ── Tab content ───────────────────────────────────── */
+  .view { display: none; padding: 16px; }
+  .view.active { display: block; animation: fadeIn 0.18s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  .view-title-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .view-title { font-size: 18px; font-weight: 700; }
+  .view-subtitle { font-size: 12px; color: #7a7e89; }
+
+  /* ── My Shift dashboard ────────────────────────────── */
+  .date-label {
+    font-size: 13px; color: #6a6e79;
+    margin-bottom: 14px;
+    font-weight: 500;
+  }
+  .company-cards { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 520px) { .company-cards { grid-template-columns: 1fr; } }
+
+  .company-card {
+    background: white;
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    border: 1.5px solid transparent;
+  }
+  .company-card.state-open { border-color: #16a34a; }
+  .company-card.state-other { border-color: #d97706; }
+
+  .company-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .company-name {
+    font-size: 12px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: #6a6e79;
+  }
+  .status-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .status-pill.open { color: #15803d; }
+  .status-pill.open .status-dot { background: #16a34a; }
+  .status-pill.other { color: #b45309; }
+  .status-pill.other .status-dot { background: #d97706; }
+  .status-pill.closed { color: #7a7e89; }
+  .status-pill.closed .status-dot { background: #b0b6c5; }
+
+  .company-detail {
+    font-size: 13px; color: #4a4e59;
+    line-height: 1.55;
+    margin-bottom: 14px;
+    min-height: 50px;
+  }
+  .company-detail strong { color: #1a1a1a; font-weight: 600; }
+  .running-time { font-variant-numeric: tabular-nums; }
+
+  .card-btn {
+    display: block; width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 14px; font-weight: 700;
+    text-align: center;
+  }
+  .card-btn-open { background: #1a2540; color: white; }
+  .card-btn-open:active { background: #0e1830; }
+  .card-btn-close { background: #b91c1c; color: white; }
+  .card-btn-close:active { background: #911616; }
+  .card-btn-disabled { background: #e8e9ee; color: #8a8e98; cursor: not-allowed; }
+
+  /* TODAY summary card */
+  .today-card {
+    background: white;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-top: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    display: none;
+  }
+  .today-card.show { display: block; }
+  .today-card-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 1px;
+    color: #6a6e79; margin-bottom: 8px;
+  }
+  .today-stats { display: flex; gap: 18px; font-size: 13px; color: #4a4e59; }
+  .today-stats strong { color: #1a1a1a; font-weight: 700; }
+
+  /* Recent shifts list */
+  .recent-section { margin-top: 22px; }
+  .recent-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 1px;
+    color: #6a6e79; margin-bottom: 10px;
+  }
+  .recent-item {
+    background: white;
+    padding: 11px 14px;
+    border-radius: 10px;
+    margin-bottom: 7px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .recent-meta { color: #6a6e79; font-size: 12px; }
+  .variance-pill {
+    padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .variance-OK { background: #dcfce7; color: #15803d; }
+  .variance-minor { background: #fef3c7; color: #92400e; }
+  .variance-investigate { background: #fee2e2; color: #b91c1c; }
+
+  /* ── Empty state ───────────────────────────────────── */
+  .empty {
+    padding: 60px 24px;
+    text-align: center;
+    color: #8a8e98;
+    font-size: 13px;
+  }
+  .empty-icon { font-size: 36px; margin-bottom: 8px; opacity: 0.5; }
+
+  /* ── Loading ───────────────────────────────────────── */
+  .loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: #8a8e98; font-size: 13px; }
+  .spinner {
+    width: 20px; height: 20px; margin-right: 10px;
+    border: 2.5px solid #e2e4ea; border-top-color: #1a2540;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Schedule grid ─────────────────────────────────── */
+  .week-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+    background: white;
+    padding: 10px 14px;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .week-nav-btn {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: #f0f1f5;
+    font-size: 18px; font-weight: 700; color: #1a2540;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .week-nav-btn:active { background: #d8dae1; }
+  .week-label { font-size: 14px; font-weight: 700; }
+  .week-today-link { font-size: 11px; color: #6a6e79; margin-top: 2px; text-decoration: underline; }
+
+  .schedule-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .schedule-grid { display: grid; min-width: 100%; }
+  .schedule-grid > div { padding: 9px 8px; border-right: 1px solid #f0f1f5; border-bottom: 1px solid #f0f1f5; font-size: 12px; }
+  .schedule-head {
+    background: #f5f6f8;
+    font-weight: 700; color: #6a6e79;
+    text-align: center; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase;
+    padding-top: 11px; padding-bottom: 11px;
+  }
+  .schedule-staff-cell {
+    font-weight: 700; color: #1a1a1a;
+    position: sticky; left: 0;
+    background: white;
+    z-index: 1;
+    border-right: 2px solid #e2e4ea;
+    min-width: 110px;
+  }
+  .schedule-cell { min-height: 56px; text-align: center; cursor: pointer; }
+  .schedule-cell:active { background: #f5f6f8; }
+  .sched-status {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    padding: 2px 6px; border-radius: 100px; letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+  .sched-scheduled { background: #dbeafe; color: #1e40af; }
+  .sched-in_progress { background: #fef3c7; color: #92400e; }
+  .sched-worked { background: #dcfce7; color: #15803d; }
+  .sched-cancelled { background: #f0f1f5; color: #8a8e98; text-decoration: line-through; }
+  .sched-time { font-size: 11px; color: #6a6e79; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .sched-empty { color: #b0b6c5; font-size: 10px; }
+  .sched-flag { font-size: 10px; font-weight: 700; color: #92611a; margin-top: 3px; }
+  .sched-flag-ok { color: #15803d; }
+  .schedule-today { background: #fffbe6 !important; }
+
+  /* ── Payroll ───────────────────────────────────────── */
+  .payroll-totals {
+    background: white;
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    text-align: center;
+  }
+  .payroll-totals-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #6a6e79; }
+  .payroll-totals-amount {
+    font-size: 32px; font-weight: 800; color: #1a2540;
+    margin-top: 4px; letter-spacing: -1px;
+  }
+  .payroll-totals-meta { font-size: 12px; color: #6a6e79; margin-top: 2px; }
+
+  .payroll-card {
+    background: white;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .payroll-card-head {
+    padding: 13px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid #f0f1f5;
+  }
+  .payroll-name { font-size: 15px; font-weight: 700; }
+  .payroll-rate { font-size: 11px; color: #6a6e79; margin-top: 2px; }
+  .payroll-owed {
+    font-size: 20px; font-weight: 800; color: #1a2540;
+    letter-spacing: -0.5px;
+  }
+  .payroll-owed.zero { color: #b0b6c5; }
+  .payroll-body { padding: 10px 16px; }
+  .payroll-body-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 0; font-size: 13px;
+  }
+  .payroll-body-row-label { color: #6a6e79; }
+  .payroll-body-row-value { font-weight: 600; }
+  .payroll-actions { padding: 10px 16px 14px; display: flex; gap: 8px; }
+  .payroll-btn { flex: 1; padding: 11px; border-radius: 9px; font-size: 13px; font-weight: 700; }
+  .payroll-btn-primary { background: #15803d; color: white; }
+  .payroll-btn-primary:active { background: #0e6730; }
+  .payroll-btn-primary:disabled { background: #e8e9ee; color: #8a8e98; }
+  .payroll-btn-secondary { background: #f0f1f5; color: #1a1a1a; }
+  .payroll-btn-secondary:active { background: #d8dae1; }
+
+  /* ── Sales dashboard ───────────────────────────────── */
+  .filter-card {
+    background: white;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .filter-row:last-child { margin-bottom: 0; }
+  .filter-field label { display: block; font-size: 10px; font-weight: 700; color: #6a6e79; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 4px; }
+  .filter-field input, .filter-field select { width: 100%; padding: 9px 10px; border: 1px solid #d8dae1; border-radius: 8px; font-size: 13px; }
+
+  .sales-totals {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 8px; margin-bottom: 12px;
+  }
+  .sales-total-card {
+    background: white;
+    border-radius: 11px;
+    padding: 11px 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .sales-total-label { font-size: 10px; font-weight: 700; color: #6a6e79; letter-spacing: 0.7px; text-transform: uppercase; }
+  .sales-total-amount { font-size: 16px; font-weight: 800; margin-top: 4px; letter-spacing: -0.3px; }
+
+  .sales-table {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .sales-row {
+    display: grid;
+    grid-template-columns: 1.1fr 0.7fr 1.1fr 0.85fr 0.85fr 0.85fr 0.85fr 1fr;
+    padding: 9px 12px;
+    font-size: 12px;
+    border-bottom: 1px solid #f0f1f5;
+    align-items: center;
+  }
+  .sales-row.header {
+    background: #f5f6f8;
+    font-weight: 700;
+    color: #6a6e79;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .sales-row .right { text-align: right; }
+  .pagination {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    background: white; border-radius: 0 0 12px 12px;
+    border-top: 1px solid #f0f1f5;
+    font-size: 12px; color: #6a6e79;
+  }
+  .pagination button { padding: 6px 12px; border-radius: 7px; background: #f0f1f5; font-weight: 600; font-size: 12px; }
+  .pagination button:disabled { color: #b0b6c5; cursor: not-allowed; }
+
+  /* ── History ───────────────────────────────────────── */
+  .history-item {
+    background: white;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .history-head { display: flex; align-items: center; justify-content: space-between; }
+  .history-name { font-size: 14px; font-weight: 700; }
+  .history-amount { font-size: 16px; font-weight: 800; color: #15803d; letter-spacing: -0.3px; }
+  .history-meta { font-size: 12px; color: #6a6e79; margin-top: 2px; }
+  .history-items {
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid #f0f1f5;
+    font-size: 11px; color: #6a6e79;
+    display: none;
+  }
+  .history-items.show { display: block; }
+  .history-toggle {
+    margin-top: 4px;
+    font-size: 11px; color: #1a2540;
+    font-weight: 600;
+  }
+
+  /* ── My Pay ───────────────────────────────────────── */
+  .mypay-summary {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 8px; margin-bottom: 14px;
+  }
+  .mypay-section-title {
+    font-size: 13px; font-weight: 700; color: #1a2540;
+    margin: 18px 0 8px; letter-spacing: -0.2px;
+  }
+  .mypay-table {
+    background: white; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 6px;
+  }
+  .mypay-row {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr 0.8fr 0.9fr 0.9fr 1fr;
+    padding: 9px 12px; font-size: 12px;
+    border-bottom: 1px solid #f0f1f5; align-items: center;
+  }
+  .mypay-row.header {
+    background: #f5f6f8; font-weight: 700; color: #6a6e79;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .mypay-row.partial { background: #fffbe6; }
+  .mypay-row .right { text-align: right; }
+  .mypay-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 6px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; background: #e6efff; color: #1a4ca1;
+    margin-right: 6px;
+  }
+  .mypay-badge.commission { background: #fdf3cd; color: #92611a; }
+  .mypay-explainer {
+    background: #f5f6f8; border-radius: 10px;
+    padding: 12px 14px; font-size: 12px; color: #4a4e59;
+    line-height: 1.5; margin-top: 14px;
+  }
+  .mypay-explainer strong { color: #1a2540; }
+
+  /* ── More drawer ──────────────────────────────────── */
+  .more-menu {
+    display: grid; grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .more-item {
+    background: white;
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    display: flex; align-items: center; gap: 14px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .more-item:active { background: #f5f6f8; }
+  .more-item-icon {
+    font-size: 24px; line-height: 1;
+    flex-shrink: 0;
+    width: 36px; text-align: center;
+  }
+  .more-item-body { flex: 1; min-width: 0; }
+  .more-item-title {
+    font-size: 14px; font-weight: 700; color: #1a2540;
+    letter-spacing: -0.2px;
+  }
+  .more-item-meta {
+    font-size: 11px; color: #6a6e79;
+    margin-top: 2px;
+  }
+  .more-item-chevron {
+    color: #b0b6c5; font-size: 18px;
+  }
+  .more-back {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: transparent; padding: 6px 0;
+    font-size: 13px; color: #1a4ca1; font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  /* ── Shopping list — generated output ──────────────── */
+  .gen-output {
+    background: #f0fdf4; border: 1px solid #bbf7d0;
+    border-radius: 11px; padding: 12px 14px; margin-bottom: 14px;
+  }
+  .gen-text {
+    width: 100%; min-height: 170px; box-sizing: border-box;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+    border: 1px solid #d8dae1; border-radius: 8px; padding: 8px;
+    background: white; resize: vertical; white-space: pre;
+  }
+  /* shopping checklist rows */
+  .shop-row { display: flex; align-items: center; gap: 10px; }
+  .shop-check { width: 20px; height: 20px; flex-shrink: 0; accent-color: #15803d; }
+  .shop-item { flex: 1; min-width: 0; }
+  .shop-done { text-decoration: line-through; color: #9aa0ac; }
+  .shop-remove {
+    flex-shrink: 0; color: #b91c1c; background: transparent;
+    font-size: 16px; padding: 4px 8px; line-height: 1;
+  }
+  .shop-edit {
+    flex-shrink: 0; color: #1a4ca1; background: transparent;
+    font-size: 15px; padding: 4px 6px; line-height: 1;
+  }
+  /* daily reconciliation panel */
+  .recon-card { background: white; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .recon-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .recon-title { font-size: 13px; font-weight: 800; color: #1a2540; }
+  .recon-btn { font-size: 12px; font-weight: 700; color: #1a4ca1; background: #eef2ff; padding: 6px 10px; border-radius: 7px; }
+  .recon-empty { font-size: 12px; color: #6a6e79; padding: 6px 0; }
+  .recon-group { border-top: 1px solid #f0f1f5; padding-top: 8px; margin-top: 8px; }
+  .recon-group:first-of-type { border-top: 0; margin-top: 0; }
+  .recon-group-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6a6e79; margin-bottom: 4px; }
+  .recon-badge { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 6px; text-transform: uppercase; }
+  .recon-badge.ok { background: #dcfce7; color: #15803d; }
+  .recon-badge.bad { background: #fee2e2; color: #b91c1c; }
+  .recon-badge.warn { background: #fef3c7; color: #92611a; }
+  .recon-line { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .recon-line small { color: #6a6e79; }
+  .recon-ok { color: #15803d !important; }
+  .recon-diff { color: #b91c1c !important; }
+  .recon-hist-title { font-size: 11px; font-weight: 700; color: #6a6e79; text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px; }
+  .recon-table { border-top: 1px solid #f0f1f5; }
+  .recon-trow { display: grid; grid-template-columns: 1.1fr 1.1fr 0.8fr 0.9fr 0.9fr 0.9fr; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f5f6f8; align-items: center; }
+  .recon-trow.head { font-size: 10px; font-weight: 700; color: #6a6e79; text-transform: uppercase; letter-spacing: 0.4px; }
+  .recon-trow .r { text-align: right; }
+
+  /* ── Modal (bottom sheet) ──────────────────────────── */
+  .backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .backdrop.show { opacity: 1; pointer-events: auto; }
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: white;
+    border-radius: 18px 18px 0 0;
+    z-index: 101;
+    transform: translateY(100%);
+    transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+    padding-bottom: env(safe-area-inset-bottom);
+    max-height: 92vh; overflow-y: auto;
+  }
+  .sheet.show { transform: translateY(0); }
+  .sheet-header {
+    padding: 18px 20px 14px;
+    background: #1a2540;
+    color: white;
+    position: relative;
+    border-radius: 18px 18px 0 0;
+  }
+  .sheet-close {
+    position: absolute; top: 14px; right: 14px;
+    width: 30px; height: 30px; border-radius: 15px;
+    background: rgba(255,255,255,0.18);
+    color: white; font-size: 16px; font-weight: 300;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sheet-title { font-size: 18px; font-weight: 700; }
+  .sheet-subtitle { font-size: 12px; opacity: 0.78; margin-top: 3px; }
+  .sheet-body { padding: 16px 18px; }
+  .sheet-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .sheet-field { margin-bottom: 12px; }
+  .sheet-field label {
+    display: block; font-size: 10px; font-weight: 700;
+    color: #6a6e79; letter-spacing: 0.7px; text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .sheet-field input, .sheet-field select, .sheet-field textarea {
+    width: 100%; padding: 11px 12px;
+    border: 1.5px solid #d8dae1;
+    border-radius: 10px; font-size: 15px;
+    outline: none;
+  }
+  .sheet-field input:focus, .sheet-field select:focus, .sheet-field textarea:focus { border-color: #1a2540; }
+  .sheet-actions {
+    display: flex; gap: 8px;
+    padding: 14px 18px 20px;
+    border-top: 1px solid #f0f1f5;
+    margin-top: 6px;
+  }
+  .sheet-actions button {
+    flex: 1; padding: 14px;
+    border-radius: 11px; font-size: 15px; font-weight: 700;
+  }
+  .sheet-cancel { background: #f0f1f5; color: #1a1a1a; }
+  .sheet-cancel:active { background: #d8dae1; }
+  .sheet-submit { background: #1a2540; color: white; }
+  .sheet-submit:active { background: #0e1830; }
+  .sheet-submit:disabled { background: #b0b6c5; cursor: not-allowed; }
+
+  /* misc-sales collapsible */
+  details.misc-block summary {
+    cursor: pointer; padding: 8px 0;
+    font-size: 11px; font-weight: 700;
+    color: #6a6e79; letter-spacing: 0.5px;
+    text-transform: uppercase;
+    list-style: none;
+  }
+  details.misc-block summary::after { content: ' ▾'; font-size: 9px; }
+  details.misc-block[open] summary::after { content: ' ▴'; }
+
+  /* expected-vs-counted summary at close form bottom */
+  .compute-summary {
+    background: #f5f6f8;
+    border-radius: 11px;
+    padding: 12px 14px;
+    margin-top: 8px;
+  }
+  .compute-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
+  .compute-row strong { font-weight: 700; }
+  .compute-variance-OK { color: #15803d; }
+  .compute-variance-minor { color: #92400e; }
+  .compute-variance-investigate { color: #b91c1c; }
+
+  /* progress bar for partial payment */
+  .progress-row {
+    background: #f5f6f8; border-radius: 9px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .progress-bar { height: 6px; background: #e2e4ea; border-radius: 3px; overflow: hidden; margin-top: 8px; }
+  .progress-bar-fill { height: 100%; background: #15803d; transition: width 0.2s ease; }
+  .progress-label { display: flex; justify-content: space-between; margin-bottom: 2px; }
+
+  /* commission proposed list */
+  .proposed-card {
+    background: #fef3c7;
+    border-radius: 11px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    border-left: 4px solid #d97706;
+  }
+  .proposed-card-head { display: flex; justify-content: space-between; align-items: center; }
+  .proposed-name { font-weight: 700; }
+  .proposed-amount { font-weight: 800; font-size: 17px; color: #92400e; }
+  .proposed-meta { font-size: 12px; color: #6a6e79; margin: 4px 0 10px; line-height: 1.4; }
+  .proposed-actions { display: flex; gap: 6px; }
+  .proposed-btn { flex: 1; padding: 8px; border-radius: 7px; font-size: 12px; font-weight: 700; }
+  .proposed-btn-approve { background: #15803d; color: white; }
+  .proposed-btn-cancel { background: white; color: #6a6e79; border: 1px solid #d8dae1; }
+
+  /* ── Toast ─────────────────────────────────────────── */
+  .toast {
+    position: fixed;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #1a2540; color: white;
+    padding: 11px 18px;
+    border-radius: 100px;
+    font-size: 13px; font-weight: 500;
+    z-index: 200;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+    transition: transform 0.25s;
+    max-width: 90%; text-align: center;
+    white-space: pre-line;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { background: #15803d; }
+  .toast.error { background: #b91c1c; }
+  .toast.warning { background: #d97706; }
+
+  /* Product Master tab */
+  .products-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+  .products-controls .pm-search { flex: 1 1 220px; min-width: 0; }
+  .products-controls select { flex: 0 1 140px; min-width: 100px; }
+  .products-controls .btn-primary {
+    padding: 9px 12px; border-radius: 9px; font-size: 13px; font-weight: 700;
+    background: #1a4ca1; color: white;
+    flex: 0 0 auto;
+  }
+  .products-controls .btn-primary:active { background: #133b7d; }
+  .products-filter-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+  .products-filter-row select { flex: 1 1 130px; min-width: 0; }
+  .products-filter-row .pm-clear {
+    background: transparent; color: #1a4ca1; font-size: 12px; font-weight: 600;
+    padding: 6px 10px; border-radius: 6px; flex: 0 0 auto;
+  }
+  .products-filter-row .pm-clear:active { background: #e8edf5; }
+  .product-row-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding: 13px 16px;
+  }
+  .product-row-margin {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1a2540;
+    white-space: nowrap;
+  }
+  .product-row-meta { font-size: 11px; color: #6a6e79; margin-top: 3px; font-weight: 500; }
+  .badge-warn {
+    background: #fde68a; color: #92611a; font-size: 10px;
+    padding: 2px 6px; border-radius: 4px; font-weight: 700;
+    margin-left: 6px; vertical-align: middle;
+  }
+  .badge-inactive {
+    color: #6a6e79; font-size: 11px; font-weight: 600;
+    align-self: center; padding: 0 10px;
+  }
+  .product-margin-preview {
+    margin-top: 12px; padding: 10px 12px; border-radius: 9px;
+    background: #f5f7fb; font-size: 13px; font-weight: 600; color: #1a2540;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .product-margin-preview.bad { background: #fee2e2; color: #b91c1c; }
+  .product-margin-preview .meta { font-size: 11px; color: #6a6e79; font-weight: 500; }
+  .product-margin-preview.bad .meta { color: #b91c1c; }
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN ─────────────────────────────────────────── -->
+<div id="loginScreen" class="screen active">
+  <div class="login-card">
+    <div class="login-title">Store Operations</div>
+    <div class="login-subtitle">Sign in to continue</div>
+    <div class="login-error" id="loginError"></div>
+    <div class="field">
+      <label>Name</label>
+      <select id="loginName"></select>
+    </div>
+    <div class="field">
+      <label>Input PIN</label>
+      <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+             id="loginPin" class="pin-input" autocomplete="off">
+    </div>
+    <button class="btn-primary" id="loginBtn">Sign in</button>
+  </div>
+</div>
+
+<!-- ── MAIN APP ──────────────────────────────────────── -->
+<div id="appScreen" class="screen">
+  <header class="header">
+    <div class="header-title" id="headerTitle">Store Operations</div>
+    <div class="header-user">
+      <button class="logout-btn" id="refreshBtn" title="Refresh">↻</button>
+      <div class="user-pill" id="userPill">—</div>
+      <button class="logout-btn" id="logoutBtn" title="Sign out">⏻</button>
+    </div>
+  </header>
+
+  <!-- Each tab is a view -->
+  <main>
+    <div class="view" id="view-shift"></div>
+    <div class="view" id="view-schedule"></div>
+    <div class="view" id="view-mypay"></div>
+    <div class="view" id="view-payroll"></div>
+    <div class="view" id="view-sales"></div>
+    <div class="view" id="view-commissions"></div>
+    <div class="view" id="view-rules"></div>
+    <div class="view" id="view-shopping"></div>
+    <div class="view" id="view-suppliers"></div>
+    <div class="view" id="view-products"></div>
+    <div class="view" id="view-history"></div>
+    <div class="view" id="view-more"></div>
+  </main>
+
+  <nav class="tabbar" id="tabbar">
+    <button class="tab" data-tab="shift">    <span class="tab-icon">🏪</span><span>My Shift</span></button>
+    <button class="tab" data-tab="schedule"> <span class="tab-icon">📅</span><span>Schedule</span></button>
+    <button class="tab" data-tab="mypay">    <span class="tab-icon">💵</span><span>My Pay</span></button>
+    <button class="tab" data-tab="more">     <span class="tab-icon">☰</span><span>More</span></button>
+  </nav>
+</div>
+
+<!-- Bottom sheet (used for forms) -->
+<div class="backdrop" id="backdrop"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-header">
+    <button class="sheet-close" id="sheetClose">✕</button>
+    <div class="sheet-title" id="sheetTitle">—</div>
+    <div class="sheet-subtitle" id="sheetSubtitle">—</div>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+  <div class="sheet-actions" id="sheetActions"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ============================================================
+  //  Client-side RPC cache (cache-first reads, auto-bust on writes)
+  // ============================================================
+  //  google.script.run round-trips are slow (~0.5-3s). We cache read
+  //  results (methods starting with "rpcGet") so re-visiting a screen is
+  //  instant. Any WRITE rpc clears the cache on success, so the user's
+  //  OWN change is reflected the moment the screen reloads. Other users'
+  //  changes surface on the next fetch once the TTL lapses.
+  // ============================================================
+  const TTL_REF  = 1800000; // 30 min — reference data that rarely changes
+  const TTL_SEMI = 300000;  // 5 min  — semi-live summaries/lists
+  const TTL_LIVE = 60000;   // 60s    — frequently-changing live data
+
+  const rpcCache = new Map();     // key -> { ts, data }
+  const rpcInflight = new Map();  // key -> Promise (de-dupe concurrent fetches)
+  function _ckey(method, args) { return method + ':' + JSON.stringify(args || []); }
+  function isReadMethod_(method) { return method.indexOf('rpcGet') === 0; }
+
+  // Promise wrapper around google.script.run. A successful non-read RPC
+  // (a write) clears the read cache so own changes show immediately.
+  function call(method, ...args) {
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!isReadMethod_(method)) rpcCache.clear();
+          resolve(res);
+        })
+        .withFailureHandler(err => {
+          const msg = (err && err.message) || String(err);
+          reject(new Error(msg));
+        })[method](...args);
+    });
+  }
+
+  // Cache-first read. Returns cached data if younger than ttlMs; else fetches.
+  // Pass opts.force to bypass the cache (used by the Refresh control).
+  async function cachedCall(method, args, ttlMs, opts) {
+    const key = _ckey(method, args);
+    const force = !!(opts && opts.force);
+    const hit = rpcCache.get(key);
+    if (!force && hit && (Date.now() - hit.ts) < (ttlMs || TTL_SEMI)) return hit.data;
+    // De-dupe: if the same fetch is already in flight (e.g. prefetch + a
+    // navigation racing), reuse the in-flight promise instead of firing twice.
+    if (!force && rpcInflight.has(key)) return rpcInflight.get(key);
+    const p = (async () => {
+      try {
+        const data = await call(method, ...(args || []));
+        rpcCache.set(key, { ts: Date.now(), data });
+        return data;
+      } finally {
+        rpcInflight.delete(key);
+      }
+    })();
+    rpcInflight.set(key, p);
+    return p;
+  }
+
+  // True if there is a fresh cached value (lets loaders skip the spinner).
+  function cacheFresh(method, args, ttlMs) {
+    const hit = rpcCache.get(_ckey(method, args));
+    return !!(hit && (Date.now() - hit.ts) < (ttlMs || TTL_SEMI));
+  }
+
+  // ============================================================
+  //  Global state
+  // ============================================================
+  const state = {
+    token: null,
+    me: null,
+    currentTab: 'shift',
+    weekStart: null,           // for Schedule tab (Date)
+    selectedPayrollStaff: null, // staffId for Payroll detail
+    salesFilters: {
+      startDate: null, endDate: null,
+      staffId: '', company: '',
+      groupBy: 'day_company',
+      page: 1, pageSize: 50,
+    },
+    runningTimers: [],  // for the "running 3h 12m" labels
+    lastGenerated: null, // last generated shopping list (text + whatsapp status)
+  };
+
+  // ============================================================
+  //  Utilities
+  // ============================================================
+  const $ = id => document.getElementById(id);
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function money(n) {
+    const v = Number(n) || 0;
+    const sign = v < 0 ? '-' : '';
+    return sign + '$' + Math.abs(v).toFixed(2);
+  }
+  function fmtDate(d) {
+    if (!d) return '—';
+    const dt = d instanceof Date ? d : new Date(d);
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  function fmtTime(d) {
+    if (!d) return '—';
+    const dt = d instanceof Date ? d : new Date(d);
+    return dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+  function fmtDuration(ms) {
+    if (!ms || ms < 0) return '—';
+    const totalMin = Math.floor(ms / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return h + 'h ' + (m < 10 ? '0' : '') + m + 'm';
+  }
+  function haptic() { if (navigator.vibrate) navigator.vibrate(10); }
+
+  function todayMidnight() { const d = new Date(); d.setHours(0,0,0,0); return d; }
+  function mondayOf(d) {
+    const x = new Date(d); const dow = x.getDay();
+    x.setDate(x.getDate() + (dow === 0 ? -6 : 1 - dow));
+    x.setHours(0,0,0,0); return x;
+  }
+  function isoDate(d) {
+    const x = d instanceof Date ? d : new Date(d);
+    return x.getFullYear() + '-' +
+           String(x.getMonth()+1).padStart(2,'0') + '-' +
+           String(x.getDate()).padStart(2,'0');
+  }
+  function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate()+n); return x; }
+
+  let toastHideTimer = null;
+  function toast(msg, kind) {
+    const t = $('toast');
+    if (!t) return;
+    // Cancel any pending hide so a new toast always gets a fresh 3s window.
+    clearTimeout(toastHideTimer);
+    t.textContent = msg;
+    t.className = 'toast' + (kind ? ' ' + kind : '');
+    // Force a reflow so the show transition restarts cleanly for back-to-back
+    // toasts, then show on the next frame.
+    void t.offsetWidth;
+    requestAnimationFrame(() => t.classList.add('show'));
+    toastHideTimer = setTimeout(() => t.classList.remove('show'), 3000);
+  }
+  // Dismiss toast on tap
+  document.addEventListener('DOMContentLoaded', () => {
+    const t = document.getElementById('toast');
+    if (t) t.addEventListener('click', () => {
+      t.classList.remove('show');
+      clearTimeout(toastHideTimer);
+    });
+  });
+
+  // ============================================================
+  //  Modal helpers
+  // ============================================================
+  function openSheet(opts) {
+    $('sheetTitle').textContent = opts.title || '';
+    $('sheetSubtitle').textContent = opts.subtitle || '';
+    $('sheetBody').innerHTML = opts.bodyHTML || '';
+    $('sheetActions').innerHTML = opts.actionsHTML || '';
+    $('backdrop').classList.add('show');
+    $('sheet').classList.add('show');
+    if (opts.onShown) setTimeout(opts.onShown, 50);
+  }
+  function closeSheet() {
+    $('backdrop').classList.remove('show');
+    $('sheet').classList.remove('show');
+  }
+  $('sheetClose').onclick = closeSheet;
+  $('backdrop').onclick = closeSheet;
+
+  // ============================================================
+  //  LOGIN
+  // ============================================================
+  async function loadLoginScreen() {
+    try {
+      const res = await call('rpcGetActiveStaffForLogin');
+      if (!res.success) throw new Error(res.error);
+      const sel = $('loginName');
+      sel.innerHTML = '';
+      // Remember last name in localStorage
+      const lastName = localStorage.getItem('storeops_last_name') || '';
+      res.staff.forEach(s => {
+        const o = document.createElement('option');
+        o.value = s.name; o.textContent = s.name;
+        if (s.name === lastName) o.selected = true;
+        sel.appendChild(o);
+      });
+    } catch (e) {
+      showLoginError('Couldn\'t load staff list: ' + e.message);
+    }
+  }
+  function showLoginError(msg) {
+    const el = $('loginError');
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+  function hideLoginError() { $('loginError').classList.remove('show'); }
+
+  $('loginBtn').onclick = async () => {
+    hideLoginError();
+    const name = $('loginName').value;
+    const pin = $('loginPin').value.trim();
+    if (!pin) return showLoginError('PIN is required');
+    if (pin.length !== 4) return showLoginError('PIN must be 4 digits');
+    $('loginBtn').disabled = true;
+    $('loginBtn').textContent = 'Signing in…';
+    try {
+      const res = await call('rpcLogin', name, pin);
+      if (!res.success) throw new Error(res.error || 'Sign-in failed');
+      state.token = res.token;
+      state.me = res;
+      localStorage.setItem('storeops_last_name', name);
+      sessionStorage.setItem('storeops_token', res.token);
+      sessionStorage.setItem('storeops_me', JSON.stringify(res));
+      enterApp();
+    } catch (e) {
+      showLoginError(e.message);
+    } finally {
+      $('loginBtn').disabled = false;
+      $('loginBtn').textContent = 'Sign in';
+      $('loginPin').value = '';
+    }
+  };
+
+  // Submit on Enter from PIN
+  $('loginPin').addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('loginBtn').click();
+  });
+
+  // ============================================================
+  //  APP boot
+  // ============================================================
+  function enterApp() {
+    $('loginScreen').classList.remove('active');
+    $('appScreen').classList.add('active');
+    $('userPill').textContent = state.me.name + ' · ' + state.me.role;
+    setupRoleVisibility();
+    switchTab(state.currentTab);
+    // Warm the cache for the other tabs in the background so that, by the
+    // time the user navigates, they're cache hits (instant). Delayed so the
+    // landing tab's own fetch isn't competing for the first round-trip.
+    setTimeout(prefetchTabs, 1200);
+  }
+
+  // Background cache warm-up. Mirrors each loader's RPC + args so the keys
+  // match (a later navigation becomes a cache hit). Role-gated to avoid
+  // FORBIDDEN calls; errors are ignored. Fired in small batches to avoid
+  // hitting the Apps Script simultaneous-execution limit.
+  async function prefetchTabs() {
+    if (!state.me) return;
+    const role = state.me.role;
+    const has = roles => roles.indexOf(role) >= 0;
+    const mgr = has(['admin', 'manager', 'payroll_admin']);
+    const pay = has(['admin', 'payroll_admin']);
+
+    if (!state.weekStart) state.weekStart = mondayOf(new Date());
+    const f = state.salesFilters;
+    if (!f.startDate) { const t = todayMidnight(); f.startDate = isoDate(addDays(t, -6)); f.endDate = isoDate(t); }
+
+    const jobs = [
+      ['rpcGetWeekSchedule',   [state.token, isoDate(state.weekStart)], TTL_SEMI],
+      ['rpcGetMyOwedSummary',  [state.token],     TTL_SEMI],
+      ['rpcGetShoppingList',   [state.token],     TTL_LIVE],
+      ['rpcGetSuppliers',      [state.token],     TTL_REF],
+      ['rpcGetPaymentHistory', [state.token, 25], TTL_SEMI],
+      ['rpcGetOrderCatalog',   [state.token],     TTL_REF],   // add-item modal
+      ['rpcGetStaffDirectory', [state.token],     TTL_REF],   // sales/rule pickers
+    ];
+    if (mgr) {
+      jobs.push(['rpcGetSalesDashboard', [state.token, f],  TTL_SEMI]);
+      jobs.push(['rpcGetCommissionRuns', [state.token, 12], TTL_SEMI]);
+      jobs.push(['rpcGetReconciliation', [state.token],     TTL_SEMI]);
+    }
+    if (pay) {
+      jobs.push(['rpcGetPayrollOverview', [state.token], TTL_SEMI]);
+      jobs.push(['rpcGetProposedBonuses', [state.token], TTL_SEMI]);
+      jobs.push(['rpcGetCommissionRules', [state.token], TTL_REF]);   // Rules tab
+    }
+
+    const BATCH = 4;
+    for (let i = 0; i < jobs.length; i += BATCH) {
+      await Promise.allSettled(
+        jobs.slice(i, i + BATCH).map(([m, a, ttl]) => cachedCall(m, a, ttl))
+      );
+    }
+  }
+
+  function leaveApp() {
+    state.token = null;
+    state.me = null;
+    rpcCache.clear();   // don't leak one user's cached data into the next login
+    rpcInflight.clear();
+    state.lastGenerated = null;
+    sessionStorage.removeItem('storeops_token');
+    sessionStorage.removeItem('storeops_me');
+    $('appScreen').classList.remove('active');
+    $('loginScreen').classList.add('active');
+    loadLoginScreen();
+  }
+
+  $('logoutBtn').onclick = async () => {
+    haptic();
+    try { await call('rpcLogout', state.token); } catch (e) {}
+    leaveApp();
+  };
+
+  // Order categories (mirror of the server ORDER_CATEGORIES constant).
+  const ORDER_CATEGORIES = ['Grocery', 'Cigarettes', 'Vapes', 'Other'];
+
+  // Tabs accessed only via the "More" drawer (no direct bottom-bar button).
+  // Every role gets the More drawer; History/Shopping/Suppliers live there for all.
+  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules'];
+
+  // Items shown in the "More" drawer, with role visibility.
+  const ALL_ROLES = ['admin', 'manager', 'payroll_admin', 'employee'];
+  const MORE_ITEMS = [
+    { tab: 'shopping',    icon: '🛒', label: 'Shopping List',    meta: 'Add items to order',              roles: ALL_ROLES },
+    { tab: 'suppliers',   icon: '🚚', label: 'Suppliers',        meta: 'Where to buy what (reference)',    roles: ALL_ROLES },
+    { tab: 'products',    icon: '📦', label: 'Product Master',   meta: 'Cost, sell, margin per product',   roles: ALL_ROLES },
+    { tab: 'history',     icon: '📋', label: 'History',          meta: 'Payment records',                 roles: ALL_ROLES },
+    { tab: 'sales',       icon: '📊', label: 'Sales',            meta: 'Sales dashboard & filters',       roles: ['admin', 'manager', 'payroll_admin'] },
+    { tab: 'payroll',     icon: '💰', label: 'Payroll',          meta: 'Pay owed shifts & bonuses',       roles: ['admin', 'payroll_admin'] },
+    { tab: 'commissions', icon: '🎯', label: 'Commissions',      meta: 'Run engine, approve runs',        roles: ['admin', 'manager', 'payroll_admin'] },
+    { tab: 'rules',       icon: '⚙️', label: 'Commission Rules', meta: 'Create & manage commission rules', roles: ['admin', 'payroll_admin'] },
+  ];
+
+  function setupRoleVisibility() {
+    // Bottom bar is the same 4 tabs for everyone: Shift, Schedule, My Pay, More.
+    // Everything role-specific lives in the More drawer (filtered by MORE_ITEMS).
+    const visible = { shift: true, schedule: true, mypay: true, more: true };
+    document.querySelectorAll('.tab').forEach(btn => {
+      const t = btn.dataset.tab;
+      btn.classList.toggle('hidden', !visible[t]);
+    });
+    // If current tab is hidden, fall back to shift
+    const curBtn = document.querySelector('.tab[data-tab="' + state.currentTab + '"]');
+    if (curBtn && curBtn.classList.contains('hidden')) state.currentTab = 'shift';
+  }
+
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.onclick = () => { haptic(); switchTab(btn.dataset.tab); };
+  });
+
+  function tabLoaders_() {
+    return {
+      shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab,
+      payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
+      commissions: loadCommissionsTab, rules: loadRulesTab, more: loadMoreTab,
+      shopping: loadShoppingTab, suppliers: loadSuppliersTab,
+      products: loadProductsTab,
+    };
+  }
+
+  function switchTab(tab) {
+    state.currentTab = tab;
+    // Drawer views highlight the "More" bottom button (they have no own button).
+    const isDrawerView = DRAWER_TABS.indexOf(tab) >= 0;
+    const bottomTab = isDrawerView ? 'more' : tab;
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === bottomTab));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    const view = $('view-' + tab);
+    view.classList.add('active');
+    const titles = {
+      shift: 'My Shift', schedule: 'Schedule', mypay: 'My Pay',
+      payroll: 'Payroll', sales: 'Sales', history: 'History',
+      commissions: 'Commissions', rules: 'Commission Rules', more: 'More',
+      shopping: 'Shopping List', suppliers: 'Suppliers',
+      products: 'Product Master',
+    };
+    $('headerTitle').textContent = titles[tab] || 'StoreOps';
+    // Clear running timers from previous tab
+    state.runningTimers.forEach(id => clearInterval(id));
+    state.runningTimers = [];
+    (tabLoaders_()[tab] || (() => {}))();
+  }
+
+  // Force-refresh the current tab (bypass cache). Wired to the header ↻.
+  function reloadCurrentTab() {
+    const loader = tabLoaders_()[state.currentTab];
+    if (loader) loader(true);   // pass force=true
+  }
+  $('refreshBtn').onclick = () => { haptic(); reloadCurrentTab(); };
+
+  // ============================================================
+  //  ░░  TAB: MY SHIFT  ░░
+  // ============================================================
+  async function loadShiftTab(force) {
+    const view = $('view-shift');
+    if (force || !cacheFresh('rpcGetMyShiftState', [state.token], TTL_LIVE)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading shift…</div>';
+    }
+    try {
+      const data = await cachedCall('rpcGetMyShiftState', [state.token], TTL_LIVE, { force });
+      renderShiftTab(data);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderShiftTab(data) {
+    const view = $('view-shift');
+    if (!data || !data.today) {
+      view.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>' +
+        'Could not load shift state. Check the Apps Script execution log for details.' +
+        '<br><br><button class="card-btn card-btn-open" onclick="loadShiftTab()" style="display:inline-block;width:auto;padding:8px 16px;margin-top:8px">Retry</button>' +
+        '</div>';
+      return;
+    }
+    const dateLabel = new Date(data.today + 'T00:00:00').toLocaleDateString('en-US',
+      { weekday: 'long', month: 'long', day: 'numeric' });
+
+    let html = '<div class="date-label">' + esc(dateLabel) + '</div>';
+    html += '<div class="company-cards">';
+    data.cards.forEach(card => {
+      html += renderShiftCard(card);
+    });
+    html += '</div>';
+
+    // TODAY summary (only when both closed OR a session is open)
+    if (data.todaySummary && data.todaySummary.status === 'worked') {
+      const t = data.todaySummary;
+      html += '<div class="today-card show">' +
+        '<div class="today-card-label">TODAY · COMPLETED</div>' +
+        '<div class="today-stats">' +
+          '<div>Hours: <strong class="num">' + t.hoursWorked.toFixed(2) + '</strong></div>' +
+          '<div>Sessions: <strong>' + t.sessionsClosed + '</strong></div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    // Recent shifts
+    if (data.recentTill && data.recentTill.length > 0) {
+      html += '<div class="recent-section">';
+      html += '<div class="recent-title">RECENT SHIFTS</div>';
+      data.recentTill.forEach(r => {
+        const startEnd = fmtTime(r.startTime) + ' – ' + fmtTime(r.endTime);
+        const varCls = r.varianceStatus ? 'variance-' + r.varianceStatus : '';
+        const vText = r.varianceStatus
+          ? (r.varianceStatus === 'OK' ? '✓ OK' :
+             r.varianceStatus === 'minor' ? '± ' + money(r.variance) :
+             '⚠ ' + money(r.variance))
+          : '—';
+        html += '<div class="recent-item">' +
+          '<div>' +
+            '<div><strong>' + esc(r.company.toUpperCase()) + '</strong> · ' + esc(fmtDate(r.date)) + '</div>' +
+            '<div class="recent-meta">' + esc(startEnd) + '</div>' +
+          '</div>' +
+          '<div class="variance-pill ' + varCls + '">' + esc(vText) + '</div>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    view.innerHTML = html;
+
+    // Wire up card buttons
+    view.querySelectorAll('[data-action]').forEach(btn => {
+      const action = btn.dataset.action;
+      const company = btn.dataset.company;
+      const sessionId = btn.dataset.sessionId;
+      const expected = parseFloat(btn.dataset.expected) || 0;
+      btn.onclick = () => {
+        haptic();
+        if (action === 'open') openShiftForm(company, expected);
+        else if (action === 'close') closeShiftForm(sessionId, company);
+      };
+    });
+
+    // Start running-time timers for open shifts
+    data.cards.forEach(card => {
+      if (card.state === 'open_by_me' && card.detail.startTime) {
+        const el = view.querySelector('[data-running="' + card.company + '"]');
+        if (el) {
+          const startTs = new Date(card.detail.startTime).getTime();
+          const tick = () => { el.textContent = fmtDuration(Date.now() - startTs); };
+          tick();
+          state.runningTimers.push(setInterval(tick, 30000));   // update every 30s
+        }
+      }
+    });
+  }
+
+  function renderShiftCard(card) {
+    const companyLabel = card.company.toUpperCase();
+    let stateClass = '', pillClass = '', pillText = '', detailHTML = '', btnHTML = '';
+
+    if (card.state === 'open_by_me') {
+      stateClass = 'state-open';
+      pillClass = 'open';
+      pillText = 'Open';
+      detailHTML =
+        '<div><strong>Started:</strong> ' + esc(fmtTime(card.detail.startTime)) + '</div>' +
+        '<div><strong>Running:</strong> <span class="running-time" data-running="' + esc(card.company) + '">—</span></div>' +
+        '<div><strong>Float:</strong> ' + money(card.detail.openingFloat) + '</div>';
+      btnHTML = '<button class="card-btn card-btn-close" data-action="close" ' +
+                'data-company="' + esc(card.company) + '" data-session-id="' + esc(card.detail.sessionId) + '">' +
+                'Close ' + esc(companyLabel) + '</button>';
+    } else if (card.state === 'open_by_other') {
+      stateClass = 'state-other';
+      pillClass = 'other';
+      pillText = 'In use';
+      detailHTML =
+        '<div><strong>Open by:</strong> ' + esc(card.detail.staffName) + '</div>' +
+        '<div><strong>Started:</strong> ' + esc(fmtTime(card.detail.startTime)) + '</div>';
+      btnHTML = '<button class="card-btn card-btn-disabled" disabled>In use by another</button>';
+    } else {
+      pillClass = 'closed';
+      pillText = 'Closed';
+      detailHTML =
+        '<div>Expected float: ' + money(card.expectedFloat) + '</div>';
+      if (card.authorized) {
+        btnHTML = '<button class="card-btn card-btn-open" data-action="open" data-company="' + esc(card.company) +
+                  '" data-expected="' + Number(card.expectedFloat || 0) + '">' +
+                  'Open ' + esc(companyLabel) + '</button>';
+      } else {
+        btnHTML = '<button class="card-btn card-btn-disabled" disabled>Not authorized</button>';
+      }
+    }
+
+    return '<div class="company-card ' + stateClass + '">' +
+      '<div class="company-header">' +
+        '<div class="company-name">' + esc(companyLabel) + '</div>' +
+        '<div class="status-pill ' + pillClass + '"><span class="status-dot"></span>' + esc(pillText) + '</div>' +
+      '</div>' +
+      '<div class="company-detail">' + detailHTML + '</div>' +
+      btnHTML +
+    '</div>';
+  }
+
+  // ── Open shift modal ────────────────────────────────────
+  function openShiftForm(company, expectedArg) {
+    const expected = expectedArg != null
+      ? expectedArg
+      : (company === 'cstore' ? 250 : 100);  // fallback only
+    openSheet({
+      title: 'Open ' + company.toUpperCase() + ' shift',
+      subtitle: 'Count the cash in the till',
+      bodyHTML:
+        '<div class="sheet-field">' +
+          '<label>Counted float ($)</label>' +
+          '<input type="number" step="0.01" id="openCount" inputmode="decimal" placeholder="' + expected + '">' +
+        '</div>' +
+        '<div class="sheet-field">' +
+          '<label>Note (required if count ≠ expected)</label>' +
+          '<input type="text" id="openNote" placeholder="Optional unless mismatch">' +
+        '</div>' +
+        '<div class="compute-summary">' +
+          '<div class="compute-row"><span>Expected float:</span> <strong>' + money(expected) + '</strong></div>' +
+        '</div>',
+      actionsHTML:
+        '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+        '<button class="sheet-submit" id="openSubmit">Open shift</button>',
+      onShown: () => $('openCount').focus(),
+    });
+    $('openSubmit').onclick = async () => {
+      const count = parseFloat($('openCount').value);
+      const note = $('openNote').value.trim();
+      if (isNaN(count) || count < 0) return toast('Enter a valid count', 'error');
+      $('openSubmit').disabled = true;
+      $('openSubmit').textContent = 'Opening…';
+      try {
+        await call('rpcOpenShift', state.token, { company, openingCount: count, openingNote: note });
+        closeSheet();
+        toast('✓ ' + company.toUpperCase() + ' shift opened', 'success');
+        loadShiftTab();
+        // Async WhatsApp "shift opened" notice (name + till) — never blocks open.
+        call('rpcNotifyShiftOpen', state.token, company).catch(() => {});
+      } catch (e) {
+        toast(e.message, 'error');
+        $('openSubmit').disabled = false;
+        $('openSubmit').textContent = 'Open shift';
+      }
+    };
+  }
+
+  // ── Close shift modal ───────────────────────────────────
+  function closeShiftForm(sessionId, company) {
+    openSheet({
+      title: 'Close ' + company.toUpperCase() + ' shift',
+      subtitle: 'Enter sales and count cash',
+      bodyHTML:
+        '<div class="sheet-field"><label>Cash sales ($)</label>' +
+          '<input type="number" step="0.01" id="closeCash" inputmode="decimal" value="0"></div>' +
+        '<div class="sheet-field"><label>Credit card sales ($)</label>' +
+          '<input type="number" step="0.01" id="closeCredit" inputmode="decimal" value="0"></div>' +
+        '<div class="sheet-field"><label>Debit card sales ($)</label>' +
+          '<input type="number" step="0.01" id="closeDebit" inputmode="decimal" value="0"></div>' +
+        '<div class="sheet-field"><label>Cashback paid out ($)</label>' +
+          '<input type="number" step="0.01" id="closeCashback" inputmode="decimal" value="0"></div>' +
+        '<details class="misc-block">' +
+          '<summary>Misc sales</summary>' +
+          '<div class="sheet-field"><label>Misc cash ($)</label>' +
+            '<input type="number" step="0.01" id="closeMiscCash" inputmode="decimal" value="0"></div>' +
+          '<div class="sheet-field"><label>Misc credit ($)</label>' +
+            '<input type="number" step="0.01" id="closeMiscCredit" inputmode="decimal" value="0"></div>' +
+          '<div class="sheet-field"><label>Misc debit ($)</label>' +
+            '<input type="number" step="0.01" id="closeMiscDebit" inputmode="decimal" value="0"></div>' +
+          '<div class="sheet-field"><label>Misc notes</label>' +
+            '<input type="text" id="closeMiscNotes" placeholder="Optional"></div>' +
+        '</details>' +
+        '<div class="sheet-field"><label>Cash counted in till ($)</label>' +
+          '<input type="number" step="0.01" id="closeCount" inputmode="decimal" placeholder="0.00"></div>' +
+        '<div class="compute-summary" id="closeSummary">' +
+          '<div class="compute-row"><span>Expected cash:</span> <strong id="sumExpected">—</strong></div>' +
+          '<div class="compute-row"><span>Counted:</span> <strong id="sumCounted">—</strong></div>' +
+          '<div class="compute-row"><span>Variance:</span> <strong id="sumVariance">—</strong></div>' +
+        '</div>',
+      actionsHTML:
+        '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+        '<button class="sheet-submit" id="closeSubmit">Close shift</button>',
+      onShown: () => $('closeCash').focus(),
+    });
+
+    // Get the float from server state for live computation
+    let openingFloat = 0;
+    (async () => {
+      try {
+        const data = await cachedCall('rpcGetMyShiftState', [state.token], TTL_LIVE);
+        const card = (data.cards || []).find(c => c.company === company);
+        if (card && card.state === 'open_by_me') openingFloat = Number(card.detail.openingFloat) || 0;
+        recalcClose();
+      } catch (e) {}
+    })();
+
+    function recalcClose() {
+      const cash = parseFloat($('closeCash').value) || 0;
+      const cashback = parseFloat($('closeCashback').value) || 0;
+      const miscCash = parseFloat($('closeMiscCash').value) || 0;
+      const counted = parseFloat($('closeCount').value);
+      const expected = openingFloat + cash + miscCash - cashback;
+      $('sumExpected').textContent = money(expected);
+      if (isNaN(counted)) {
+        $('sumCounted').textContent = '—';
+        $('sumVariance').textContent = '—';
+        $('sumVariance').className = '';
+        return;
+      }
+      $('sumCounted').textContent = money(counted);
+      const variance = counted - expected;
+      const abs = Math.abs(variance);
+      let cls = 'compute-variance-OK';
+      if (abs > 30) cls = 'compute-variance-investigate';
+      else if (abs > 1) cls = 'compute-variance-minor';
+      $('sumVariance').className = cls;
+      $('sumVariance').textContent = (variance >= 0 ? '+' : '') + money(variance).replace('-','-');
+    }
+    ['closeCash','closeCashback','closeMiscCash','closeCount'].forEach(id => {
+      $(id).addEventListener('input', recalcClose);
+    });
+
+    $('closeSubmit').onclick = async () => {
+      const counted = parseFloat($('closeCount').value);
+      if (isNaN(counted)) return toast('Enter the cash counted', 'error');
+      $('closeSubmit').disabled = true;
+      $('closeSubmit').textContent = 'Closing…';
+      try {
+        const result = await call('rpcCloseShift', state.token, {
+          sessionId,
+          cashSales: parseFloat($('closeCash').value) || 0,
+          creditCardSales: parseFloat($('closeCredit').value) || 0,
+          debitCardSales: parseFloat($('closeDebit').value) || 0,
+          cashbackPaid: parseFloat($('closeCashback').value) || 0,
+          miscCashSales: parseFloat($('closeMiscCash').value) || 0,
+          miscCreditSales: parseFloat($('closeMiscCredit').value) || 0,
+          miscDebitSales: parseFloat($('closeMiscDebit').value) || 0,
+          miscNotes: $('closeMiscNotes').value.trim(),
+          physicalCount: counted,
+        });
+        closeSheet();
+        const variance = result && result.variance != null ? Number(result.variance) : 0;
+        toast('✓ ' + company.toUpperCase() + ' closed · variance ' + money(variance),
+              Math.abs(variance) > 30 ? 'warning' : 'success');
+        loadShiftTab();
+        // Async follow-up: when all tills are closed for the day, reconcile
+        // against Clover + WhatsApp. Fire-and-forget — never affects the close.
+        call('rpcReconcileDay', state.token, false).then(r => {
+          if (r && r.ready && !r.empty) {
+            toast((r.whatsapp && r.whatsapp.sent) ? '✓ Day reconciled — WhatsApp sent' : '✓ Day reconciled',
+                  'success');
+          }
+        }).catch(() => {});
+      } catch (e) {
+        toast(e.message, 'error');
+        $('closeSubmit').disabled = false;
+        $('closeSubmit').textContent = 'Close shift';
+      }
+    };
+  }
+
+  function handleRpcError(e, viewEl) {
+    if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) {
+      toast('Session expired — please sign in again', 'warning');
+      leaveApp();
+      return;
+    }
+    if (viewEl) viewEl.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>' + esc(e.message) + '</div>';
+    else toast(e.message, 'error');
+  }
+
+  // ============================================================
+  //  ░░  TAB: SCHEDULE  ░░
+  // ============================================================
+  async function loadScheduleTab(force) {
+    if (!state.weekStart) state.weekStart = mondayOf(new Date());
+    const view = $('view-schedule');
+    const args = [state.token, isoDate(state.weekStart)];
+    if (force || !cacheFresh('rpcGetWeekSchedule', args, TTL_SEMI)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading schedule…</div>';
+    }
+    try {
+      const data = await cachedCall('rpcGetWeekSchedule', args, TTL_SEMI, { force });
+      renderScheduleTab(data);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderScheduleTab(data) {
+    const view = $('view-schedule');
+    const ws = new Date(data.weekStart + 'T00:00:00');
+    const we = new Date(data.weekEnd + 'T00:00:00');
+    const wsLabel = ws.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+                    ' – ' + we.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const thisWeek = isoDate(mondayOf(new Date()));
+    const isThisWeek = data.weekStart === thisWeek;
+
+    let html = '<div class="week-nav">' +
+      '<button class="week-nav-btn" id="weekPrev">‹</button>' +
+      '<div style="text-align:center">' +
+        '<div class="week-label">' + esc(wsLabel) + '</div>' +
+        (isThisWeek ? '<div style="font-size:11px;color:#6a6e79;margin-top:2px;font-weight:500">This week</div>'
+                    : '<div class="week-today-link" id="weekToday">Jump to this week</div>') +
+      '</div>' +
+      '<button class="week-nav-btn" id="weekNext">›</button>' +
+    '</div>';
+
+    if (data.staff.length === 0) {
+      html += '<div class="empty"><div class="empty-icon">👥</div>No active staff. Add staff in the spreadsheet first.</div>';
+      view.innerHTML = html;
+      return;
+    }
+
+    // Grid: header row + one row per staff
+    const cols = '110px repeat(7, 1fr)';
+    html += '<div class="schedule-scroll"><div class="schedule-grid" style="grid-template-columns:' + cols + '">';
+    html += '<div class="schedule-head schedule-staff-cell">Staff</div>';
+    const todayStr = isoDate(new Date());
+    data.days.forEach(d => {
+      const isToday = d.date === todayStr;
+      html += '<div class="schedule-head' + (isToday ? ' schedule-today' : '') + '">' + esc(d.dayName) +
+              '<div style="font-size:10px;font-weight:500;color:#8a8e98">' + esc(d.date.slice(-2)) + '</div></div>';
+    });
+    data.staff.forEach(staff => {
+      html += '<div class="schedule-staff-cell">' + esc(staff.name) + '</div>';
+      data.days.forEach(d => {
+        const cell = data.cells.find(c => c.staffId === staff.staffId && c.date === d.date);
+        const isToday = d.date === todayStr;
+        html += '<div class="schedule-cell' + (isToday ? ' schedule-today' : '') +
+                '" data-staff-id="' + esc(staff.staffId) + '" data-date="' + esc(d.date) + '">';
+        if (cell && cell.status) {
+          html += '<div class="sched-status sched-' + esc(cell.status) + '">' + esc(cell.status.replace('_',' ')) + '</div>';
+          if (cell.scheduledStart && cell.scheduledEnd) {
+            html += '<div class="sched-time">' + esc(cell.scheduledStart) + '–' + esc(cell.scheduledEnd) + '</div>';
+          } else if (cell.hoursWorked) {
+            html += '<div class="sched-time">' + cell.hoursWorked.toFixed(2) + 'h</div>';
+          }
+          if (cell.scheduledHours > 0 && cell.actualHours > 0 &&
+              Math.abs(cell.scheduledHours - cell.actualHours) >= 0.01) {
+            if (cell.hoursBasis) {
+              html += '<div class="sched-flag sched-flag-ok" title="Reviewed — hours set to ' +
+                esc(cell.hoursBasis) + '">✓ ' + esc(cell.hoursBasis) + '</div>';
+            } else {
+              html += '<div class="sched-flag" title="Scheduled ' + cell.scheduledHours.toFixed(2) +
+                'h vs worked ' + cell.actualHours.toFixed(2) + 'h — tap to adjust">⚠︎ sched≠worked</div>';
+            }
+          }
+        } else {
+          html += '<div class="sched-empty">—</div>';
+        }
+        html += '</div>';
+      });
+    });
+    html += '</div></div>';
+
+    const role = state.me.role;
+    const canEdit = role === 'admin' || role === 'manager';
+    if (canEdit) {
+      html += '<div style="font-size:11px;color:#6a6e79;text-align:center;margin-top:10px">Tap any cell to schedule or edit</div>';
+    }
+
+    view.innerHTML = html;
+
+    $('weekPrev').onclick = () => { haptic(); state.weekStart = addDays(state.weekStart, -7); loadScheduleTab(); };
+    $('weekNext').onclick = () => { haptic(); state.weekStart = addDays(state.weekStart, 7); loadScheduleTab(); };
+    const todayLink = $('weekToday');
+    if (todayLink) todayLink.onclick = () => { haptic(); state.weekStart = mondayOf(new Date()); loadScheduleTab(); };
+
+    if (canEdit) {
+      view.querySelectorAll('.schedule-cell').forEach(cell => {
+        cell.onclick = () => {
+          haptic();
+          editScheduleCell(cell.dataset.staffId, cell.dataset.date, data);
+        };
+      });
+    }
+  }
+
+  function editScheduleCell(staffId, date, weekData) {
+    const cell = weekData.cells.find(c => c.staffId === staffId && c.date === date);
+    const staff = weekData.staff.find(s => s.staffId === staffId);
+    const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+    const canEditTimes = cell && cell.status === 'scheduled';
+    const isPastWork = cell && (cell.status === 'in_progress' || cell.status === 'worked');
+
+    let bodyHTML;
+    if (isPastWork) {
+      const canAdjust = state.me.role === 'admin' || state.me.role === 'manager';
+      const sH = cell.scheduledHours || 0;
+      const aH = cell.actualHours || 0;
+      const mismatch = sH > 0 && aH > 0 && Math.abs(sH - aH) >= 0.01;
+      bodyHTML =
+        '<div style="font-size:13px;color:#4a4e59;line-height:1.6">' +
+          '<div>Status: <strong>' + esc(cell.status) + '</strong></div>' +
+          (cell.hoursWorked ? '<div>Recorded hours: <strong>' + cell.hoursWorked.toFixed(2) + 'h</strong></div>' : '') +
+          (sH > 0 ? '<div>Scheduled: <strong>' + sH.toFixed(2) + 'h</strong></div>' : '') +
+          (aH > 0 ? '<div>Actual (open→close): <strong>' + aH.toFixed(2) + 'h</strong></div>' : '') +
+        '</div>';
+      if (mismatch && canAdjust) {
+        const reviewed = !!cell.hoursBasis;
+        bodyHTML +=
+          '<div style="margin-top:14px;padding:12px;background:' + (reviewed ? '#dcfce7' : '#fef3c7') + ';border-radius:9px;font-size:12px;color:' + (reviewed ? '#15803d' : '#92611a') + '">' +
+            (reviewed ? '✓ Reviewed — recorded hours set to ' + esc(cell.hoursBasis) + '. Change to:'
+                      : '⚠︎ Scheduled and actual hours differ. Set recorded hours to:') +
+            '<div style="display:flex;gap:8px;margin-top:10px">' +
+              '<button class="btn-primary" id="useSchedBtn" style="flex:1;padding:9px;font-size:12px;background:#1a4ca1">Scheduled ' + sH.toFixed(2) + 'h</button>' +
+              '<button class="btn-primary" id="useActualBtn" style="flex:1;padding:9px;font-size:12px;background:#15803d">Actual ' + aH.toFixed(2) + 'h</button>' +
+            '</div>' +
+          '</div>';
+      } else {
+        bodyHTML +=
+          '<div style="margin-top:14px;padding:12px;background:#f5f6f8;border-radius:9px;font-size:12px;color:#6a6e79">' +
+            (mismatch ? 'Scheduled and actual hours differ — ask an admin/manager to adjust.'
+                      : 'To correct the actual open/close times, use admin tools.') +
+          '</div>';
+      }
+    } else {
+      bodyHTML =
+        '<div class="sheet-row">' +
+          '<div class="sheet-field">' +
+            '<label>Scheduled start</label>' +
+            '<input type="text" id="schedStart" placeholder="09:00" value="' + esc(cell ? cell.scheduledStart : '') + '">' +
+          '</div>' +
+          '<div class="sheet-field">' +
+            '<label>Scheduled end</label>' +
+            '<input type="text" id="schedEnd" placeholder="17:00" value="' + esc(cell ? cell.scheduledEnd : '') + '">' +
+          '</div>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#6a6e79">Times like 09:00, 17:30. 24-hour format.</div>';
+    }
+
+    let actionsHTML;
+    if (isPastWork) {
+      actionsHTML = '<button class="sheet-cancel" onclick="closeSheet()">Close</button>';
+    } else if (cell && cell.attendanceId) {
+      // existing scheduled — allow edit or cancel
+      actionsHTML =
+        '<button class="sheet-cancel" id="cancelSchedBtn">Cancel shift</button>' +
+        '<button class="sheet-submit" id="saveSchedBtn">Save</button>';
+    } else {
+      actionsHTML =
+        '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+        '<button class="sheet-submit" id="saveSchedBtn">Schedule</button>';
+    }
+
+    openSheet({
+      title: esc(staff.name),
+      subtitle: esc(dateLabel),
+      bodyHTML, actionsHTML,
+    });
+
+    const saveBtn = $('saveSchedBtn');
+    if (saveBtn) saveBtn.onclick = async () => {
+      const start = $('schedStart').value.trim();
+      const end = $('schedEnd').value.trim();
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      try {
+        if (cell && cell.attendanceId) {
+          // editing existing — call schedule which is idempotent only on missing rows.
+          // For existing rows we just say "cancel + re-create".
+          await call('rpcCancelScheduledShift', state.token, cell.attendanceId, 'Replaced');
+        }
+        if (start || end) {
+          await call('rpcScheduleShift', state.token, { staffId, date, scheduledStart: start, scheduledEnd: end });
+        }
+        closeSheet();
+        toast('✓ Saved', 'success');
+        loadScheduleTab();
+      } catch (e) {
+        toast(e.message, 'error');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    };
+    const cancelBtn = $('cancelSchedBtn');
+    if (cancelBtn) cancelBtn.onclick = async () => {
+      if (!confirm('Cancel this scheduled shift?')) return;
+      cancelBtn.disabled = true;
+      try {
+        await call('rpcCancelScheduledShift', state.token, cell.attendanceId, 'Cancelled via UI');
+        closeSheet();
+        toast('✓ Shift cancelled', 'success');
+        loadScheduleTab();
+      } catch (e) {
+        toast(e.message, 'error');
+        cancelBtn.disabled = false;
+      }
+    };
+    [['useSchedBtn', 'scheduled'], ['useActualBtn', 'actual']].forEach(([id, basis]) => {
+      const b = $(id);
+      if (!b) return;
+      b.onclick = async () => {
+        haptic();
+        b.disabled = true;
+        try {
+          await call('rpcAdjustAttendanceHours', state.token, cell.attendanceId, basis);
+          closeSheet();
+          toast('✓ Hours set to ' + basis, 'success');
+          loadScheduleTab();
+        } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+      };
+    });
+  }
+
+  // ============================================================
+  //  ░░  TAB: MY PAY  ░░
+  // ============================================================
+  //  Self-service payroll view. Backend (rpcGetMyOwedSummary) scopes
+  //  to session.staffId so any role can use this and only see their own
+  //  pay. Designed to make the math obvious — shift value = hours × rate,
+  //  bonuses/commissions itemized with the calculation in `reason`.
+  // ============================================================
+  async function loadMyPayTab(force) {
+    const view = $('view-mypay');
+    if (force || !cacheFresh('rpcGetMyOwedSummary', [state.token], TTL_SEMI)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading your pay…</div>';
+    }
+    try {
+      const data = await cachedCall('rpcGetMyOwedSummary', [state.token], TTL_SEMI, { force });
+      renderMyPayTab(data);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderMyPayTab(data) {
+    const view = $('view-mypay');
+    if (!data) {
+      view.innerHTML = '<div class="empty"><div class="empty-icon">💵</div>Could not load pay info.</div>';
+      return;
+    }
+
+    let html = '';
+
+    // ── Summary cards ────────────────────────────────
+    html += '<div class="mypay-summary">' +
+      '<div class="sales-total-card"><div class="sales-total-label">Hourly Rate</div><div class="sales-total-amount">' + money(data.hourlyRate) + '/hr</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Shifts Owed</div><div class="sales-total-amount">' + money(data.shiftsOwed) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Bonuses Owed</div><div class="sales-total-amount">' + money(data.bonusesOwed) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Total Owed</div><div class="sales-total-amount" style="color:#15803d">' + money(data.totalOwed) + '</div></div>' +
+    '</div>';
+
+    // ── Unpaid shifts breakdown ──────────────────────
+    const shifts = data.unpaidShifts || [];
+    html += '<div class="mypay-section-title">Unpaid shifts (' + shifts.length + ')</div>';
+    if (shifts.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">✓</div>All worked shifts have been paid in full.</div>';
+    } else {
+      html += '<div class="mypay-table">';
+      html += '<div class="mypay-row header">' +
+        '<div>Date</div>' +
+        '<div class="right">Hours</div>' +
+        '<div class="right">Rate</div>' +
+        '<div class="right">Value</div>' +
+        '<div class="right">Paid</div>' +
+        '<div class="right">Remaining</div>' +
+      '</div>';
+      shifts.forEach(s => {
+        const isPartial = Number(s.paid || 0) > 0.005;
+        html += '<div class="mypay-row' + (isPartial ? ' partial' : '') + '">' +
+          '<div>' + esc(s.dateStr || fmtDate(s.date)) + '</div>' +
+          '<div class="right">' + Number(s.hoursWorked || 0).toFixed(2) + 'h</div>' +
+          '<div class="right">' + money(s.rate) + '</div>' +
+          '<div class="right">' + money(s.value) + '</div>' +
+          '<div class="right">' + money(s.paid) + '</div>' +
+          '<div class="right"><strong>' + money(s.remaining) + '</strong></div>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    // ── Pending bonuses & commissions ────────────────
+    const bonuses = data.pendingBonuses || [];
+    html += '<div class="mypay-section-title">Pending bonuses & commissions (' + bonuses.length + ')</div>';
+    if (bonuses.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">🎁</div>No pending bonuses or commissions.</div>';
+    } else {
+      bonuses.forEach(b => {
+        const type = (b.type || 'bonus').toLowerCase();
+        const badgeClass = type === 'commission' ? 'mypay-badge commission' : 'mypay-badge';
+        const partialNote = Number(b.paid || 0) > 0.005
+          ? ' · paid ' + money(b.paid) + ' so far'
+          : '';
+        html += '<div class="history-item">' +
+          '<div class="history-head">' +
+            '<div style="flex:1; min-width:0; padding-right:10px">' +
+              '<div><span class="' + badgeClass + '">' + esc(type) + '</span>' +
+                '<span style="font-weight:600">' + esc(b.reason || '—') + '</span>' +
+              '</div>' +
+              '<div class="history-meta">' +
+                esc(b.dateStr || (b.date ? fmtDate(b.date) : '—')) +
+                (b.company ? ' · ' + esc(b.company) : '') +
+                partialNote +
+              '</div>' +
+            '</div>' +
+            '<div class="history-amount">' + money(b.remaining) + '</div>' +
+          '</div>' +
+        '</div>';
+      });
+    }
+
+    // ── Explainer ────────────────────────────────────
+    html += '<div class="mypay-explainer">' +
+      '<strong>How your pay is calculated:</strong> ' +
+      'Each shift\'s value = <em>hours worked × your hourly rate at the time</em>. ' +
+      'Your rate is snapshotted when a shift is completed, so old shifts keep their original rate even if your rate changes later. ' +
+      'Bonuses and commissions are tracked separately and become payable once approved by an admin. ' +
+      'When a payment is recorded, it is applied to your <strong>oldest unpaid shifts first</strong>.' +
+    '</div>';
+
+    view.innerHTML = html;
+  }
+
+  // ============================================================
+  //  ░░  TAB: MORE  ░░
+  // ============================================================
+  //  Drawer that lists role-appropriate tools (Sales, Payroll,
+  //  Commissions, etc.) as tappable cards. Selecting one calls
+  //  switchTab(target) — the "More" bottom button stays highlighted
+  //  while the user is inside any drawer view.
+  // ============================================================
+  function loadMoreTab() {
+    renderMoreTab();
+  }
+
+  function renderMoreTab() {
+    const view = $('view-more');
+    const role = state.me.role;
+    const items = MORE_ITEMS.filter(it => it.roles.indexOf(role) >= 0);
+    if (items.length === 0) {
+      view.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>Nothing here yet.</div>';
+      return;
+    }
+    let html = '<div class="more-menu">';
+    items.forEach(it => {
+      html += '<div class="more-item" data-go="' + esc(it.tab) + '">' +
+        '<div class="more-item-icon">' + it.icon + '</div>' +
+        '<div class="more-item-body">' +
+          '<div class="more-item-title">' + esc(it.label) + '</div>' +
+          '<div class="more-item-meta">' + esc(it.meta) + '</div>' +
+        '</div>' +
+        '<div class="more-item-chevron">›</div>' +
+      '</div>';
+    });
+    html += '</div>';
+    view.innerHTML = html;
+    view.querySelectorAll('[data-go]').forEach(el => {
+      el.onclick = () => { haptic(); switchTab(el.dataset.go); };
+    });
+  }
+
+  // Render a small "← More" back link at the top of any drawer view.
+  // Returns the HTML string; views call this and prepend it to their content.
+  function moreBack() {
+    return '<button class="more-back" onclick="switchTab(\'more\')">← More</button>';
+  }
+
+  // ============================================================
+  //  ░░  TAB: SHOPPING LIST  ░░
+  // ============================================================
+  //  Shared "to order" list. Anyone can add (catalog pick or new item);
+  //  manager/payroll_admin/admin can Generate & send (formats text,
+  //  clears pending, sends WhatsApp). Visible to everyone.
+  // ============================================================
+  async function loadShoppingTab(force) {
+    const view = $('view-shopping');
+    if (force || !cacheFresh('rpcGetShoppingList', [state.token], TTL_LIVE)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading list…</div>';
+    }
+    try {
+      const list = await cachedCall('rpcGetShoppingList', [state.token], TTL_LIVE, { force });
+      renderShoppingTab(list);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderShoppingTab(list) {
+    const view = $('view-shopping');
+    list = list || [];
+    const privileged = ['admin', 'manager', 'payroll_admin'].indexOf(state.me.role) >= 0;
+    const toBuy = list.filter(e => !e.bought).length;
+    const doneCount = list.length - toBuy;
+
+    let html = moreBack();
+
+    // Action buttons: Add (all), then Generate + Clear (manager+).
+    html += '<button class="btn-primary" id="addItemBtn" style="width:100%; padding:10px; font-size:13px; margin-bottom:8px">+ Add item</button>';
+    if (privileged) {
+      html += '<div style="display:flex; gap:8px; margin-bottom:12px">' +
+        '<button class="btn-primary" id="genListBtn" style="flex:1; padding:10px; font-size:13px; background:#15803d"' +
+          (toBuy === 0 ? ' disabled' : '') + '>Generate &amp; send</button>' +
+        '<button class="btn-primary" id="clearListBtn" style="flex:1; padding:10px; font-size:13px; background:#b91c1c"' +
+          (list.length === 0 ? ' disabled' : '') + '>Clear list</button>' +
+      '</div>';
+    }
+
+    // Generated output (persists across reloads via state.lastGenerated)
+    html += renderGeneratedOutputHTML_(state.lastGenerated);
+
+    html += '<div class="mypay-section-title">To buy (' + toBuy + ')' +
+      (doneCount > 0 ? ' · ' + doneCount + ' done' : '') + '</div>';
+    if (list.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">🛒</div>Nothing on the list yet. Tap "+ Add item".</div>';
+    } else {
+      const cats = ORDER_CATEGORIES.slice();
+      list.forEach(e => { const c = e.category || 'Other'; if (cats.indexOf(c) === -1) cats.push(c); });
+      cats.forEach(cat => {
+        const inCat = list.filter(e => (e.category || 'Other') === cat);
+        if (inCat.length === 0) return;
+        html += '<div class="recent-title" style="margin:10px 0 6px">' + esc(cat) + '</div>';
+        inCat.forEach(e => {
+          const canRemove = e.addedBy === state.me.staffId || privileged;
+          html += '<div class="history-item shop-row">' +
+            '<input type="checkbox" class="shop-check" data-bought="' + esc(e.entryId) + '"' + (e.bought ? ' checked' : '') + '>' +
+            '<div class="shop-item">' +
+              '<div class="history-name' + (e.bought ? ' shop-done' : '') + '">' + esc(e.itemName) +
+                ' <span style="color:#6a6e79; font-weight:600">× ' + e.quantity + (e.unit ? ' ' + esc(e.unit) : '') + '</span></div>' +
+              '<div class="history-meta">' + (e.note ? esc(e.note) + ' · ' : '') +
+                'by ' + esc(e.addedByName || e.addedBy) + '</div>' +
+            '</div>' +
+            (canRemove ? '<button class="shop-edit" data-edit="' + esc(e.entryId) + '" title="Edit">✎</button>' : '') +
+            (canRemove ? '<button class="shop-remove" data-remove="' + esc(e.entryId) + '" title="Remove">✕</button>' : '') +
+          '</div>';
+        });
+      });
+    }
+
+    view.innerHTML = html;
+
+    $('addItemBtn').onclick = () => { haptic(); openAddShoppingItem(); };
+    const gen = $('genListBtn');
+    if (gen) gen.onclick = () => { haptic(); generateShoppingList(); };
+    const clr = $('clearListBtn');
+    if (clr) clr.onclick = () => { haptic(); clearShoppingList(); };
+    const copyBtn = $('copyGenBtn');
+    if (copyBtn) copyBtn.onclick = copyGeneratedText_;
+    const dismiss = view.querySelector('[data-dismiss-gen]');
+    if (dismiss) dismiss.onclick = () => { state.lastGenerated = null; loadShoppingTab(); };
+
+    view.querySelectorAll('[data-bought]').forEach(cb => {
+      cb.onchange = async () => {
+        haptic();
+        cb.disabled = true;
+        try {
+          await call('rpcSetShoppingItemBought', state.token, cb.dataset.bought, cb.checked);
+          loadShoppingTab();
+        } catch (e) { toast(e.message, 'error'); cb.checked = !cb.checked; cb.disabled = false; }
+      };
+    });
+    view.querySelectorAll('[data-remove]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('Remove this item from the list?')) return;
+        haptic();
+        b.disabled = true;
+        try {
+          await call('rpcRemoveShoppingListEntry', state.token, b.dataset.remove);
+          toast('Removed', 'warning');
+          loadShoppingTab();
+        } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+      };
+    });
+    view.querySelectorAll('[data-edit]').forEach(b => {
+      b.onclick = () => { haptic(); openEditShoppingItem(list.find(x => x.entryId === b.dataset.edit)); };
+    });
+  }
+
+  async function clearShoppingList() {
+    if (!confirm('Clear the entire list and start fresh? This removes all items (bought and to-buy).')) return;
+    const btn = $('clearListBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Clearing…'; }
+    try {
+      const res = await call('rpcClearShoppingList', state.token);
+      state.lastGenerated = null;
+      toast('Cleared ' + (res.cleared || 0) + ' item(s)', 'warning');
+      loadShoppingTab();
+    } catch (e) {
+      toast(e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Clear list'; }
+    }
+  }
+
+  function renderGeneratedOutputHTML_(result) {
+    if (!result || !result.text) return '';
+    const wa = result.whatsapp || {};
+    const waLine = wa.sent
+      ? '<div style="color:#15803d; font-size:12px; font-weight:600; margin-top:6px">✓ Sent via WhatsApp</div>'
+      : '<div style="color:#92611a; font-size:12px; font-weight:600; margin-top:6px">Not sent via WhatsApp (' +
+        esc(wa.reason || 'unknown') + ') — copy &amp; paste below</div>';
+    return '<div class="gen-output">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">' +
+        '<strong style="font-size:13px">Generated list (' + result.itemCount + ' items)</strong>' +
+        '<button class="more-back" data-dismiss-gen="1" style="margin:0">Dismiss</button>' +
+      '</div>' +
+      '<textarea id="genText" readonly class="gen-text">' + esc(result.text) + '</textarea>' +
+      '<button class="btn-primary" id="copyGenBtn" style="width:100%; padding:9px; font-size:13px; margin-top:8px">📋 Copy</button>' +
+      waLine +
+    '</div>';
+  }
+
+  async function copyGeneratedText_() {
+    const ta = $('genText');
+    if (!ta) return;
+    try {
+      await navigator.clipboard.writeText(ta.value);
+      toast('Copied', 'success');
+    } catch (e) {
+      ta.select();
+      try { document.execCommand('copy'); toast('Copied', 'success'); }
+      catch (e2) { toast('Press and hold to copy', 'warning'); }
+    }
+  }
+
+  async function generateShoppingList() {
+    if (!confirm('Generate the to-buy list and (if configured) send it via WhatsApp?' +
+                 ' The list stays as-is — items only leave when checked off or cleared.')) return;
+    const btn = $('genListBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+    try {
+      const result = await call('rpcGenerateShoppingList', state.token);
+      if (result.empty) {
+        toast('Nothing to order', 'warning');
+        if (btn) { btn.disabled = false; btn.textContent = 'Generate & send'; }
+        return;
+      }
+      state.lastGenerated = result;
+      toast(result.whatsapp && result.whatsapp.sent ? '✓ Generated & sent' : '✓ Generated', 'success');
+      loadShoppingTab();
+    } catch (e) {
+      toast(e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Generate & send'; }
+    }
+  }
+
+  async function openAddShoppingItem() {
+    openSheet({
+      title: 'Add item', subtitle: 'Pick from the catalog or add a new one',
+      bodyHTML: '<div class="loading"><div class="spinner"></div>Loading catalog…</div>',
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
+    });
+    let catalog = [];
+    try { catalog = await cachedCall('rpcGetOrderCatalog', [state.token], TTL_REF); } catch (e) {}
+
+    // Category list = starter set ∪ categories already in the catalog,
+    // plus a "+ New category…" option so users can add their own (e.g. Beer).
+    const cats = ORDER_CATEGORIES.slice();
+    catalog.forEach(i => { if (i.category && cats.indexOf(i.category) === -1) cats.push(i.category); });
+    const catOptions = cats.map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('') +
+      '<option value="__newcat__">+ New category…</option>';
+    const bodyHTML =
+      '<div class="sheet-field"><label>Category</label>' +
+        '<select id="siCategory">' + catOptions + '</select></div>' +
+      '<div class="sheet-field" id="siNewCatWrap" style="display:none"><label>New category name</label>' +
+        '<input type="text" id="siNewCat" placeholder="e.g. Beer"></div>' +
+      '<div class="sheet-field"><label>Item</label>' +
+        '<select id="siItem"></select></div>' +
+      '<div id="siNewWrap" style="display:none">' +
+        '<div class="sheet-field"><label>New item name</label><input type="text" id="siNewName" placeholder="e.g. 2% Milk 1L"></div>' +
+        '<div class="sheet-field"><label>Unit (optional)</label><input type="text" id="siNewUnit" placeholder="each / carton / case"></div>' +
+        '<div class="sheet-field"><label>Unit price $ (optional)</label><input type="number" step="0.01" id="siNewPrice" inputmode="decimal" placeholder="0.00"></div>' +
+        '<div class="sheet-field"><label>Par level — target stock (optional)</label><input type="number" step="1" id="siNewPar" inputmode="numeric" placeholder="e.g. 12"></div>' +
+      '</div>' +
+      '<div class="sheet-field"><label>Quantity to order</label><input type="number" step="0.01" id="siQty" inputmode="decimal" value="1"></div>' +
+      '<div class="sheet-field"><label>Note (optional)</label><input type="text" id="siNote" placeholder="e.g. urgent, the big bags"></div>';
+
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-submit" id="siAddBtn">Add to list</button>';
+
+    openSheet({ title: 'Add item', subtitle: 'Pick from the catalog or add a new one', bodyHTML, actionsHTML });
+
+    function refreshItems() {
+      const cat = $('siCategory').value;
+      const items = catalog.filter(i => i.category === cat);
+      $('siItem').innerHTML = '<option value="__new__">+ Add a new item…</option>' +
+        items.map(i => '<option value="' + esc(i.itemId) + '">' + esc(i.name) +
+          (i.unitPrice > 0 ? ' — ' + money(i.unitPrice) : '') + '</option>').join('');
+      onItemChange();
+    }
+    function onItemChange() {
+      const isNew = $('siItem').value === '__new__';
+      $('siNewWrap').style.display = isNew ? 'block' : 'none';
+      if (!isNew) {
+        const item = catalog.find(i => i.itemId === $('siItem').value);
+        if (item && item.parLevel > 0) $('siQty').value = item.parLevel;
+      }
+    }
+    function onCatChange() {
+      // For a brand-new category there are no existing items, so the item
+      // dropdown naturally collapses to "+ Add a new item…" (new-item mode).
+      $('siNewCatWrap').style.display = $('siCategory').value === '__newcat__' ? 'block' : 'none';
+      refreshItems();
+    }
+    $('siCategory').onchange = onCatChange;
+    $('siItem').onchange = onItemChange;
+    refreshItems();
+
+    $('siAddBtn').onclick = async () => {
+      let category = $('siCategory').value;
+      if (category === '__newcat__') {
+        category = $('siNewCat').value.trim();
+        if (!category) return toast('Enter the new category name', 'error');
+      }
+      const itemSel = $('siItem').value;
+      const isNew = itemSel === '__new__';
+      const qty = parseFloat($('siQty').value);
+      const note = $('siNote').value;
+      if (!Number.isFinite(qty) || qty <= 0) return toast('Enter a valid quantity', 'error');
+
+      const payload = { category, quantity: qty, note };
+      if (isNew) {
+        const name = $('siNewName').value.trim();
+        if (!name) return toast('Enter the new item name', 'error');
+        payload.newItem = true;
+        payload.itemName = name;
+        payload.unit = $('siNewUnit').value.trim();
+        payload.unitPrice = parseFloat($('siNewPrice').value) || 0;
+        payload.parLevel = parseFloat($('siNewPar').value) || 0;
+      } else {
+        const item = catalog.find(i => i.itemId === itemSel);
+        if (!item) return toast('Pick an item', 'error');
+        payload.itemId = item.itemId;
+        payload.itemName = item.name;
+        payload.unit = item.unit;
+      }
+
+      haptic();
+      const btn = $('siAddBtn'); btn.disabled = true; btn.textContent = 'Adding…';
+      try {
+        await call('rpcAddToShoppingList', state.token, payload);
+        closeSheet();
+        toast('✓ Added', 'success');
+        loadShoppingTab();
+      } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Add to list'; }
+    };
+  }
+
+  // Edit an existing item's name / quantity / note (modal sheet). Values are
+  // set via JS after render to avoid HTML-attribute escaping issues.
+  function openEditShoppingItem(entry) {
+    if (!entry) return;
+    const bodyHTML =
+      '<div class="sheet-field"><label>Item name</label><input type="text" id="seName"></div>' +
+      '<div class="sheet-field"><label>Quantity</label><input type="number" step="0.01" id="seQty" inputmode="decimal"></div>' +
+      '<div class="sheet-field"><label>Note (optional)</label><input type="text" id="seNote"></div>';
+    openSheet({
+      title: 'Edit item', subtitle: entry.itemName,
+      bodyHTML,
+      actionsHTML:
+        '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+        '<button class="sheet-submit" id="seSaveBtn">Save</button>',
+    });
+    $('seName').value = entry.itemName;
+    $('seQty').value = entry.quantity;
+    $('seNote').value = entry.note || '';
+
+    $('seSaveBtn').onclick = async () => {
+      const itemName = $('seName').value.trim();
+      const qty = parseFloat($('seQty').value);
+      const note = $('seNote').value;
+      if (!itemName) return toast('Enter the item name', 'error');
+      if (!Number.isFinite(qty) || qty <= 0) return toast('Enter a valid quantity', 'error');
+      haptic();
+      const btn = $('seSaveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        await call('rpcEditShoppingListEntry', state.token, entry.entryId, { itemName, quantity: qty, note });
+        closeSheet();
+        toast('✓ Saved', 'success');
+        loadShoppingTab();
+      } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Save'; }
+    };
+  }
+
+  // ============================================================
+  //  ░░  TAB: SUPPLIERS (reference)  ░░
+  // ============================================================
+  async function loadSuppliersTab(force) {
+    const view = $('view-suppliers');
+    if (force || !cacheFresh('rpcGetSuppliers', [state.token], TTL_REF)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading suppliers…</div>';
+    }
+    try {
+      const suppliers = await cachedCall('rpcGetSuppliers', [state.token], TTL_REF, { force });
+      renderSuppliersTab(suppliers);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderSuppliersTab(suppliers) {
+    const view = $('view-suppliers');
+    suppliers = suppliers || [];
+    let html = moreBack();
+    if (suppliers.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">🚚</div>No suppliers listed.</div>';
+      view.innerHTML = html;
+      return;
+    }
+    const cats = ORDER_CATEGORIES.slice();
+    suppliers.forEach(s => { const c = s.category || 'Other'; if (cats.indexOf(c) === -1) cats.push(c); });
+    cats.forEach(cat => {
+      const inCat = suppliers.filter(s => (s.category || 'Other') === cat);
+      if (inCat.length === 0) return;
+      html += '<div class="mypay-section-title">' + esc(cat) + '</div>';
+      inCat.forEach(s => {
+        html += '<div class="payroll-card">' +
+          '<div class="payroll-name">' + esc(s.name) + '</div>' +
+          (s.products ? '<div style="font-size:12px; color:#4a4e59; margin-top:4px; line-height:1.5">' + esc(s.products) + '</div>' : '') +
+          (s.contact ? '<div style="font-size:12px; color:#1a4ca1; margin-top:4px">' + esc(s.contact) + '</div>' : '') +
+          (s.notes ? '<div style="font-size:11px; color:#92611a; margin-top:4px">' + esc(s.notes) + '</div>' : '') +
+        '</div>';
+      });
+    });
+    view.innerHTML = html;
+  }
+
+  // ============================================================
+  //  ░░  TAB: PRODUCT MASTER  ░░
+  // ============================================================
+  const PRODUCT_CATEGORIES_UI = ['vape', 'cigarettes', 'beer', 'grocery', 'other'];
+
+  const PM_SORTS = {
+    name_asc:    { label: 'Name (A–Z)',        cmp: (a, b) => (a.productName || '').localeCompare(b.productName || '') },
+    margin_desc: { label: 'Margin % (high→low)', cmp: (a, b) => (b.marginPct || 0) - (a.marginPct || 0) },
+    sell_desc:   { label: 'Sell $ (high→low)',  cmp: (a, b) => (b.sellPrice || 0) - (a.sellPrice || 0) },
+    sell_asc:    { label: 'Sell $ (low→high)',  cmp: (a, b) => (a.sellPrice || 0) - (b.sellPrice || 0) },
+  };
+
+  function pmDefaultFilter() {
+    return { query: '', category: '', brand: '', supplier: '', sort: 'name_asc' };
+  }
+
+  // Distinct non-blank values for a field, scoped to records that match `categoryFilter`.
+  function pmDistinct(records, field, categoryFilter) {
+    const inScope = categoryFilter ? records.filter(r => r.category === categoryFilter) : records;
+    const set = new Set();
+    inScope.forEach(r => {
+      const v = (r[field] || '').toString().trim();
+      if (v) set.add(v);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }
+
+  async function loadProductsTab(force) {
+    const view = $('view-products');
+    if (force || !cacheFresh('rpcGetProductMaster', [state.token, {}], TTL_REF)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading products…</div>';
+    }
+    try {
+      const products = await cachedCall('rpcGetProductMaster', [state.token, {}], TTL_REF, { force });
+      state.products = products || [];
+      if (!state.productsFilter) state.productsFilter = pmDefaultFilter();
+      renderProductsTab();
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderProductsTab() {
+    const view = $('view-products');
+    const products = state.products || [];
+    if (!state.productsFilter) state.productsFilter = pmDefaultFilter();
+    const filter = state.productsFilter;
+    const privileged = state.me && (state.me.role === 'admin' || state.me.role === 'manager');
+
+    // Capture focus + caret position so re-render doesn't kill an active
+    // <input> (the search box loses focus after every keystroke otherwise).
+    const activeEl = document.activeElement;
+    const activeId = activeEl && activeEl.id;
+    let savedSelStart = 0, savedSelEnd = 0;
+    if (activeEl && activeEl.tagName === 'INPUT' && typeof activeEl.selectionStart === 'number') {
+      savedSelStart = activeEl.selectionStart;
+      savedSelEnd = activeEl.selectionEnd;
+    }
+
+    // Brand + supplier dropdowns are scoped to the active category — keeps
+    // them from listing values that can't match anyway.
+    const brandOptions = pmDistinct(products, 'brand', filter.category);
+    const supplierOptions = pmDistinct(products, 'supplier', filter.category);
+
+    // Auto-clear stale selections that aren't in the current option set
+    // (e.g. category change invalidated the brand filter).
+    if (filter.brand && brandOptions.indexOf(filter.brand) === -1) filter.brand = '';
+    if (filter.supplier && supplierOptions.indexOf(filter.supplier) === -1) filter.supplier = '';
+
+    const terms = (filter.query || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const visible = products.filter(p => {
+      if (filter.category && p.category !== filter.category) return false;
+      if (filter.brand && p.brand !== filter.brand) return false;
+      if (filter.supplier && p.supplier !== filter.supplier) return false;
+      if (terms.length === 0) return true;
+      const hay = [p.sku, p.productName, p.brand, p.category, p.subcategory].join(' ').toLowerCase();
+      return terms.every(t => hay.indexOf(t) >= 0);
+    });
+
+    const sorter = (PM_SORTS[filter.sort] || PM_SORTS.name_asc).cmp;
+    visible.sort(sorter);
+
+    const activeFilterCount =
+      (filter.category ? 1 : 0) +
+      (filter.brand ? 1 : 0) +
+      (filter.supplier ? 1 : 0) +
+      (filter.query ? 1 : 0);
+
+    let html = moreBack();
+    html += '<div class="products-controls">' +
+      '<input id="pmSearch" class="pm-search" placeholder="Search SKU / name / brand…" value="' + esc(filter.query) + '" autocomplete="off">' +
+      (privileged ? '<button class="btn-primary" id="pmAddBtn">+ Add</button>' : '') +
+    '</div>';
+
+    html += '<div class="products-filter-row">' +
+      '<select id="pmCat" title="Category">' +
+        '<option value="">All categories</option>' +
+        PRODUCT_CATEGORIES_UI.map(c =>
+          '<option value="' + c + '"' + (filter.category === c ? ' selected' : '') + '>' + c + '</option>'
+        ).join('') +
+      '</select>' +
+      '<select id="pmBrand" title="Brand"' + (brandOptions.length === 0 ? ' disabled' : '') + '>' +
+        '<option value="">All brands' + (brandOptions.length ? ' (' + brandOptions.length + ')' : '') + '</option>' +
+        brandOptions.map(b =>
+          '<option value="' + esc(b) + '"' + (filter.brand === b ? ' selected' : '') + '>' + esc(b) + '</option>'
+        ).join('') +
+      '</select>' +
+      '<select id="pmSupplier" title="Supplier"' + (supplierOptions.length === 0 ? ' disabled' : '') + '>' +
+        '<option value="">All suppliers' + (supplierOptions.length ? ' (' + supplierOptions.length + ')' : '') + '</option>' +
+        supplierOptions.map(s =>
+          '<option value="' + esc(s) + '"' + (filter.supplier === s ? ' selected' : '') + '>' + esc(s) + '</option>'
+        ).join('') +
+      '</select>' +
+      '<select id="pmSort" title="Sort">' +
+        Object.keys(PM_SORTS).map(k =>
+          '<option value="' + k + '"' + (filter.sort === k ? ' selected' : '') + '>' + esc(PM_SORTS[k].label) + '</option>'
+        ).join('') +
+      '</select>' +
+      (activeFilterCount > 0 ? '<button class="pm-clear" id="pmClearFilters">Clear</button>' : '') +
+    '</div>';
+
+    html += '<div class="mypay-section-title">' + visible.length + ' product' + (visible.length === 1 ? '' : 's') +
+      (visible.length > 200 ? ' — showing first 200; refine search' : '') + '</div>';
+
+    visible.slice(0, 200).forEach(p => {
+      // Floor flag: sell < min, with $0.005 tolerance to avoid false flags from rounding.
+      const belowMin = (p.minSellPrice > 0 && p.sellPrice > 0 &&
+                       (p.sellPrice + 0.005) < p.minSellPrice);
+      const flagBadge = belowMin
+        ? ' <span class="badge-warn" title="Sell price is below the min sell floor">⚠ below min</span>'
+        : '';
+      const marginPctStr = p.sellPrice > 0
+        ? (Math.round(p.marginPct * 1000) / 10).toFixed(1) + '%'
+        : '—';
+      html += '<div class="payroll-card">' +
+        '<div class="product-row-head">' +
+          '<div style="min-width:0; flex:1">' +
+            '<div class="payroll-name" style="overflow:hidden; text-overflow:ellipsis">' +
+              esc(p.productName) + flagBadge +
+            '</div>' +
+            '<div class="product-row-meta">' +
+              (p.brand ? esc(p.brand) + ' · ' : '') +
+              esc(p.category) +
+              (p.sku ? ' · SKU ' + esc(p.sku) : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="product-row-margin">' +
+            money(p.sellPrice) +
+            '<div class="product-row-meta">cost ' + money(p.costPrice) + ' · margin ' + marginPctStr + '</div>' +
+          '</div>' +
+        '</div>' +
+        (privileged
+          ? '<div class="payroll-actions">' +
+              '<button class="payroll-btn payroll-btn-secondary" data-edit-product="' + esc(p.productId) + '">Edit</button>' +
+              (p.active
+                ? '<button class="payroll-btn" data-deactivate-product="' + esc(p.productId) + '">Deactivate</button>'
+                : '<span class="badge-inactive">Inactive</span>')
+            + '</div>'
+          : '') +
+      '</div>';
+    });
+
+    view.innerHTML = html;
+
+    // Restore focus + caret on the element that was active before innerHTML
+    // (search input is the one that hurts; this generalizes to any input).
+    if (activeId) {
+      const restored = $(activeId);
+      if (restored) {
+        restored.focus();
+        if (restored.tagName === 'INPUT' && typeof restored.setSelectionRange === 'function') {
+          try { restored.setSelectionRange(savedSelStart, savedSelEnd); } catch (e) { /* type may not support */ }
+        }
+      }
+    }
+
+    // Wire controls
+    const searchEl = $('pmSearch');
+    if (searchEl) {
+      searchEl.oninput = (e) => { state.productsFilter.query = e.target.value; renderProductsTab(); };
+    }
+    const catEl = $('pmCat');
+    if (catEl) {
+      catEl.onchange = (e) => {
+        state.productsFilter.category = e.target.value;
+        // brand/supplier auto-clear (if stale) happens inside renderProductsTab
+        renderProductsTab();
+      };
+    }
+    const brandEl = $('pmBrand');
+    if (brandEl) {
+      brandEl.onchange = (e) => { state.productsFilter.brand = e.target.value; renderProductsTab(); };
+    }
+    const supplierEl = $('pmSupplier');
+    if (supplierEl) {
+      supplierEl.onchange = (e) => { state.productsFilter.supplier = e.target.value; renderProductsTab(); };
+    }
+    const sortEl = $('pmSort');
+    if (sortEl) {
+      sortEl.onchange = (e) => { state.productsFilter.sort = e.target.value; renderProductsTab(); };
+    }
+    const clearEl = $('pmClearFilters');
+    if (clearEl) {
+      clearEl.onclick = () => {
+        state.productsFilter = pmDefaultFilter();
+        renderProductsTab();
+      };
+    }
+    if (privileged) {
+      const addBtn = $('pmAddBtn');
+      if (addBtn) addBtn.onclick = () => openProductForm(null);
+      view.querySelectorAll('[data-edit-product]').forEach(b => {
+        b.onclick = () => openProductForm(products.find(p => p.productId === b.dataset.editProduct));
+      });
+      view.querySelectorAll('[data-deactivate-product]').forEach(b => {
+        b.onclick = () => deactivateProduct(b.dataset.deactivateProduct);
+      });
+    }
+  }
+
+  function openProductForm(product) {
+    const isEdit = !!product;
+    const p = product || {};
+    const initial = {
+      sku:             p.sku || '',
+      productName:     p.productName || '',
+      brand:           p.brand || '',
+      category:        p.category || 'vape',
+      subcategory:     p.subcategory || '',
+      packSize:        p.packSize || '',
+      unit:            p.unit || 'each',
+      costPrice:       p.costPrice != null ? String(p.costPrice) : '',
+      sellPrice:       p.sellPrice != null ? String(p.sellPrice) : '',
+      sellPriceCredit: p.sellPriceCredit ? String(p.sellPriceCredit) : '',
+      minSellPrice:    p.minSellPrice ? String(p.minSellPrice) : '',
+      supplier:        p.supplier || '',
+      notes:           p.notes || '',
+    };
+
+    const catOptions = PRODUCT_CATEGORIES_UI.map(c =>
+      '<option value="' + c + '"' + (initial.category === c ? ' selected' : '') + '>' + c + '</option>'
+    ).join('');
+
+    const skuHint = isEdit
+      ? '<div style="font-size:10px;color:#8a8e98;margin-top:3px">SKU is locked on edit (dedup key).</div>'
+      : '<div style="font-size:10px;color:#8a8e98;margin-top:3px">Leave blank to dedup by brand + name.</div>';
+
+    const bodyHTML =
+      '<div class="sheet-field"><label>Category</label>' +
+        '<select id="pmCategory">' + catOptions + '</select></div>' +
+
+      '<div class="sheet-field"><label>Brand</label>' +
+        '<input type="text" id="pmBrand" value="' + esc(initial.brand) + '" placeholder="e.g. Elfbar"></div>' +
+
+      '<div class="sheet-field"><label>Product name</label>' +
+        '<input type="text" id="pmName" value="' + esc(initial.productName) + '" placeholder="Encode flavor / puffs / nicotine for vape">' +
+        '<div style="font-size:10px;color:#8a8e98;margin-top:3px">e.g. <em>Elfbar GH20000 Berry Blast 20K puffs 2%</em></div></div>' +
+
+      '<div class="sheet-field"><label>SKU' + (isEdit ? ' (locked)' : ' (optional)') + '</label>' +
+        '<input type="text" id="pmSku" value="' + esc(initial.sku) + '"' + (isEdit ? ' disabled' : '') + '>' + skuHint + '</div>' +
+
+      '<div class="sheet-field" style="display:flex;gap:8px">' +
+        '<div style="flex:1.5"><label>Subcategory</label>' +
+          '<input type="text" id="pmSubcategory" value="' + esc(initial.subcategory) + '" placeholder="Disposable Device"></div>' +
+        '<div style="flex:1"><label>Pack size</label>' +
+          '<input type="text" id="pmPackSize" value="' + esc(initial.packSize) + '" placeholder="5ct"></div>' +
+        '<div style="flex:1"><label>Unit</label>' +
+          '<input type="text" id="pmUnit" value="' + esc(initial.unit) + '" placeholder="each"></div>' +
+      '</div>' +
+
+      '<div class="sheet-field" style="display:flex;gap:8px">' +
+        '<div style="flex:1"><label>Cost $</label>' +
+          '<input type="number" step="0.01" inputmode="decimal" id="pmCost" value="' + esc(initial.costPrice) + '"></div>' +
+        '<div style="flex:1"><label>Sell $</label>' +
+          '<input type="number" step="0.01" inputmode="decimal" id="pmSell" value="' + esc(initial.sellPrice) + '"></div>' +
+      '</div>' +
+
+      '<div class="sheet-field" style="display:flex;gap:8px">' +
+        '<div style="flex:1"><label>Sell (credit) $</label>' +
+          '<input type="number" step="0.01" inputmode="decimal" id="pmSellCredit" value="' + esc(initial.sellPriceCredit) + '"></div>' +
+        '<div style="flex:1"><label>Min sell $ (floor)</label>' +
+          '<input type="number" step="0.01" inputmode="decimal" id="pmMinSell" value="' + esc(initial.minSellPrice) + '"></div>' +
+      '</div>' +
+
+      '<div class="sheet-field"><label>Supplier (optional)</label>' +
+        '<input type="text" id="pmSupplier" value="' + esc(initial.supplier) + '"></div>' +
+
+      '<div class="sheet-field"><label>Notes (optional)</label>' +
+        '<input type="text" id="pmNotes" value="' + esc(initial.notes) + '"></div>' +
+
+      '<div id="pmMarginPreview" class="product-margin-preview">' +
+        '<span>Margin</span>' +
+        '<span><span id="pmMarginAmt">$0.00</span> <span class="meta" id="pmMarginPct">(0.0%)</span></span>' +
+      '</div>';
+
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-submit" id="pmSaveBtn">' + (isEdit ? 'Save changes' : 'Create product') + '</button>';
+
+    openSheet({
+      title: isEdit ? 'Edit product' : 'New product',
+      subtitle: isEdit ? 'SKU is locked on edit' : 'Cost, sell, margin & floor',
+      bodyHTML,
+      actionsHTML,
+    });
+
+    function updateMarginPreview() {
+      const cost = parseFloat($('pmCost').value) || 0;
+      const sell = parseFloat($('pmSell').value) || 0;
+      const minSell = parseFloat($('pmMinSell').value) || 0;
+      const amt = Math.round((sell - cost) * 100) / 100;
+      const pct = sell > 0 ? ((sell - cost) / sell) * 100 : 0;
+      const belowMin = (minSell > 0 && sell > 0 && (sell + 0.005) < minSell);
+      $('pmMarginAmt').textContent = money(amt);
+      $('pmMarginPct').textContent = '(' + pct.toFixed(1) + '%)' + (belowMin ? ' — sell below min floor!' : '');
+      $('pmMarginPreview').classList.toggle('bad', belowMin || amt < 0);
+    }
+    ['pmCost', 'pmSell', 'pmMinSell'].forEach(id => {
+      const el = $(id); if (el) el.oninput = updateMarginPreview;
+    });
+    updateMarginPreview();
+
+    $('pmSaveBtn').onclick = async () => {
+      const productName = $('pmName').value.trim();
+      if (!productName) { toast('Product name is required', 'error'); return; }
+      const category = $('pmCategory').value;
+      const payload = {
+        productName: productName,
+        brand:           $('pmBrand').value.trim(),
+        category:        category,
+        subcategory:     $('pmSubcategory').value.trim(),
+        packSize:        $('pmPackSize').value.trim(),
+        unit:            $('pmUnit').value.trim() || 'each',
+        costPrice:       parseFloat($('pmCost').value) || 0,
+        sellPrice:       parseFloat($('pmSell').value) || 0,
+        sellPriceCredit: parseFloat($('pmSellCredit').value) || 0,
+        minSellPrice:    parseFloat($('pmMinSell').value) || 0,
+        supplier:        $('pmSupplier').value.trim(),
+        notes:           $('pmNotes').value.trim(),
+      };
+
+      $('pmSaveBtn').disabled = true;
+      try {
+        if (isEdit) {
+          await call('rpcUpdateProduct', state.token, p.productId, payload);
+          toast('Saved', 'success');
+        } else {
+          payload.sku = $('pmSku').value.trim();
+          await call('rpcCreateProduct', state.token, payload);
+          toast('Created', 'success');
+        }
+        closeSheet();
+        loadProductsTab(true);
+      } catch (e) {
+        $('pmSaveBtn').disabled = false;
+        toast(e.message || 'Save failed', 'error');
+      }
+    };
+  }
+
+  async function deactivateProduct(productId) {
+    if (!confirm('Deactivate this product? It stays in the data (soft-delete) but won\'t appear in the active list.')) return;
+    try {
+      await call('rpcDeactivateProduct', state.token, productId);
+      toast('Deactivated', 'warning');
+      loadProductsTab(true);
+    } catch (e) {
+      toast(e.message || 'Deactivate failed', 'error');
+    }
+  }
+
+  // ============================================================
+  //  ░░  TAB: PAYROLL  ░░
+  // ============================================================
+  async function loadPayrollTab(force) {
+    const view = $('view-payroll');
+    if (force || !cacheFresh('rpcGetPayrollOverview', [state.token], TTL_SEMI)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading payroll…</div>';
+    }
+    try {
+      const overview = await cachedCall('rpcGetPayrollOverview', [state.token], TTL_SEMI, { force });
+      renderPayrollTab(overview);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderPayrollTab(overview) {
+    const view = $('view-payroll');
+    overview = overview || [];
+    const totalOwed = overview.reduce((s, p) => s + (p.totalOwed || 0), 0);
+    const totalShifts = overview.reduce((s, p) => s + (p.unpaidShiftCount || 0), 0);
+    const totalStaff = overview.filter(p => p.totalOwed > 0.005).length;
+
+    let html = moreBack() + '<div class="payroll-totals">' +
+      '<div class="payroll-totals-label">TOTAL OWED</div>' +
+      '<div class="payroll-totals-amount">' + money(totalOwed) + '</div>' +
+      '<div class="payroll-totals-meta">' + totalShifts + ' unpaid shifts · ' + totalStaff + ' of ' + overview.length + ' staff</div>' +
+    '</div>';
+
+    // Per-staff cards
+    html += '<div style="margin-top:14px"></div>';
+    overview.forEach(p => {
+      const hasOwed = p.totalOwed > 0.005;
+      html += '<div class="payroll-card">' +
+        '<div class="payroll-card-head">' +
+          '<div>' +
+            '<div class="payroll-name">' + esc(p.staffName) + '</div>' +
+            '<div class="payroll-rate">' + money(p.hourlyRate) + '/hr</div>' +
+          '</div>' +
+          '<div class="payroll-owed ' + (hasOwed ? '' : 'zero') + '">' + money(p.totalOwed) + '</div>' +
+        '</div>' +
+        '<div class="payroll-body">' +
+          '<div class="payroll-body-row"><span class="payroll-body-row-label">Unpaid shifts</span>' +
+            '<span class="payroll-body-row-value">' + p.unpaidShiftCount + ' (' + money(p.shiftsOwed) + ')</span></div>' +
+          '<div class="payroll-body-row"><span class="payroll-body-row-label">Pending bonuses</span>' +
+            '<span class="payroll-body-row-value">' + p.pendingBonusCount + ' (' + money(p.bonusesOwed) + ')</span></div>' +
+        '</div>' +
+        '<div class="payroll-actions">' +
+          (p.shiftsOwed > 0.005
+            ? '<button class="payroll-btn payroll-btn-primary" data-pay-shifts="' + esc(p.staffId) + '">Pay Shifts</button>'
+            : '') +
+          (p.bonusesOwed > 0.005
+            ? '<button class="payroll-btn payroll-btn-secondary" data-pay-bonus-list="' + esc(p.staffId) + '">Pay Bonus</button>'
+            : '') +
+          (!hasOwed
+            ? '<button class="payroll-btn payroll-btn-primary" disabled>All settled</button>'
+            : '') +
+        '</div>' +
+      '</div>';
+    });
+
+    view.innerHTML = html;
+
+    // Lookup so modals can read the staff name without re-fetching the overview.
+    const byId = {};
+    overview.forEach(p => { byId[p.staffId] = p; });
+
+    view.querySelectorAll('[data-pay-shifts]').forEach(b => {
+      b.onclick = () => { haptic(); openPayShiftsForm(b.dataset.payShifts, byId[b.dataset.payShifts]); };
+    });
+    view.querySelectorAll('[data-pay-bonus-list]').forEach(b => {
+      b.onclick = () => { haptic(); openPayBonusList(b.dataset.payBonusList, byId[b.dataset.payBonusList]); };
+    });
+  }
+
+  // ── Pay shifts modal ────────────────────────────────────
+  async function openPayShiftsForm(staffId, staffRow) {
+    openSheet({
+      title: 'Loading…', subtitle: '',
+      bodyHTML: '<div class="loading"><div class="spinner"></div>Loading owed details…</div>',
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
+    });
+    try {
+      // staffRow comes from the payroll overview already on screen — no need
+      // to re-fetch the whole overview just to get the name (avoids an N+1).
+      const owed = await cachedCall('rpcGetOwedSummary', [state.token, staffId], TTL_SEMI);
+      const staff = staffRow ||
+        (await cachedCall('rpcGetPayrollOverview', [state.token], TTL_SEMI)).find(s => s.staffId === staffId);
+      renderPayShiftsForm(owed, staff);
+    } catch (e) { toast(e.message, 'error'); closeSheet(); }
+  }
+
+  function renderPayShiftsForm(owed, staff) {
+    if (!owed || !staff) {
+      toast('Could not load payment details', 'error');
+      closeSheet();
+      return;
+    }
+    const unpaidShifts = owed.unpaidShifts || [];
+    const shiftsOwed = owed.shiftsOwed || 0;
+    if (unpaidShifts.length === 0 || shiftsOwed <= 0.005) {
+      $('sheetBody').innerHTML = '<div class="empty"><div class="empty-icon">✓</div>No unpaid shifts for ' + esc(staff.staffName) + '</div>';
+      $('sheetActions').innerHTML = '<button class="sheet-cancel" onclick="closeSheet()">Close</button>';
+      $('sheetTitle').textContent = staff.staffName;
+      return;
+    }
+    const shiftLines = unpaidShifts.map(s =>
+      '<div class="payroll-body-row" style="font-size:12px">' +
+        '<span class="payroll-body-row-label">' + esc(s.dateStr) + ' · ' + (s.hoursWorked || 0).toFixed(2) + 'h × ' + money(s.rate) + '</span>' +
+        '<span class="payroll-body-row-value">' + money(s.remaining) + (s.paid > 0.005 ? ' <small style="color:#6a6e79">(of ' + money(s.value) + ')</small>' : '') + '</span>' +
+      '</div>'
+    ).join('');
+
+    const bodyHTML =
+      '<div style="margin-bottom:14px">' +
+        '<div style="font-size:11px;font-weight:700;color:#6a6e79;letter-spacing:0.7px;margin-bottom:6px">UNPAID SHIFTS · OLDEST FIRST</div>' +
+        shiftLines +
+        '<div class="payroll-body-row" style="margin-top:6px;padding-top:6px;border-top:1px solid #e2e4ea;font-size:13px"><strong>Total owed</strong><strong>' + money(shiftsOwed) + '</strong></div>' +
+      '</div>' +
+      '<div class="sheet-field">' +
+        '<label>Amount to pay ($)</label>' +
+        '<input type="number" step="0.01" id="payAmount" inputmode="decimal" value="' + shiftsOwed.toFixed(2) + '">' +
+      '</div>' +
+      '<div class="progress-row" id="payProgress">' +
+        '<div class="progress-label"><span>This payment</span><span id="progressLabel">' + money(shiftsOwed) + ' / ' + money(shiftsOwed) + '</span></div>' +
+        '<div class="progress-bar"><div class="progress-bar-fill" id="progressFill" style="width:100%"></div></div>' +
+      '</div>' +
+      '<div class="sheet-field">' +
+        '<label>Method</label>' +
+        '<select id="payMethod"><option value="cash">Cash</option><option value="bank">Bank</option><option value="etransfer">e-Transfer</option><option value="other">Other</option></select>' +
+      '</div>' +
+      '<div class="sheet-field">' +
+        '<label>Notes (optional)</label>' +
+        '<input type="text" id="payNotes" placeholder="e.g. April 1-7 payroll">' +
+      '</div>';
+
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-submit" id="payFullBtn" style="background:#15803d">Pay Full</button>' +
+      '<button class="sheet-submit" id="paySubmitBtn">Pay</button>';
+
+    openSheet({
+      title: 'Pay ' + staff.staffName,
+      subtitle: money(shiftsOwed) + ' owed across ' + unpaidShifts.length + ' shift(s)',
+      bodyHTML, actionsHTML,
+    });
+
+    function updateProgress() {
+      const amount = parseFloat($('payAmount').value) || 0;
+      const total = shiftsOwed;
+      const pct = total > 0 ? Math.min(100, Math.max(0, (amount / total) * 100)) : 0;
+      $('progressFill').style.width = pct.toFixed(1) + '%';
+      $('progressLabel').textContent = money(amount) + ' / ' + money(total);
+    }
+    $('payAmount').addEventListener('input', updateProgress);
+
+    $('payFullBtn').onclick = () => {
+      $('payAmount').value = shiftsOwed.toFixed(2);
+      updateProgress();
+      $('paySubmitBtn').click();
+    };
+
+    $('paySubmitBtn').onclick = async () => {
+      const amount = parseFloat($('payAmount').value);
+      if (isNaN(amount) || amount <= 0) return toast('Enter a positive amount', 'error');
+      if (!confirm('Pay ' + money(amount) + ' to ' + staff.staffName + '?')) return;
+      $('paySubmitBtn').disabled = true;
+      $('paySubmitBtn').textContent = 'Paying…';
+      try {
+        const result = await call('rpcPayShifts', state.token, {
+          staffId: staff.staffId,
+          amount,
+          method: $('payMethod').value,
+          notes: $('payNotes').value.trim(),
+        });
+        closeSheet();
+        const summary = result.summary || {};
+        toast('✓ Paid ' + money(amount) + ' · ' + summary.fullyPaidCount + ' shifts settled' +
+              (summary.partialCount ? ' (1 partial)' : ''), 'success');
+        loadPayrollTab();
+      } catch (e) {
+        toast(e.message, 'error');
+        $('paySubmitBtn').disabled = false;
+        $('paySubmitBtn').textContent = 'Pay';
+      }
+    };
+  }
+
+  // ── Pay bonus list modal ────────────────────────────────
+  async function openPayBonusList(staffId, staffRow) {
+    openSheet({
+      title: 'Pay bonus', subtitle: '',
+      bodyHTML: '<div class="loading"><div class="spinner"></div>Loading…</div>',
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
+    });
+    try {
+      const owed = await cachedCall('rpcGetOwedSummary', [state.token, staffId], TTL_SEMI);
+      const staff = staffRow ||
+        (await cachedCall('rpcGetPayrollOverview', [state.token], TTL_SEMI)).find(s => s.staffId === staffId);
+      if (!owed.pendingBonuses || owed.pendingBonuses.length === 0) {
+        $('sheetBody').innerHTML = '<div class="empty"><div class="empty-icon">🎁</div>No pending bonuses for ' + esc(staff.staffName) + '</div>';
+        return;
+      }
+
+      let html = '<div style="font-size:11px;font-weight:700;color:#6a6e79;letter-spacing:0.7px;margin-bottom:8px">PENDING BONUSES</div>';
+      owed.pendingBonuses.forEach(b => {
+        html += '<div class="proposed-card" style="background:#fff;border:1px solid #e2e4ea;border-left:4px solid #15803d">' +
+          '<div class="proposed-card-head">' +
+            '<div>' +
+              '<div class="proposed-name">' + esc(b.type) + (b.company ? ' · ' + esc(b.company) : '') + '</div>' +
+              '<div class="proposed-meta" style="margin-bottom:0">' + esc(b.dateStr) + ' · ' + esc(b.reason || '') + '</div>' +
+            '</div>' +
+            '<div class="proposed-amount" style="color:#15803d">' + money(b.remaining) + '</div>' +
+          '</div>' +
+          '<div class="proposed-actions" style="margin-top:8px">' +
+            '<button class="proposed-btn proposed-btn-approve" data-bonus-id="' + esc(b.bonusId) + '" data-bonus-amount="' + b.remaining + '">Pay this bonus</button>' +
+          '</div>' +
+        '</div>';
+      });
+      $('sheetBody').innerHTML = html;
+      $('sheetTitle').textContent = 'Pay bonus · ' + staff.staffName;
+      $('sheetSubtitle').textContent = owed.pendingBonuses.length + ' pending';
+      $('sheetBody').querySelectorAll('[data-bonus-id]').forEach(b => {
+        b.onclick = () => openPayOneBonusForm(b.dataset.bonusId, parseFloat(b.dataset.bonusAmount), staff.staffName);
+      });
+    } catch (e) { toast(e.message, 'error'); closeSheet(); }
+  }
+
+  function openPayOneBonusForm(bonusId, remaining, staffName) {
+    const bodyHTML =
+      '<div class="sheet-field">' +
+        '<label>Amount to pay ($)</label>' +
+        '<input type="number" step="0.01" id="bonusAmount" inputmode="decimal" value="' + remaining.toFixed(2) + '">' +
+      '</div>' +
+      '<div class="progress-row">' +
+        '<div class="progress-label"><span>This payment</span><span id="bonusProgressLabel">' + money(remaining) + ' / ' + money(remaining) + '</span></div>' +
+        '<div class="progress-bar"><div class="progress-bar-fill" id="bonusProgressFill" style="width:100%"></div></div>' +
+      '</div>' +
+      '<div class="sheet-field"><label>Method</label>' +
+        '<select id="bonusMethod"><option value="cash">Cash</option><option value="bank">Bank</option><option value="etransfer">e-Transfer</option><option value="other">Other</option></select>' +
+      '</div>' +
+      '<div class="sheet-field"><label>Notes (optional)</label>' +
+        '<input type="text" id="bonusNotes"></div>';
+
+    openSheet({
+      title: 'Pay bonus',
+      subtitle: 'To ' + staffName,
+      bodyHTML,
+      actionsHTML:
+        '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+        '<button class="sheet-submit" id="bonusFullBtn" style="background:#15803d">Pay Full</button>' +
+        '<button class="sheet-submit" id="bonusSubmitBtn">Pay</button>',
+    });
+
+    function updateProgress() {
+      const amount = parseFloat($('bonusAmount').value) || 0;
+      const pct = remaining > 0 ? Math.min(100, Math.max(0, (amount / remaining) * 100)) : 0;
+      $('bonusProgressFill').style.width = pct.toFixed(1) + '%';
+      $('bonusProgressLabel').textContent = money(amount) + ' / ' + money(remaining);
+    }
+    $('bonusAmount').addEventListener('input', updateProgress);
+
+    $('bonusFullBtn').onclick = () => {
+      $('bonusAmount').value = remaining.toFixed(2);
+      updateProgress();
+      $('bonusSubmitBtn').click();
+    };
+
+    $('bonusSubmitBtn').onclick = async () => {
+      const amount = parseFloat($('bonusAmount').value);
+      if (isNaN(amount) || amount <= 0) return toast('Enter a positive amount', 'error');
+      if (!confirm('Pay ' + money(amount) + ' to ' + staffName + '?')) return;
+      $('bonusSubmitBtn').disabled = true;
+      $('bonusSubmitBtn').textContent = 'Paying…';
+      try {
+        const result = await call('rpcPayBonus', state.token, {
+          bonusId, amount,
+          method: $('bonusMethod').value,
+          notes: $('bonusNotes').value.trim(),
+        });
+        closeSheet();
+        toast('✓ Paid ' + money(amount) + (result.isPartial ? ' (partial)' : ''), 'success');
+        loadPayrollTab();
+      } catch (e) {
+        toast(e.message, 'error');
+        $('bonusSubmitBtn').disabled = false;
+        $('bonusSubmitBtn').textContent = 'Pay';
+      }
+    };
+  }
+
+  // ============================================================
+  //  ░░  TAB: COMMISSIONS  ░░
+  // ============================================================
+  //  Drives the commission lifecycle:
+  //    1. Run the engine for the previous week (admin / payroll_admin)
+  //    2. Review past runs (admin / manager / payroll_admin)
+  //    3. Approve / Cancel proposed commissions (admin / payroll_admin)
+  //  After approval, the bonus becomes payable in the Payroll view.
+  // ============================================================
+  async function loadCommissionsTab(force) {
+    const view = $('view-commissions');
+    const canSeeProposed = state.me.role === 'admin' || state.me.role === 'payroll_admin';
+    const fresh = cacheFresh('rpcGetCommissionRuns', [state.token, 12], TTL_SEMI) &&
+      (!canSeeProposed || cacheFresh('rpcGetProposedBonuses', [state.token], TTL_SEMI));
+    if (force || !fresh) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading commissions…</div>';
+    }
+    try {
+      const [runs, proposed] = await Promise.all([
+        cachedCall('rpcGetCommissionRuns', [state.token, 12], TTL_SEMI, { force }),
+        canSeeProposed
+          ? cachedCall('rpcGetProposedBonuses', [state.token], TTL_SEMI, { force }).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+      renderCommissionsTab(runs, proposed);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderCommissionsTab(runs, proposed) {
+    const view = $('view-commissions');
+    runs = runs || [];
+    proposed = proposed || [];
+    const canRun = state.me.role === 'admin' || state.me.role === 'payroll_admin';
+
+    let html = moreBack();
+
+    // Run-engine card
+    if (canRun) {
+      html += '<div class="payroll-totals" style="text-align:left">' +
+        '<div class="payroll-totals-label">RUN COMMISSION ENGINE</div>' +
+        '<div style="font-size:12px;color:#4a4e59;margin:4px 0 10px;line-height:1.5">' +
+          'Computes commissions for the previous full week (Mon–Sun) using all active rules. ' +
+          'Idempotent: if already run this week, nothing happens unless forced.' +
+        '</div>' +
+        '<button class="btn-primary" id="runEngineBtn" style="padding:10px 14px;font-size:13px">▶ Run for last week</button>' +
+        ' <button class="btn-primary" id="runEngineForceBtn" style="padding:10px 14px;font-size:13px;background:#92611a">⟳ Force re-run</button>' +
+      '</div>';
+    }
+
+    // Proposed commissions
+    if (canRun) {
+      html += '<div class="recent-title" style="margin-top:14px;margin-bottom:8px">⏳ PROPOSED COMMISSIONS — NEEDS APPROVAL (' + proposed.length + ')</div>';
+      if (proposed.length === 0) {
+        html += '<div class="empty" style="padding:20px"><div class="empty-icon">✓</div>No proposed commissions awaiting approval.</div>';
+      } else {
+        proposed.forEach(p => {
+          html += '<div class="proposed-card">' +
+            '<div class="proposed-card-head">' +
+              '<div class="proposed-name">' + esc(p.staffName) + '</div>' +
+              '<div class="proposed-amount">' + money(p.amount) + '</div>' +
+            '</div>' +
+            '<div class="proposed-meta">' + esc(p.reason || '') + '</div>' +
+            '<div class="proposed-actions">' +
+              '<button class="proposed-btn proposed-btn-cancel" data-cancel="' + esc(p.bonusId) + '">Cancel</button>' +
+              '<button class="proposed-btn proposed-btn-approve" data-approve="' + esc(p.bonusId) + '">Approve</button>' +
+            '</div>' +
+          '</div>';
+        });
+      }
+    }
+
+    // Past runs
+    html += '<div class="recent-title" style="margin-top:14px;margin-bottom:8px">📜 PAST RUNS (' + runs.length + ')</div>';
+    if (runs.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">🗒️</div>No commission runs yet.</div>';
+    } else {
+      runs.forEach(r => {
+        const ws = r.weekStart ? fmtDate(r.weekStart) : '—';
+        const we = r.weekEnd ? fmtDate(r.weekEnd) : '—';
+        const computedAt = r.computedAt ? fmtDate(r.computedAt) : '—';
+        html += '<div class="history-item">' +
+          '<div class="history-head">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div class="history-name">' + esc(ws) + ' → ' + esc(we) + '</div>' +
+              '<div class="history-meta">' +
+                r.bonusesCreated + ' bonus' + (r.bonusesCreated === 1 ? '' : 'es') + ' · ' +
+                r.staffCount + ' staff · computed ' + esc(computedAt) +
+                (r.computedByName ? ' by ' + esc(r.computedByName) : '') +
+              '</div>' +
+              (r.notes ? '<div class="history-meta" style="font-style:italic">' + esc(r.notes) + '</div>' : '') +
+            '</div>' +
+            '<div class="history-amount">' + money(r.totalCommissionAmount) + '</div>' +
+          '</div>' +
+        '</div>';
+      });
+    }
+
+    view.innerHTML = html;
+
+    if (canRun) {
+      const runBtn = $('runEngineBtn');
+      if (runBtn) runBtn.onclick = () => triggerCommissionRun(false);
+      const forceBtn = $('runEngineForceBtn');
+      if (forceBtn) forceBtn.onclick = () => {
+        if (!confirm('Force re-run? This will compute again for the same week even if a run already exists.')) return;
+        triggerCommissionRun(true);
+      };
+      view.querySelectorAll('[data-approve]').forEach(b => {
+        b.onclick = async () => {
+          haptic();
+          b.disabled = true;
+          try {
+            await call('rpcApproveBonus', state.token, b.dataset.approve);
+            toast('✓ Bonus approved', 'success');
+            loadCommissionsTab();
+          } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+        };
+      });
+      view.querySelectorAll('[data-cancel]').forEach(b => {
+        b.onclick = async () => {
+          if (!confirm('Cancel this proposed commission?')) return;
+          haptic();
+          b.disabled = true;
+          try {
+            await call('rpcCancelBonus', state.token, b.dataset.cancel, 'Cancelled from Commissions view');
+            toast('Cancelled', 'warning');
+            loadCommissionsTab();
+          } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+        };
+      });
+    }
+  }
+
+  async function triggerCommissionRun(force) {
+    const btn = $('runEngineBtn') || $('runEngineForceBtn');
+    if (btn) btn.disabled = true;
+    haptic();
+    try {
+      const result = (await call('rpcRunCommissionEngine', state.token, force === true)) || {};
+      if (result.skipped) {
+        const range = (result.weekStart && result.weekEnd)
+          ? fmtDate(result.weekStart) + '–' + fmtDate(result.weekEnd) : 'that week';
+        toast('Commissions for ' + range + ' were already computed. Tap "⟳ Force re-run" to recompute.', 'warning');
+      } else {
+        toast('✓ Created ' + (result.bonusesProposed ? result.bonusesProposed.length : 0) +
+              ' commission(s), total ' + money(result.totalAmount || 0), 'success');
+      }
+      loadCommissionsTab();
+    } catch (e) {
+      toast(e.message, 'error');
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // ============================================================
+  //  ░░  TAB: COMMISSION RULES  ░░
+  // ============================================================
+  //  Admin / payroll_admin manage the rules that drive the commission
+  //  engine. Soft-delete via active=false (preserves audit trail).
+  //  Some fields (company, appliesTo, staffId, effectiveFrom) are
+  //  locked on edit because the engine treats them as identity —
+  //  to change them, deactivate and create a new rule.
+  // ============================================================
+  async function loadRulesTab(force) {
+    const view = $('view-rules');
+    if (force || !cacheFresh('rpcGetCommissionRules', [state.token], TTL_REF)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading rules…</div>';
+    }
+    try {
+      const rules = await cachedCall('rpcGetCommissionRules', [state.token], TTL_REF, { force });
+      renderRulesTab(rules);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderRulesTab(rules) {
+    const view = $('view-rules');
+    rules = rules || [];
+    const canEdit = state.me.role === 'admin' || state.me.role === 'payroll_admin';
+    if (state.rulesShowInactive === undefined) state.rulesShowInactive = false;
+    const visible = state.rulesShowInactive ? rules : rules.filter(r => r.active);
+
+    let html = moreBack();
+
+    // Header row with "+ New rule" button
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+      '<div style="font-size:13px;font-weight:700">Commission rules (' + visible.length + ')</div>' +
+      (canEdit ? '<button class="btn-primary" id="newRuleBtn" style="padding:7px 12px;font-size:12px">+ New rule</button>' : '') +
+    '</div>';
+
+    // Show-inactive toggle
+    html += '<label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#6a6e79;margin-bottom:12px">' +
+      '<input type="checkbox" id="showInactiveToggle"' + (state.rulesShowInactive ? ' checked' : '') + '>' +
+      'Show inactive rules</label>';
+
+    if (visible.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">⚙️</div>' +
+        (rules.length === 0
+          ? 'No rules defined yet. Click "+ New rule" to create the first one.'
+          : 'No active rules. Toggle "Show inactive" to see deactivated ones.') +
+      '</div>';
+    } else {
+      visible.forEach(r => {
+        const target = r.appliesTo === 'all_staff'
+          ? 'all staff'
+          : 'staff ' + esc(r.staffId);
+        const badgeClass = r.company === 'vape' ? 'mypay-badge commission' : 'mypay-badge';
+        html += '<div class="payroll-card">' +
+          '<div class="payroll-card-head">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div class="payroll-name">' +
+                '<span class="' + badgeClass + '">' + esc(r.company || '?') + '</span>' +
+                esc(r.name || ('Rule ' + r.ruleId)) +
+              '</div>' +
+              '<div class="payroll-rate">Pay ' + esc(r.percentage) + '% over ' + money(r.threshold) + ' to ' + target + '</div>' +
+            '</div>' +
+            '<div style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;' +
+              (r.active ? 'background:#dcfce7;color:#15803d' : 'background:#f0f1f5;color:#6a6e79') + '">' +
+              (r.active ? 'ACTIVE' : 'INACTIVE') +
+            '</div>' +
+          '</div>' +
+          '<div class="payroll-body">' +
+            '<div class="payroll-body-row"><span class="payroll-body-row-label">Effective</span>' +
+              '<span class="payroll-body-row-value">' +
+                (r.effectiveFrom ? esc(fmtDate(r.effectiveFrom)) : '—') +
+                ' → ' + (r.effectiveTo ? esc(fmtDate(r.effectiveTo)) : 'open') +
+              '</span></div>' +
+            (r.notes ? '<div class="payroll-body-row"><span class="payroll-body-row-label">Notes</span><span class="payroll-body-row-value">' + esc(r.notes) + '</span></div>' : '') +
+          '</div>' +
+          (canEdit
+            ? '<div class="payroll-actions">' +
+                '<button class="payroll-btn payroll-btn-secondary" data-edit-rule="' + esc(r.ruleId) + '">Edit</button>' +
+                (r.active
+                  ? '<button class="payroll-btn payroll-btn-secondary" data-deactivate-rule="' + esc(r.ruleId) + '" style="color:#b91c1c">Deactivate</button>'
+                  : '<button class="payroll-btn payroll-btn-secondary" data-reactivate-rule="' + esc(r.ruleId) + '">Reactivate</button>') +
+              '</div>'
+            : '') +
+        '</div>';
+      });
+    }
+
+    view.innerHTML = html;
+
+    $('showInactiveToggle').onchange = (e) => {
+      state.rulesShowInactive = e.target.checked;
+      renderRulesTab(rules);
+    };
+
+    if (canEdit) {
+      const newBtn = $('newRuleBtn');
+      if (newBtn) newBtn.onclick = () => { haptic(); openRuleForm(null); };
+      view.querySelectorAll('[data-edit-rule]').forEach(b => {
+        b.onclick = () => {
+          haptic();
+          const rule = rules.find(r => r.ruleId === b.dataset.editRule);
+          openRuleForm(rule);
+        };
+      });
+      view.querySelectorAll('[data-deactivate-rule]').forEach(b => {
+        b.onclick = async () => {
+          if (!confirm('Deactivate this rule? It stays in the system but is no longer used by the engine.')) return;
+          haptic();
+          b.disabled = true;
+          try {
+            await call('rpcUpdateCommissionRule', state.token, { ruleId: b.dataset.deactivateRule, active: false });
+            toast('Rule deactivated', 'warning');
+            loadRulesTab();
+          } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+        };
+      });
+      view.querySelectorAll('[data-reactivate-rule]').forEach(b => {
+        b.onclick = async () => {
+          haptic();
+          b.disabled = true;
+          try {
+            await call('rpcUpdateCommissionRule', state.token, { ruleId: b.dataset.reactivateRule, active: true });
+            toast('✓ Rule reactivated', 'success');
+            loadRulesTab();
+          } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+        };
+      });
+    }
+  }
+
+  async function openRuleForm(existingRule) {
+    const isEdit = !!existingRule;
+    openSheet({
+      title: isEdit ? 'Edit rule' : 'New commission rule',
+      subtitle: isEdit ? 'Some fields are locked on edit' : 'Defines when commissions are paid',
+      bodyHTML: '<div class="loading"><div class="spinner"></div>Loading…</div>',
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
+    });
+
+    // Need the staff directory for the "specific staff" picker
+    let staffList = [];
+    try { staffList = await cachedCall('rpcGetStaffDirectory', [state.token], TTL_REF); } catch (e) {}
+
+    const r = existingRule || {};
+    const today = isoDate(todayMidnight());
+    const initial = {
+      name:          r.name || '',
+      company:       r.company || 'cstore',
+      appliesTo:     r.appliesTo || 'all_staff',
+      staffId:       r.staffId || '',
+      threshold:     r.threshold != null ? String(r.threshold) : '',
+      percentage:    r.percentage != null ? String(r.percentage) : '',
+      effectiveFrom: r.effectiveFrom ? isoDate(new Date(r.effectiveFrom)) : today,
+      effectiveTo:   r.effectiveTo ? isoDate(new Date(r.effectiveTo)) : '',
+      notes:         r.notes || '',
+    };
+    const lockedNote = isEdit ? ' <em style="color:#8a8e98;font-size:10px">(locked)</em>' : '';
+    const dis = isEdit ? ' disabled' : '';
+
+    const staffOptions = staffList.map(s =>
+      '<option value="' + esc(s.staffId) + '"' + (initial.staffId === s.staffId ? ' selected' : '') + '>' +
+        esc(s.name) + (s.active ? '' : ' (inactive)') +
+      '</option>'
+    ).join('');
+
+    const bodyHTML =
+      '<div class="sheet-field"><label>Name (optional)</label>' +
+        '<input type="text" id="ruleName" value="' + esc(initial.name) + '" placeholder="e.g. Cstore weekly commission"></div>' +
+
+      '<div class="sheet-field"><label>Store' + lockedNote + '</label>' +
+        '<select id="ruleCompany"' + dis + '>' +
+          '<option value="cstore"' + (initial.company === 'cstore' ? ' selected' : '') + '>Cstore</option>' +
+          '<option value="vape"' + (initial.company === 'vape' ? ' selected' : '') + '>Vape</option>' +
+        '</select></div>' +
+
+      '<div class="sheet-field"><label>Applies to' + lockedNote + '</label>' +
+        '<select id="ruleAppliesTo"' + dis + '>' +
+          '<option value="all_staff"' + (initial.appliesTo === 'all_staff' ? ' selected' : '') + '>All staff</option>' +
+          '<option value="specific_staff"' + (initial.appliesTo === 'specific_staff' ? ' selected' : '') + '>Specific staff</option>' +
+        '</select></div>' +
+
+      '<div class="sheet-field" id="ruleStaffField" style="display:' + (initial.appliesTo === 'specific_staff' ? 'block' : 'none') + '">' +
+        '<label>Staff member' + lockedNote + '</label>' +
+        '<select id="ruleStaffId"' + dis + '>' + staffOptions + '</select></div>' +
+
+      '<div class="sheet-field"><label>Sales threshold ($)</label>' +
+        '<input type="number" step="0.01" id="ruleThreshold" inputmode="decimal" value="' + esc(initial.threshold) + '" placeholder="5000"></div>' +
+
+      '<div class="sheet-field"><label>% Commission (on sales over threshold)</label>' +
+        '<input type="number" step="0.01" id="rulePercentage" inputmode="decimal" value="' + esc(initial.percentage) + '" placeholder="3"></div>' +
+
+      '<div class="sheet-field"><label>Effective from' + lockedNote + '</label>' +
+        '<input type="date" id="ruleEffectiveFrom" value="' + esc(initial.effectiveFrom) + '"' + dis + '></div>' +
+
+      '<div class="sheet-field"><label>Effective to (optional)</label>' +
+        '<input type="date" id="ruleEffectiveTo" value="' + esc(initial.effectiveTo) + '"></div>' +
+
+      '<div class="sheet-field"><label>Notes (optional)</label>' +
+        '<input type="text" id="ruleNotes" value="' + esc(initial.notes) + '"></div>';
+
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-submit" id="ruleSaveBtn">' + (isEdit ? 'Save changes' : 'Create rule') + '</button>';
+
+    openSheet({
+      title: isEdit ? 'Edit rule' : 'New commission rule',
+      subtitle: isEdit ? 'Some fields are locked' : 'Defines when commissions are paid',
+      bodyHTML,
+      actionsHTML,
+    });
+
+    // Toggle staff dropdown when "applies to" changes
+    $('ruleAppliesTo').onchange = () => {
+      $('ruleStaffField').style.display = $('ruleAppliesTo').value === 'specific_staff' ? 'block' : 'none';
+    };
+
+    $('ruleSaveBtn').onclick = async () => {
+      const company    = $('ruleCompany').value;
+      const appliesTo  = $('ruleAppliesTo').value;
+      const staffId    = appliesTo === 'specific_staff' ? $('ruleStaffId').value : '';
+      const threshold  = parseFloat($('ruleThreshold').value);
+      const percentage = parseFloat($('rulePercentage').value);
+      const effFrom    = $('ruleEffectiveFrom').value;
+      const effTo      = $('ruleEffectiveTo').value || null;
+      const notes      = $('ruleNotes').value;
+      const name       = $('ruleName').value || (company + ' ' + percentage + '% over $' + threshold);
+
+      // Validation
+      if (!company) return toast('Store required', 'error');
+      if (appliesTo === 'specific_staff' && !staffId) return toast('Pick a staff member', 'error');
+      if (!Number.isFinite(threshold) || threshold < 0) return toast('Valid threshold required', 'error');
+      if (!Number.isFinite(percentage) || percentage <= 0) return toast('Valid percentage required', 'error');
+      if (!isEdit && !effFrom) return toast('Effective from date required', 'error');
+
+      haptic();
+      const btn = $('ruleSaveBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+
+      try {
+        if (isEdit) {
+          await call('rpcUpdateCommissionRule', state.token, {
+            ruleId: existingRule.ruleId,
+            name, threshold, percentage,
+            effectiveTo: effTo,
+            notes,
+          });
+          toast('✓ Rule updated', 'success');
+        } else {
+          await call('rpcCreateCommissionRule', state.token, {
+            name, company, appliesTo, staffId,
+            threshold, percentage,
+            effectiveFrom: effFrom,
+            effectiveTo: effTo,
+            notes,
+          });
+          toast('✓ Rule created', 'success');
+        }
+        closeSheet();
+        loadRulesTab();
+      } catch (e) {
+        toast(e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = isEdit ? 'Save changes' : 'Create rule';
+      }
+    };
+  }
+
+  // ============================================================
+  //  ░░  TAB: SALES DASHBOARD  ░░
+  // ============================================================
+  async function loadSalesTab(force) {
+    const f = state.salesFilters;
+    if (!f.startDate) {
+      const today = todayMidnight();
+      f.startDate = isoDate(addDays(today, -6));
+      f.endDate = isoDate(today);
+    }
+    const view = $('view-sales');
+    if (!view.querySelector('#salesFilterCard')) {
+      view.innerHTML = renderSalesScaffold();
+      wireSalesFilters();
+    }
+    loadReconPanel(force);
+    const args = [state.token, f];
+    if (force || !cacheFresh('rpcGetSalesDashboard', args, TTL_SEMI)) {
+      $('salesResults').innerHTML = '<div class="loading"><div class="spinner"></div>Loading sales…</div>';
+    }
+    try {
+      const data = await cachedCall('rpcGetSalesDashboard', args, TTL_SEMI, { force });
+      renderSalesResults(data);
+    } catch (e) {
+      handleRpcError(e, $('salesResults'));
+    }
+  }
+
+  // ── Daily reconciliation panel (cash variance + cards vs Clover) ──
+  async function loadReconPanel(force) {
+    const el = $('reconPanel');
+    if (!el) return;
+    try {
+      const rows = await cachedCall('rpcGetReconciliation', [state.token], TTL_SEMI, { force });
+      renderReconPanel(rows || []);
+      // Self-heal: a close-time reconcile (fire-and-forget) can be lost if the
+      // app is closed before it finishes. If nothing is reconciled for today
+      // yet, retry once on dashboard open. Direct google.script.run so it does
+      // NOT clear the client RPC cache (call() would, hurting perf); the server
+      // call is idempotent and early-returns cheaply when nothing's pending.
+      const todayStr = isoDate(todayMidnight());
+      const hasToday = (rows || []).some(r => r.businessDate === todayStr);
+      if (!hasToday && !state.reconHealing) {
+        state.reconHealing = true;
+        google.script.run
+          .withSuccessHandler(r => { state.reconHealing = false; if (r && r.ready && !r.empty) loadReconPanel(true); })
+          .withFailureHandler(() => { state.reconHealing = false; })
+          .rpcReconcileDay(state.token, false);
+      }
+    } catch (e) {
+      el.innerHTML = '';  // non-fatal: just hide the panel
+    }
+  }
+
+  function renderReconPanel(rows) {
+    const el = $('reconPanel');
+    if (!el) return;
+    rows = rows || [];
+    const todayStr = isoDate(todayMidnight());
+    const todayRows = rows.filter(r => r.businessDate === todayStr);
+    const pastRows  = rows.filter(r => r.businessDate !== todayStr);
+
+    let html = '<div class="recon-card">' +
+      '<div class="recon-head">' +
+        '<div class="recon-title">Daily reconciliation</div>' +
+        '<button class="recon-btn" id="reconRunBtn">↻ Reconcile today</button>' +
+      '</div>';
+
+    // Today — detailed (credit/debit/total)
+    if (!todayRows.length) {
+      html += '<div class="recon-empty">Not reconciled yet today.</div>';
+    } else {
+      todayRows.forEach(r => { html += reconGroupDetail_(r); });
+    }
+
+    // History — per-shift, newest first
+    if (pastRows.length) {
+      html += '<div class="recon-hist-title">History</div>' +
+        '<div class="recon-table">' +
+        '<div class="recon-trow head"><div>When</div><div>Store</div>' +
+          '<div class="r">Cash Δ</div><div class="r">Card</div><div class="r">Clover</div><div class="r">Status</div></div>';
+      pastRows.forEach(r => {
+        const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
+        html += '<div class="recon-trow">' +
+          '<div>' + esc(r.businessDate) + '<br><small style="color:#9aa0ac">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></div>' +
+          '<div>' + esc(r.companies) + '</div>' +
+          '<div class="r">' + signedMoney_(r.cashVariance) + '</div>' +
+          '<div class="r">' + money(r.cashierCard) + '</div>' +
+          '<div class="r">' + money(r.cloverCard) + '</div>' +
+          '<div class="r"><span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+    $('reconRunBtn').onclick = async () => {
+      haptic();
+      const b = $('reconRunBtn'); b.disabled = true; b.textContent = 'Reconciling…';
+      try {
+        const res = (await call('rpcReconcileDay', state.token, true)) || {};
+        if (res.empty) toast('Nothing to reconcile yet', 'warning');
+        else toast((res.whatsapp && res.whatsapp.sent) ? '✓ Reconciled — WhatsApp sent' : '✓ Reconciled', 'success');
+        loadReconPanel(true);
+      } catch (e) { toast(e.message, 'error'); b.disabled = false; b.textContent = '↻ Reconcile today'; }
+    };
+  }
+
+  function fmtWin_(startIso, endIso) {
+    function t(iso) {
+      if (!iso) return '—';
+      return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+    return t(startIso) + '–' + t(endIso);
+  }
+
+  function reconGroupDetail_(r) {
+    const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
+    const cloverUnavailable = r.status === 'clover_unavailable';
+    const recorded = Math.round((r.cashCounted - r.cashVariance) * 100) / 100;   // till-recorded cash
+    const reported = Math.round(((r.cashSales || 0) + r.cashierCard) * 100) / 100; // total sales (excl float)
+
+    let h = '<div class="recon-group">' +
+      '<div class="recon-group-head"><span>' + esc(r.companies) +
+        ' <small style="color:#9aa0ac;font-weight:600">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></span>' +
+        '<span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>';
+
+    // Total sales — reported vs expected (cash side cancels, so Δ = card Δ)
+    if (cloverUnavailable) {
+      h += '<div class="recon-line"><span>Total sales</span><span>' + money(reported) + ' <small>reported</small></span></div>';
+    } else {
+      const expected = Math.round(((r.cashSales || 0) + r.cloverCard) * 100) / 100;
+      const tdiff = Math.round((reported - expected) * 100) / 100;
+      h += '<div class="recon-line"><span>Total sales</span><span>' + money(reported) + ' / ' + money(expected) +
+        ' <small class="' + (Math.abs(tdiff) < 0.005 ? 'recon-ok' : 'recon-diff') + '">(' + signedMoney_(tdiff) + ')</small></span></div>';
+    }
+
+    // Cash — recorded / counted (var)
+    h += '<div class="recon-line"><span>Cash (recorded / counted)</span><span>' + money(recorded) + ' / ' + money(r.cashCounted) +
+      ' <small>(var ' + signedMoney_(r.cashVariance) + ')</small></span></div>';
+
+    if (cloverUnavailable) {
+      h += '<div class="recon-line"><span>Cards (cashier)</span><span>' + money(r.cashierCard) +
+        ' <small>Clover unavailable</small></span></div>';
+    } else {
+      h += reconRow_('Credit', r.cloverCredit, r.cashierCredit) +
+           reconRow_('Debit',  r.cloverDebit,  r.cashierDebit) +
+           reconRow_('Total',  r.cloverCard,   r.cashierCard);
+    }
+    h += '</div>';
+    return h;
+  }
+
+  // Display "Clover / cashier"; Δ = cashier − clover (positive = cashier over).
+  function reconRow_(label, clover, cashier) {
+    const diff = Math.round((cashier - clover) * 100) / 100;
+    const ok = Math.abs(diff) < 0.005;
+    return '<div class="recon-line"><span>' + label + '</span>' +
+      '<span>' + money(clover) + ' / ' + money(cashier) +
+      ' <small class="' + (ok ? 'recon-ok' : 'recon-diff') + '">(' + signedMoney_(diff) + ')</small></span></div>';
+  }
+
+  function signedMoney_(n) {
+    n = Number(n) || 0;
+    return (n < 0 ? '-' : '+') + '$' + Math.abs(n).toFixed(2);
+  }
+
+  function renderSalesScaffold() {
+    const f = state.salesFilters;
+    return moreBack() + '<div id="reconPanel"></div>' + '<div class="filter-card" id="salesFilterCard">' +
+      '<div class="filter-row">' +
+        '<div class="filter-field"><label>Start date</label><input type="date" id="fStart" value="' + esc(f.startDate || '') + '"></div>' +
+        '<div class="filter-field"><label>End date</label><input type="date" id="fEnd" value="' + esc(f.endDate || '') + '"></div>' +
+      '</div>' +
+      '<div class="filter-row">' +
+        '<div class="filter-field"><label>Staff</label>' +
+          '<select id="fStaff"><option value="">All staff</option></select>' +
+        '</div>' +
+        '<div class="filter-field"><label>Company</label>' +
+          '<select id="fCompany"><option value="">Both</option><option value="cstore">Cstore</option><option value="vape">Vape</option></select>' +
+        '</div>' +
+      '</div>' +
+      '<div class="filter-row">' +
+        '<div class="filter-field" style="grid-column:1/-1">' +
+          '<button class="btn-primary" id="applyFilters" style="padding:9px;font-size:13px">Apply filters</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div id="salesResults"></div>';
+  }
+
+  async function wireSalesFilters() {
+    // Populate staff dropdown — uses rpcGetStaffDirectory which is open
+    // to any authenticated user (admin + manager + employee). Cached as
+    // reference data so repeated filter applies don't re-fetch it.
+    try {
+      const staff = await cachedCall('rpcGetStaffDirectory', [state.token], TTL_REF);
+      const sel = $('fStaff');
+      staff.forEach(s => {
+        const o = document.createElement('option');
+        o.value = s.staffId;
+        o.textContent = s.active ? s.name : s.name + ' (inactive)';
+        sel.appendChild(o);
+      });
+      sel.value = state.salesFilters.staffId || '';
+    } catch (e) { /* leave "All staff" if lookup fails */ }
+    $('fCompany').value = state.salesFilters.company || '';
+
+    $('applyFilters').onclick = () => {
+      state.salesFilters.startDate = $('fStart').value;
+      state.salesFilters.endDate = $('fEnd').value;
+      state.salesFilters.staffId = $('fStaff').value;
+      state.salesFilters.company = $('fCompany').value;
+      state.salesFilters.page = 1;
+      loadSalesTab();
+    };
+  }
+
+  function renderSalesResults(data) {
+    const t = data.totals || {};
+    let html = '<div class="sales-totals">' +
+      '<div class="sales-total-card"><div class="sales-total-label">Total</div><div class="sales-total-amount">' + money(t.total) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Cash</div><div class="sales-total-amount">' + money(t.cash) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Credit</div><div class="sales-total-amount">' + money(t.credit) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Debit</div><div class="sales-total-amount">' + money(t.debit) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Misc</div><div class="sales-total-amount">' + money(t.misc) + '</div></div>' +
+    '</div>';
+
+    html += '<div class="sales-table">';
+    html += '<div class="sales-row header">' +
+      '<div>Date</div><div>Company</div><div>Staff</div>' +
+      '<div class="right">Cash</div><div class="right">Credit</div><div class="right">Debit</div><div class="right">Misc</div>' +
+      '<div class="right">Total</div>' +
+    '</div>';
+
+    (data.rows || []).forEach(r => {
+      const miscTitle = r.miscNotes ? ' title="' + esc(r.miscNotes) + '"' : '';
+      html += '<div class="sales-row">' +
+        '<div>' + esc(r.dateStr || r.date || '—') + '</div>' +
+        '<div>' + esc((r.company || '').toUpperCase()) + '</div>' +
+        '<div>' + esc(r.staffName || '—') + '</div>' +
+        '<div class="right">' + money(r.cash) + '</div>' +
+        '<div class="right">' + money(r.credit) + '</div>' +
+        '<div class="right">' + money(r.debit) + '</div>' +
+        '<div class="right"' + miscTitle + '>' + money(r.misc) + '</div>' +
+        '<div class="right"><strong>' + money(r.total) + '</strong></div>' +
+      '</div>';
+    });
+
+    html += '<div class="pagination">' +
+      '<span>Page ' + (data.page || 1) + ' of ' + (data.pageCount || 1) + ' · ' + (data.rowCount || 0) + ' rows</span>' +
+      '<div>' +
+        '<button id="prevPage"' + ((data.page || 1) <= 1 ? ' disabled' : '') + '>‹ Prev</button> ' +
+        '<button id="nextPage"' + ((data.page || 1) >= (data.pageCount || 1) ? ' disabled' : '') + '>Next ›</button>' +
+      '</div>' +
+    '</div></div>';
+
+    $('salesResults').innerHTML = html;
+    const prev = $('prevPage'); if (prev) prev.onclick = () => { state.salesFilters.page = (state.salesFilters.page || 1) - 1; loadSalesTab(); };
+    const next = $('nextPage'); if (next) next.onclick = () => { state.salesFilters.page = (state.salesFilters.page || 1) + 1; loadSalesTab(); };
+  }
+
+  // ============================================================
+  //  ░░  TAB: HISTORY  ░░
+  // ============================================================
+  async function loadHistoryTab(force) {
+    const view = $('view-history');
+    if (force || !cacheFresh('rpcGetPaymentHistory', [state.token, 25], TTL_SEMI)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading history…</div>';
+    }
+    try {
+      const items = await cachedCall('rpcGetPaymentHistory', [state.token, 25], TTL_SEMI, { force });
+      renderHistoryTab(items);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderHistoryTab(items) {
+    const view = $('view-history');
+    if (!items || items.length === 0) {
+      view.innerHTML = moreBack() + '<div class="empty"><div class="empty-icon">📋</div>No payments yet</div>';
+      return;
+    }
+    let html = moreBack();
+    items.forEach((p, i) => {
+      const itemLines = (p.items || []).map(it =>
+        '<div>' + esc(it.itemType) + ' · ' + esc(it.refId) + ' · ' + money(it.amount) +
+        (it.notes ? ' <em style="color:#8a8e98">(' + esc(it.notes) + ')</em>' : '') + '</div>'
+      ).join('');
+      html += '<div class="history-item">' +
+        '<div class="history-head">' +
+          '<div>' +
+            '<div class="history-name">' + esc(p.staffName) + '</div>' +
+            '<div class="history-meta">' + esc(fmtDate(p.paidOn)) + ' · ' + esc(p.method || 'cash') + ' · ' + (p.items ? p.items.length : 0) + ' item' + ((p.items && p.items.length === 1) ? '' : 's') + '</div>' +
+          '</div>' +
+          '<div class="history-amount">' + money(p.totalAmount) + '</div>' +
+        '</div>' +
+        (itemLines ? '<button class="history-toggle" data-toggle="' + i + '">Show items</button>' : '') +
+        '<div class="history-items" id="histItems-' + i + '">' + itemLines + '</div>' +
+        (state.me.role === 'admin' || state.me.role === 'payroll_admin'
+          ? '<button class="history-toggle" data-undo="' + esc(p.paymentId) + '" style="color:#b91c1c">Undo this payment</button>'
+          : '') +
+      '</div>';
+    });
+    view.innerHTML = html;
+    view.querySelectorAll('[data-toggle]').forEach(btn => {
+      btn.onclick = () => {
+        const el = $('histItems-' + btn.dataset.toggle);
+        el.classList.toggle('show');
+        btn.textContent = el.classList.contains('show') ? 'Hide items' : 'Show items';
+      };
+    });
+    view.querySelectorAll('[data-undo]').forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm('Undo this payment? This cannot be redone automatically.')) return;
+        haptic();
+        btn.disabled = true;
+        try {
+          await call('rpcUndoPayment', state.token, btn.dataset.undo);
+          toast('Payment undone', 'warning');
+          loadHistoryTab();
+        } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+      };
+    });
+  }
+
+  // ============================================================
+  //  BOOT
+  // ============================================================
+  (async function boot() {
+    // Restore session if present
+    const savedToken = sessionStorage.getItem('storeops_token');
+    const savedMe = sessionStorage.getItem('storeops_me');
+    if (savedToken && savedMe) {
+      state.token = savedToken;
+      try {
+        state.me = JSON.parse(savedMe);
+        // One round-trip: validate token + fetch the landing shift state.
+        const boot = await call('rpcGetBootstrap', savedToken);
+        state.me = boot.me;
+        // Pre-seed the shift cache so the landing tab renders instantly
+        // (no second round-trip on boot).
+        if (boot.shift) {
+          rpcCache.set(_ckey('rpcGetMyShiftState', [savedToken]), { ts: Date.now(), data: boot.shift });
+        }
+        enterApp();
+        return;
+      } catch (e) {
+        sessionStorage.removeItem('storeops_token');
+        sessionStorage.removeItem('storeops_me');
+      }
+    }
+    loadLoginScreen();
+  })();
+</script>
+</body>
+</html>

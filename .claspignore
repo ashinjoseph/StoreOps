@@ -1,0 +1,16 @@
+# Default CLASP push rules — only the GAS/HTML files at the project root.
+**/**
+
+# Push these:
+!appsscript.json
+!*.js
+!*.gs
+!*.html
+
+# Explicitly exclude the local-only tooling + data files
+scripts/**
+*.xlsx
+*.csv
+*.md
+.git/**
+node_modules/**
