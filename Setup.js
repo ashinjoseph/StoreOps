@@ -25,7 +25,14 @@ const SHEETS = {
   ORDER_CATALOG:      'order_catalog',
   SHOPPING_LIST:      'shopping_list',
   PRODUCT_MASTER:     'product_master',
-  PM_IMPORT_STAGING:  '_pm_import_staging',
+  PM_IMPORT_STAGING:  '_pm_import_staging',          // legacy single-table staging (archived by v2 migration)
+  PRODUCT_BEER_DETAIL:       'product_beer_detail',
+  PRODUCT_CIGARETTES_DETAIL: 'product_cigarettes_detail',
+  PRODUCT_VAPE_DETAIL:       'product_vape_detail',
+  PM_BEER_STAGING:    '_pm_beer_staging',
+  PM_CIG_STAGING:     '_pm_cig_staging',
+  PM_VAPE_STAGING:    '_pm_vape_staging',
+  PM_OTHER_STAGING:   '_pm_other_staging',
 };
 
 const COLORS = {
@@ -62,29 +69,47 @@ function onOpen() {
     .addItem('🗓️ Install Weekly Auto-Trigger',      'menu_installCommissionTrigger')
     .addItem('🛑 Remove Weekly Auto-Trigger',        'menu_removeCommissionTrigger')
     .addSeparator()
-    .addItem('📦 Import Product Master (from staging)', 'menu_importProductMaster')
+    .addItem('📦 Import Beer (from staging)',           'menu_importBeer')
+    .addItem('📦 Import Cigarettes (from staging)',     'menu_importCigarettes')
+    .addItem('📦 Import Vape (from staging)',           'menu_importVape')
+    .addItem('📦 Import Grocery/Other (from staging)',  'menu_importOther')
+    .addItem('🧱 Migrate Product Master → v2 (per-type)', 'menu_migrateProductMasterV2')
+    .addItem('🛒 Add product_id to shopping_list', 'menu_migrateShoppingListProductId')
     .addSeparator()
     .addItem('⚠️ Reset Data (keeps schema)',         'resetDataTables')
     .addToUi();
 }
 
-// Thin wrapper around ProductMaster.importFromStaging for the spreadsheet menu.
-function menu_importProductMaster() {
+// ── Per-type Product Master imports ─────────────────────────
+// Each reads its own staging tab (_pm_<type>_staging) and upserts into
+// the core product_master + that type's detail sheet. SKU is the primary
+// key (beer keys on SKU + sell unit); SKU-less rows fall back to
+// brand + name dedup. Pricing is derived in code from the staged inputs.
+function menu_importBeer()       { menu_importProductType_('beer',       'Beer'); }
+function menu_importCigarettes() { menu_importProductType_('cigarettes', 'Cigarettes'); }
+function menu_importVape()       { menu_importProductType_('vape',       'Vape'); }
+function menu_importOther()      { menu_importProductType_('other',      'Grocery/Other'); }
+
+function menu_importProductType_(type, label) {
   const ui = SpreadsheetApp.getUi();
+  const stagingName = '_pm_' + (type === 'cigarettes' ? 'cig' : type) + '_staging';
   const resp = ui.alert(
-    'Import Product Master',
-    'Read all rows from "_pm_import_staging" and import to product_master?\n\n' +
-    'Existing rows (matched by SKU, else by brand + name) are skipped.\n' +
+    'Import ' + label,
+    'Read all rows from "' + stagingName + '" and import to product_master + the ' +
+    label.toLowerCase() + ' detail sheet?\n\n' +
+    'SKU is the primary key — matching rows are UPDATED in place, new rows are inserted.\n' +
+    'Pricing is recomputed from the staged inputs.\n\n' +
     'A summary is shown when done.',
     ui.ButtonSet.YES_NO);
   if (resp !== ui.Button.YES) return;
   try {
-    const result = ProductMaster.importFromStaging({ actorId: 'IMPORT' });
+    const result = ProductMaster.importFromStaging({ type: type, actorId: 'IMPORT' });
     const errs = result.errors || [];
     ui.alert(
-      'Import done',
-      'Imported: ' + result.imported + '\n' +
-      'Skipped (dup): ' + result.skipped + '\n' +
+      label + ' import done',
+      'Inserted: ' + result.imported + '\n' +
+      'Updated:  ' + (result.updated || 0) + '\n' +
+      'Skipped (dup, no SKU): ' + (result.skipped || 0) + '\n' +
       'Errors: ' + errs.length +
       (errs.length
         ? '\n\nFirst ' + Math.min(errs.length, 3) + ':\n  • ' +
@@ -94,6 +119,62 @@ function menu_importProductMaster() {
   } catch (e) {
     ui.alert('Import failed', e.message, ui.ButtonSet.OK);
   }
+}
+
+// ── Migration: flat product_master → thin core + per-type detail ──
+// Archives the old single-table product_master (and its legacy staging)
+// by RENAME (never deletes — audit trail), then builds the new core +
+// detail + per-type staging sheets. Re-import fresh from the master
+// spreadsheets afterwards (import-only; master sheets are source of truth).
+function menu_migrateProductMasterV2() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const resp = ui.alert(
+    'Migrate Product Master → v2',
+    'This will:\n' +
+    '  1. RENAME the existing "product_master" (and "_pm_import_staging") to\n' +
+    '     *__archived_<date> — nothing is deleted.\n' +
+    '  2. Create the new thin core "product_master" + per-type detail sheets\n' +
+    '     (beer / cigarettes / vape) + 4 per-type staging tabs.\n\n' +
+    'Then run scripts/import_product_master.py and import each type from its\n' +
+    'staging tab.\n\nContinue?',
+    ui.ButtonSet.YES_NO);
+  if (resp !== ui.Button.YES) return;
+
+  const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd');
+  const report = [];
+
+  [SHEETS.PRODUCT_MASTER, SHEETS.PM_IMPORT_STAGING].forEach(name => {
+    const sh = ss.getSheetByName(name);
+    if (!sh) { report.push(name + ': not present (skipped)'); return; }
+    const archiveName = name + '__archived_' + stamp;
+    if (ss.getSheetByName(archiveName)) { report.push(name + ': archive already exists (left as-is)'); return; }
+    try { sh.setName(archiveName); report.push(name + ' → ' + archiveName); }
+    catch (e) { report.push(name + ': RENAME FAILED — ' + e.message); }
+  });
+
+  const steps = [
+    setupProductMasterSheet_,
+    setupProductBeerDetailSheet_,
+    setupProductCigDetailSheet_,
+    setupProductVapeDetailSheet_,
+    setupBeerStagingSheet_,
+    setupCigStagingSheet_,
+    setupVapeStagingSheet_,
+    setupOtherStagingSheet_,
+  ];
+  steps.forEach(fn => { try { fn(); } catch (e) { report.push('setup ' + fn.name + ': FAILED — ' + e.message); } });
+
+  try { ProductMaster._bustCache(); } catch (e) { /* ignore */ }
+
+  ui.alert(
+    'Migration done',
+    report.join('\n') +
+    '\n\nNext:\n' +
+    '  1. python scripts/import_product_master.py\n' +
+    '  2. Paste each CSV into its _pm_*_staging tab at A3\n' +
+    '  3. Run the matching "Import …" menu item per type',
+    ui.ButtonSet.OK);
 }
 
 // Run the commission engine manually for the previous calendar week.
@@ -210,8 +291,14 @@ function firstTimeSetup() {
     ['suppliers',          setupSuppliersSheet_],
     ['order_catalog',      setupOrderCatalogSheet_],
     ['shopping_list',      setupShoppingListSheet_],
-    ['product_master',     setupProductMasterSheet_],
-    ['_pm_import_staging', setupPmImportStagingSheet_],
+    ['product_master',          setupProductMasterSheet_],
+    ['product_beer_detail',       setupProductBeerDetailSheet_],
+    ['product_cigarettes_detail', setupProductCigDetailSheet_],
+    ['product_vape_detail',       setupProductVapeDetailSheet_],
+    ['_pm_beer_staging',   setupBeerStagingSheet_],
+    ['_pm_cig_staging',    setupCigStagingSheet_],
+    ['_pm_vape_staging',   setupVapeStagingSheet_],
+    ['_pm_other_staging',  setupOtherStagingSheet_],
   ];
 
   const succeeded = [];
@@ -751,85 +838,137 @@ function setupOrderCatalogSheet_() {
   sh.setFrozenRows(2);
 }
 
+// Thin CORE catalog — identity + RESOLVED per-unit cost/sell/margin. The
+// type-specific INPUTS that derive those numbers live in the per-type
+// detail sheets (product_<type>_detail). See ProductTypes.js.
 function setupProductMasterSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (ss.getSheetByName(SHEETS.PRODUCT_MASTER)) return;
   const sh = ss.insertSheet(SHEETS.PRODUCT_MASTER);
 
-  writeHeader_(sh, '📦  Product Master', 22);
+  writeHeader_(sh, '📦  Product Master (core)', 23);
   writeColumnHeaders_(sh, [
     'product_id', 'sku', 'barcode', 'product_name', 'brand',
-    'category', 'subcategory', 'pack_size', 'unit',
+    'category', 'subcategory', 'pack_size', 'unit', 'supplier',
     'cost_price', 'sell_price', 'sell_price_credit', 'min_sell_price',
     'margin_amount', 'margin_pct',
-    'supplier', 'last_invoice_no',
-    'source_file', 'active', 'notes',
-    'created_by', 'created_at'
+    'active', 'notes', 'source_file',
+    'created_by', 'created_at', 'updated_by', 'updated_at'
   ]);
 
   applyEnumValidation_(sh, 6, PRODUCT_CATEGORIES);   // category
-  applyBoolValidation_(sh, 19);                       // active
+  applyBoolValidation_(sh, 17);                       // active
 
-  // Money formats on cost, sell, sell_credit, min_sell, margin_amount
-  for (const col of [10, 11, 12, 13, 14]) {
+  // Money formats: cost, sell, sell_credit, min_sell, margin_amount
+  for (const col of [11, 12, 13, 14, 15]) {
     sh.getRange(3, col, 5000, 1).setNumberFormat('$#,##0.00');
   }
-  // Margin % stored as 0..1
-  sh.getRange(3, 15, 5000, 1).setNumberFormat('0.0%');
-  // created_at timestamp
-  sh.getRange(3, 22, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
-  // SKU + barcode as text so leading zeros survive
-  sh.getRange(3, 2, 5000, 2).setNumberFormat('@');
+  sh.getRange(3, 16, 5000, 1).setNumberFormat('0.0%');                 // margin_pct (0..1)
+  sh.getRange(3, 21, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');  // created_at
+  sh.getRange(3, 23, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');  // updated_at
+  sh.getRange(3, 2, 5000, 2).setNumberFormat('@');                     // SKU + barcode as text
 
   setColWidths_(sh, [
     180,  90, 110, 280, 110,
-    100, 130, 90,  70,
+    100, 130, 90,  90,  140,
     90, 90, 90, 90,
     90, 70,
-    140, 110,
-    180, 60, 240,
-    100, 150
+    60, 240, 180,
+    100, 150, 100, 150
   ]);
   sh.setFrozenRows(2);
 }
 
-// Hidden staging tab. Admin un-hides, pastes CSV from the Python script
-// at A3, runs the menu import, then re-hides. Same column layout as the
-// live tab; the five derived/system fields (product_id, margin_amount,
-// margin_pct, created_by, created_at) are filled in by the import RPC.
-function setupPmImportStagingSheet_() {
+// ── Per-type detail sheets (1:1 with core by product_id) ────
+// Generic builder driven by ProductTypes.js so the column lists never
+// drift. Money / percent / timestamp formats inferred from the schema.
+const _PM_MONEY_RE = /(price|cost|deposit)/i;
+
+function setupProductDetailSheet_(category, sheetName, title) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (ss.getSheetByName(SHEETS.PM_IMPORT_STAGING)) return;
-  const sh = ss.insertSheet(SHEETS.PM_IMPORT_STAGING);
+  if (ss.getSheetByName(sheetName)) return;
+  const sh = ss.insertSheet(sheetName);
 
-  writeHeader_(sh, '📦  Product Master — Import Staging (paste CSV here at A3)', 22);
-  writeColumnHeaders_(sh, [
-    '(product_id — filled by import)', 'sku', 'barcode', 'product_name', 'brand',
-    'category', 'subcategory', 'pack_size', 'unit',
-    'cost_price', 'sell_price', 'sell_price_credit', 'min_sell_price',
-    '(margin_amount — computed)', '(margin_pct — computed)',
-    'supplier', 'last_invoice_no',
-    'source_file', '(active — defaults TRUE)', 'notes',
-    '(created_by — IMPORT)', '(created_at — now)'
-  ]);
+  const cols = ProductTypes.detailColumns(category);
+  const schema = ProductTypes.schemaFor(category).detailFields;
+  const typeOf = {};
+  schema.forEach(f => { typeOf[f.key] = f.type; });
 
-  applyEnumValidation_(sh, 6, PRODUCT_CATEGORIES);
-  for (const col of [10, 11, 12, 13]) {
-    sh.getRange(3, col, 10000, 1).setNumberFormat('$#,##0.00');
-  }
-  sh.getRange(3, 2, 10000, 2).setNumberFormat('@');  // SKU + barcode as text
+  writeHeader_(sh, title, cols.length);
+  writeColumnHeaders_(sh, cols);
 
-  setColWidths_(sh, [
-    180,  90, 110, 280, 110,
-    100, 130, 90,  70,
-    90, 90, 90, 90,
-    90, 70,
-    140, 110,
-    180, 60, 240,
-    100, 150
-  ]);
+  cols.forEach((c, idx) => {
+    const col = idx + 1;
+    if (c === 'created_at' || c === 'updated_at') {
+      sh.getRange(3, col, 10000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+    } else if (c === 'sku' || c === 'product_id') {
+      sh.getRange(3, col, 10000, 1).setNumberFormat('@');
+    } else if (typeOf[c] === 'percent') {
+      sh.getRange(3, col, 10000, 1).setNumberFormat('0.0%');
+    } else if (typeOf[c] === 'number' && _PM_MONEY_RE.test(c)) {
+      sh.getRange(3, col, 10000, 1).setNumberFormat('$#,##0.00');
+    }
+  });
+
+  sh.setFrozenRows(2);
+}
+
+function setupProductBeerDetailSheet_() {
+  setupProductDetailSheet_('beer', SHEETS.PRODUCT_BEER_DETAIL, '🍺  Beer detail (LCBO case pricing)');
+}
+function setupProductCigDetailSheet_() {
+  setupProductDetailSheet_('cigarettes', SHEETS.PRODUCT_CIGARETTES_DETAIL, '🚬  Cigarettes detail (carton → pack pricing)');
+}
+function setupProductVapeDetailSheet_() {
+  setupProductDetailSheet_('vape', SHEETS.PRODUCT_VAPE_DETAIL, '💨  Vape detail (attributes + prices)');
+}
+
+// ── Per-type import staging tabs ────────────────────────────
+// Hidden tab per type. Admin un-hides, pastes the matching CSV from the
+// Python pre-processor at A3, runs the matching "Import …" menu item,
+// then re-hides. Column order comes from ProductMaster.stagingLayout(type)
+// so the sheet headers and the CSV always agree.
+function setupTypeStagingSheet_(type, sheetName, title) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName(sheetName)) return;
+  const sh = ss.insertSheet(sheetName);
+
+  const layout = ProductMaster.stagingLayout(type);   // snake_case headers, canonical order
+  writeHeader_(sh, title, layout.length);
+  writeColumnHeaders_(sh, layout);
+
+  layout.forEach((c, idx) => {
+    const col = idx + 1;
+    if (c === 'category') {
+      applyEnumValidation_(sh, col, PRODUCT_CATEGORIES);
+    } else if (c === 'sku' || c === 'barcode') {
+      sh.getRange(3, col, 10000, 1).setNumberFormat('@');
+    } else if (/_pct$/.test(c) || c === 'target_margin_pct') {
+      sh.getRange(3, col, 10000, 1).setNumberFormat('0.0%');
+    } else if (_PM_MONEY_RE.test(c)) {
+      sh.getRange(3, col, 10000, 1).setNumberFormat('$#,##0.00');
+    }
+  });
+
   sh.setFrozenRows(2);
   try { sh.hideSheet(); } catch (e) { /* ignore — admin can hide manually */ }
+}
+
+function setupBeerStagingSheet_() {
+  setupTypeStagingSheet_('beer', SHEETS.PM_BEER_STAGING,
+    '🍺  Beer — Import Staging (paste CSV at A3; SKU + sell unit is the key)');
+}
+function setupCigStagingSheet_() {
+  setupTypeStagingSheet_('cigarettes', SHEETS.PM_CIG_STAGING,
+    '🚬  Cigarettes — Import Staging (paste CSV at A3; SKU is the key)');
+}
+function setupVapeStagingSheet_() {
+  setupTypeStagingSheet_('vape', SHEETS.PM_VAPE_STAGING,
+    '💨  Vape — Import Staging (paste CSV at A3; SKU is the key)');
+}
+function setupOtherStagingSheet_() {
+  setupTypeStagingSheet_('other', SHEETS.PM_OTHER_STAGING,
+    '🧺  Grocery/Other — Import Staging (paste CSV at A3; cost/sell entered directly)');
 }
 
 function setupShoppingListSheet_() {
@@ -837,21 +976,38 @@ function setupShoppingListSheet_() {
   if (ss.getSheetByName(SHEETS.SHOPPING_LIST)) return;
   const sh = ss.insertSheet(SHEETS.SHOPPING_LIST);
 
-  writeHeader_(sh, '🛒  Shopping List', 14);
+  writeHeader_(sh, '🛒  Shopping List', 15);
   writeColumnHeaders_(sh, [
     'entry_id', 'item_id', 'item_name', 'category', 'quantity', 'unit',
     'unit_price', 'note', 'status', 'added_by', 'added_at',
-    'batch_id', 'generated_by', 'generated_at'
+    'batch_id', 'generated_by', 'generated_at', 'product_id'
   ]);
-  applyEnumValidation_(sh, 4, ORDER_CATEGORIES);
+  // category now holds the product-master category (lowercase enum).
+  applyEnumValidation_(sh, 4, PRODUCT_CATEGORIES);
   applyEnumValidation_(sh, 9, SHOPPING_STATUSES);
   sh.getRange(3, 5, 5000, 1).setNumberFormat('0.##');         // quantity
   sh.getRange(3, 7, 5000, 1).setNumberFormat('$#,##0.00');   // unit_price
   sh.getRange(3, 11, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
   sh.getRange(3, 14, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
 
-  setColWidths_(sh, [90, 90, 200, 110, 80, 80, 100, 220, 90, 100, 150, 100, 110, 150]);
+  setColWidths_(sh, [90, 90, 200, 110, 80, 80, 100, 220, 90, 100, 150, 100, 110, 150, 180]);
   sh.setFrozenRows(2);
+}
+
+// One-shot migration: append the product_id column (col 15) to an EXISTING
+// shopping_list tab. Idempotent — no-op once the header is present. Fresh
+// installs already include it via setupShoppingListSheet_.
+function menu_migrateShoppingListProductId() {
+  const ui = SpreadsheetApp.getUi();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.SHOPPING_LIST);
+  if (!sh) { ui.alert('shopping_list not found — run First-time Setup first.'); return; }
+  const headers = sh.getRange(2, 1, 1, Math.max(sh.getLastColumn(), 15)).getValues()[0];
+  if (headers.indexOf('product_id') !== -1) { ui.alert('Already migrated — product_id column present.'); return; }
+  sh.getRange(2, 15).setValue('product_id')
+    .setFontWeight('bold').setFontColor('#FFFFFF')
+    .setBackground(COLORS.SUBHEADER).setHorizontalAlignment('center');
+  sh.setColumnWidth(15, 180);
+  ui.alert('Added product_id at column 15. Existing rows are unchanged.');
 }
 
 // ============================================================

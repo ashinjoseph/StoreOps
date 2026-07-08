@@ -1,40 +1,47 @@
 // ============================================================
-//  ProductMaster.gs — master catalog of products
+//  ProductMaster.gs — thin CORE catalog of products
 // ============================================================
-//  Multi-category, flat schema. Vape-specific traits (puff count,
-//  flavor, e-liquid mL, nicotine strength) are encoded INTO the
-//  product_name itself rather than living in sparse columns — keeps
-//  the read path category-agnostic.
+//  The core row holds identity + the RESOLVED per-unit numbers that
+//  every consumer reads (cost_price, sell_price, sell_price_credit,
+//  margin_amount, margin_pct). Those resolved numbers are DERIVED in
+//  code from per-type inputs that live in a separate detail sheet —
+//  one per type, keyed 1:1 by product_id. See ProductTypes.js for the
+//  registry (detail columns, derivePricing, validate, field schema).
 //
-//  margin_amount + margin_pct are derived from cost_price/sell_price
-//  and recomputed on every write (never trust the stored values
-//  across writes — they exist so spreadsheet users can sort).
+//    beer       → product_beer_detail        (LCBO case price, deposit, …)
+//    cigarettes → product_cigarettes_detail  (cost/carton, packs/carton, …)
+//    vape       → product_vape_detail         (puffs, mL, nicotine, flavor, …)
+//    grocery / other → CORE only (plain cost/sell/margin, no detail row)
 //
-//  min_sell_price = "discount floor" — the minimum acceptable sell
-//  price when any discount is applied. UI flags products whose
-//  current sell_price falls below it.
+//  Lists + search read the CORE only (never join) so they stay fast;
+//  the detail is hydrated only on single-record gets (getWithDetail).
+//
+//  margin_amount + margin_pct are recomputed on every write — never
+//  trust the stored values across writes; they exist so spreadsheet
+//  users can sort. min_sell_price = discount floor; the UI flags any
+//  product whose sell_price falls below it.
 // ============================================================
 
 const ProductMaster = (() => {
 
   const COL = {
     product_id: 1, sku: 2, barcode: 3, product_name: 4, brand: 5,
-    category: 6, subcategory: 7, pack_size: 8, unit: 9,
-    cost_price: 10, sell_price: 11, sell_price_credit: 12, min_sell_price: 13,
-    margin_amount: 14, margin_pct: 15,
-    supplier: 16, last_invoice_no: 17,
-    source_file: 18, active: 19, notes: 20,
-    created_by: 21, created_at: 22
+    category: 6, subcategory: 7, pack_size: 8, unit: 9, supplier: 10,
+    cost_price: 11, sell_price: 12, sell_price_credit: 13, min_sell_price: 14,
+    margin_amount: 15, margin_pct: 16,
+    active: 17, notes: 18, source_file: 19,
+    created_by: 20, created_at: 21, updated_by: 22, updated_at: 23,
   };
-  const NUM_COLS = 22;
+  const NUM_COLS = 23;
   const DATA_START_ROW = 3;
 
   // ── Cache strategy ────────────────────────────────────────
   // GAS CacheService caps each entry at ~100 KB. Caching the full record
   // list as one blob blows up around ~600-800 products (~250 bytes/row).
   // We chunk into N entries of CHUNK_SIZE records (~50 KB at 200 rows) plus
-  // a manifest key holding the chunk count + a fingerprint. One round-trip
-  // for reads (getAll), one for writes (putAll), one for busts (removeAll).
+  // a manifest key holding the chunk count. One round-trip for reads
+  // (getAll), one for writes (putAll), one for busts (removeAll). Caches
+  // the CORE only — detail rows are read on demand, never cached.
   const CACHE_NS         = 'storeops:product_master:';
   const CACHE_MANIFEST   = CACHE_NS + 'manifest';
   const CACHE_LEGACY_KEY = 'storeops:product_master';   // pre-chunking single-blob key (cleanup)
@@ -61,9 +68,6 @@ const ProductMaster = (() => {
     } catch (e) { /* best-effort */ }
   }
 
-  // Read all chunks via a single getAll. Returns null on any miss or
-  // inconsistency (e.g. manifest says 6 chunks but chunk 4 has expired
-  // independently — treat as cold and re-read the sheet).
   function readCache_() {
     try {
       const cache = CacheService.getScriptCache();
@@ -87,8 +91,6 @@ const ProductMaster = (() => {
     }
   }
 
-  // Chunked write. Wrapped in try/catch — on any failure we bust so the
-  // next read just re-hits the sheet (correctness > cache hit).
   function writeCache_(records) {
     try {
       const cache = CacheService.getScriptCache();
@@ -107,18 +109,13 @@ const ProductMaster = (() => {
 
   function reviveRecord_(r) {
     if (r.createdAt && !(r.createdAt instanceof Date)) r.createdAt = new Date(r.createdAt);
+    if (r.updatedAt && !(r.updatedAt instanceof Date)) r.updatedAt = new Date(r.updatedAt);
     return r;
   }
 
   function sheet_() {
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.PRODUCT_MASTER);
     if (!sh) throw new Error('product_master sheet not found — run First-time Setup');
-    return sh;
-  }
-
-  function stagingSheet_() {
-    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.PM_IMPORT_STAGING);
-    if (!sh) throw new Error('_pm_import_staging sheet not found — run First-time Setup');
     return sh;
   }
 
@@ -133,19 +130,20 @@ const ProductMaster = (() => {
       subcategory:     (row[COL.subcategory - 1] || '').toString().trim(),
       packSize:        (row[COL.pack_size - 1] || '').toString().trim(),
       unit:            (row[COL.unit - 1] || '').toString().trim(),
+      supplier:        (row[COL.supplier - 1] || '').toString().trim(),
       costPrice:       Number(row[COL.cost_price - 1]) || 0,
       sellPrice:       Number(row[COL.sell_price - 1]) || 0,
       sellPriceCredit: Number(row[COL.sell_price_credit - 1]) || 0,
       minSellPrice:    Number(row[COL.min_sell_price - 1]) || 0,
       marginAmount:    Number(row[COL.margin_amount - 1]) || 0,
       marginPct:       Number(row[COL.margin_pct - 1]) || 0,
-      supplier:        (row[COL.supplier - 1] || '').toString().trim(),
-      lastInvoiceNo:   (row[COL.last_invoice_no - 1] || '').toString().trim(),
-      sourceFile:      (row[COL.source_file - 1] || '').toString().trim(),
       active:          row[COL.active - 1] === true,
       notes:           (row[COL.notes - 1] || '').toString(),
+      sourceFile:      (row[COL.source_file - 1] || '').toString().trim(),
       createdBy:       (row[COL.created_by - 1] || '').toString().trim(),
       createdAt:       row[COL.created_at - 1] instanceof Date ? row[COL.created_at - 1] : null,
+      updatedBy:       (row[COL.updated_by - 1] || '').toString().trim(),
+      updatedAt:       row[COL.updated_at - 1] instanceof Date ? row[COL.updated_at - 1] : null,
       _rowIndex:       rowIndex,
     };
   }
@@ -161,7 +159,6 @@ const ProductMaster = (() => {
 
   function normalizeCategory_(s) {
     const c = (s || '').toString().trim().toLowerCase();
-    // Tolerate a couple of stragglers from the import.
     const aliased = c === 'vapes' ? 'vape' : c;
     if (VALID_CATEGORIES.indexOf(aliased) === -1) {
       throw new Error('invalid category: "' + s + '" (expected one of: ' + VALID_CATEGORIES.join(', ') + ')');
@@ -169,6 +166,82 @@ const ProductMaster = (() => {
     return aliased;
   }
 
+  // ── Detail sheets (per-type, 1:1 by product_id) ───────────
+  function detailSheet_(category) {
+    const name = ProductTypes.detailSheet(category);
+    if (!name) return null;
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+    if (!sh) throw new Error(name + ' sheet not found — run setup / migration');
+    return sh;
+  }
+
+  // Read the detail row for a product as a snake_case object, coercing
+  // numeric columns. Returns {} when the type has no detail sheet or no row.
+  function readDetail_(productId, category) {
+    if (!productId || !ProductTypes.has(category)) return {};
+    const sh = detailSheet_(category);
+    const cols = ProductTypes.detailColumns(category);
+    const last = sh.getLastRow();
+    if (last < DATA_START_ROW) return {};
+    const numeric = new Set(ProductTypes.numericColumns(category));
+    const values = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, cols.length).getValues();
+    for (let i = 0; i < values.length; i++) {
+      const row = values[i];
+      if ((row[0] || '').toString().trim() !== productId) continue;   // product_id is col 1
+      const obj = {};
+      cols.forEach((c, idx) => {
+        const v = row[idx];
+        if (numeric.has(c)) obj[c] = Number(v) || 0;
+        else if (c === 'created_at' || c === 'updated_at') obj[c] = (v instanceof Date) ? v : null;
+        else obj[c] = (v == null ? '' : v.toString());
+      });
+      return obj;
+    }
+    return {};
+  }
+
+  function buildDetailRow_(productId, sku, category, detail, createdAt) {
+    const cols = ProductTypes.detailColumns(category);
+    const numeric = new Set(ProductTypes.numericColumns(category));
+    const now = new Date();
+    return cols.map(c => {
+      if (c === 'product_id') return productId;
+      if (c === 'sku')        return (sku || '').toString().trim();
+      if (c === 'created_at') return createdAt || now;
+      if (c === 'updated_at') return now;
+      const v = detail ? detail[c] : '';
+      if (numeric.has(c)) return Number(v) || 0;
+      return (v == null ? '' : v.toString());
+    });
+  }
+
+  // Upsert the detail row keyed by product_id. Preserves created_at on update.
+  function writeDetail_(productId, sku, category, detail) {
+    if (!ProductTypes.has(category)) return;
+    const sh = detailSheet_(category);
+    const cols = ProductTypes.detailColumns(category);
+    const last = sh.getLastRow();
+    let foundRow = -1;
+    let createdAt = null;
+    if (last >= DATA_START_ROW) {
+      const idCol = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, 1).getValues();
+      for (let i = 0; i < idCol.length; i++) {
+        if ((idCol[i][0] || '').toString().trim() === productId) { foundRow = DATA_START_ROW + i; break; }
+      }
+      if (foundRow > 0) {
+        const caIdx = cols.indexOf('created_at');
+        if (caIdx >= 0) {
+          const ca = sh.getRange(foundRow, caIdx + 1).getValue();
+          createdAt = ca instanceof Date ? ca : null;
+        }
+      }
+    }
+    const rowValues = buildDetailRow_(productId, sku, category, detail, createdAt);
+    const targetRow = foundRow > 0 ? foundRow : (sh.getLastRow() + 1);
+    sh.getRange(targetRow, 1, 1, cols.length).setValues([rowValues]);
+  }
+
+  // ── Reads ─────────────────────────────────────────────────
   function getAll_(includeInactive) {
     let records = readCache_();
     if (records === null) {
@@ -187,6 +260,15 @@ const ProductMaster = (() => {
   function getById_(productId) {
     if (!productId) return null;
     return getAll_(true).find(r => r.productId === productId) || null;
+  }
+
+  // Core record + hydrated `.detail` (snake_case) for registry types,
+  // else `.detail = null`. Use for single-record gets, NOT bulk loops.
+  function getWithDetail_(productId) {
+    const r = getById_(productId);
+    if (!r) return null;
+    r.detail = ProductTypes.has(r.category) ? readDetail_(productId, r.category) : null;
+    return r;
   }
 
   function getBySku_(sku) {
@@ -215,9 +297,17 @@ const ProductMaster = (() => {
     return matched.slice(0, 200);
   }
 
+  // Dedup key on the CORE row. Beer keys on sku + unit (same SKU is
+  // listed once per sell unit); everything else on sku, then brand+name.
   function findDuplicate_(input, includeInactive) {
-    const all = getAll_(includeInactive !== false);   // search across all by default
+    const all = getAll_(includeInactive !== false);
+    const category = (input.category || '').toString().trim().toLowerCase();
     const sku = (input.sku || '').toString().trim().toLowerCase();
+    const keyFields = ProductTypes.keyFields(category);
+    if (sku && keyFields.indexOf('unit') >= 0) {
+      const unit = (input.unit || '').toString().trim().toLowerCase();
+      return all.find(r => r.sku && r.sku.toLowerCase() === sku && (r.unit || '').toLowerCase() === unit) || null;
+    }
     if (sku) return all.find(r => r.sku && r.sku.toLowerCase() === sku) || null;
     const brand = (input.brand || '').toString().trim().toLowerCase();
     const name = (input.productName || '').toString().trim().toLowerCase();
@@ -225,19 +315,36 @@ const ProductMaster = (() => {
     return all.find(r => r.brand.toLowerCase() === brand && r.productName.toLowerCase() === name) || null;
   }
 
+  // Resolve cost/sell/credit/margin for a category from its detail inputs
+  // (registry types) or directly from the core input (grocery / other).
+  function resolvePricing_(category, input, detail) {
+    if (ProductTypes.has(category)) {
+      const errs = ProductTypes.validate(category, detail);
+      if (errs.length) throw new Error('invalid ' + category + ' detail: ' + errs.join('; '));
+      return ProductTypes.derivePricing(category, detail);
+    }
+    const cost = Util.roundMoney(Number(input.costPrice) || 0);
+    const sell = Util.roundMoney(Number(input.sellPrice) || 0);
+    const m = computeMargin_(cost, sell);
+    return {
+      costPrice: cost, sellPrice: sell,
+      sellPriceCredit: Util.roundMoney(Number(input.sellPriceCredit) || 0),
+      marginAmount: m.marginAmount, marginPct: m.marginPct,
+    };
+  }
+
   /**
-   * Append a new product row.
-   * Dedup: by SKU (case-insensitive) if SKU present, else by brand+name.
-   * On dedup match (active OR inactive), returns the existing record and
-   * audits product.dedup_hit / product.dedup_hit_inactive — does NOT append.
+   * Append a new product (core row + detail row for registry types).
    *
    * @param input {
    *   sku?, barcode?, productName (req), brand?, category (req),
-   *   subcategory?, packSize?, unit?,
-   *   costPrice?, sellPrice?, sellPriceCredit?, minSellPrice?,
-   *   supplier?, lastInvoiceNo?, notes?,
+   *   subcategory?, packSize?, unit?, supplier?, minSellPrice?, notes?,
+   *   costPrice?, sellPrice?, sellPriceCredit?,   // grocery/other only
+   *   detail?: { ...snake_case type inputs },     // registry types
    *   sourceFile?, actorId (req)
    * }
+   * Dedup: beer by sku+unit, else sku, else brand+name. On a dedup match
+   * (active OR inactive) returns the existing record and audits — no append.
    */
   function create_(input) {
     if (!input.productName || !input.productName.toString().trim()) {
@@ -245,9 +352,16 @@ const ProductMaster = (() => {
     }
     if (!input.actorId) throw new Error('actorId required');
     const category = normalizeCategory_(input.category);
+    const detail = input.detail || {};
+
+    // core.unit can mirror a detail field (beer → sell_unit)
+    const unitFrom = ProductTypes.unitFrom(category);
+    let unit = (input.unit || '').toString().trim();
+    if (unitFrom && detail[unitFrom]) unit = detail[unitFrom].toString().trim();
+    if (!unit) unit = 'each';
 
     bustCache_();   // ensure dedup read is fresh
-    const existing = findDuplicate_(input, true);
+    const existing = findDuplicate_(Object.assign({}, input, { category, unit }), true);
     if (existing) {
       AuditLog.write({
         actorId: input.actorId,
@@ -255,7 +369,7 @@ const ProductMaster = (() => {
         targetType: 'product',
         targetId: existing.productId,
         after: {
-          dedupKey: input.sku ? 'sku' : 'brand+name',
+          dedupKey: input.sku ? (unitFrom ? 'sku+unit' : 'sku') : 'brand+name',
           attemptedName: input.productName,
           attemptedSku: input.sku || '',
         },
@@ -263,40 +377,41 @@ const ProductMaster = (() => {
       return existing;
     }
 
+    const resolved = resolvePricing_(category, input, detail);
     const productId = Util.newId('PM');
-    const costPrice = Util.roundMoney(Number(input.costPrice) || 0);
-    const sellPrice = Util.roundMoney(Number(input.sellPrice) || 0);
-    const sellPriceCredit = Util.roundMoney(Number(input.sellPriceCredit) || 0);
+    const sku = (input.sku || '').toString().trim();
     const minSellPrice = Util.roundMoney(Number(input.minSellPrice) || 0);
-    const margin = computeMargin_(costPrice, sellPrice);
     const now = new Date();
 
     const sh = sheet_();
     const row = sh.getLastRow() + 1;
     sh.getRange(row, 1, 1, NUM_COLS).setValues([[
       productId,
-      (input.sku || '').toString().trim(),
+      sku,
       (input.barcode || '').toString().trim(),
       input.productName.toString().trim(),
       (input.brand || '').toString().trim(),
       category,
       (input.subcategory || '').toString().trim(),
       (input.packSize || '').toString().trim(),
-      (input.unit || 'each').toString().trim(),
-      costPrice,
-      sellPrice,
-      sellPriceCredit,
-      minSellPrice,
-      margin.marginAmount,
-      margin.marginPct,
+      unit,
       (input.supplier || '').toString().trim(),
-      (input.lastInvoiceNo || '').toString().trim(),
-      (input.sourceFile || 'manual').toString().trim(),
+      resolved.costPrice,
+      resolved.sellPrice,
+      resolved.sellPriceCredit,
+      minSellPrice,
+      resolved.marginAmount,
+      resolved.marginPct,
       true,
       (input.notes || '').toString(),
+      (input.sourceFile || 'manual').toString().trim(),
+      input.actorId,
+      now,
       input.actorId,
       now,
     ]]);
+
+    if (ProductTypes.has(category)) writeDetail_(productId, sku, category, detail);
 
     AuditLog.write({
       actorId: input.actorId,
@@ -304,13 +419,12 @@ const ProductMaster = (() => {
       targetType: 'product',
       targetId: productId,
       after: {
-        sku: input.sku || '',
-        productName: input.productName,
-        brand: input.brand || '',
-        category,
-        costPrice, sellPrice, minSellPrice,
-        marginAmount: margin.marginAmount,
-        marginPct: margin.marginPct,
+        sku, productName: input.productName, brand: input.brand || '',
+        category, unit,
+        costPrice: resolved.costPrice, sellPrice: resolved.sellPrice,
+        sellPriceCredit: resolved.sellPriceCredit, minSellPrice,
+        marginAmount: resolved.marginAmount, marginPct: resolved.marginPct,
+        detail: ProductTypes.has(category) ? detail : null,
         sourceFile: input.sourceFile || 'manual',
       },
     });
@@ -319,13 +433,14 @@ const ProductMaster = (() => {
     return getById_(productId);
   }
 
-  // Immutable fields silently dropped from patch
+  // Immutable fields silently dropped from a patch.
   const IMMUTABLE_FIELDS = new Set([
     'productId', 'sku', 'barcode', 'sourceFile', 'createdBy', 'createdAt',
+    'updatedBy', 'updatedAt',
     'marginAmount', 'marginPct',   // always recomputed; can't be patched directly
   ]);
 
-  // patch keys → COL keys for write-back
+  // Editable CORE scalar fields → column. Detail inputs go through patch.detail.
   const PATCH_TO_COL = {
     productName:     COL.product_name,
     brand:           COL.brand,
@@ -333,21 +448,42 @@ const ProductMaster = (() => {
     subcategory:     COL.subcategory,
     packSize:        COL.pack_size,
     unit:            COL.unit,
-    costPrice:       COL.cost_price,
-    sellPrice:       COL.sell_price,
+    supplier:        COL.supplier,
+    costPrice:       COL.cost_price,        // grocery/other; overwritten by derive for registry types
+    sellPrice:       COL.sell_price,        // grocery/other; overwritten by derive for registry types
     sellPriceCredit: COL.sell_price_credit,
     minSellPrice:    COL.min_sell_price,
-    supplier:        COL.supplier,
-    lastInvoiceNo:   COL.last_invoice_no,
     notes:           COL.notes,
     active:          COL.active,
   };
 
+  const MONEY_FIELDS = new Set(['costPrice', 'sellPrice', 'sellPriceCredit', 'minSellPrice']);
+
+  // Write resolved cost/sell/credit/margin onto the core row, recording
+  // before/after for any value that actually changed.
+  function applyResolved_(sh, r, existing, resolved, before, after) {
+    const fields = [
+      ['costPrice',       COL.cost_price],
+      ['sellPrice',       COL.sell_price],
+      ['sellPriceCredit', COL.sell_price_credit],
+      ['marginAmount',    COL.margin_amount],
+      ['marginPct',       COL.margin_pct],
+    ];
+    fields.forEach(([k, col]) => {
+      const nv = resolved[k];
+      if (existing[k] !== nv) {
+        sh.getRange(r, col).setValue(nv);
+        if (!(k in after)) { before[k] = existing[k]; after[k] = nv; }
+      }
+    });
+  }
+
   /**
-   * Partial update. Only fields in PATCH_TO_COL can be set. Money values
-   * are rounded via Util.roundMoney. If cost_price OR sell_price changed,
-   * margin is recomputed and both margin_amount/margin_pct are written.
-   * One audit row per update with only the fields that actually changed.
+   * Partial update. CORE scalars come through PATCH_TO_COL; per-type
+   * inputs come through patch.detail (snake_case). For registry types,
+   * any detail change (or a category change) re-derives and overwrites
+   * the resolved cost/sell/credit/margin. For grocery/other, margin is
+   * recomputed when cost or sell changes. One audit row per update.
    */
   function update_(productId, patch, actorId) {
     if (!productId) throw new Error('productId required');
@@ -363,25 +499,19 @@ const ProductMaster = (() => {
     const sh = sheet_();
     const r = existing._rowIndex;
 
+    // 1. core scalar patches
     Object.keys(patch).forEach(key => {
+      if (key === 'detail') return;
       if (IMMUTABLE_FIELDS.has(key)) return;     // silently dropped
       const colIdx = PATCH_TO_COL[key];
-      if (!colIdx) return;                       // unknown field — ignore
+      if (!colIdx) return;                       // unknown / non-core field — ignore
 
       let newVal = patch[key];
-      // Coercion
-      if (key === 'costPrice' || key === 'sellPrice' ||
-          key === 'sellPriceCredit' || key === 'minSellPrice') {
-        newVal = Util.roundMoney(Number(newVal) || 0);
-      } else if (key === 'active') {
-        newVal = newVal === true;
-      } else if (key === 'category') {
-        newVal = normalizeCategory_(newVal);
-      } else {
-        newVal = (newVal == null ? '' : newVal.toString()).trim();
-      }
+      if (MONEY_FIELDS.has(key)) newVal = Util.roundMoney(Number(newVal) || 0);
+      else if (key === 'active') newVal = newVal === true;
+      else if (key === 'category') newVal = normalizeCategory_(newVal);
+      else newVal = (newVal == null ? '' : newVal.toString()).trim();
 
-      // Skip if no actual change (defensive — saves a setValue + audit noise)
       const cur = existing[key];
       const same = (typeof cur === 'number' && typeof newVal === 'number')
         ? Util.roundMoney(cur) === newVal
@@ -393,21 +523,49 @@ const ProductMaster = (() => {
       after[key] = newVal;
     });
 
-    // Recompute margin if cost or sell changed
-    if ('costPrice' in after || 'sellPrice' in after) {
-      const finalCost = ('costPrice' in after) ? after.costPrice : existing.costPrice;
-      const finalSell = ('sellPrice' in after) ? after.sellPrice : existing.sellPrice;
-      const margin = computeMargin_(finalCost, finalSell);
-      sh.getRange(r, COL.margin_amount).setValue(margin.marginAmount);
-      sh.getRange(r, COL.margin_pct).setValue(margin.marginPct);
-      before.marginAmount = existing.marginAmount;
-      before.marginPct = existing.marginPct;
-      after.marginAmount = margin.marginAmount;
-      after.marginPct = margin.marginPct;
+    const finalCategory = ('category' in after) ? after.category : existing.category;
+
+    if (ProductTypes.has(finalCategory)) {
+      // 2a. detail upsert + re-derive
+      const hasDetailPatch = patch.detail && typeof patch.detail === 'object';
+      if (hasDetailPatch || ('category' in after)) {
+        const merged = Object.assign({}, readDetail_(productId, finalCategory), patch.detail || {});
+
+        // core.unit mirrors a detail field (beer → sell_unit)
+        const unitFrom = ProductTypes.unitFrom(finalCategory);
+        if (unitFrom && merged[unitFrom]) {
+          const newUnit = merged[unitFrom].toString().trim();
+          if (newUnit && newUnit !== existing.unit && !('unit' in after)) {
+            sh.getRange(r, COL.unit).setValue(newUnit);
+            before.unit = existing.unit; after.unit = newUnit;
+          }
+        }
+
+        const resolved = resolvePricing_(finalCategory, patch, merged);
+        writeDetail_(productId, existing.sku, finalCategory, merged);
+        applyResolved_(sh, r, existing, resolved, before, after);
+        after.detail = patch.detail || merged;
+      }
+    } else {
+      // 2b. grocery / other: recompute margin if cost or sell changed
+      if ('costPrice' in after || 'sellPrice' in after) {
+        const finalCost = ('costPrice' in after) ? after.costPrice : existing.costPrice;
+        const finalSell = ('sellPrice' in after) ? after.sellPrice : existing.sellPrice;
+        const margin = computeMargin_(finalCost, finalSell);
+        sh.getRange(r, COL.margin_amount).setValue(margin.marginAmount);
+        sh.getRange(r, COL.margin_pct).setValue(margin.marginPct);
+        before.marginAmount = existing.marginAmount;
+        before.marginPct = existing.marginPct;
+        after.marginAmount = margin.marginAmount;
+        after.marginPct = margin.marginPct;
+      }
     }
 
-    // Only audit if something actually changed
+    // 3. stamp + audit only if something actually changed
     if (Object.keys(after).length > 0) {
+      const now = new Date();
+      sh.getRange(r, COL.updated_by).setValue(actorId);
+      sh.getRange(r, COL.updated_at).setValue(now);
       AuditLog.write({
         actorId,
         action: 'product.updated',
@@ -429,6 +587,8 @@ const ProductMaster = (() => {
     if (!existing.active) throw new Error('Product is already inactive');
     const sh = sheet_();
     sh.getRange(existing._rowIndex, COL.active).setValue(false);
+    sh.getRange(existing._rowIndex, COL.updated_by).setValue(actorId);
+    sh.getRange(existing._rowIndex, COL.updated_at).setValue(new Date());
     AuditLog.write({
       actorId,
       action: 'product.deactivated',
@@ -449,6 +609,8 @@ const ProductMaster = (() => {
     if (existing.active) throw new Error('Product is already active');
     const sh = sheet_();
     sh.getRange(existing._rowIndex, COL.active).setValue(true);
+    sh.getRange(existing._rowIndex, COL.updated_by).setValue(actorId);
+    sh.getRange(existing._rowIndex, COL.updated_at).setValue(new Date());
     AuditLog.write({
       actorId,
       action: 'product.reactivated',
@@ -461,63 +623,132 @@ const ProductMaster = (() => {
     return getById_(productId);
   }
 
+  // ── Per-type import (staging tabs) ────────────────────────
+  // CORE staging columns shared by every type. Registry types append
+  // their detail input columns; grocery/other appends plain cost/sell.
+  const CORE_STAGING_BASE = [
+    'sku', 'barcode', 'product_name', 'brand', 'category', 'subcategory',
+    'pack_size', 'unit', 'supplier', 'min_sell_price', 'notes', 'source_file',
+  ];
+  const CORE_STAGING_TO_CAMEL = {
+    sku: 'sku', barcode: 'barcode', product_name: 'productName', brand: 'brand',
+    category: 'category', subcategory: 'subcategory', pack_size: 'packSize',
+    unit: 'unit', supplier: 'supplier', min_sell_price: 'minSellPrice',
+    notes: 'notes', source_file: 'sourceFile',
+    cost_price: 'costPrice', sell_price: 'sellPrice', sell_price_credit: 'sellPriceCredit',
+  };
+  const CORE_STAGING_MONEY = new Set(['cost_price', 'sell_price', 'sell_price_credit', 'min_sell_price']);
+
+  // Resolved lazily (inside stagingSheet_) so this module has no load-order
+  // dependency on Setup.js's SHEETS map.
+  function stagingSheetName_(type) {
+    switch ((type || '').toString().trim().toLowerCase()) {
+      case 'beer':       return SHEETS.PM_BEER_STAGING;
+      case 'cigarettes': return SHEETS.PM_CIG_STAGING;
+      case 'vape':       return SHEETS.PM_VAPE_STAGING;
+      case 'other':
+      case 'grocery':    return SHEETS.PM_OTHER_STAGING;
+      default:           return null;
+    }
+  }
+
+  // Canonical column order for a type's staging tab. Used by Setup.js to
+  // build headers and by the Python pre-processor (kept in sync there).
+  function stagingLayout_(type) {
+    const t = (type || '').toString().trim().toLowerCase();
+    if (t === 'other' || t === 'grocery') {
+      return CORE_STAGING_BASE.concat(['cost_price', 'sell_price', 'sell_price_credit']);
+    }
+    return CORE_STAGING_BASE.concat(ProductTypes.inputColumns(t));
+  }
+
+  function stagingSheet_(type) {
+    const name = stagingSheetName_(type);
+    if (!name) throw new Error('unknown import type: ' + type);
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+    if (!sh) throw new Error(name + ' sheet not found — run setup / migration');
+    return sh;
+  }
+
+  function normHeader_(h) { return (h == null ? '' : h.toString()).trim().toLowerCase(); }
+
   /**
-   * Bulk import from the _pm_import_staging tab. Reads each staging
-   * row, dedups, and calls create_ on miss. Caps errors at 50.
-   * Returns { imported, skipped, errors: [{ rowIndex, message }], errorCount }.
+   * Bulk upsert from a type's staging tab (header-driven, so column order
+   * is tolerant). Dedup: beer by sku+unit, else sku; SKU-less rows fall
+   * back to brand+name. Caps errors at 50. Returns
+   *   { imported, updated, skipped, errors:[{rowIndex,message}], errorCount }.
    *
-   * Staging row layout (22 cols) matches the live tab. Columns the
-   * import IGNORES (placeholders in staging):
-   *   col 1  product_id    (assigned)
-   *   col 14 margin_amount (computed)
-   *   col 15 margin_pct    (computed)
-   *   col 19 active        (defaults TRUE)
-   *   col 21 created_by    (IMPORT or actorId)
-   *   col 22 created_at    (now)
+   * @param opts { type (req: beer|cigarettes|vape|other), actorId? }
    */
   function importFromStaging_(opts) {
     opts = opts || {};
+    const type = (opts.type || '').toString().trim().toLowerCase();
+    if (!type) throw new Error('import type required (beer|cigarettes|vape|other)');
     const actorId = opts.actorId || 'IMPORT';
-    const sh = stagingSheet_();
-    const last = sh.getLastRow();
-    if (last < DATA_START_ROW) return { imported: 0, skipped: 0, errors: [], errorCount: 0 };
 
-    const rows = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS).getValues();
-    let imported = 0, skipped = 0;
+    const sh = stagingSheet_(type);
+    const last = sh.getLastRow();
+    if (last < DATA_START_ROW) return { imported: 0, updated: 0, skipped: 0, errors: [], errorCount: 0 };
+
+    const lastCol = sh.getLastColumn();
+    const headers = sh.getRange(2, 1, 1, lastCol).getValues()[0].map(normHeader_);
+    const values = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, lastCol).getValues();
+    const detailInputCols = ProductTypes.inputColumns(type);   // [] for other
+    const isBeer = type === 'beer';
+    const colOf = (name) => headers.indexOf(name);
+
+    // Build the dedup index once (beer keys on sku|unit).
+    bustCache_();
+    const index = {};
+    getAll_(true).forEach(p => {
+      if (!p.sku) return;
+      const k = isBeer ? (p.sku.toLowerCase() + '|' + (p.unit || '').toLowerCase()) : p.sku.toLowerCase();
+      index[k] = p;
+    });
+
+    let imported = 0, updated = 0, skipped = 0;
     const errors = [];
     let errorCount = 0;
     const ERROR_CAP = 50;
 
-    rows.forEach((row, i) => {
+    values.forEach((row, i) => {
       const rowIndex = DATA_START_ROW + i;
       try {
-        // Blank row guard: blank productName means empty staging row, skip silently
-        const productName = (row[COL.product_name - 1] || '').toString().trim();
-        if (!productName) return;
+        const productName = (colOf('product_name') >= 0 ? row[colOf('product_name')] : '').toString().trim();
+        // blank row or a pasted CSV header echo → skip silently
+        if (!productName || productName.toLowerCase() === 'product_name') return;
 
-        const input = {
-          sku:             (row[COL.sku - 1] || '').toString().trim(),
-          barcode:         (row[COL.barcode - 1] || '').toString().trim(),
-          productName:     productName,
-          brand:           (row[COL.brand - 1] || '').toString().trim(),
-          category:        (row[COL.category - 1] || '').toString().trim().toLowerCase(),
-          subcategory:     (row[COL.subcategory - 1] || '').toString().trim(),
-          packSize:        (row[COL.pack_size - 1] || '').toString().trim(),
-          unit:            (row[COL.unit - 1] || 'each').toString().trim(),
-          costPrice:       Number(row[COL.cost_price - 1]) || 0,
-          sellPrice:       Number(row[COL.sell_price - 1]) || 0,
-          sellPriceCredit: Number(row[COL.sell_price_credit - 1]) || 0,
-          minSellPrice:    Number(row[COL.min_sell_price - 1]) || 0,
-          supplier:        (row[COL.supplier - 1] || '').toString().trim(),
-          lastInvoiceNo:   (row[COL.last_invoice_no - 1] || '').toString().trim(),
-          notes:           (row[COL.notes - 1] || '').toString(),
-          sourceFile:      (row[COL.source_file - 1] || 'staging').toString().trim(),
-          actorId:         actorId,
-        };
+        const input = { actorId: actorId };
+        Object.keys(CORE_STAGING_TO_CAMEL).forEach(h => {
+          const c = colOf(h);
+          if (c < 0) return;
+          let v = row[c];
+          if (CORE_STAGING_MONEY.has(h)) v = Number(v) || 0;
+          else v = (v == null ? '' : v.toString()).trim();
+          input[CORE_STAGING_TO_CAMEL[h]] = v;
+        });
+        input.category = (input.category || (type === 'other' ? 'other' : type)).toString().trim().toLowerCase();
+        if (!input.sourceFile) input.sourceFile = 'staging:' + type;
 
-        // Precheck dedup so we can count imported vs skipped accurately
-        // (create_ would also dedup, but it returns the existing record
-        // and we'd lose the count distinction).
+        const detail = {};
+        detailInputCols.forEach(dc => { const c = colOf(dc); detail[dc] = c >= 0 ? row[c] : ''; });
+        input.detail = detail;
+
+        // unit mirror for beer (so the dedup key matches the core row)
+        const unitFrom = ProductTypes.unitFrom(input.category);
+        let unit = (input.unit || '').toString().trim();
+        if (unitFrom && detail[unitFrom]) unit = detail[unitFrom].toString().trim();
+        input.unit = unit;
+
+        const sku = (input.sku || '').toString().trim();
+        const key = sku ? (isBeer ? (sku.toLowerCase() + '|' + unit.toLowerCase()) : sku.toLowerCase()) : '';
+        const existing = key ? index[key] : null;
+        if (existing) {
+          update_(existing.productId, input, actorId);
+          updated++;
+          return;
+        }
+
         const dup = findDuplicate_(input, true);
         if (dup) { skipped++; return; }
 
@@ -525,9 +756,7 @@ const ProductMaster = (() => {
         imported++;
       } catch (e) {
         errorCount++;
-        if (errors.length < ERROR_CAP) {
-          errors.push({ rowIndex: rowIndex, message: e.message });
-        }
+        if (errors.length < ERROR_CAP) errors.push({ rowIndex: rowIndex, message: e.message });
       }
     });
 
@@ -535,15 +764,14 @@ const ProductMaster = (() => {
       actorId,
       action: 'product.imported',
       targetType: 'product_master',
-      targetId: 'bulk',
-      after: { imported, skipped, errorCount },
+      targetId: type,
+      after: { type, imported, updated, skipped, errorCount },
     });
 
-    return { imported, skipped, errors, errorCount };
+    return { imported, updated, skipped, errors, errorCount };
   }
 
-  // Debug-only — returns { hit, chunks, totalBytes } so the Apps Script
-  // editor can verify the chunked cache is healthy. Never call from RPCs.
+  // Debug-only — cache health. Never call from RPCs.
   function cacheStats_() {
     const cache = CacheService.getScriptCache();
     const manifest = cache.get(CACHE_MANIFEST);
@@ -578,6 +806,7 @@ const ProductMaster = (() => {
     getAll:                  () => getAll_(false),
     getAllIncludingInactive: () => getAll_(true),
     getById:                 getById_,
+    getWithDetail:           getWithDetail_,
     getBySku:                getBySku_,
     search:                  search_,
     // writes
@@ -587,8 +816,10 @@ const ProductMaster = (() => {
     reactivate:              reactivate_,
     // bulk
     importFromStaging:       importFromStaging_,
+    stagingLayout:           stagingLayout_,
     // helpers
     computeMargin:           computeMargin_,
+    readDetail:              readDetail_,
     VALID_CATEGORIES:        VALID_CATEGORIES.slice(),
     // debug
     _cacheStats:             cacheStats_,

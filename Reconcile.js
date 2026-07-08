@@ -117,7 +117,8 @@ const Reconcile = (() => {
       const key = m.merchantId || ('NOCONFIG:' + s.company);
       if (!groups[key]) groups[key] = {
         merchant: m, companies: {}, sessionIds: [],
-        cashierCredit: 0, cashierDebit: 0, cashSales: 0, cashCounted: 0, cashVariance: 0,
+        cashierCredit: 0, cashierDebit: 0, cashSales: 0,
+        cashCounted: 0, cashVariance: 0, openingFloat: 0,
         startMs: Infinity, endMs: 0,
       };
       const g = groups[key];
@@ -131,6 +132,7 @@ const Reconcile = (() => {
       }
       g.cashCounted  += s.closingCashCounted || 0;
       g.cashVariance += s.closingVariance || 0;
+      g.openingFloat += s.openingFloat || 0;
       if (s.startTime instanceof Date) g.startMs = Math.min(g.startMs, s.startTime.getTime());
       if (s.endTime instanceof Date)   g.endMs   = Math.max(g.endMs, s.endTime.getTime());
     });
@@ -173,6 +175,7 @@ const Reconcile = (() => {
         cashSales: Util.roundMoney(g.cashSales),
         cashCounted: Util.roundMoney(g.cashCounted),
         cashVariance: Util.roundMoney(g.cashVariance),
+        openingFloat: Util.roundMoney(g.openingFloat),
         cloverOk: !!clover.ok,
         cloverError: clover.ok ? '' : (clover.error || ''),
         status: status,
@@ -239,8 +242,9 @@ const Reconcile = (() => {
     const reported = Util.roundMoney(m.cashSales + m.cashierCard);
     let totalLine, credit, debit, total, status;
     if (m.cloverOk) {
-      const expected = Util.roundMoney(m.cashSales + m.cloverCard);
-      totalLine = 'reported ' + Util.formatMoney(reported) + ' / expected ' + Util.formatMoney(expected) + ' (' + signed_(m.cardDiff) + ') ' + mark_(m.cardDiff);
+      const expected = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
+      const totalDiff = Util.roundMoney(reported - expected);
+      totalLine = 'reported ' + Util.formatMoney(reported) + ' / expected ' + Util.formatMoney(expected) + ' (' + signed_(totalDiff) + ') ' + mark_(totalDiff);
       credit = Util.formatMoney(m.cloverCredit) + ' / ' + Util.formatMoney(m.cashierCredit) + ' (' + signed_(m.creditDiff) + ') ' + mark_(m.creditDiff);
       debit  = Util.formatMoney(m.cloverDebit) + ' / ' + Util.formatMoney(m.cashierDebit) + ' (' + signed_(m.debitDiff) + ') ' + mark_(m.debitDiff);
       total  = Util.formatMoney(m.cloverCard) + ' / ' + Util.formatMoney(m.cashierCard) + ' (' + signed_(m.cardDiff) + ') ' + mark_(m.cardDiff);
@@ -268,8 +272,9 @@ const Reconcile = (() => {
       lines.push('');
       const reported = Util.roundMoney(m.cashSales + m.cashierCard);
       if (m.cloverOk) {
-        const expected = Util.roundMoney(m.cashSales + m.cloverCard);
-        lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + ' / expected ' + Util.formatMoney(expected) + '   ' + signed_(m.cardDiff) + ' ' + mark_(m.cardDiff));
+        const expected = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
+        const totalDiff = Util.roundMoney(reported - expected);
+        lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + ' / expected ' + Util.formatMoney(expected) + '   ' + signed_(totalDiff) + ' ' + mark_(totalDiff));
       } else {
         lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + '   (no Clover)');
       }
