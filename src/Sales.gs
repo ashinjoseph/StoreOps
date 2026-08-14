@@ -238,6 +238,31 @@ const Sales = (() => {
       totals[k] = Util.roundMoney(totals[k]);
     });
 
+    // Per-day aggregation over the FULL filtered set (independent of paging).
+    // Powers the dashboard's daily bar chart + day accordion. Sorted oldest→newest.
+    const dailyMap = {};
+    rows.forEach(r => {
+      const key = r.date ? Util.formatDate(r.date) : '—';
+      let d = dailyMap[key];
+      if (!d) {
+        d = dailyMap[key] = {
+          dateStr: key, dateMs: r.date ? r.date.getTime() : 0,
+          cash: 0, credit: 0, debit: 0, misc: 0, total: 0, sessionCount: 0,
+        };
+      }
+      d.cash   += r.cashSales || 0;
+      d.credit += r.creditCardSales || 0;
+      d.debit  += r.debitCardSales || 0;
+      d.misc   += (r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0);
+      d.sessionCount++;
+    });
+    const daily = Object.keys(dailyMap).map(k => {
+      const d = dailyMap[k];
+      d.total = Util.roundMoney(d.cash + d.credit + d.debit + d.misc);
+      ['cash', 'credit', 'debit', 'misc'].forEach(x => { d[x] = Util.roundMoney(d[x]); });
+      return d;
+    }).sort((a, b) => a.dateMs - b.dateMs);
+
     const pageSize = input.pageSize || 50;
     const page = input.page || 1;
     const start = (page - 1) * pageSize;
@@ -268,6 +293,7 @@ const Sales = (() => {
       pageSize,
       pageCount: Math.max(1, Math.ceil(rows.length / pageSize)),
       totals,
+      daily,
     };
   }
 

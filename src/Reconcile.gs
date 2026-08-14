@@ -22,9 +22,9 @@ const Reconcile = (() => {
     cashier_credit: 7, clover_credit: 8, cashier_debit: 9, clover_debit: 10,
     cashier_card: 11, clover_card: 12, card_variance: 13,
     cash_counted: 14, cash_variance: 15, status: 16, mode: 17,
-    session_ids: 18, validated_at: 19, validated_by: 20
+    session_ids: 18, validated_at: 19, validated_by: 20, cash_sales: 21
   };
-  const NUM_COLS = 20;
+  const NUM_COLS = 21;
   const DATA_START_ROW = 3;
 
   function sheet_() {
@@ -117,7 +117,8 @@ const Reconcile = (() => {
       const key = m.merchantId || ('NOCONFIG:' + s.company);
       if (!groups[key]) groups[key] = {
         merchant: m, companies: {}, sessionIds: [],
-        cashierCredit: 0, cashierDebit: 0, cashCounted: 0, cashVariance: 0,
+        cashierCredit: 0, cashierDebit: 0, cashSales: 0,
+        cashCounted: 0, cashVariance: 0, openingFloat: 0,
         startMs: Infinity, endMs: 0,
       };
       const g = groups[key];
@@ -127,9 +128,11 @@ const Reconcile = (() => {
       if (sale) {
         g.cashierCredit += (sale.creditCardSales || 0) + (sale.miscCreditSales || 0);
         g.cashierDebit  += (sale.debitCardSales || 0) + (sale.miscDebitSales || 0);
+        g.cashSales     += (sale.cashSales || 0) + (sale.miscCashSales || 0);
       }
       g.cashCounted  += s.closingCashCounted || 0;
       g.cashVariance += s.closingVariance || 0;
+      g.openingFloat += s.openingFloat || 0;
       if (s.startTime instanceof Date) g.startMs = Math.min(g.startMs, s.startTime.getTime());
       if (s.endTime instanceof Date)   g.endMs   = Math.max(g.endMs, s.endTime.getTime());
     });
@@ -169,8 +172,10 @@ const Reconcile = (() => {
         cashierCredit: cashierCredit, cloverCredit: cloverCredit, creditDiff: Util.roundMoney(cashierCredit - cloverCredit),
         cashierDebit: cashierDebit, cloverDebit: cloverDebit, debitDiff: Util.roundMoney(cashierDebit - cloverDebit),
         cashierCard: cashierCard, cloverCard: cloverCard, cardDiff: cardDiff,
+        cashSales: Util.roundMoney(g.cashSales),
         cashCounted: Util.roundMoney(g.cashCounted),
         cashVariance: Util.roundMoney(g.cashVariance),
+        openingFloat: Util.roundMoney(g.openingFloat),
         cloverOk: !!clover.ok,
         cloverError: clover.ok ? '' : (clover.error || ''),
         status: status,
@@ -204,7 +209,7 @@ const Reconcile = (() => {
       rec.cashierCredit, rec.cloverCredit, rec.cashierDebit, rec.cloverDebit,
       rec.cashierCard, rec.cloverCard, rec.cardDiff,
       rec.cashCounted, rec.cashVariance, rec.status, mode,
-      rec.sessionIds.join(','), now, actorId || 'SYSTEM',
+      rec.sessionIds.join(','), now, actorId || 'SYSTEM', rec.cashSales,
     ]]);
   }
 
@@ -226,27 +231,34 @@ const Reconcile = (() => {
     return { sent: anySent, perGroup: perGroup };
   }
 
-  // The 9 ordered params for the shift_close template (matches the Setup
-  // config note). All single-line scalars — the template owns the layout.
+  // The 9 ordered params for the shift_close template. All single-line
+  // scalars - the template owns the layout. Convention: source / local.
   function reconParams_(dateObj, m) {
     const friendly = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'EEE d MMM yyyy');
     const windowStr = hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd);
     const companies = m.companies.join(' + ');
-    let credit, debit, total, status;
+    const recorded = Util.roundMoney(m.cashCounted - m.cashVariance);
+    const cashLine = Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) + ' (var ' + signed_(m.cashVariance) + ')';
+    const reported = Util.roundMoney(m.cashSales + m.cashierCard);
+    let totalLine, credit, debit, total, status;
     if (m.cloverOk) {
-      credit = Util.formatMoney(m.cashierCredit) + ' / ' + Util.formatMoney(m.cloverCredit) + ' (' + signed_(m.creditDiff) + ') ' + mark_(m.creditDiff);
-      debit  = Util.formatMoney(m.cashierDebit) + ' / ' + Util.formatMoney(m.cloverDebit) + ' (' + signed_(m.debitDiff) + ') ' + mark_(m.debitDiff);
-      total  = Util.formatMoney(m.cashierCard) + ' / ' + Util.formatMoney(m.cloverCard) + ' (' + signed_(m.cardDiff) + ') ' + mark_(m.cardDiff);
+      const expected = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
+      const totalDiff = Util.roundMoney(reported - expected);
+      totalLine = 'reported ' + Util.formatMoney(reported) + ' / expected ' + Util.formatMoney(expected) + ' (' + signed_(totalDiff) + ') ' + mark_(totalDiff);
+      credit = Util.formatMoney(m.cloverCredit) + ' / ' + Util.formatMoney(m.cashierCredit) + ' (' + signed_(m.creditDiff) + ') ' + mark_(m.creditDiff);
+      debit  = Util.formatMoney(m.cloverDebit) + ' / ' + Util.formatMoney(m.cashierDebit) + ' (' + signed_(m.debitDiff) + ') ' + mark_(m.debitDiff);
+      total  = Util.formatMoney(m.cloverCard) + ' / ' + Util.formatMoney(m.cashierCard) + ' (' + signed_(m.cardDiff) + ') ' + mark_(m.cardDiff);
       status = m.status === 'OK' ? '✅ All matched' : '⚠️ Review needed';
     } else {
-      credit = Util.formatMoney(m.cashierCredit) + ' (no Clover)';
-      debit  = Util.formatMoney(m.cashierDebit) + ' (no Clover)';
-      total  = Util.formatMoney(m.cashierCard) + ' (no Clover)';
+      totalLine = 'reported ' + Util.formatMoney(reported) + ' (no Clover)';
+      credit = Util.formatMoney(m.cashierCredit) + ' (cashier, no Clover)';
+      debit  = Util.formatMoney(m.cashierDebit) + ' (cashier, no Clover)';
+      total  = Util.formatMoney(m.cashierCard) + ' (cashier, no Clover)';
       status = '⚠️ Clover unavailable';
     }
     return [
       friendly, companies, windowStr,
-      Util.formatMoney(m.cashCounted), signed_(m.cashVariance),
+      totalLine, cashLine,
       credit, debit, total, status,
     ];
   }
@@ -254,25 +266,32 @@ const Reconcile = (() => {
   function formatMessage_(dateObj, merchants) {
     const friendly = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'EEE d MMM yyyy');
 
-    const lines = ['🧾 *Shift Reconciliation*', '📅 ' + friendly, ''];
+    const lines = ['\u{1F9FE} *Shift Reconciliation*', '\u{1F4C5} ' + friendly, ''];
     merchants.forEach(m => {
-      lines.push('🏪 *' + m.companies.join(' + ') + '*   ⏰ ' + hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd));
+      lines.push('\u{1F3EA} *' + m.companies.join(' + ') + '*   \u{23F0} ' + hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd));
       lines.push('');
-      lines.push('💵 *Cash*');
-      lines.push('Counted   ' + Util.formatMoney(m.cashCounted));
-      lines.push('Variance  ' + signed_(m.cashVariance));
+      const reported = Util.roundMoney(m.cashSales + m.cashierCard);
+      if (m.cloverOk) {
+        const expected = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
+        const totalDiff = Util.roundMoney(reported - expected);
+        lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + ' / expected ' + Util.formatMoney(expected) + '   ' + signed_(totalDiff) + ' ' + mark_(totalDiff));
+      } else {
+        lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + '   (no Clover)');
+      }
+      lines.push('');
+      lines.push('\u{1F4B5} *Cash - recorded / counted*');
+      const recorded = Util.roundMoney(m.cashCounted - m.cashVariance);
+      lines.push(Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) + '   var ' + signed_(m.cashVariance));
       lines.push('');
       if (m.cloverOk) {
-        lines.push('💳 *Cards — cashier vs Clover*');
-        lines.push('Credit  ' + Util.formatMoney(m.cashierCredit) + ' / ' + Util.formatMoney(m.cloverCredit) + '   ' + signed_(m.creditDiff) + ' ' + mark_(m.creditDiff));
-        lines.push('Debit   ' + Util.formatMoney(m.cashierDebit) + ' / ' + Util.formatMoney(m.cloverDebit) + '   ' + signed_(m.debitDiff) + ' ' + mark_(m.debitDiff));
-        lines.push('Total   ' + Util.formatMoney(m.cashierCard) + ' / ' + Util.formatMoney(m.cloverCard) + '   ' + signed_(m.cardDiff) + ' ' + mark_(m.cardDiff));
+        lines.push('\u{1F4B3} *Cards - Clover / cashier*');
+        lines.push('Credit  ' + Util.formatMoney(m.cloverCredit) + ' / ' + Util.formatMoney(m.cashierCredit) + '   ' + signed_(m.creditDiff) + ' ' + mark_(m.creditDiff));
+        lines.push('Debit   ' + Util.formatMoney(m.cloverDebit) + ' / ' + Util.formatMoney(m.cashierDebit) + '   ' + signed_(m.debitDiff) + ' ' + mark_(m.debitDiff));
+        lines.push('Total   ' + Util.formatMoney(m.cloverCard) + ' / ' + Util.formatMoney(m.cashierCard) + '   ' + signed_(m.cardDiff) + ' ' + mark_(m.cardDiff));
         lines.push('');
         lines.push(m.status === 'OK' ? '✅ *All matched*' : '⚠️ *Review needed*');
       } else {
-        lines.push('💳 *Cards*');
-        lines.push('Cashier total  ' + Util.formatMoney(m.cashierCard));
-        lines.push('⚠️ Clover unavailable');
+        lines.push('\u{1F4B3} *Cards*  cashier ' + Util.formatMoney(m.cashierCard) + '   ⚠️ Clover unavailable');
       }
       lines.push('');
     });
@@ -306,6 +325,7 @@ const Reconcile = (() => {
         cashierCard:   Number(r[COL.cashier_card - 1]) || 0,
         cloverCard:    Number(r[COL.clover_card - 1]) || 0,
         cardVariance:  Number(r[COL.card_variance - 1]) || 0,
+        cashSales:     Number(r[COL.cash_sales - 1]) || 0,
         cashCounted:   Number(r[COL.cash_counted - 1]) || 0,
         cashVariance:  Number(r[COL.cash_variance - 1]) || 0,
         status:       (r[COL.status - 1] || '').toString(),

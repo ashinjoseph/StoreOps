@@ -196,6 +196,14 @@ const Payments = (() => {
       const paid = paidMap[a.attendanceId] || 0;
       const remaining = Util.roundMoney(value - paid);
       if (remaining > 0.005) {
+        // Schedule-mismatch flag: scheduled window ≠ actual open→close, and
+        // the manager hasn't reconciled which basis to use (hours_basis blank).
+        // Payroll blocks these until reconciled or explicitly overridden.
+        const scheduledHours = Attendance.scheduledHours(a);
+        const actualHours = Attendance.actualHours(a);
+        const hoursBasis = (a.hoursBasis || '').toString().trim();
+        const mismatch = scheduledHours > 0 && actualHours > 0 &&
+          Math.abs(scheduledHours - actualHours) >= 0.01 && !hoursBasis;
         unpaidShifts.push({
           attendanceId: a.attendanceId,
           date: a.date ? a.date.toISOString() : null,
@@ -205,10 +213,15 @@ const Payments = (() => {
           value: value,
           paid: paid,
           remaining: remaining,
+          scheduledHours: scheduledHours,
+          actualHours: actualHours,
+          hoursBasis: hoursBasis,
+          mismatch: mismatch,
         });
         shiftsOwed = Util.roundMoney(shiftsOwed + remaining);
       }
     });
+    const mismatchCount = unpaidShifts.filter(s => s.mismatch).length;
 
     const allBonuses = Bonuses.getForStaff(staffId);
     const bonusPaidMap = getBonusPaidAmounts_(allBonuses.map(b => b.bonusId));
@@ -242,6 +255,8 @@ const Payments = (() => {
       totalOwed: Util.roundMoney(shiftsOwed + bonusesOwed),
       unpaidShifts,
       pendingBonuses,
+      mismatchCount,
+      hasMismatch: mismatchCount > 0,
     };
   }
 
@@ -274,8 +289,30 @@ const Payments = (() => {
     const staff = Staff.getById(input.staffId);
     if (!staff) throw new Error('Staff not found: ' + input.staffId);
 
-    const amount = Util.roundMoney(input.amount);
-    const owed = getOwedSummary_(input.staffId);
+    const override = input.overrideMismatch === true;
+    let owed = getOwedSummary_(input.staffId);
+
+    // Schedule-mismatch guard: any unpaid shift whose scheduled hours differ
+    // from the actual open→close span (and hasn't been reconciled via
+    // hours_basis) blocks payment. The manager must reconcile recorded hours
+    // on the Schedule tab, OR override to pay per actual — which pins those
+    // shifts to their actual hours before paying (the correct implementation).
+    const mism = owed.unpaidShifts.filter(s => s.mismatch);
+    if (mism.length) {
+      if (!override) {
+        const dates = mism.map(s =>
+          s.dateStr + ' (sched ' + s.scheduledHours.toFixed(2) + 'h ≠ actual ' + s.actualHours.toFixed(2) + 'h)'
+        ).join('; ');
+        throw new Error('SCHEDULE_MISMATCH: ' + staff.name +
+          ' has unreconciled shifts — ' + dates +
+          '. Reconcile recorded hours on the Schedule tab, or override to pay per actual.');
+      }
+      mism.forEach(s => { Attendance.adjustHours(s.attendanceId, 'actual', input.actorId); });
+      owed = getOwedSummary_(input.staffId);   // recompute after pinning to actual
+    }
+
+    // Override pays the full recomputed (actual) owed; else the caller's amount.
+    const amount = (override && mism.length) ? owed.shiftsOwed : Util.roundMoney(input.amount);
 
     if (owed.shiftsOwed <= 0.005) {
       throw new Error(

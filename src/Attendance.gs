@@ -23,9 +23,9 @@ const Attendance = (() => {
     actual_start: 6, actual_end: 7,
     hours_worked: 8, rate_at_attendance: 9, status: 10,
     notes: 11, created_by: 12, created_at: 13,
-    modified_by: 14, modified_at: 15
+    modified_by: 14, modified_at: 15, hours_basis: 16
   };
-  const NUM_COLS = 15;
+  const NUM_COLS = 16;
   const DATA_START_ROW = 3;
 
   let _attCache = null;
@@ -55,6 +55,7 @@ const Attendance = (() => {
       createdAt:        row[COL.created_at - 1] instanceof Date ? row[COL.created_at - 1] : null,
       modifiedBy:       (row[COL.modified_by - 1] || '').toString().trim(),
       modifiedAt:       row[COL.modified_at - 1] instanceof Date ? row[COL.modified_at - 1] : null,
+      hoursBasis:       (row[COL.hours_basis - 1] || '').toString().trim(),
       _rowIndex:        rowIndex,
     };
   }
@@ -206,6 +207,7 @@ const Attendance = (() => {
       '',                      // notes
       actorId, now,            // created_by, created_at
       '', '',                  // modified_by, modified_at
+      '',                      // hours_basis (not reviewed)
     ]]);
 
     AuditLog.write({
@@ -300,6 +302,7 @@ const Attendance = (() => {
       input.notes || '',
       input.actorId, now,
       '', '',
+      '',                       // hours_basis (not reviewed)
     ]]);
 
     AuditLog.write({
@@ -443,6 +446,7 @@ const Attendance = (() => {
     sh.getRange(row, COL.actual_start).setValue(start);
     sh.getRange(row, COL.actual_end).setValue(end);
     sh.getRange(row, COL.hours_worked).setValue(hours);
+    sh.getRange(row, COL.hours_basis).setValue('');   // times changed → needs re-review
     sh.getRange(row, COL.modified_by).setValue(actorId);
     sh.getRange(row, COL.modified_at).setValue(new Date());
 
@@ -463,6 +467,69 @@ const Attendance = (() => {
     return getById_(attendanceId);
   }
 
+  // Hours implied by the scheduled HH:mm window (overnight-safe). 0 if unset.
+  function scheduledHours_(att) {
+    function mins(s) {
+      const m = /^(\d{1,2}):(\d{2})$/.exec((s || '').toString().trim());
+      if (!m) return null;
+      const h = Number(m[1]), mi = Number(m[2]);
+      if (h > 23 || mi > 59) return null;
+      return h * 60 + mi;
+    }
+    const a = mins(att.scheduledStart), b = mins(att.scheduledEnd);
+    if (a === null || b === null) return 0;
+    let d = b - a;
+    if (d <= 0) d += 24 * 60;          // overnight shift
+    return Util.roundMoney(d / 60);
+  }
+
+  // Hours from the actual open→close span. 0 if missing timestamps.
+  function actualHours_(att) {
+    if (!(att.actualStart instanceof Date) || !(att.actualEnd instanceof Date)) return 0;
+    return Util.roundMoney(Util.diffHours(att.actualStart, att.actualEnd));
+  }
+
+  /**
+   * Admin/manager: set recorded hours_worked to either the scheduled window
+   * or the actual open→close span (when they differ). Payment-guarded.
+   */
+  function adjustHours_(attendanceId, basis, actorId) {
+    if (!actorId) throw new Error('actorId required');
+    if (basis !== 'scheduled' && basis !== 'actual') {
+      throw new Error('basis must be "scheduled" or "actual"');
+    }
+    const existing = getById_(attendanceId);
+    if (!existing) throw new Error('attendance not found: ' + attendanceId);
+    if (existing.status !== 'worked' && existing.status !== 'in_progress') {
+      throw new Error('Can only adjust hours on a worked or in-progress day');
+    }
+    const paidAmount = Payments.getAttendancePaidAmounts([attendanceId])[attendanceId] || 0;
+    if (paidAmount > 0) {
+      throw new Error('Cannot adjust: $' + paidAmount.toFixed(2) + ' already paid. Undo the payment first.');
+    }
+    const hours = basis === 'scheduled' ? scheduledHours_(existing) : actualHours_(existing);
+    if (!(hours > 0)) throw new Error('No ' + basis + ' hours available to apply');
+
+    const sh = sheet_();
+    const row = existing._rowIndex;
+    sh.getRange(row, COL.hours_worked).setValue(hours);
+    sh.getRange(row, COL.hours_basis).setValue(basis);
+    sh.getRange(row, COL.modified_by).setValue(actorId);
+    sh.getRange(row, COL.modified_at).setValue(new Date());
+
+    AuditLog.write({
+      actorId,
+      action: 'attendance.adjust_hours',
+      targetType: 'attendance',
+      targetId: attendanceId,
+      before: { hoursWorked: existing.hoursWorked },
+      after: { hoursWorked: hours, basis: basis },
+    });
+
+    bustAttCache_();
+    return getById_(attendanceId);
+  }
+
   return {
     getAll:              getAll_,
     getById:             getById_,
@@ -475,5 +542,8 @@ const Attendance = (() => {
     complete:            complete_,
     cancel:              cancel_,
     editActualTimes:     editActualTimes_,
+    scheduledHours:      scheduledHours_,
+    actualHours:         actualHours_,
+    adjustHours:         adjustHours_,
   };
 })();

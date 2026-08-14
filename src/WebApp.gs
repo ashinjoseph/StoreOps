@@ -362,6 +362,9 @@ function rpcGetWeekSchedule(token, weekStartStr) {
         scheduledStart: att ? att.scheduledStart : '',
         scheduledEnd: att ? att.scheduledEnd : '',
         hoursWorked: att ? att.hoursWorked : 0,
+        scheduledHours: att ? Attendance.scheduledHours(att) : 0,
+        actualHours: att ? Attendance.actualHours(att) : 0,
+        hoursBasis: att ? att.hoursBasis : '',
       });
     });
   });
@@ -391,6 +394,16 @@ function rpcCancelScheduledShift(token, attendanceId, reason) {
   const session = _session(token);
   Auth.require(session, ['admin', 'manager']);
   return Attendance.cancel(attendanceId, session.staffId, reason || '');
+}
+
+/**
+ * Set recorded hours to the scheduled window or the actual open→close span
+ * when they differ. admin / manager. basis = 'scheduled' | 'actual'.
+ */
+function rpcAdjustAttendanceHours(token, attendanceId, basis) {
+  const session = _session(token);
+  Auth.require(session, ['admin', 'manager']);
+  return Attendance.adjustHours(attendanceId, basis, session.staffId);
 }
 
 function rpcEditAttendanceTimes(token, input) {
@@ -428,6 +441,8 @@ function rpcGetPayrollOverview(token) {
         totalOwed: owed.totalOwed || 0,
         unpaidShiftCount: (owed.unpaidShifts || []).length,
         pendingBonusCount: (owed.pendingBonuses || []).length,
+        hasMismatch: !!owed.hasMismatch,
+        mismatchCount: owed.mismatchCount || 0,
       };
     });
   } catch (e) {
@@ -452,6 +467,8 @@ function rpcGetOwedSummary(token, staffId) {
       totalOwed: result.totalOwed || 0,
       unpaidShifts: result.unpaidShifts || [],
       pendingBonuses: result.pendingBonuses || [],
+      hasMismatch: !!result.hasMismatch,
+      mismatchCount: result.mismatchCount || 0,
     };
   } catch (e) {
     console.error('rpcGetOwedSummary(' + staffId + ') failed: ' + e.message + '\n' + (e.stack || ''));
@@ -468,6 +485,7 @@ function rpcPayShifts(token, input) {
       amount: Number(input.amount),
       method: input.method || 'cash',
       notes: input.notes || '',
+      overrideMismatch: input.overrideMismatch === true,
       actorId: session.staffId,
     });
     if (!result) throw new Error('payShifts returned null');
@@ -605,6 +623,7 @@ function rpcGetSalesDashboard(token, filters) {
     pageCount: result.pageCount,
     rowCount: result.totalCount,
     totals: result.totals,
+    daily: result.daily,
   };
 }
 
@@ -837,6 +856,9 @@ function rpcGetSuppliers(token) {
 }
 
 /**
+ * DEPRECATED — the shopping list now sources items from the product master
+ * (see rpcAddToShoppingList / rpcSearchProducts). order_catalog is retained
+ * only for legacy data; these RPCs are no longer wired into the UI.
  * Order catalog — known items for the picker. Any authenticated user.
  */
 function rpcGetOrderCatalog(token) {
@@ -883,7 +905,8 @@ function rpcGetShoppingList(token) {
   const names = _staffNameMap();
   return ShoppingList.getActive().map(e => ({
     entryId: e.entryId,
-    itemId: e.itemId,
+    productId: e.productId,
+    itemId: e.itemId,           // legacy (order_catalog) — kept for old rows
     itemName: e.itemName,
     category: e.category,
     quantity: e.quantity,
@@ -916,25 +939,21 @@ function rpcClearShoppingList(token) {
 }
 
 /**
- * Add an item to the pending list. Any authenticated user.
+ * Add a product to the pending list. Any authenticated user. Items reference
+ * the product master (product_id); name/category/unit/cost are snapshotted
+ * server-side from the product.
  */
 function rpcAddToShoppingList(token, input) {
   const session = _session(token);
+  if (!input || !input.productId) throw new Error('productId required');
   const entry = ShoppingList.add({
-    itemId: input.itemId || '',
-    itemName: input.itemName,
-    category: input.category,
+    productId: input.productId,
     quantity: Number(input.quantity),
-    unit: input.unit || '',
-    unitPrice: input.unitPrice !== undefined ? Number(input.unitPrice) : undefined,
     note: input.note || '',
-    newItem: input.newItem === true,
-    parLevel: Number(input.parLevel) || 0,
-    suggestedSupplier: input.suggestedSupplier || '',
     addedBy: session.staffId,
   });
   return {
-    entryId: entry.entryId, itemName: entry.itemName,
+    entryId: entry.entryId, productId: entry.productId, itemName: entry.itemName,
     category: entry.category, quantity: entry.quantity, unit: entry.unit,
   };
 }
@@ -984,4 +1003,232 @@ function rpcGenerateShoppingList(token) {
   const session = _session(token);
   Auth.require(session, ['manager', 'admin', 'payroll_admin']);
   return ShoppingList.generate(session.staffId);
+}
+
+// ── Product Master ────────────────────────────────────────
+
+// Normalize a ProductMaster record for JSON serialization across
+// google.script.run (strips _rowIndex; ISO-strings dates). The optional
+// `.detail` (snake_case, per-type inputs) is passed through when present.
+function serializeProduct_(r) {
+  if (!r) return null;
+  return {
+    productId:       r.productId,
+    sku:             r.sku || '',
+    barcode:         r.barcode || '',
+    productName:     r.productName,
+    brand:           r.brand || '',
+    category:        r.category,
+    subcategory:     r.subcategory || '',
+    packSize:        r.packSize || '',
+    unit:            r.unit || '',
+    supplier:        r.supplier || '',
+    costPrice:       Number(r.costPrice) || 0,
+    sellPrice:       Number(r.sellPrice) || 0,
+    sellPriceCredit: Number(r.sellPriceCredit) || 0,
+    minSellPrice:    Number(r.minSellPrice) || 0,
+    marginAmount:    Number(r.marginAmount) || 0,
+    marginPct:       Number(r.marginPct) || 0,
+    active:          r.active === true,
+    notes:           r.notes || '',
+    sourceFile:      r.sourceFile || '',
+    createdBy:       r.createdBy || '',
+    createdAt:       r.createdAt ? r.createdAt.toISOString() : null,
+    updatedBy:       r.updatedBy || '',
+    updatedAt:       r.updatedAt ? r.updatedAt.toISOString() : null,
+    detail:          r.detail ? serializeDetail_(r.detail) : null,
+  };
+}
+
+// Detail objects are snake_case with primitive values; coerce Dates to ISO.
+function serializeDetail_(d) {
+  const out = {};
+  Object.keys(d || {}).forEach(k => {
+    const v = d[k];
+    out[k] = (v instanceof Date) ? v.toISOString() : v;
+  });
+  return out;
+}
+
+// Reads — any authenticated user.
+function rpcGetProductMaster(token, filter) {
+  try {
+    _session(token);
+    filter = filter || {};
+    const includeInactive = filter.includeInactive === true;
+    let records = includeInactive
+      ? ProductMaster.getAllIncludingInactive()
+      : ProductMaster.getAll();
+    if (filter.category) {
+      const cat = filter.category.toString().trim().toLowerCase();
+      records = records.filter(r => r.category === cat);
+    }
+    const limit = Number(filter.limit) > 0 ? Number(filter.limit) : 500;
+    return records.slice(0, limit).map(serializeProduct_);
+  } catch (e) {
+    console.error('rpcGetProductMaster failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcGetProductMaster: ' + e.message);
+  }
+}
+
+function rpcSearchProducts(token, query, opts) {
+  try {
+    _session(token);
+    opts = opts || {};
+    return ProductMaster.search(query || '', {
+      category: opts.category || null,
+      includeInactive: opts.includeInactive === true,
+    }).map(serializeProduct_);
+  } catch (e) {
+    console.error('rpcSearchProducts failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcSearchProducts: ' + e.message);
+  }
+}
+
+function rpcGetProduct(token, productId) {
+  _session(token);
+  return serializeProduct_(ProductMaster.getWithDetail(productId));
+}
+
+function rpcGetProductCategories(token) {
+  _session(token);
+  return ProductMaster.VALID_CATEGORIES;
+}
+
+// Form descriptor for a category: which detail fields to render and
+// whether core cost/sell are editable (false for derived types). Drives
+// the dynamic product form. Any authenticated user.
+function rpcGetProductTypeSchema(token, category) {
+  _session(token);
+  return ProductTypes.schemaFor(category || '');
+}
+
+// Writes — manager / admin only.
+function rpcCreateProduct(token, input) {
+  try {
+    const session = _session(token);
+    Auth.require(session, ['admin', 'manager']);
+    if (!input || !input.productName) throw new Error('productName required');
+    if (!input.category) throw new Error('category required');
+    const product = ProductMaster.create({
+      sku:             input.sku || '',
+      barcode:         input.barcode || '',
+      productName:     input.productName,
+      brand:           input.brand || '',
+      category:        input.category,
+      subcategory:     input.subcategory || '',
+      packSize:        input.packSize || '',
+      unit:            input.unit || '',
+      costPrice:       Number(input.costPrice)       || 0,   // grocery/other only
+      sellPrice:       Number(input.sellPrice)       || 0,   // grocery/other only
+      sellPriceCredit: Number(input.sellPriceCredit) || 0,
+      minSellPrice:    Number(input.minSellPrice)    || 0,
+      supplier:        input.supplier || '',
+      notes:           input.notes || '',
+      detail:          input.detail || {},                   // registry types
+      sourceFile:      'manual',
+      actorId:         session.staffId,
+    });
+    return serializeProduct_(ProductMaster.getWithDetail(product.productId));
+  } catch (e) {
+    console.error('rpcCreateProduct failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcCreateProduct: ' + e.message);
+  }
+}
+
+function rpcUpdateProduct(token, productId, patch) {
+  try {
+    const session = _session(token);
+    Auth.require(session, ['admin', 'manager']);
+    if (!productId) throw new Error('productId required');
+    ProductMaster.update(productId, patch || {}, session.staffId);
+    return serializeProduct_(ProductMaster.getWithDetail(productId));
+  } catch (e) {
+    console.error('rpcUpdateProduct failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcUpdateProduct: ' + e.message);
+  }
+}
+
+function rpcDeactivateProduct(token, productId) {
+  try {
+    const session = _session(token);
+    Auth.require(session, ['admin', 'manager']);
+    if (!productId) throw new Error('productId required');
+    return serializeProduct_(ProductMaster.deactivate(productId, session.staffId));
+  } catch (e) {
+    console.error('rpcDeactivateProduct failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcDeactivateProduct: ' + e.message);
+  }
+}
+
+function rpcReactivateProduct(token, productId) {
+  try {
+    const session = _session(token);
+    Auth.require(session, ['admin', 'manager']);
+    if (!productId) throw new Error('productId required');
+    return serializeProduct_(ProductMaster.reactivate(productId, session.staffId));
+  } catch (e) {
+    console.error('rpcReactivateProduct failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcReactivateProduct: ' + e.message);
+  }
+}
+
+// Bulk import — admin only. Reads from the _pm_<type>_staging tab.
+//   opts: { type: 'beer'|'cigarettes'|'vape'|'other' }
+function rpcImportProductMasterFromStaging(token, opts) {
+  try {
+    const session = _session(token);
+    Auth.require(session, ['admin']);
+    opts = opts || {};
+    if (!opts.type) throw new Error('import type required (beer|cigarettes|vape|other)');
+    return ProductMaster.importFromStaging({ type: opts.type, actorId: session.staffId });
+  } catch (e) {
+    console.error('rpcImportProductMasterFromStaging failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcImportProductMasterFromStaging: ' + e.message);
+  }
+}
+
+// Diagnostic — run from the Apps Script editor to verify cache health.
+//   - hit: true if all chunks are present
+//   - chunks: how many chunks the records were split across
+//   - totalBytes / avgChunkBytes: confirm each chunk is well under 100KB
+function debugProductMasterCache() {
+  // Force a warm cache first so the stats reflect a populated state.
+  ProductMaster.getAllIncludingInactive();
+  const stats = ProductMaster._cacheStats();
+  console.log('CACHE STATS:', JSON.stringify(stats, null, 2));
+  if (stats.avgChunkBytes > 95000) {
+    console.warn('WARN: average chunk size > 95KB — approaching the 100KB limit. Lower CHUNK_SIZE.');
+  } else {
+    console.log('OK: chunk size healthy (max ~50KB at the default 200 records/chunk).');
+  }
+}
+
+// Diagnostic — run from the Apps Script editor (View → Logs).
+function debugProductMaster() {
+  // Registry type (vape): pricing derived from detail inputs.
+  const p = ProductMaster.create({
+    productName: 'Test Vape', brand: 'TestBrand', category: 'vape',
+    sku: 'TESTVAPE1', minSellPrice: 10.00,
+    detail: { purchase_price: 5.00, sale_price: 12.00, flavor: 'Berry', puffs: 20000 },
+    actorId: 'S_001',
+  });
+  const ph = ProductMaster.getWithDetail(p.productId);
+  console.log('CREATE:', JSON.stringify(ph));
+  console.log('Derived sell=12 cost=5:', ph.sellPrice === 12 && ph.costPrice === 5 ? 'OK' : 'BUG');
+
+  const p2 = ProductMaster.create({
+    productName: 'Test Vape 2', brand: 'TestBrand', category: 'vape',
+    sku: 'TESTVAPE1', detail: { purchase_price: 1, sale_price: 1 }, actorId: 'S_001',
+  });
+  console.log('DEDUP (same SKU) returns same productId:', p2.productId === p.productId ? 'OK' : 'BUG');
+
+  const p3 = ProductMaster.update(p.productId, { detail: { sale_price: 14.00 } }, 'S_001');
+  console.log('UPDATE re-derives: sellPrice=' + p3.sellPrice + ' marginAmount=' + p3.marginAmount);
+
+  ProductMaster.deactivate(p.productId, 'S_001');
+  const inActive = ProductMaster.getAll().find(r => r.productId === p.productId);
+  const inAll = ProductMaster.getAllIncludingInactive().find(r => r.productId === p.productId);
+  console.log('ACTIVE list excludes:', inActive ? 'BUG' : 'OK');
+  console.log('Including-inactive includes:', inAll ? 'OK' : 'BUG');
 }

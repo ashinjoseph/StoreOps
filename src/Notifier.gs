@@ -105,23 +105,17 @@ const Notifier = (() => {
   }
 
   /**
-   * Collapse a multi-line message into a single line for a WhatsApp
-   * template body parameter ({{1}} can't contain newlines, tabs, or
-   * 4+ consecutive spaces — Meta rejects those at send time).
+   * Sanitize a value for a WhatsApp template body PARAMETER. Meta rejects
+   * newlines, tabs, and 4+ consecutive spaces inside a parameter at send
+   * time, so collapse to a single line of plain spaces. (We previously used
+   * U+2028 to fake line breaks, but WhatsApp renders it as a stray glyph, so
+   * callers must format multi-item content on one line.)
    */
-  // Meta rejects literal newlines / tabs / 4+ spaces inside a template
-  // PARAMETER, but accepts other Unicode whitespace. So we keep the layout
-  // using U+2028 (line separator → renders as a line break) and U+00A0
-  // (non-breaking space → keeps indentation without a run of plain spaces).
   function flattenForTemplate_(text) {
-    const LS = '\u2028';    // U+2028 line separator → WhatsApp renders a line break
-    const NBSP = '\u00A0';  // U+00A0 non-breaking space → spacing without a 4+ space run
     return String(text || '')
-      .replace(/[*_]/g, '')                  // strip *bold*/_italic_ (shows literally in a param)
-      .replace(/\r/g, '')
-      .replace(/\t/g, ' ')
-      .replace(/\n/g, LS)                    // line breaks survive validation as U+2028
-      .replace(/ {2,}/g, m => NBSP.repeat(m.length))  // 2+ spaces → NBSP (avoids the 4-space rule)
+      .replace(/[*_]/g, '')        // strip *bold*/_italic_ (shows literally in a param)
+      .replace(/[\r\n\t]+/g, ' ')  // newlines/tabs -> space (forbidden inside a param)
+      .replace(/ {2,}/g, ' ')      // collapse runs of spaces (avoids Meta's 4+ space rule)
       .trim();
   }
 
