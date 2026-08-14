@@ -94,12 +94,23 @@ One row per (date, staff, company). Lifecycle: open → closed → validated.
 | L | closing_cash_counted | number | no | Full till count at close |
 | M | cash_left_in_till | number | no | Standard float (e.g. $250) |
 | N | cash_removed_at_close | number | no | counted − float = takings |
-| O | expected_cash | number | no | opening + cash_sales + misc_cash − cashback |
+| O | expected_cash | number | no | opening + cash_sales + misc_cash − cashback − lotto_topup_from_till |
 | P | closing_variance | number | no | counted − expected |
 | Q | variance_status | enum | no | `OK` / `minor` / `investigate` / `pending_validation` |
 | R | notes | string | no | |
+| S | lotto_reserve_counted | number | no | cstore only — what's left in the lotto pot at close |
+| T | lotto_topup_from_till | number | no | cstore only — cash moved from the drawer into the pot |
+| U | lotto_reserve_note | string | no | Required when counted ≠ `lotto_reserve_default` |
 
 (ATM tracking removed per design — handled separately if ever needed.)
+
+**Lotto reserve (S–U).** The store keeps a separate pot of cash — expected
+balance `lotto_reserve_default` (config, default $500) — so cashiers can pay
+out lottery wins larger than the drawer holds. Payouts from the pot are *not*
+till transactions and never enter the cash math; only `lotto_topup_from_till`
+does, because that cash physically left the drawer. Existing sheets gain these
+columns via **StoreOps → Add lotto reserve to till_sessions**; until then the
+code skips the fields entirely.
 
 ### 4. `sales` — sales by tender, per till_session
 

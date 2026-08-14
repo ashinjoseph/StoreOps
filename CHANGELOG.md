@@ -132,3 +132,37 @@ This completes v1.0.0.
 - Shopping list and picker get their own `@media (max-width:560px)`
   rules — previously only the sales/reconciliation tables were tuned for
   small screens.
+
+### Close-shift input fixes + daily Lotto Reserve log (Batch 7)
+- **Amount fields no longer edit themselves.** Every money input in the open
+  and close shift sheets was `<input type="number">`, which renders a spinner
+  and — the actual bug — responds to the **scroll wheel** while focused, so
+  scrolling a long close sheet silently rewrote amounts (one field was found
+  sitting at `-0.02`). They are now plain text with `inputmode="decimal"`, so
+  phones still get the numeric keypad. New `moneyInput()` / `wireMoneyInputs()`
+  helpers in `Index.html` also **clear a field on focus** instead of making you
+  select the pre-filled `0` first, strip anything that isn't a digit or a
+  single `.`, and restore the resting value on blur — so a field left untouched
+  still reads and submits as `0`, exactly as before.
+- **Lotto reserve is now tracked daily.** On heavy lotto days the payouts
+  exceed what the drawer has taken, so cashiers pay winners out of a separate
+  pot kept in the store. Nothing recorded that pot. The CSTORE close sheet now
+  asks for the reserve counted (pre-filled with the expected $500), an optional
+  "topped up from till" amount, and a reason — **required** whenever the count
+  isn't the expected balance, mirroring the existing opening-float rule.
+- `TillSessions.gs` — `till_sessions` gains `lotto_reserve_counted`,
+  `lotto_topup_from_till` and `lotto_reserve_note` (cols 19-21). Expected cash
+  becomes `opening + cash + misc_cash − cashback − lotto_topup_from_till`: a
+  top-up moved real cash out of the drawer, so it stops reading as a variance.
+  Payouts from the pot never touch till math — that money was never in the
+  till. `getLottoLog()` returns the last 14 days for the UI.
+- **My Shift** shows the current balance on the CSTORE card (with a "short $X"
+  marker) plus a collapsible reserve log — visible to every role, since any
+  cashier who might pay out of the pot needs to know what's in it.
+- `Setup.gs` — new `lotto_reserve_default` config key and a one-shot
+  **Add lotto reserve to till_sessions** migration for existing sheets.
+  Until it runs, `getAll_` reads only as wide as the sheet actually is and the
+  lotto UI stays hidden, so the code is safe to deploy before the migration.
+- Vape close is unchanged, and lotto never reaches the `sales` sheet — a
+  payout is not a sale, and mixing it in would corrupt commissions and the
+  Clover reconciliation.

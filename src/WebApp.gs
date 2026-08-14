@@ -223,10 +223,36 @@ function _rpcGetMyShiftState(token) {
     };
   }
 
+  // Lotto reserve log — visible to every role, since any cashier who might
+  // pay out of the pot needs to know what's in it. Best-effort: a store that
+  // hasn't run the migration just gets nulls and the UI hides the section.
+  let lotto = null;
+  try {
+    const log = TillSessions.getLottoLog(14);
+    const names = _staffNameMap();
+    lotto = {
+      enabled:         log.enabled,
+      expected:        log.expected,
+      lastCounted:     log.lastCounted,
+      lastCountedDate: log.lastCountedDate,
+      entries: log.entries.map(e => ({
+        date:      e.date,
+        staffName: names[e.staffId] || e.staffId,
+        counted:   e.counted,
+        shortfall: e.shortfall,
+        topup:     e.topup,
+        note:      e.note,
+      })),
+    };
+  } catch (e) {
+    console.error('lotto log failed: ' + e.message);
+  }
+
   return {
     today: Util.formatDate(today),
     cards: cards,
     todaySummary: todaySummary,
+    lotto: lotto,
     recentTill: recentTill.map(s => ({
       sessionId: s.sessionId,
       company: s.company,
@@ -308,6 +334,11 @@ function rpcCloseShift(token, input) {
       miscDebit:     Number(input.miscDebitSales) || 0,
       miscNotes:     input.miscNotes || '',
       physicalCount: Number(input.physicalCount),
+      // Lotto reserve — cstore only; null means "the UI didn't ask", which
+      // TillSessions reads as "still at the expected balance".
+      lottoCounted:       input.lottoCounted == null ? null : Number(input.lottoCounted),
+      lottoTopupFromTill: Number(input.lottoTopupFromTill) || 0,
+      lottoNote:          input.lottoNote || '',
       notes:         input.closingNote || '',
       actorId:       session.staffId,
     });
@@ -321,6 +352,8 @@ function rpcCloseShift(token, input) {
       cashRemoved:    Number(result.cashRemoved) || 0,
       floatLeft:      Number(result.floatLeft) || 0,
       varianceStatus: result.varianceStatus || 'OK',
+      lottoReserveCounted: result.lottoReserveCounted,
+      lottoReserveShort:   Number(result.lottoReserveShort) || 0,
     };
   } catch (e) {
     console.error('rpcCloseShift failed: ' + e.message + '\n' + (e.stack || ''));

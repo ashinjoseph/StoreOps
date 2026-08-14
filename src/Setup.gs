@@ -75,6 +75,7 @@ function onOpen() {
     .addItem('📦 Import Grocery/Other (from staging)',  'menu_importOther')
     .addItem('🧱 Migrate Product Master → v2 (per-type)', 'menu_migrateProductMasterV2')
     .addItem('🛒 Add product_id to shopping_list', 'menu_migrateShoppingListProductId')
+    .addItem('🎟️ Add lotto reserve to till_sessions', 'menu_migrateTillSessionsLottoReserve')
     .addSeparator()
     .addItem('⚠️ Reset Data (keeps schema)',         'resetDataTables')
     .addToUi();
@@ -356,6 +357,7 @@ function setupConfigSheet_() {
   const defaults = [
     ['cstore_default_opening_float', '250',            'Cstore opening float (dollars)'],
     ['vape_default_opening_float',   '100',            'Vape opening float (dollars)'],
+    ['lotto_reserve_default',        '500',            'Expected lotto reserve balance at cstore close (dollars)'],
     ['variance_ok_threshold',        '1',              'Variance under this = OK (green)'],
     ['variance_minor_threshold',     '30',             'Variance under this = Minor (yellow); over = investigate (red)'],
     ['cstore_business_name',         'Scarbro Mart',   'Display name for cstore'],
@@ -480,13 +482,16 @@ function setupTillSessionsSheet_() {
   if (ss.getSheetByName(SHEETS.TILL_SESSIONS)) return;
   const sh = ss.insertSheet(SHEETS.TILL_SESSIONS);
 
-  writeHeader_(sh, '💵  Till Sessions — per-company cash reconciliation', 18);
+  writeHeader_(sh, '💵  Till Sessions — per-company cash reconciliation', 21);
   writeColumnHeaders_(sh, [
     'session_id', 'attendance_id', 'staff_id', 'company', 'date',
     'status', 'start_time', 'end_time',
     'expected_opening', 'opening_float', 'opening_note',
     'closing_cash_counted', 'cash_left_in_till', 'cash_removed_at_close',
-    'expected_cash', 'closing_variance', 'variance_status', 'notes'
+    'expected_cash', 'closing_variance', 'variance_status', 'notes',
+    // Lotto reserve (cstore only): the separate in-store pot cashiers use to
+    // pay out wins bigger than the drawer can cover.
+    'lotto_reserve_counted', 'lotto_topup_from_till', 'lotto_reserve_note'
   ]);
 
   applyEnumValidation_(sh, 4, COMPANIES);
@@ -494,7 +499,7 @@ function setupTillSessionsSheet_() {
   applyEnumValidation_(sh, 17, VARIANCE_STATUSES);
   sh.getRange(3, 5, 5000, 1).setNumberFormat('yyyy-MM-dd');
   sh.getRange(3, 7, 5000, 2).setNumberFormat('yyyy-MM-dd HH:mm:ss');
-  for (const col of [9, 10, 12, 13, 14, 15, 16]) {
+  for (const col of [9, 10, 12, 13, 14, 15, 16, 19, 20]) {
     sh.getRange(3, col, 5000, 1).setNumberFormat('$#,##0.00');
   }
 
@@ -504,16 +509,18 @@ function setupTillSessionsSheet_() {
   y.setHours(0, 0, 0, 0);
   const ystart = new Date(y); ystart.setHours(8, 55, 0, 0);
   const yend = new Date(y); yend.setHours(17, 5, 0, 0);
-  sh.getRange(3, 1, 1, 18).setValues([[
+  sh.getRange(3, 1, 1, 21).setValues([[
     Util.tillSessionId(y, 'S_001', 'cstore'),
     Util.attendanceId(y, 'S_001'),
     'S_001', 'cstore', y, 'closed', ystart, yend,
     250, 250, '',
     1030, 250, 780,
-    1065.1, -35.1, 'investigate', 'Placeholder'
+    1065.1, -35.1, 'investigate', 'Placeholder',
+    500, 0, ''
   ]]).setBackground(COLORS.PLACEHOLDER);
 
-  setColWidths_(sh, [180, 180, 80, 80, 100, 90, 150, 150, 110, 100, 200, 130, 110, 130, 110, 110, 130, 200]);
+  setColWidths_(sh, [180, 180, 80, 80, 100, 90, 150, 150, 110, 100, 200, 130, 110, 130, 110, 110, 130, 200,
+                     130, 130, 220]);
   sh.setFrozenRows(2);
 }
 
@@ -1008,6 +1015,30 @@ function menu_migrateShoppingListProductId() {
     .setBackground(COLORS.SUBHEADER).setHorizontalAlignment('center');
   sh.setColumnWidth(15, 180);
   ui.alert('Added product_id at column 15. Existing rows are unchanged.');
+}
+
+// One-shot migration: append the three lotto-reserve columns (19-21) to an
+// EXISTING till_sessions tab. Idempotent — no-op once the headers are there.
+// Fresh installs already get them via setupTillSessionsSheet_. Until this
+// runs, TillSessions simply skips the lotto fields, so the app keeps working.
+function menu_migrateTillSessionsLottoReserve() {
+  const ui = SpreadsheetApp.getUi();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.TILL_SESSIONS);
+  if (!sh) { ui.alert('till_sessions not found — run First-time Setup first.'); return; }
+  const headers = sh.getRange(2, 1, 1, Math.max(sh.getLastColumn(), 21)).getValues()[0];
+  if (headers.indexOf('lotto_reserve_counted') !== -1) {
+    ui.alert('Already migrated — lotto reserve columns present.');
+    return;
+  }
+  sh.getRange(2, 19, 1, 3)
+    .setValues([['lotto_reserve_counted', 'lotto_topup_from_till', 'lotto_reserve_note']])
+    .setFontWeight('bold').setFontColor('#FFFFFF')
+    .setBackground(COLORS.SUBHEADER).setHorizontalAlignment('center');
+  sh.getRange(3, 19, 5000, 2).setNumberFormat('$#,##0.00');
+  sh.setColumnWidth(19, 130);
+  sh.setColumnWidth(20, 130);
+  sh.setColumnWidth(21, 220);
+  ui.alert('Added lotto reserve columns at 19-21. Existing rows are unchanged.');
 }
 
 // ============================================================
