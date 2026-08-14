@@ -225,7 +225,12 @@ const TillSessions = (() => {
       '', input.notes || ''
     ];
     // Only widen the row once the lotto columns exist (see hasLottoColumns_).
-    if (hasLottoColumns_()) values.push(0, 0, '');
+    // Non-lotto companies get blanks, not zeros — a vape row reading $0.00
+    // implies it has a reserve, which it doesn't.
+    if (hasLottoColumns_()) {
+      if (input.company === LOTTO_COMPANY) values.push(0, 0, '');
+      else values.push('', '', '');
+    }
     sh.getRange(row, 1, 1, values.length).setValues([values]);
     bustCache_();
 
@@ -509,7 +514,11 @@ const TillSessions = (() => {
 
     const today = Util.todayMidnight();
     const from = Util.addDays(today, -(Number(days) || 14));
-    const entries = getForDateRange_(from, today, LOTTO_COMPANY)
+    // endOfDay, not midnight: getForDateRange_ rejects anything past `end`, so
+    // a date cell that reads back with a time component — which happens when
+    // the spreadsheet's timezone differs from the script's — would silently
+    // drop every one of today's sessions.
+    const entries = getForDateRange_(from, Util.endOfDay(today), LOTTO_COMPANY)
       .filter(s => s.status === 'closed' || s.status === 'validated')
       .sort((a, b) => (b.endTime || b.date || 0) - (a.endTime || a.date || 0))
       .map(s => ({

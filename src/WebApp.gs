@@ -173,7 +173,9 @@ function _rpcGetMyShiftState(token) {
 
   // Recent shifts (last 7 days, mine, all closed)
   const sevenDaysAgo = Util.addDays(today, -7);
-  const allInRange = TillSessions.getForDateRange(sevenDaysAgo, today) || [];
+  // endOfDay so today's own sessions can't fall outside the range when a date
+  // cell reads back with a time component (spreadsheet vs script timezone).
+  const allInRange = TillSessions.getForDateRange(sevenDaysAgo, Util.endOfDay(today)) || [];
   const recentTill = allInRange
     .filter(s => s && s.staffId === staffId && (s.status === 'closed' || s.status === 'validated'))
     .sort((a, b) => (b.startTime || 0) - (a.startTime || 0))

@@ -256,6 +256,11 @@
 
   /* ── Lotto reserve ─────────────────────────────────── */
   .lotto-short { color: #b91c1c; font-weight: 700; }
+  .lotto-hint {
+    font-size: 12px; color: #4a5570;
+    background: #eef2ff; border-radius: 8px;
+    padding: 8px 10px; margin-bottom: 10px;
+  }
   .lotto-log { margin-top: 22px; }
   .lotto-log > summary {
     cursor: pointer; list-style: none;
@@ -1570,7 +1575,10 @@
       btn.onclick = () => {
         haptic();
         if (action === 'open') openShiftForm(company, expected);
-        else if (action === 'close') closeShiftForm(sessionId, company);
+        // Hand the float straight over: the close sheet needs it to work out
+        // what's spare for the lotto reserve, and waiting on its own fetch
+        // left that calculation blind on first paint.
+        else if (action === 'close') closeShiftForm(sessionId, company, expected);
       };
     });
 
@@ -1611,7 +1619,8 @@
         '<div><strong>Running:</strong> <span class="running-time" data-running="' + esc(card.company) + '">—</span></div>' +
         '<div><strong>Float:</strong> ' + money(card.detail.openingFloat) + '</div>';
       btnHTML = '<button class="card-btn card-btn-close" data-action="close" ' +
-                'data-company="' + esc(card.company) + '" data-session-id="' + esc(card.detail.sessionId) + '">' +
+                'data-company="' + esc(card.company) + '" data-session-id="' + esc(card.detail.sessionId) + '" ' +
+                'data-expected="' + Number(card.expectedFloat || 0) + '">' +
                 'Close ' + esc(companyLabel) + '</button>';
     } else if (card.state === 'open_by_other') {
       stateClass = 'state-other';
@@ -1681,7 +1690,7 @@
         await call('rpcOpenShift', state.token, { company, openingCount: count, openingNote: note });
         closeSheet();
         toast('✓ ' + company.toUpperCase() + ' shift opened', 'success');
-        loadShiftTab();
+        loadShiftTab(true);
         // Async WhatsApp "shift opened" notice (name + till) — never blocks open.
         call('rpcNotifyShiftOpen', state.token, company).catch(() => {});
       } catch (e) {
@@ -1693,7 +1702,7 @@
   }
 
   // ── Close shift modal ───────────────────────────────────
-  function closeShiftForm(sessionId, company) {
+  function closeShiftForm(sessionId, company, cardFloat) {
     // Lotto is a cstore-only pot, so only that close sheet asks about it —
     // and only once the sheet has the columns to store it in, so we never
     // collect a count the server would silently drop.
@@ -1702,9 +1711,27 @@
 
     // Where the pot stood when this shift started — what the last close left
     // behind. Nothing on record means it was never short, so assume full.
-    const lottoStart = (state.lotto && state.lotto.lastCounted != null)
-      ? Number(state.lotto.lastCounted) : lottoExpected;
-    const lottoDeficit = Math.max(0, lottoExpected - lottoStart);
+    const lottoKnown = !!(state.lotto && state.lotto.lastCounted != null);
+    const lottoStart = lottoKnown ? Number(state.lotto.lastCounted) : lottoExpected;
+
+    // How much a PREVIOUS shift left missing. This — not today's pot count —
+    // is what may be moved from the drawer, and it caps the offer.
+    //
+    // A payout made during THIS shift is deliberately excluded: the POS cash
+    // figure is already net of it, so the drawer is short by that amount
+    // already. Refilling the pot from the drawer at close is a wash, and
+    // recording it would take the same money off the banked cash twice.
+    const lottoCarryDeficit = Math.max(0, lottoExpected - lottoStart);
+
+    // Say out loud what we think the pot started at. When this line disagrees
+    // with the physical pot the cashier can correct the count on the spot —
+    // previously a wrong starting balance silently disabled the top-up row
+    // with nothing on screen to explain it.
+    const lottoNote = !lottoKnown
+      ? 'No previous count on record — assuming ' + money(lottoExpected) + '.'
+      : 'Reserve was ' + money(lottoStart) +
+        (state.lotto.lastCountedDate ? ' at close on ' + fmtDate(state.lotto.lastCountedDate) : '') +
+        '. Correct it below if the pot says otherwise.';
 
     // Both extra rows start hidden. On a normal day the pot is untouched at
     // $500 and neither has anything to say; recalcClose reveals them when the
@@ -1712,6 +1739,7 @@
     const lottoHTML = !hasLotto ? '' :
       '<details class="misc-block" open>' +
         '<summary>Lotto reserve</summary>' +
+        '<div class="lotto-hint">' + esc(lottoNote) + '</div>' +
         '<div class="sheet-field"><label>Reserve counted ($)</label>' +
           moneyInput('closeLotto', String(lottoStart)) + '</div>' +
         '<div class="sheet-field" id="closeLottoTopupWrap" style="display:none">' +
@@ -1761,30 +1789,41 @@
       onShown: () => $('closeCash').focus(),
     });
 
-    // Get the floats from server state for live computation. floatValue is
-    // the standard float left in the drawer — cash above it is what's spare
-    // to move into the reserve.
+    // floatValue is the standard float left in the drawer — cash above it is
+    // what's spare to move into the reserve. Seeded from the same card that
+    // rendered the Close button so it's correct on first paint; the fetch
+    // below only refines it (and supplies the opening float).
     let openingFloat = 0;
-    let floatValue = 0;
+    let floatValue = Number(cardFloat) || 0;
     (async () => {
       try {
         const data = await cachedCall('rpcGetMyShiftState', [state.token], TTL_LIVE);
         const card = (data.cards || []).find(c => c.company === company);
         if (card) {
-          floatValue = Number(card.expectedFloat) || 0;
+          floatValue = Number(card.expectedFloat) || floatValue;
           if (card.state === 'open_by_me') openingFloat = Number(card.detail.openingFloat) || 0;
         }
         recalcClose();
       } catch (e) {}
     })();
 
-    // Once the cashier edits either field by hand, stop auto-filling it —
-    // a deliberate number always beats our suggestion.
+    // Once the cashier edits the top-up by hand, stop auto-filling it — a
+    // deliberate number always beats our suggestion.
     let topupTouched = false;
-    let countTouched = false;
 
+    // "Reserve counted" is what's physically in the pot when the cashier
+    // counts it, BEFORE moving anything in. It's a plain input we never write
+    // back to, so nothing can feed back into itself; the closing balance is
+    // derived as counted + moved-in and shown in the summary.
+    function lottoBase() {
+      const v = parseFloat($('closeLotto').value);
+      return isNaN(v) ? lottoStart : v;
+    }
     function lottoTopup() {
       return hasLotto ? (parseFloat($('closeLottoTopup').value) || 0) : 0;
+    }
+    function lottoClosing() {
+      return Math.round((lottoBase() + lottoTopup()) * 100) / 100;
     }
 
     function recalcClose() {
@@ -1815,16 +1854,19 @@
       $('sumVariance').textContent = (variance >= 0 ? '+' : '') + money(variance).replace('-','-');
     }
 
-    // Reveals the two optional reserve rows and keeps their suggested values
-    // in step with the till count.
-    function updateLotto(counted) {
-      // Offer to refill only when a previous shift left the pot short AND
-      // there's cash above the float to do it with. A normal $500 pot, or an
-      // empty-ish drawer, means there's nothing to offer.
-      // floatValue arrives with the async card fetch; until it lands we can't
-      // tell what's spare, so don't offer a number we'd have to correct.
-      const spare = (isNaN(counted) || !floatValue) ? 0 : Math.max(0, counted - floatValue);
-      const canTopUp = lottoDeficit > 0.01 && spare > 0.01;
+    // Reveals the two optional reserve rows and keeps the suggested top-up in
+    // step with the till count. `tillCount` is the drawer count, not the pot.
+    function updateLotto(tillCount) {
+      const base = lottoBase();               // pot as counted, before moving cash in
+      // Cash above the float is what's spare to move. If the float hasn't
+      // loaded yet it's 0, so `spare` is merely generous — never a reason to
+      // hide the row. Suppressing a field because a fetch is in flight is what
+      // made this look broken.
+      const spare = isNaN(tillCount) ? 0 : Math.max(0, tillCount - floatValue);
+
+      // Offer a refill only for what a previous shift left missing, and only
+      // as far as the drawer can cover it.
+      const canTopUp = lottoCarryDeficit > 0.01 && spare > 0.01;
       $('closeLottoTopupWrap').style.display = canTopUp ? '' : 'none';
 
       if (!canTopUp) {
@@ -1833,38 +1875,26 @@
         $('closeLottoTopup').value = '0';
         topupTouched = false;
       } else if (!topupTouched) {
-        // Whatever it takes to get back to expected, capped by what's spare.
-        $('closeLottoTopup').value = Math.round(Math.min(lottoDeficit, spare) * 100) / 100;
+        $('closeLottoTopup').value = Math.round(Math.min(lottoCarryDeficit, spare) * 100) / 100;
       }
 
-      // The count follows the top-up so a full refill lands on the expected
-      // balance instead of demanding a reason it doesn't owe.
-      if (!countTouched) {
-        $('closeLotto').value = Math.round((lottoStart + lottoTopup()) * 100) / 100;
-      }
-
-      const lotto = parseFloat($('closeLotto').value);
-      const short = isNaN(lotto) ? 0 : lottoExpected - lotto;
+      const moved = lottoTopup();
+      const closing = lottoClosing();
+      const short = lottoExpected - closing;
 
       // Reason only matters when the pot doesn't end the day where it should.
       // Held back until a till count exists: with a carried-over deficit we
       // can't know whether this shift will refill it, and asking for a reason
       // the moment the sheet opens would be answering the previous cashier's
       // question.
-      const explain = Math.abs(short) > 0.01 && !isNaN(counted);
-      $('closeLottoNoteWrap').style.display = explain ? '' : 'none';
+      $('closeLottoNoteWrap').style.display =
+        (Math.abs(short) > 0.01 && !isNaN(tillCount)) ? '' : 'none';
 
       const el = $('sumLotto');
-      if (isNaN(lotto)) {
-        el.textContent = '—';
-        el.className = '';
-        return;
-      }
       el.className = short > 0.01 ? 'compute-variance-minor' : 'compute-variance-OK';
-      const moved = lottoTopup();
       const sum = moved > 0.01
-        ? money(lottoStart) + ' + ' + money(moved) + ' moved in = ' + money(lotto)
-        : money(lotto);
+        ? money(base) + ' + ' + money(moved) + ' moved in = ' + money(closing)
+        : money(closing);
       el.textContent = short > 0.01 ? sum + ' · short ' + money(short) : sum;
     }
 
@@ -1886,7 +1916,6 @@
       // Only a real keystroke counts as "touched" — our own auto-fill writes
       // .value directly, which fires nothing.
       $('closeLottoTopup').addEventListener('input', () => { topupTouched = true; });
-      $('closeLotto').addEventListener('input', () => { countTouched = true; });
     }
 
     const recalcOn = ['closeCash','closeMiscCash','closeCount'];
@@ -1905,8 +1934,7 @@
       // Mirrors the server rule — a reserve that isn't at the expected
       // balance needs a reason on the record. Server check is the real gate.
       if (hasLotto) {
-        const lotto = parseFloat($('closeLotto').value) || 0;
-        if (Math.abs(lotto - lottoExpected) > 0.01 && !$('closeLottoNote').value.trim()) {
+        if (Math.abs(lottoClosing() - lottoExpected) > 0.01 && !$('closeLottoNote').value.trim()) {
           return toast('Lotto reserve isn’t ' + money(lottoExpected) + ' — add a reason', 'error');
         }
       }
@@ -1926,7 +1954,8 @@
           miscDebitSales: parseFloat($('closeMiscDebit').value) || 0,
           miscNotes: $('closeMiscNotes').value.trim(),
           physicalCount: counted,
-          lottoCounted: hasLotto ? (parseFloat($('closeLotto').value) || 0) : null,
+          // The closing balance = pot as counted + anything moved in.
+          lottoCounted: hasLotto ? lottoClosing() : null,
           lottoTopupFromTill: hasLotto ? lottoTopup() : 0,
           lottoNote: hasLotto ? $('closeLottoNote').value.trim() : '',
         });
@@ -1934,7 +1963,9 @@
         const variance = result && result.variance != null ? Number(result.variance) : 0;
         toast('✓ ' + company.toUpperCase() + ' closed · variance ' + money(variance),
               Math.abs(variance) > 30 ? 'warning' : 'success');
-        loadShiftTab();
+        // force: the reserve balance the next close sheet pre-fills from is
+        // only correct if we re-read past the 60s TTL_LIVE cache.
+        loadShiftTab(true);
         // Async follow-up: when all tills are closed for the day, reconcile
         // against Clover + WhatsApp. Fire-and-forget — never affects the close.
         call('rpcReconcileDay', state.token, false).then(r => {

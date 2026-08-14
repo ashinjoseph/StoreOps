@@ -155,12 +155,35 @@ This completes v1.0.0.
   a blind submit records the truth rather than an optimistic $500.
 - **The extra reserve fields only appear when they mean something.** A normal
   close, with the pot untouched at $500, shows neither. The *reason* field
-  appears once the counted balance isn't the expected one, and is required from
+  appears once the closing balance isn't the expected one, and is required from
   then on. The *move to reserve from till* field appears only when a previous
   shift left the pot short **and** the till count exceeds the float — there's
   nothing spare to move otherwise. It auto-fills with what's needed (capped by
-  what's actually spare) and stays editable; the counted balance follows along
-  so a full refill lands on $500 without demanding a reason it doesn't owe.
+  what's actually spare) and stays editable.
+- **"Reserve counted" is the pot as you count it**, before moving anything in;
+  the closing balance is derived as `counted + moved in` and shown in the
+  summary. The form previously wrote a computed value back into that field,
+  which fed back into itself and made a wrong figure impossible to spot.
+- **A payout made during the current shift is deliberately not offered a
+  transfer.** The POS cash figure is already net of it, so the drawer is short
+  by that amount already — refilling the pot at close is a wash, and recording
+  it would take the same money off the banked cash twice. Only a deficit
+  carried in from a previous shift can be moved, and it caps the offer.
+- **The close sheet states the balance it is working from** — *"Reserve was
+  $200.00 at close on Aug 12"*. The top-up row had been silently suppressed by
+  a stale cached balance with nothing on screen to explain it; its visibility
+  no longer depends on anything the cashier can't see. The float value is now
+  handed over from the card that rendered the Close button, so an in-flight
+  fetch can't suppress the row either.
+- Closing or opening a shift refreshes shift state with `force`. Without it the
+  next close sheet could read a `TTL_LIVE` cache up to 60s old and pre-fill the
+  reserve from pre-close state — the cause of the missing row.
+- `getForDateRange` end bounds use `Util.endOfDay`. Passing midnight meant any
+  date cell that read back with a time component — which happens whenever the
+  spreadsheet's timezone differs from the script's — dropped today's sessions
+  from the reserve log and from Recent Shifts.
+- `open_` leaves the lotto columns blank for non-CSTORE rows instead of writing
+  `0`, which made vape sessions look like they had a reserve.
 - `TillSessions.gs` — `till_sessions` gains `lotto_reserve_counted`,
   `lotto_topup_from_till` and `lotto_reserve_note` (cols 19-21). **The reserve
   never affects the till variance.** Payouts came out of the pot, not the
