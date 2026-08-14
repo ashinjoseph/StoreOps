@@ -589,14 +589,15 @@
   .shop-check { width: 20px; height: 20px; flex-shrink: 0; accent-color: #15803d; }
   .shop-item { flex: 1; min-width: 0; }
   .shop-done { text-decoration: line-through; color: #9aa0ac; }
-  .shop-remove {
-    flex-shrink: 0; color: #b91c1c; background: transparent;
-    font-size: 16px; padding: 4px 8px; line-height: 1;
+  /* 44px minimum tap targets — these are used one-handed, mid-aisle. */
+  .shop-remove, .shop-edit {
+    flex-shrink: 0; background: transparent; line-height: 1;
+    min-width: 44px; min-height: 44px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
   }
-  .shop-edit {
-    flex-shrink: 0; color: #1a4ca1; background: transparent;
-    font-size: 15px; padding: 4px 6px; line-height: 1;
-  }
+  .shop-remove { color: #b91c1c; font-size: 18px; }
+  .shop-edit   { color: #1a4ca1; font-size: 17px; }
+  .shop-remove:active, .shop-edit:active { background: #f1f3f7; border-radius: 10px; }
   /* daily reconciliation panel */
   .recon-card { background: white; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
   .recon-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -674,6 +675,15 @@
     /* Reconciliation cards keep the wrapper border off the inner rows. */
     .recon-table { border-top: 0; }
     .sales-totals { grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); }
+
+    /* Shopping list + product picker: this is the most-used screen on a phone,
+       so give the list more of the sheet and keep tap targets generous. */
+    .si-results { max-height: 60vh; }
+    .si-meta { font-size: 10.5px; }
+    .shop-row { gap: 6px; }
+    .shop-check { width: 24px; height: 24px; }
+    /* Trim the outer padding so the wider tap targets don't force a wrap. */
+    .shop-row.history-item { padding-left: 10px; padding-right: 2px; }
   }
 
   /* ── Modal (bottom sheet) ──────────────────────────── */
@@ -717,10 +727,30 @@
   .sheet-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   /* shopping-list product picker */
   .si-results { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-  .si-row { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; background: #f7f8fa; border: 1px solid #eef0f4; border-radius: 10px; padding: 9px 11px; cursor: pointer; }
-  .si-row:active { background: #eef2ff; }
+  /* product row: details left, add/stepper control right */
+  .si-row { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; background: #f7f8fa; border: 1px solid #eef0f4; border-radius: 10px; padding: 7px 8px 7px 11px; }
+  .si-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .si-name { font-size: 14px; font-weight: 700; color: #1a2540; }
   .si-meta { font-size: 11px; color: #6a6e79; }
+  .si-ctrl { flex-shrink: 0; }
+  .si-add {
+    min-width: 44px; min-height: 44px; border-radius: 12px;
+    background: #1a4ca1; color: white; font-size: 22px; font-weight: 400; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .si-add:active { background: #143d82; }
+  .si-step { display: flex; align-items: center; gap: 2px; background: white; border: 1px solid #d7dbe4; border-radius: 12px; }
+  .si-mn, .si-pl {
+    min-width: 40px; min-height: 44px; background: transparent;
+    color: #1a4ca1; font-size: 20px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .si-mn:active, .si-pl:active { background: #eef2ff; }
+  .si-q { min-width: 26px; text-align: center; font-size: 15px; font-weight: 800; color: #1a2540; font-variant-numeric: tabular-nums; }
+  /* category quick-filters — tapping beats typing on a phone */
+  .si-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .si-chip { padding: 7px 12px; border-radius: 999px; background: #f1f3f7; color: #4a5570; font-size: 12px; font-weight: 700; border: 1px solid transparent; }
+  .si-chip.on { background: #1a4ca1; color: white; }
   .si-empty { font-size: 13px; color: #6a6e79; padding: 14px 4px; text-align: center; }
   .si-pick { background: #eef2ff; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
   .si-pick-name { font-size: 15px; font-weight: 800; color: #1a2540; }
@@ -827,6 +857,12 @@
   .toast.success { background: #15803d; }
   .toast.error { background: #b91c1c; }
   .toast.warning { background: #d97706; }
+  .toast-action {
+    margin-left: 12px; padding: 5px 12px; border-radius: 100px;
+    background: rgba(255,255,255,0.22); color: white;
+    font-size: 13px; font-weight: 800; letter-spacing: 0.02em;
+  }
+  .toast-action:active { background: rgba(255,255,255,0.34); }
 
   /* Product Master tab */
   .products-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
@@ -1103,18 +1139,32 @@
   function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate()+n); return x; }
 
   let toastHideTimer = null;
-  function toast(msg, kind) {
+  // `action` (optional) = { label, onClick } — renders a tappable button in the
+  // toast (used for Undo) and stretches the auto-hide so it stays reachable.
+  function toast(msg, kind, action) {
     const t = $('toast');
     if (!t) return;
-    // Cancel any pending hide so a new toast always gets a fresh 3s window.
+    // Cancel any pending hide so a new toast always gets a fresh window.
     clearTimeout(toastHideTimer);
-    t.textContent = msg;
+    t.textContent = msg;                       // also clears any previous action
     t.className = 'toast' + (kind ? ' ' + kind : '');
+    if (action && action.label) {
+      const b = document.createElement('button');
+      b.className = 'toast-action';
+      b.textContent = action.label;
+      b.onclick = (ev) => {
+        ev.stopPropagation();                  // don't also trigger dismiss-on-tap
+        t.classList.remove('show');
+        clearTimeout(toastHideTimer);
+        if (action.onClick) action.onClick();
+      };
+      t.appendChild(b);
+    }
     // Force a reflow so the show transition restarts cleanly for back-to-back
     // toasts, then show on the next frame.
     void t.offsetWidth;
     requestAnimationFrame(() => t.classList.add('show'));
-    toastHideTimer = setTimeout(() => t.classList.remove('show'), 3000);
+    toastHideTimer = setTimeout(() => t.classList.remove('show'), action ? 5000 : 3000);
   }
   // Dismiss toast on tap
   document.addEventListener('DOMContentLoaded', () => {
@@ -1186,8 +1236,11 @@
       state.token = res.token;
       state.me = res;
       localStorage.setItem('storeops_last_name', name);
-      sessionStorage.setItem('storeops_token', res.token);
-      sessionStorage.setItem('storeops_me', JSON.stringify(res));
+      // localStorage (not sessionStorage) so the session survives closing the
+      // tab — mobile browsers discard background tabs aggressively, and the
+      // server session is good for 24h (and auto-renews past halfway).
+      localStorage.setItem('storeops_token', res.token);
+      localStorage.setItem('storeops_me', JSON.stringify(res));
       enterApp();
     } catch (e) {
       showLoginError(e.message);
@@ -1239,7 +1292,6 @@
       ['rpcGetShoppingList',   [state.token],     TTL_LIVE],
       ['rpcGetSuppliers',      [state.token],     TTL_REF],
       ['rpcGetPaymentHistory', [state.token, 25], TTL_SEMI],
-      ['rpcGetProductMaster',  [state.token, {}], TTL_REF],   // shopping add-item picker + products tab
       ['rpcGetStaffDirectory', [state.token],     TTL_REF],   // sales/rule pickers
     ];
     if (mgr) {
@@ -1267,8 +1319,8 @@
     rpcCache.clear();   // don't leak one user's cached data into the next login
     rpcInflight.clear();
     state.lastGenerated = null;
-    sessionStorage.removeItem('storeops_token');
-    sessionStorage.removeItem('storeops_me');
+    localStorage.removeItem('storeops_token');
+    localStorage.removeItem('storeops_me');
     $('appScreen').classList.remove('active');
     $('loginScreen').classList.add('active');
     loadLoginScreen();
@@ -2074,6 +2126,10 @@
     if (force || !cacheFresh('rpcGetShoppingList', [state.token], TTL_LIVE)) {
       view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading list…</div>';
     }
+    // Warm the product picker in the background (NOT at login — the catalog is
+    // the heaviest read in the app and most sessions never open this tab). By
+    // the time the list is read and "+ Add item" is tapped, it's a cache hit.
+    cachedCall('rpcGetProductsForPicker', [state.token], TTL_REF).catch(() => {});
     try {
       const list = await cachedCall('rpcGetShoppingList', [state.token], TTL_LIVE, { force });
       renderShoppingTab(list);
@@ -2085,6 +2141,7 @@
   function renderShoppingTab(list) {
     const view = $('view-shopping');
     list = list || [];
+    state.shoppingList = list;   // the picker seeds its quantities from this
     const privileged = ['admin', 'manager', 'payroll_admin'].indexOf(state.me.role) >= 0;
     const toBuy = list.filter(e => !e.bought).length;
     const doneCount = list.length - toBuy;
@@ -2155,15 +2212,31 @@
         } catch (e) { toast(e.message, 'error'); cb.checked = !cb.checked; cb.disabled = false; }
       };
     });
+    // Remove is instant with an Undo toast rather than a blocking confirm() —
+    // a shopping list is cheap to get wrong, and the dialog was the slowest
+    // part of clearing items on a phone. Undo re-adds from the product, so it
+    // comes back with a new entryId attributed to whoever tapped Undo.
     view.querySelectorAll('[data-remove]').forEach(b => {
       b.onclick = async () => {
-        if (!confirm('Remove this item from the list?')) return;
         haptic();
         b.disabled = true;
+        const gone = list.find(x => x.entryId === b.dataset.remove);
         try {
           await call('rpcRemoveShoppingListEntry', state.token, b.dataset.remove);
-          toast('Removed', 'warning');
-          loadShoppingTab();
+          loadShoppingTab(true);
+          toast('Removed ' + (gone ? gone.itemName : 'item'), 'warning',
+            gone && gone.productId ? {
+              label: 'Undo',
+              onClick: async () => {
+                try {
+                  await call('rpcAddToShoppingList', state.token, {
+                    productId: gone.productId, quantity: gone.quantity, note: gone.note || '',
+                  });
+                  toast('✓ Restored', 'success');
+                } catch (e) { toast(e.message, 'error'); }
+                loadShoppingTab(true);
+              },
+            } : null);
         } catch (e) { toast(e.message, 'error'); b.disabled = false; }
       };
     });
@@ -2239,32 +2312,126 @@
     }
   }
 
-  // Step 1: search the product master and pick a product. Items can ONLY be
-  // added by referencing a product (single source of truth). Managers/admins
-  // get an inline "Create new product" shortcut.
+  // Product picker for the shopping list. ONE sheet that stays open: tapping
+  // "+" adds the product at qty 1 straight away and turns the row into a
+  // [− qty +] stepper, so a shopping run costs one tap per item instead of
+  // three taps across two screens. Items can still ONLY be added by
+  // referencing a product (product master is the single source of truth);
+  // managers/admins keep the inline "Create new product" shortcut.
+  //
+  // Writes are optimistic + debounced: the row repaints immediately, the RPC
+  // follows 600ms later, so hammering "+" to 5 collapses into a single write.
   async function openAddShoppingItem() {
     const privileged = ['admin', 'manager'].indexOf(state.me.role) >= 0;
     openSheet({
-      title: 'Add item', subtitle: 'Search the product master',
+      title: 'Add items', subtitle: 'Tap + — the list updates as you go',
       bodyHTML: '<div class="loading"><div class="spinner"></div>Loading products…</div>',
-      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
+      actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Done</button>',
     });
     let products = [];
-    try { products = await cachedCall('rpcGetProductMaster', [state.token, {}], TTL_REF); } catch (e) {}
+    try { products = await cachedCall('rpcGetProductsForPicker', [state.token], TTL_REF); } catch (e) {}
+
+    // productId -> { entryId, qty, note, timer, chain }
+    // Seeded from the current list so steppers open showing real quantities.
+    // Only rows this user may actually edit are seeded: rpcEdit/Remove reject
+    // someone else's entry with FORBIDDEN unless you're a manager+. Anything
+    // left unseeded just becomes a NEW row on tap — which is exactly what the
+    // old add-flow did every time, so per-person attribution is preserved.
+    // Legacy order_catalog rows carry no productId and are left alone.
+    const canEditAny = ['manager', 'admin', 'payroll_admin'].indexOf(state.me.role) >= 0;
+    const draft = {};
+    (state.shoppingList || []).forEach(e => {
+      if (!e.productId) return;
+      if (!canEditAny && e.addedBy !== state.me.staffId) return;
+      draft[e.productId] = {
+        entryId: e.entryId, qty: Number(e.quantity) || 0,
+        note: e.note || '', timer: null, chain: Promise.resolve(),
+      };
+    });
+    let dirty = false;
+
+    const CATS = ['all', 'vape', 'cigarettes', 'beer', 'grocery', 'other'];
+    let activeCat = 'all';
 
     const bodyHTML =
       '<div class="sheet-field"><input type="text" id="siSearch" class="pm-search" placeholder="Search name / brand / SKU…" autocomplete="off"></div>' +
+      '<div class="si-chips" id="siChips">' +
+        CATS.map(c => '<button class="si-chip' + (c === 'all' ? ' on' : '') + '" data-cat="' + c + '">' +
+          (c === 'all' ? 'All' : esc(catLabel(c))) + '</button>').join('') +
+      '</div>' +
       (privileged ? '<button class="more-back" id="siNewProd" style="margin:0 0 8px">+ Create new product</button>' : '') +
       '<div id="siResults" class="si-results"></div>';
     openSheet({
-      title: 'Add item', subtitle: 'Tap a product to add', bodyHTML,
-      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
+      title: 'Add items', subtitle: 'Tap + — the list updates as you go', bodyHTML,
+      actionsHTML: '<button class="sheet-submit" id="siDoneBtn">Done</button>',
     });
+
+    function slot(pid) {
+      const cells = $('siResults').querySelectorAll('[data-ctrl]');
+      for (let i = 0; i < cells.length; i++) {
+        if (cells[i].getAttribute('data-ctrl') === pid) return cells[i];
+      }
+      return null;
+    }
+
+    function ctrlHTML(pid) {
+      const q = draft[pid] ? draft[pid].qty : 0;
+      if (!q) return '<button class="si-add" data-add="' + esc(pid) + '" aria-label="Add">+</button>';
+      return '<div class="si-step">' +
+          '<button class="si-mn" data-dec="' + esc(pid) + '" aria-label="Reduce quantity">−</button>' +
+          '<span class="si-q">' + q + '</span>' +
+          '<button class="si-pl" data-inc="' + esc(pid) + '" aria-label="Increase quantity">+</button>' +
+        '</div>';
+    }
+
+    // Push the local quantity to the server. Chained per product so an add
+    // always resolves its entryId before a following edit/remove uses it.
+    function flush(pid) {
+      const d = draft[pid];
+      if (!d) return Promise.resolve();
+      clearTimeout(d.timer); d.timer = null;
+      const target = d.qty;
+      d.chain = d.chain.then(async () => {
+        try {
+          if (target > 0 && !d.entryId) {
+            const res = await call('rpcAddToShoppingList', state.token,
+              { productId: pid, quantity: target, note: d.note });
+            d.entryId = res.entryId;
+          } else if (target > 0) {
+            await call('rpcEditShoppingListEntry', state.token, d.entryId,
+              { quantity: target, note: d.note });
+          } else if (d.entryId) {
+            await call('rpcRemoveShoppingListEntry', state.token, d.entryId);
+            d.entryId = null;
+          }
+          dirty = true;
+        } catch (e) {
+          // Don't guess at local state — resync from the server.
+          toast(e.message, 'error');
+          dirty = true;
+        }
+      });
+      return d.chain;
+    }
+
+    function bump(pid, delta) {
+      haptic();
+      const d = draft[pid] || (draft[pid] =
+        { entryId: null, qty: 0, note: '', timer: null, chain: Promise.resolve() });
+      const next = Math.max(0, d.qty + delta);
+      if (next === d.qty) return;
+      d.qty = next;
+      const cell = slot(pid);
+      if (cell) cell.innerHTML = ctrlHTML(pid);   // repaint just this row
+      clearTimeout(d.timer);
+      d.timer = setTimeout(() => flush(pid), 600);
+    }
 
     function renderResults() {
       const terms = ($('siSearch').value || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
       let list = products;
-      if (terms.length) list = products.filter(p => {
+      if (activeCat !== 'all') list = list.filter(p => (p.category || 'other') === activeCat);
+      if (terms.length) list = list.filter(p => {
         const hay = [p.sku, p.productName, p.brand, p.category, p.subcategory].join(' ').toLowerCase();
         return terms.every(t => hay.indexOf(t) >= 0);
       });
@@ -2275,55 +2442,72 @@
         return;
       }
       $('siResults').innerHTML = list.map(p =>
-        '<button class="si-row" data-pid="' + esc(p.productId) + '">' +
-          '<span class="si-name">' + esc(p.productName) + '</span>' +
-          '<span class="si-meta">' + (p.brand ? esc(p.brand) + ' · ' : '') + esc(catLabel(p.category)) +
-            (p.unit ? ' · ' + esc(p.unit) : '') + ' · cost ' + money(p.costPrice) + '</span>' +
-        '</button>'
+        '<div class="si-row">' +
+          '<div class="si-info">' +
+            '<span class="si-name">' + esc(p.productName) + '</span>' +
+            '<span class="si-meta">' + (p.brand ? esc(p.brand) + ' · ' : '') + esc(catLabel(p.category)) +
+              (p.unit ? ' · ' + esc(p.unit) : '') + ' · cost ' + money(p.costPrice) + '</span>' +
+          '</div>' +
+          '<div class="si-ctrl" data-ctrl="' + esc(p.productId) + '">' + ctrlHTML(p.productId) + '</div>' +
+        '</div>'
       ).join('');
-      $('siResults').querySelectorAll('[data-pid]').forEach(b => {
-        b.onclick = () => { const prod = products.find(x => x.productId === b.dataset.pid); if (prod) openAddQtyStep(prod); };
-      });
     }
+
+    // Delegated so repainting a single control never needs rebinding.
+    $('siResults').onclick = (ev) => {
+      const t = ev.target.closest('[data-add],[data-inc],[data-dec]');
+      if (!t) return;
+      const dec = t.getAttribute('data-dec');
+      if (dec) return bump(dec, -1);
+      bump(t.getAttribute('data-add') || t.getAttribute('data-inc'), 1);
+    };
+
+    $('siChips').onclick = (ev) => {
+      const c = ev.target.closest('[data-cat]');
+      if (!c) return;
+      activeCat = c.getAttribute('data-cat');
+      $('siChips').querySelectorAll('[data-cat]').forEach(b =>
+        b.classList.toggle('on', b.getAttribute('data-cat') === activeCat));
+      renderResults();
+    };
 
     $('siSearch').oninput = renderResults;
     renderResults();
+
     if (privileged) {
       const np = $('siNewProd');
-      if (np) np.onclick = () => openProductForm(null, { onSaved: (created) => openAddQtyStep(created) });
+      if (np) np.onclick = () => openProductForm(null, {
+        onSaved: async (created) => {
+          // The new product isn't in the cached picker list yet — force a
+          // refresh, then come back with it already on the list at qty 1.
+          try { await cachedCall('rpcGetProductsForPicker', [state.token], TTL_REF, { force: true }); } catch (e) {}
+          if (created && created.productId) {
+            try {
+              await call('rpcAddToShoppingList', state.token,
+                { productId: created.productId, quantity: 1, note: '' });
+              toast('✓ Added ' + (created.productName || 'product'), 'success');
+            } catch (e) { toast(e.message, 'error'); }
+            await loadShoppingTab(true);
+          }
+          openAddShoppingItem();
+        },
+      });
     }
-    setTimeout(() => { const s = $('siSearch'); if (s) s.focus(); }, 60);
-  }
 
-  // Step 2: set quantity + note for the chosen product, then add. Name /
-  // category / unit / cost are taken from the product server-side.
-  function openAddQtyStep(product) {
-    const meta = (product.brand ? esc(product.brand) + ' · ' : '') + esc(catLabel(product.category)) +
-      (product.unit ? ' · ' + esc(product.unit) : '') + ' · cost ' + money(product.costPrice);
-    const bodyHTML =
-      '<div class="si-pick"><div class="si-pick-name">' + esc(product.productName) + '</div>' +
-        '<div class="si-pick-meta">' + meta + '</div></div>' +
-      '<div class="sheet-field"><label>Quantity to order</label><input type="number" step="0.01" id="siQty" inputmode="decimal" value="1"></div>' +
-      '<div class="sheet-field"><label>Note (optional)</label><input type="text" id="siNote" placeholder="e.g. urgent, the big bags"></div>';
-    openSheet({
-      title: 'Add to list', subtitle: 'Quantity & note', bodyHTML,
-      actionsHTML: '<button class="sheet-cancel" id="siBack">‹ Back</button>' +
-        '<button class="sheet-submit" id="siAddBtn">Add to list</button>',
-    });
-    $('siBack').onclick = () => openAddShoppingItem();
-    setTimeout(() => { const q = $('siQty'); if (q) { q.focus(); q.select(); } }, 60);
-    $('siAddBtn').onclick = async () => {
-      const qty = parseFloat($('siQty').value);
-      if (!Number.isFinite(qty) || qty <= 0) return toast('Enter a valid quantity', 'error');
+    $('siDoneBtn').onclick = async () => {
       haptic();
-      const btn = $('siAddBtn'); btn.disabled = true; btn.textContent = 'Adding…';
-      try {
-        await call('rpcAddToShoppingList', state.token, { productId: product.productId, quantity: qty, note: $('siNote').value });
-        closeSheet();
-        toast('✓ Added', 'success');
-        loadShoppingTab();
-      } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Add to list'; }
+      const btn = $('siDoneBtn');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      // Fire anything still sitting in its debounce, then wait for every
+      // in-flight write so the refreshed list can't race a pending add.
+      const ids = Object.keys(draft);
+      ids.forEach(pid => { if (draft[pid].timer) flush(pid); });
+      try { await Promise.all(ids.map(pid => draft[pid].chain)); } catch (e) {}
+      closeSheet();
+      if (dirty) loadShoppingTab(true);
     };
+
+    setTimeout(() => { const s = $('siSearch'); if (s) s.focus(); }, 60);
   }
 
   // Edit an entry's quantity / note (modal sheet). The item name comes from
@@ -4136,9 +4320,10 @@
   //  BOOT
   // ============================================================
   (async function boot() {
-    // Restore session if present
-    const savedToken = sessionStorage.getItem('storeops_token');
-    const savedMe = sessionStorage.getItem('storeops_me');
+    // Restore session if present. Kept in localStorage so it survives a tab
+    // close / browser restart; an expired token just falls through to login.
+    const savedToken = localStorage.getItem('storeops_token');
+    const savedMe = localStorage.getItem('storeops_me');
     if (savedToken && savedMe) {
       state.token = savedToken;
       try {
@@ -4154,8 +4339,8 @@
         enterApp();
         return;
       } catch (e) {
-        sessionStorage.removeItem('storeops_token');
-        sessionStorage.removeItem('storeops_me');
+        localStorage.removeItem('storeops_token');
+        localStorage.removeItem('storeops_me');
       }
     }
     loadLoginScreen();
