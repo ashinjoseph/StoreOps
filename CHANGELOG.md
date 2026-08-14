@@ -103,3 +103,32 @@ This completes v1.0.0.
 - `scripts/import_product_master.py` + `references/*.xlsx` — Excel →
   staging-CSV pre-processor and its source pricing sheets (beer,
   cigarettes) for the Product Master import.
+
+### Mobile: stop the constant re-logins, faster Shopping List (Batch 6)
+- **Sessions now persist.** The token moved from `sessionStorage` to
+  `localStorage`. `sessionStorage` dies with the browser tab — which
+  mobile browsers discard aggressively — so staff were re-entering their
+  PIN constantly even though the server session is valid for 24h and
+  auto-renews. Logging in is now a roughly once-a-day event. Logout
+  still clears the device.
+- **Product Master no longer loads at login.** `prefetchTabs()` was
+  fetching the entire catalog (up to 500 products × 24 fields) for every
+  role on every app open, including staff who only use the shopping
+  list. It is now warmed when the Shopping List tab is opened instead.
+- `WebApp.gs` — new `rpcGetProductsForPicker`: an 8-field projection for
+  the add-item picker (drops notes, source file, audit columns and the
+  derived sell/margin numbers it never showed). The Products tab still
+  uses the full `rpcGetProductMaster`.
+- **One-tap adding.** The add-item flow was a search sheet plus a second
+  quantity sheet — three taps per item, closing fully after each one.
+  It is now a single sheet that stays open: tap `+` to add at qty 1, and
+  the row becomes a `[− qty +]` stepper. Writes are optimistic and
+  debounced (600ms), so repeated taps collapse into one call, and are
+  chained per product so an add resolves before a following edit. Adds
+  category quick-filter chips.
+- **Removing is instant with Undo** instead of a blocking `confirm()`,
+  and `✕` / `✎` are now 44px tap targets. `toast()` gained an optional
+  action button to carry the Undo.
+- Shopping list and picker get their own `@media (max-width:560px)`
+  rules — previously only the sales/reconciliation tables were tuned for
+  small screens.

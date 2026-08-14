@@ -1071,6 +1071,31 @@ function rpcGetProductMaster(token, filter) {
   }
 }
 
+// Slim projection for the shopping-list add-item picker: identity + the
+// fields it actually searches on and displays. Drops notes / source_file /
+// the four audit columns / every derived sell+margin number the picker never
+// shows — roughly a third of the payload of rpcGetProductMaster, which
+// matters because this is fetched on a phone. The Products tab still uses
+// rpcGetProductMaster for the full record.
+function rpcGetProductsForPicker(token) {
+  try {
+    _session(token);
+    return ProductMaster.getAll().map(r => ({
+      productId:   r.productId,
+      sku:         r.sku || '',
+      productName: r.productName,
+      brand:       r.brand || '',
+      category:    r.category,
+      subcategory: r.subcategory || '',   // searched on, not displayed
+      unit:        r.unit || '',
+      costPrice:   Number(r.costPrice) || 0,
+    }));
+  } catch (e) {
+    console.error('rpcGetProductsForPicker failed: ' + e.message + '\n' + (e.stack || ''));
+    throw new Error('rpcGetProductsForPicker: ' + e.message);
+  }
+}
+
 function rpcSearchProducts(token, query, opts) {
   try {
     _session(token);
