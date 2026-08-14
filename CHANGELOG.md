@@ -132,3 +132,153 @@ This completes v1.0.0.
 - Shopping list and picker get their own `@media (max-width:560px)`
   rules — previously only the sales/reconciliation tables were tuned for
   small screens.
+
+### Close-shift input fixes + daily Lotto Reserve log (Batch 7)
+- **Amount fields no longer edit themselves.** Every money input in the open
+  and close shift sheets was `<input type="number">`, which renders a spinner
+  and — the actual bug — responds to the **scroll wheel** while focused, so
+  scrolling a long close sheet silently rewrote amounts (one field was found
+  sitting at `-0.02`). They are now plain text with `inputmode="decimal"`, so
+  phones still get the numeric keypad. New `moneyInput()` / `wireMoneyInputs()`
+  helpers in `Index.html` also **clear a field on focus** instead of making you
+  select the pre-filled `0` first, strip anything that isn't a digit or a
+  single `.`, and restore the resting value on blur — so a field left untouched
+  still reads and submits as `0`, exactly as before.
+- **Cashback is retired from the close sheet.** The store no longer pays
+  cashback, so the field was one more box to tab past on every close. New rows
+  write `0`; the `cashback_paid` column and every calculation that reads it
+  stay, so historical sessions still recompute correctly.
+- **Lotto reserve is now tracked daily.** On heavy lotto days the payouts
+  exceed what the drawer has taken, so cashiers pay winners out of a separate
+  pot kept in the store. Nothing recorded that pot. The CSTORE close sheet now
+  asks for the reserve counted — pre-filled with the **last known balance**, so
+  a blind submit records the truth rather than an optimistic $500.
+- **The extra reserve fields only appear when they mean something.** A normal
+  close, with the pot untouched at $500, shows neither. The *reason* field
+  appears once the closing balance isn't the expected one, and is required from
+  then on.
+- **Refilling the pot is a button, not a sum to work out.** When a previous
+  shift left the pot short, the close sheet offers *"Move $300.00 from till
+  into reserve"* — one tap, stating the amount, with an editable field
+  appearing only if a different amount actually moved. It shows as soon as
+  there's a deficit rather than waiting for the drawer count, and caps itself
+  once that count exists, saying so — *"Pot is $300.00 short, but only $150.00
+  is spare above the $250.00 float"* — instead of quietly offering less. The
+  transfer is opt-in: nothing is recorded as moved until the button is tapped,
+  because a pre-filled amount recorded cash leaving a drawer that may never
+  have been opened.
+- **The offer is capped by what the pot is actually missing.** It was capped
+  only by the carried deficit and the spare cash, so hand-correcting the count
+  to $500 still moved another $300 in — closing at $800 and then demanding a
+  reason for it. Correcting the count now withdraws the offer instead.
+- **"Reserve counted" is the pot as you count it**, before moving anything in;
+  the closing balance is derived as `counted + moved in` and shown in the
+  summary. The form previously wrote a computed value back into that field,
+  which fed back into itself and made a wrong figure impossible to spot.
+- **A payout made during the current shift is deliberately not offered a
+  transfer.** The POS cash figure is already net of it, so the drawer is short
+  by that amount already — refilling the pot at close is a wash, and recording
+  it would take the same money off the banked cash twice. Only a deficit
+  carried in from a previous shift can be moved, and it caps the offer.
+- **The close sheet states the balance it is working from** — *"Reserve was
+  $200.00 at close on Aug 12"*. The top-up row had been silently suppressed by
+  a stale cached balance with nothing on screen to explain it; its visibility
+  no longer depends on anything the cashier can't see. The float value is now
+  handed over from the card that rendered the Close button, so an in-flight
+  fetch can't suppress the row either.
+- Closing or opening a shift refreshes shift state with `force`. Without it the
+  next close sheet could read a `TTL_LIVE` cache up to 60s old and pre-fill the
+  reserve from pre-close state — the cause of the missing row.
+- **The last known balance is now looked up directly, not through the log.** It
+  came from the newest entry of the 14-day reserve log, so it inherited every
+  way that list can come up empty — and the close sheet then announced *"no
+  previous count on record"* and assumed a full pot, which silently zeroes the
+  carried deficit and makes the top-up row unreachable. `lastReserveCount_`
+  scans closed cstore sessions directly, with no date window: the pot's last
+  count predates any window after a quiet fortnight, and the balance shouldn't
+  depend on how far back a list happens to show.
+- **The balance chains shift-to-shift, not day-to-day.** Ordering is by
+  `end_time`, so a shift that runs past midnight is placed by when it actually
+  closed, and a second cashier the same day inherits what the first one left.
+  Equal keys tie-break on sheet row: rows are appended in the order they
+  happen, and a stable sort was otherwise handing back the *older* of two
+  shifts that closed in the same minute.
+- **A blank reserve cell is no longer read as `$0.00`.** Sessions closed before
+  the migration have no reserve recorded at all; as the newest row, one would
+  have reported the pot as empty. They're skipped — by the balance lookup and
+  by the log — so "never counted" stays distinct from "counted zero".
+- **Date cells are parsed, not discarded.** `rowToRecord_` kept a date only if
+  the cell was already a `Date`, so a column formatted as plain text turned
+  every session into one with no date — and every date-range query drops those.
+  That empties the reserve log and Recent Shifts together, with nothing to
+  explain it. Strings are now parsed (a bare `yyyy-MM-dd` at local midnight, so
+  it can't slip to the previous day). Closed-status checks are
+  case-insensitive, for sheets edited by hand.
+- `getForDateRange` end bounds use `Util.endOfDay`. Passing midnight meant any
+  date cell that read back with a time component — which happens whenever the
+  spreadsheet's timezone differs from the script's — dropped today's sessions
+  from the reserve log and from Recent Shifts.
+- **Config keys reach sheets that already exist.** `setupConfigSheet_` returns
+  early on an existing config tab, so every key added after a spreadsheet was
+  first set up — `lotto_reserve_default` among them — never landed in it, and
+  the code ran on its in-code fallback with nothing to edit. New
+  **StoreOps → Sync config keys** appends whatever is missing, leaving existing
+  values alone; First-time Setup and the lotto migration both call it, so the
+  one click that turns lotto on also puts its $500 in the config tab.
+- `open_` leaves the lotto columns blank for non-CSTORE rows instead of writing
+  `0`, which made vape sessions look like they had a reserve.
+- **One shift per person per till per day is now enforced at open.** The
+  session id is derived from (date, staff, company), so a second open wrote a
+  duplicate id; closing it resolved to the first row, found it already closed,
+  and refused — leaving a session stuck `open` for ever, which then blocked
+  *everyone* from opening that till. It's rejected up front instead, naming the
+  existing session.
+- `TillSessions.gs` — `till_sessions` gains `lotto_reserve_counted`,
+  `lotto_topup_from_till` and `lotto_reserve_note` (cols 19-21). **The reserve
+  never affects the till variance.** Payouts came out of the pot, not the
+  drawer, and the POS cash figure is already net of them. A refill happens
+  after the drawer has been counted and reconciled, so the top-up comes off
+  `cash_removed_at_close` — the takings banked — and leaves `expected_cash`
+  alone. `getLottoLog()` returns the last 14 days for the UI.
+- **My Shift** shows the current balance on the CSTORE card (with a "short $X"
+  marker) plus a collapsible reserve log — visible to every role, since any
+  cashier who might pay out of the pot needs to know what's in it.
+- **The close sheet says where the counted cash goes.** The drawer is counted
+  once and then splits three ways, but the summary stopped at the count — so on
+  a refill day the banked figure quietly dropped by the transfer with nothing on
+  screen to account for it. A new line reads *"$250.00 float · $300.00 reserve ·
+  $100.00 banked"*, and flags itself if a hand-typed transfer would bank a
+  negative. **The variance math is unchanged**: the drawer is counted before the
+  cash moves, so `expected = opening + sales` measured against that count stays
+  the honest reconciliation, and `cash_removed_at_close` already nets the
+  transfer out.
+- **The reconcile WhatsApp carries the reserve every day**, not only when
+  something moved — a balance nobody can see is a balance nobody checks. The
+  cash block gains the same destination line, and the pot gets its own:
+
+  ```
+  💵 *Cash - recorded / counted*
+  $650.00 / $650.00   var +$0.00
+  ↳ float $250.00 back · reserve $300.00 · banked $100.00
+
+  🎟 *Lotto reserve*   $200.00   ⚠️ short $300.00
+  ↳ 400 paid
+  ```
+
+  A short pot carries the cashier's own reason, which is the only thing that
+  explains it to whoever reads the message. `whatsapp_template_shift_close` is
+  approved at Meta with exactly nine parameters, so the reserve rides inside the
+  existing cash parameter rather than taking a tenth — nothing needs
+  re-approving, and it works the moment it deploys.
+- The reserve balance is read once per reconcile from `getLottoLog`, not summed
+  across the day's sessions: the top-up is a flow and adds up, but the pot is a
+  balance and doesn't. It attaches only to the merchant group that holds cstore.
+- `shift.closed` audit lines name the reserve and any transfer, so the log reads
+  without opening the sheet.
+- `Setup.gs` — new `lotto_reserve_default` config key and a one-shot
+  **Add lotto reserve to till_sessions** migration for existing sheets.
+  Until it runs, `getAll_` reads only as wide as the sheet actually is and the
+  lotto UI stays hidden, so the code is safe to deploy before the migration.
+- Vape close is unchanged, and lotto never reaches the `sales` sheet — a
+  payout is not a sale, and mixing it in would corrupt commissions and the
+  Clover reconciliation.

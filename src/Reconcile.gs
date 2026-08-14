@@ -119,6 +119,7 @@ const Reconcile = (() => {
         merchant: m, companies: {}, sessionIds: [],
         cashierCredit: 0, cashierDebit: 0, cashSales: 0,
         cashCounted: 0, cashVariance: 0, openingFloat: 0,
+        cashBanked: 0, floatLeft: 0, lottoTopup: 0,
         startMs: Infinity, endMs: 0,
       };
       const g = groups[key];
@@ -133,6 +134,11 @@ const Reconcile = (() => {
       g.cashCounted  += s.closingCashCounted || 0;
       g.cashVariance += s.closingVariance || 0;
       g.openingFloat += s.openingFloat || 0;
+      // Where the counted cash went. These are flows, so they add up across
+      // sessions — unlike the reserve BALANCE below, which does not.
+      g.cashBanked   += s.cashRemovedAtClose || 0;
+      g.floatLeft    += s.cashLeftInTill || 0;
+      g.lottoTopup   += s.lottoTopupFromTill || 0;
       if (s.startTime instanceof Date) g.startMs = Math.min(g.startMs, s.startTime.getTime());
       if (s.endTime instanceof Date)   g.endMs   = Math.max(g.endMs, s.endTime.getTime());
     });
@@ -141,6 +147,19 @@ const Reconcile = (() => {
     const now = new Date();
     const dateStr = Util.formatDate(today);
     const merchants = [];
+
+    // The lotto pot is a single balance held by the store, not a per-session
+    // flow — summing it across the day's sessions would be meaningless. Read
+    // the standing balance once and hang it off whichever merchant group holds
+    // cstore. Best-effort: a sheet that hasn't run the lotto migration returns
+    // enabled:false and the message drops the section entirely.
+    let lotto = null;
+    try {
+      const log = TillSessions.getLottoLog(14);
+      if (log && log.enabled) lotto = log;
+    } catch (e) {
+      console.error('reconcile: lotto log failed: ' + e.message);
+    }
 
     Object.keys(groups).forEach(key => {
       const g = groups[key];
@@ -176,6 +195,16 @@ const Reconcile = (() => {
         cashCounted: Util.roundMoney(g.cashCounted),
         cashVariance: Util.roundMoney(g.cashVariance),
         openingFloat: Util.roundMoney(g.openingFloat),
+        cashBanked: Util.roundMoney(g.cashBanked),
+        floatLeft: Util.roundMoney(g.floatLeft),
+        lottoTopup: Util.roundMoney(g.lottoTopup),
+        // Only the group that actually holds cstore carries the pot.
+        lotto: (lotto && g.companies[TillSessions.lottoCompany]) ? {
+          balance:  lotto.lastCounted,
+          expected: lotto.expected,
+          shortfall: Util.roundMoney(lotto.expected - (lotto.lastCounted || 0)),
+          note: (lotto.entries[0] && lotto.entries[0].note) || '',
+        } : null,
         cloverOk: !!clover.ok,
         cloverError: clover.ok ? '' : (clover.error || ''),
         status: status,
@@ -238,7 +267,25 @@ const Reconcile = (() => {
     const windowStr = hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd);
     const companies = m.companies.join(' + ');
     const recorded = Util.roundMoney(m.cashCounted - m.cashVariance);
-    const cashLine = Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) + ' (var ' + signed_(m.cashVariance) + ')';
+    // The reserve rides inside the cash parameter rather than taking a 10th:
+    // the template is approved at Meta with exactly 9, and adding one means
+    // re-submitting it before anything sends at all. Single line, no markdown
+    // — flattenForTemplate_ would strip both anyway.
+    const cashParts = [
+      Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) +
+        ' (var ' + signed_(m.cashVariance) + ')',
+      'banked ' + Util.formatMoney(m.cashBanked || 0),
+    ];
+    if (m.lotto) {
+      const short = Number(m.lotto.shortfall) || 0;
+      cashParts.push(
+        'lotto reserve ' +
+        (m.lotto.balance == null ? 'not counted yet' : Util.formatMoney(m.lotto.balance)) +
+        ((m.lottoTopup || 0) > 0.01 ? ' (+' + Util.formatMoney(m.lottoTopup) + ' moved in)' : '') +
+        (short > 0.01 ? ' - short ' + Util.formatMoney(short) : '')
+      );
+    }
+    const cashLine = cashParts.join(' · ');
     const reported = Util.roundMoney(m.cashSales + m.cashierCard);
     let totalLine, credit, debit, total, status;
     if (m.cloverOk) {
@@ -263,6 +310,40 @@ const Reconcile = (() => {
     ];
   }
 
+  /**
+   * Where the counted cash went, on one line: the float stays in the drawer,
+   * any reserve top-up leaves for the pot, the rest is banked. Without this
+   * the banked figure just drops by the transfer with nothing to explain it.
+   */
+  function destination_(m) {
+    const parts = ['float ' + Util.formatMoney(m.floatLeft || 0) + ' back'];
+    if ((m.lottoTopup || 0) > 0.01) parts.push('reserve ' + Util.formatMoney(m.lottoTopup));
+    parts.push('banked ' + Util.formatMoney(m.cashBanked || 0));
+    return parts.join(' · ');
+  }
+
+  /**
+   * The lotto pot, reported every day the store closes — not only on days
+   * something moved — so the balance is always on the record. A pot that ends
+   * short carries the cashier's reason, which is the only thing that explains
+   * a shortfall to someone who wasn't there.
+   */
+  function reserveLines_(m) {
+    if (!m.lotto) return [];
+    const l = m.lotto;
+    if (l.balance == null) {
+      return ['\u{1F39F} *Lotto reserve*   no count on record yet'];
+    }
+    const short = Number(l.shortfall) || 0;
+    const out = ['\u{1F39F} *Lotto reserve*   ' + Util.formatMoney(l.balance) +
+      (short > 0.01 ? '   ⚠️ short ' + Util.formatMoney(short) : '')];
+    if ((m.lottoTopup || 0) > 0.01) {
+      out.push('\u{21B3} ' + Util.formatMoney(m.lottoTopup) + ' moved in from till today');
+    }
+    if (short > 0.01 && l.note) out.push('\u{21B3} ' + l.note);
+    return out;
+  }
+
   function formatMessage_(dateObj, merchants) {
     const friendly = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'EEE d MMM yyyy');
 
@@ -282,7 +363,10 @@ const Reconcile = (() => {
       lines.push('\u{1F4B5} *Cash - recorded / counted*');
       const recorded = Util.roundMoney(m.cashCounted - m.cashVariance);
       lines.push(Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) + '   var ' + signed_(m.cashVariance));
+      lines.push('\u{21B3} ' + destination_(m));
       lines.push('');
+      const reserve = reserveLines_(m);
+      if (reserve.length) { reserve.forEach(l => lines.push(l)); lines.push(''); }
       if (m.cloverOk) {
         lines.push('\u{1F4B3} *Cards - Clover / cashier*');
         lines.push('Credit  ' + Util.formatMoney(m.cloverCredit) + ' / ' + Util.formatMoney(m.cashierCredit) + '   ' + signed_(m.creditDiff) + ' ' + mark_(m.creditDiff));

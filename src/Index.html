@@ -26,7 +26,7 @@
   input, textarea { user-select: text; -webkit-user-select: text; }
 
   /* tabular numbers for money + counts */
-  .num, .money, input[type="number"] { font-variant-numeric: tabular-nums; }
+  .num, .money, input[type="number"], .money-input { font-variant-numeric: tabular-nums; }
 
   button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
   input, select, textarea { font: inherit; }
@@ -253,6 +253,34 @@
   .variance-OK { background: #dcfce7; color: #15803d; }
   .variance-minor { background: #fef3c7; color: #92400e; }
   .variance-investigate { background: #fee2e2; color: #b91c1c; }
+
+  /* ── Lotto reserve ─────────────────────────────────── */
+  .lotto-short { color: #b91c1c; font-weight: 700; }
+  .lotto-hint {
+    font-size: 12px; color: #4a5570;
+    background: #eef2ff; border-radius: 8px;
+    padding: 8px 10px; margin-bottom: 10px;
+  }
+  /* One-tap refill. 44px so it's a real thumb target on a phone. */
+  .lotto-topup-btn {
+    width: 100%; min-height: 44px; margin-bottom: 10px;
+    border: 0; border-radius: 10px; cursor: pointer;
+    background: #1a237e; color: #fff;
+    font-size: 15px; font-weight: 600;
+  }
+  .lotto-topup-btn:active { transform: scale(0.99); }
+  .lotto-topup-btn-undo {
+    background: #fff; color: #4a5570; border: 1px solid #cbd2e0; font-weight: 500;
+  }
+  .lotto-action-note { background: #fff7ed; color: #92400e; }
+  .lotto-log { margin-top: 22px; }
+  .lotto-log > summary {
+    cursor: pointer; list-style: none;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .lotto-log > summary::-webkit-details-marker { display: none; }
+  .lotto-log > summary::after { content: '▾'; font-size: 10px; }
+  .lotto-log[open] > summary::after { content: '▴'; }
 
   /* ── Empty state ───────────────────────────────────── */
   .empty {
@@ -625,6 +653,10 @@
   /* ── Sales / reconciliation tables → stacked cards on small screens ── */
   @media (max-width: 560px) {
     .filter-row { grid-template-columns: 1fr; }
+
+    /* iOS zooms the whole page in on any input under 16px. Amount fields are
+       the ones people tap most in a close, so keep them at 16px. */
+    .money-input { font-size: 16px; padding: 12px; }
 
     /* Hide the column-header rows — labels move inline via data-label. */
     .sales-row.header, .recon-trow.head { display: none; }
@@ -1099,6 +1131,44 @@
   }
   function haptic() { if (navigator.vibrate) navigator.vibrate(10); }
 
+  // ── Money inputs ────────────────────────────────────────
+  // Plain text, never type="number". A number input shows a spinner and —
+  // the actual bug — edits itself when the wheel scrolls over a focused
+  // field, so scrolling a long sheet silently rewrites amounts.
+  // `rest` is the value the field falls back to when left blank ('0' for
+  // the sales fields, '' for the ones that use a placeholder).
+  function moneyInput(id, rest, extra) {
+    return '<input type="text" inputmode="decimal" autocomplete="off" ' +
+      'id="' + id + '" class="money-input" value="' + (rest || '') + '"' +
+      (extra || '') + '>';
+  }
+
+  // specs: [{ id, rest }, …]
+  function wireMoneyInputs(specs) {
+    specs.forEach(spec => {
+      const el = $(spec.id);
+      if (!el) return;
+      const rest = spec.rest || '';
+      el.addEventListener('focus', () => {
+        // Tapping a field should always mean "type the amount", never
+        // "append to the 0 that's already sitting there".
+        if (el.value === rest || (parseFloat(el.value) || 0) === 0) el.value = '';
+        else el.select();
+      });
+      el.addEventListener('input', () => {
+        // Digits and a single dot. No minus: every amount here is
+        // non-negative, and a stray "-" is exactly what went wrong before.
+        let v = el.value.replace(/[^0-9.]/g, '');
+        const first = v.indexOf('.');
+        if (first !== -1) v = v.slice(0, first + 1) + v.slice(first + 1).replace(/\./g, '');
+        if (v !== el.value) el.value = v;
+      });
+      el.addEventListener('blur', () => {
+        if (el.value.trim() === '' || isNaN(parseFloat(el.value))) el.value = rest;
+      });
+    });
+  }
+
   // Title-case a product-master category for display ("beer" → "Beer").
   function catLabel(c) {
     const s = (c || '').toString().trim();
@@ -1437,10 +1507,14 @@
     const dateLabel = new Date(data.today + 'T00:00:00').toLocaleDateString('en-US',
       { weekday: 'long', month: 'long', day: 'numeric' });
 
+    // Stash for the close sheet — it needs the expected balance to pre-fill
+    // the reserve field and to decide whether a reason is required.
+    state.lotto = data.lotto || null;
+
     let html = '<div class="date-label">' + esc(dateLabel) + '</div>';
     html += '<div class="company-cards">';
     data.cards.forEach(card => {
-      html += renderShiftCard(card);
+      html += renderShiftCard(card, data.lotto);
     });
     html += '</div>';
 
@@ -1479,6 +1553,29 @@
       html += '</div>';
     }
 
+    // Lotto reserve log — collapsed by default, open to every role.
+    if (data.lotto && data.lotto.enabled && data.lotto.entries.length > 0) {
+      html += '<details class="recent-section lotto-log">' +
+        '<summary class="recent-title">LOTTO RESERVE · EXPECTED ' +
+          esc(money(data.lotto.expected)) + '</summary>';
+      data.lotto.entries.forEach(e => {
+        const short = Number(e.shortfall) || 0;
+        const cls = short > 30.01 ? 'variance-investigate' : (short > 0.01 ? 'variance-minor' : 'variance-OK');
+        const meta = [];
+        if (e.staffName) meta.push(e.staffName);
+        if (e.topup > 0.01) meta.push('topped up ' + money(e.topup) + ' from till');
+        if (e.note) meta.push(e.note);
+        html += '<div class="recent-item">' +
+          '<div>' +
+            '<div><strong>' + esc(fmtDate(e.date)) + '</strong></div>' +
+            (meta.length ? '<div class="recent-meta">' + esc(meta.join(' · ')) + '</div>' : '') +
+          '</div>' +
+          '<div class="variance-pill ' + cls + '">' + esc(money(e.counted)) + '</div>' +
+        '</div>';
+      });
+      html += '</details>';
+    }
+
     view.innerHTML = html;
 
     // Wire up card buttons
@@ -1490,7 +1587,10 @@
       btn.onclick = () => {
         haptic();
         if (action === 'open') openShiftForm(company, expected);
-        else if (action === 'close') closeShiftForm(sessionId, company);
+        // Hand the float straight over: the close sheet needs it to work out
+        // what's spare for the lotto reserve, and waiting on its own fetch
+        // left that calculation blind on first paint.
+        else if (action === 'close') closeShiftForm(sessionId, company, expected);
       };
     });
 
@@ -1508,9 +1608,19 @@
     });
   }
 
-  function renderShiftCard(card) {
+  function renderShiftCard(card, lotto) {
     const companyLabel = card.company.toUpperCase();
     let stateClass = '', pillClass = '', pillText = '', detailHTML = '', btnHTML = '';
+
+    // Cstore card carries the lotto reserve balance in every state — the
+    // cashier needs to know what's in the pot before they start paying wins.
+    let lottoHTML = '';
+    if (card.company === 'cstore' && lotto && lotto.enabled && lotto.lastCounted != null) {
+      const short = Number(lotto.expected) - Number(lotto.lastCounted);
+      lottoHTML = '<div>Lotto reserve: <strong>' + money(lotto.lastCounted) + '</strong>' +
+        (short > 0.01 ? ' <span class="lotto-short">short ' + money(short) + '</span>' : '') +
+        '</div>';
+    }
 
     if (card.state === 'open_by_me') {
       stateClass = 'state-open';
@@ -1521,7 +1631,8 @@
         '<div><strong>Running:</strong> <span class="running-time" data-running="' + esc(card.company) + '">—</span></div>' +
         '<div><strong>Float:</strong> ' + money(card.detail.openingFloat) + '</div>';
       btnHTML = '<button class="card-btn card-btn-close" data-action="close" ' +
-                'data-company="' + esc(card.company) + '" data-session-id="' + esc(card.detail.sessionId) + '">' +
+                'data-company="' + esc(card.company) + '" data-session-id="' + esc(card.detail.sessionId) + '" ' +
+                'data-expected="' + Number(card.expectedFloat || 0) + '">' +
                 'Close ' + esc(companyLabel) + '</button>';
     } else if (card.state === 'open_by_other') {
       stateClass = 'state-other';
@@ -1550,7 +1661,7 @@
         '<div class="company-name">' + esc(companyLabel) + '</div>' +
         '<div class="status-pill ' + pillClass + '"><span class="status-dot"></span>' + esc(pillText) + '</div>' +
       '</div>' +
-      '<div class="company-detail">' + detailHTML + '</div>' +
+      '<div class="company-detail">' + detailHTML + lottoHTML + '</div>' +
       btnHTML +
     '</div>';
   }
@@ -1566,7 +1677,7 @@
       bodyHTML:
         '<div class="sheet-field">' +
           '<label>Counted float ($)</label>' +
-          '<input type="number" step="0.01" id="openCount" inputmode="decimal" placeholder="' + expected + '">' +
+          moneyInput('openCount', '', ' placeholder="' + expected + '"') +
         '</div>' +
         '<div class="sheet-field">' +
           '<label>Note (required if count ≠ expected)</label>' +
@@ -1580,6 +1691,7 @@
         '<button class="sheet-submit" id="openSubmit">Open shift</button>',
       onShown: () => $('openCount').focus(),
     });
+    wireMoneyInputs([{ id: 'openCount', rest: '' }]);
     $('openSubmit').onclick = async () => {
       const count = parseFloat($('openCount').value);
       const note = $('openNote').value.trim();
@@ -1590,7 +1702,7 @@
         await call('rpcOpenShift', state.token, { company, openingCount: count, openingNote: note });
         closeSheet();
         toast('✓ ' + company.toUpperCase() + ' shift opened', 'success');
-        loadShiftTab();
+        loadShiftTab(true);
         // Async WhatsApp "shift opened" notice (name + till) — never blocks open.
         call('rpcNotifyShiftOpen', state.token, company).catch(() => {});
       } catch (e) {
@@ -1602,36 +1714,113 @@
   }
 
   // ── Close shift modal ───────────────────────────────────
-  function closeShiftForm(sessionId, company) {
+  function closeShiftForm(sessionId, company, cardFloat) {
+    // Lotto is a cstore-only pot, so only that close sheet asks about it —
+    // and only once the sheet has the columns to store it in, so we never
+    // collect a count the server would silently drop.
+    const hasLotto = company === 'cstore' && !!(state.lotto && state.lotto.enabled);
+    const lottoExpected = state.lotto ? Number(state.lotto.expected) || 500 : 500;
+
+    // Where the pot stood when this shift started — what the last close left
+    // behind. Nothing on record means it was never short, so assume full.
+    const lottoKnown = !!(state.lotto && state.lotto.lastCounted != null);
+    const lottoStart = lottoKnown ? Number(state.lotto.lastCounted) : lottoExpected;
+
+    // How much a PREVIOUS shift left missing. This — not today's pot count —
+    // is what may be moved from the drawer, and it caps the offer.
+    //
+    // A payout made during THIS shift is deliberately excluded: the POS cash
+    // figure is already net of it, so the drawer is short by that amount
+    // already. Refilling the pot from the drawer at close is a wash, and
+    // recording it would take the same money off the banked cash twice.
+    const lottoCarryDeficit = Math.max(0, lottoExpected - lottoStart);
+
+    // Say out loud what we think the pot started at. When this line disagrees
+    // with the physical pot the cashier can correct the count on the spot —
+    // previously a wrong starting balance silently disabled the top-up row
+    // with nothing on screen to explain it.
+    // When the balance is missing, show what the server actually found rather
+    // than only the conclusion — a row that exists but didn't read looks
+    // identical to no row at all otherwise.
+    const lottoDiag = (!lottoKnown && state.lotto && state.lotto.diagnostic)
+      ? ' [' + [
+          state.lotto.diagnostic.cstore + ' cstore',
+          state.lotto.diagnostic.closed + ' closed',
+          state.lotto.diagnostic.withCount + ' with a count',
+          state.lotto.diagnostic.newestCell
+            ? 'newest reserve cell: ' + state.lotto.diagnostic.newestCell
+            : null,
+        ].filter(Boolean).join(' · ') + ']'
+      : '';
+
+    const lottoNote = !lottoKnown
+      ? 'No closed cstore shift has recorded the reserve yet — starting from ' +
+        money(lottoExpected) + '.' + lottoDiag
+      : 'Reserve was ' + money(lottoStart) +
+        (state.lotto.lastCountedDate ? ' at close on ' + fmtDate(state.lotto.lastCountedDate) : '') +
+        '. Correct it below if the pot says otherwise.';
+
+    // Both extra rows start hidden. On a normal day the pot is untouched at
+    // $500 and neither has anything to say; recalcClose reveals them when the
+    // numbers call for it.
+    const lottoHTML = !hasLotto ? '' :
+      '<details class="misc-block" open>' +
+        '<summary>Lotto reserve</summary>' +
+        '<div class="lotto-hint">' + esc(lottoNote) + '</div>' +
+        '<div class="sheet-field"><label>Reserve counted ($)</label>' +
+          moneyInput('closeLotto', String(lottoStart)) + '</div>' +
+        // Refilling the pot is an action, not a sum to work out. The button
+        // states the amount and applies it in one tap; the field below only
+        // appears once it has, for the rare case a different amount moved.
+        '<div id="closeLottoActionWrap" style="display:none">' +
+          '<button type="button" class="lotto-topup-btn" id="closeLottoTopupBtn"></button>' +
+          '<div class="lotto-hint lotto-action-note" id="closeLottoActionNote" ' +
+            'style="display:none"></div>' +
+        '</div>' +
+        '<div class="sheet-field" id="closeLottoTopupWrap" style="display:none">' +
+          '<label>Moving from till into reserve ($)</label>' +
+          moneyInput('closeLottoTopup', '0') + '</div>' +
+        '<div class="sheet-field" id="closeLottoNoteWrap" style="display:none">' +
+          '<label>Reason reserve isn\'t ' + money(lottoExpected) + '</label>' +
+          '<input type="text" id="closeLottoNote" ' +
+            'placeholder="e.g. paid $300 winning ticket / not enough cash to refill"></div>' +
+      '</details>';
+
     openSheet({
       title: 'Close ' + company.toUpperCase() + ' shift',
       subtitle: 'Enter sales and count cash',
       bodyHTML:
         '<div class="sheet-field"><label>Cash sales ($)</label>' +
-          '<input type="number" step="0.01" id="closeCash" inputmode="decimal" value="0"></div>' +
+          moneyInput('closeCash', '0') + '</div>' +
         '<div class="sheet-field"><label>Credit card sales ($)</label>' +
-          '<input type="number" step="0.01" id="closeCredit" inputmode="decimal" value="0"></div>' +
+          moneyInput('closeCredit', '0') + '</div>' +
         '<div class="sheet-field"><label>Debit card sales ($)</label>' +
-          '<input type="number" step="0.01" id="closeDebit" inputmode="decimal" value="0"></div>' +
-        '<div class="sheet-field"><label>Cashback paid out ($)</label>' +
-          '<input type="number" step="0.01" id="closeCashback" inputmode="decimal" value="0"></div>' +
+          moneyInput('closeDebit', '0') + '</div>' +
+        lottoHTML +
         '<details class="misc-block">' +
           '<summary>Misc sales</summary>' +
           '<div class="sheet-field"><label>Misc cash ($)</label>' +
-            '<input type="number" step="0.01" id="closeMiscCash" inputmode="decimal" value="0"></div>' +
+            moneyInput('closeMiscCash', '0') + '</div>' +
           '<div class="sheet-field"><label>Misc credit ($)</label>' +
-            '<input type="number" step="0.01" id="closeMiscCredit" inputmode="decimal" value="0"></div>' +
+            moneyInput('closeMiscCredit', '0') + '</div>' +
           '<div class="sheet-field"><label>Misc debit ($)</label>' +
-            '<input type="number" step="0.01" id="closeMiscDebit" inputmode="decimal" value="0"></div>' +
+            moneyInput('closeMiscDebit', '0') + '</div>' +
           '<div class="sheet-field"><label>Misc notes</label>' +
             '<input type="text" id="closeMiscNotes" placeholder="Optional"></div>' +
         '</details>' +
         '<div class="sheet-field"><label>Cash counted in till ($)</label>' +
-          '<input type="number" step="0.01" id="closeCount" inputmode="decimal" placeholder="0.00"></div>' +
+          moneyInput('closeCount', '', ' placeholder="0.00"') + '</div>' +
         '<div class="compute-summary" id="closeSummary">' +
           '<div class="compute-row"><span>Expected cash:</span> <strong id="sumExpected">—</strong></div>' +
           '<div class="compute-row"><span>Counted:</span> <strong id="sumCounted">—</strong></div>' +
           '<div class="compute-row"><span>Variance:</span> <strong id="sumVariance">—</strong></div>' +
+          (hasLotto
+            ? '<div class="compute-row"><span>Lotto reserve:</span> <strong id="sumLotto">—</strong></div>'
+            : '') +
+          // Where the counted cash actually ends up. The variance is measured
+          // against the drawer as counted; this says what leaves it.
+          '<div class="compute-row" id="sumDestRow" style="display:none">' +
+            '<span>Counted goes to:</span> <strong id="sumDest">—</strong></div>' +
         '</div>',
       actionsHTML:
         '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
@@ -1639,28 +1828,64 @@
       onShown: () => $('closeCash').focus(),
     });
 
-    // Get the float from server state for live computation
+    // floatValue is the standard float left in the drawer — cash above it is
+    // what's spare to move into the reserve. Seeded from the same card that
+    // rendered the Close button so it's correct on first paint; the fetch
+    // below only refines it (and supplies the opening float).
     let openingFloat = 0;
+    let floatValue = Number(cardFloat) || 0;
     (async () => {
       try {
         const data = await cachedCall('rpcGetMyShiftState', [state.token], TTL_LIVE);
         const card = (data.cards || []).find(c => c.company === company);
-        if (card && card.state === 'open_by_me') openingFloat = Number(card.detail.openingFloat) || 0;
+        if (card) {
+          floatValue = Number(card.expectedFloat) || floatValue;
+          if (card.state === 'open_by_me') openingFloat = Number(card.detail.openingFloat) || 0;
+        }
         recalcClose();
       } catch (e) {}
     })();
 
+    // The refill is opt-in: nothing moves out of the drawer until the cashier
+    // taps the button. Auto-filling it recorded a transfer that may never have
+    // physically happened, and gave no hint of what the number meant.
+    let topupApplied = false;
+    // Once the cashier edits the amount by hand, stop auto-filling it — a
+    // deliberate number always beats our suggestion.
+    let topupTouched = false;
+
+    // "Reserve counted" is what's physically in the pot when the cashier
+    // counts it, BEFORE moving anything in. It's a plain input we never write
+    // back to, so nothing can feed back into itself; the closing balance is
+    // derived as counted + moved-in and shown in the summary.
+    function lottoBase() {
+      const v = parseFloat($('closeLotto').value);
+      return isNaN(v) ? lottoStart : v;
+    }
+    function lottoTopup() {
+      return hasLotto ? (parseFloat($('closeLottoTopup').value) || 0) : 0;
+    }
+    function lottoClosing() {
+      return Math.round((lottoBase() + lottoTopup()) * 100) / 100;
+    }
+
     function recalcClose() {
       const cash = parseFloat($('closeCash').value) || 0;
-      const cashback = parseFloat($('closeCashback').value) || 0;
       const miscCash = parseFloat($('closeMiscCash').value) || 0;
       const counted = parseFloat($('closeCount').value);
-      const expected = openingFloat + cash + miscCash - cashback;
+      // Lotto never moves this. Payouts come out of the reserve pot, and a
+      // top-up happens AFTER the drawer is counted — it reduces what gets
+      // banked, not what the till was supposed to hold.
+      const expected = openingFloat + cash + miscCash;
       $('sumExpected').textContent = money(expected);
+
+      if (hasLotto) updateLotto(counted);
+
       if (isNaN(counted)) {
         $('sumCounted').textContent = '—';
         $('sumVariance').textContent = '—';
         $('sumVariance').className = '';
+        $('sumDestRow').style.display = 'none';
         return;
       }
       $('sumCounted').textContent = money(counted);
@@ -1671,14 +1896,148 @@
       else if (abs > 1) cls = 'compute-variance-minor';
       $('sumVariance').className = cls;
       $('sumVariance').textContent = (variance >= 0 ? '+' : '') + money(variance).replace('-','-');
+      updateDestination(counted);
     }
-    ['closeCash','closeCashback','closeMiscCash','closeCount'].forEach(id => {
+
+    // The drawer is counted once, then split three ways: the float stays, any
+    // reserve top-up leaves, and the rest is banked. The sheet used to stop at
+    // the count, so on a refill day the banked figure silently dropped by $300
+    // with nothing on screen to account for it.
+    function updateDestination(counted) {
+      const moved = hasLotto ? lottoTopup() : 0;
+      const banked = Math.round((counted - floatValue - moved) * 100) / 100;
+      const parts = [money(floatValue) + ' float'];
+      if (moved > 0.01) parts.push(money(moved) + ' reserve');
+      parts.push(money(banked) + ' banked');
+
+      const el = $('sumDest');
+      el.textContent = parts.join(' · ');
+      // Negative banked means more was moved into the pot than the drawer held
+      // above its float — worth catching here rather than in the sheet.
+      el.className = banked < -0.01 ? 'compute-variance-investigate' : '';
+      $('sumDestRow').style.display = '';
+    }
+
+    // Offers the refill and keeps its amount honest. `tillCount` is the drawer
+    // count, not the pot.
+    function updateLotto(tillCount) {
+      const base = lottoBase();               // pot as counted, before moving cash in
+      const countKnown = !isNaN(tillCount);
+      // Cash above the float is what's spare to move. Before the drawer has
+      // been counted, don't cap at all — an offer that stays hidden until an
+      // unrelated box is filled in is the dead end this feature kept falling
+      // into. Once the count exists it caps the offer honestly.
+      const spare = countKnown ? Math.max(0, tillCount - floatValue) : Infinity;
+
+      // What the pot is still missing, measured from the figure in front of
+      // the cashier. Capping the offer by this is what stops a hand-corrected
+      // count from overfilling: type $500 into a pot the form thought was
+      // $200 and the offer withdraws itself instead of moving another $300 in
+      // and then demanding a reason for ending at $800.
+      const needed = Math.max(0, lottoExpected - base);
+
+      // Only a deficit carried in from a PREVIOUS shift may be refilled from
+      // the drawer — a payout made during this shift is already netted out of
+      // the POS cash figure, so moving cash for it would count it twice.
+      const offer = Math.round(Math.min(lottoCarryDeficit, needed, spare) * 100) / 100;
+      const canTopUp = offer > 0.01;
+
+      if (!canTopUp) {
+        // Nothing left to move: the pot is full, nothing was carried in, or
+        // the drawer can't cover it. A hidden field must never contribute.
+        topupApplied = false;
+        topupTouched = false;
+        $('closeLottoTopup').value = '0';
+      } else if (topupApplied && !topupTouched) {
+        $('closeLottoTopup').value = offer;
+      }
+
+      $('closeLottoActionWrap').style.display = (canTopUp || topupApplied) ? '' : 'none';
+      $('closeLottoTopupWrap').style.display = topupApplied ? '' : 'none';
+
+      const btn = $('closeLottoTopupBtn');
+      btn.textContent = topupApplied
+        ? 'Undo — take nothing from the till'
+        : 'Move ' + money(offer) + ' from till into reserve';
+      btn.className = 'lotto-topup-btn' + (topupApplied ? ' lotto-topup-btn-undo' : '');
+
+      // When the drawer can't cover the shortfall, say so — otherwise the
+      // button just quietly offers a smaller number than the pot is missing.
+      const shortfallWanted = Math.min(lottoCarryDeficit, needed);
+      const capped = countKnown && !topupTouched && spare < shortfallWanted - 0.01;
+      $('closeLottoActionNote').style.display = capped ? '' : 'none';
+      if (capped) {
+        $('closeLottoActionNote').textContent =
+          'Pot is ' + money(shortfallWanted) + ' short, but only ' + money(spare) +
+          ' is spare above the ' + money(floatValue) + ' float.';
+      }
+
+      const moved = lottoTopup();
+      const closing = lottoClosing();
+      const short = lottoExpected - closing;
+
+      // Reason only matters when the pot doesn't end the day where it should.
+      // Held back until a till count exists: with a carried-over deficit we
+      // can't know whether this shift will refill it, and asking for a reason
+      // the moment the sheet opens would be answering the previous cashier's
+      // question.
+      $('closeLottoNoteWrap').style.display =
+        (Math.abs(short) > 0.01 && !isNaN(tillCount)) ? '' : 'none';
+
+      const el = $('sumLotto');
+      el.className = short > 0.01 ? 'compute-variance-minor' : 'compute-variance-OK';
+      const sum = moved > 0.01
+        ? money(base) + ' + ' + money(moved) + ' moved in = ' + money(closing)
+        : money(closing);
+      el.textContent = short > 0.01 ? sum + ' · short ' + money(short) : sum;
+    }
+
+    // Sanitizing listeners are attached first so recalcClose always reads a
+    // cleaned value.
+    const moneyFields = [
+      { id: 'closeCash', rest: '0' }, { id: 'closeCredit', rest: '0' },
+      { id: 'closeDebit', rest: '0' },
+      { id: 'closeMiscCash', rest: '0' }, { id: 'closeMiscCredit', rest: '0' },
+      { id: 'closeMiscDebit', rest: '0' }, { id: 'closeCount', rest: '' },
+    ];
+    if (hasLotto) {
+      moneyFields.push({ id: 'closeLotto', rest: String(lottoStart) });
+      moneyFields.push({ id: 'closeLottoTopup', rest: '0' });
+    }
+    wireMoneyInputs(moneyFields);
+
+    if (hasLotto) {
+      // Only a real keystroke counts as "touched" — our own auto-fill writes
+      // .value directly, which fires nothing.
+      $('closeLottoTopup').addEventListener('input', () => { topupTouched = true; });
+      $('closeLottoTopupBtn').onclick = () => {
+        haptic();
+        topupApplied = !topupApplied;
+        topupTouched = false;   // a fresh tap re-takes the suggested amount
+        recalcClose();
+      };
+    }
+
+    const recalcOn = ['closeCash','closeMiscCash','closeCount'];
+    if (hasLotto) recalcOn.push('closeLotto', 'closeLottoTopup');
+    recalcOn.forEach(id => {
+      // blur too: clearing a field on focus and tabbing away restores the
+      // resting value without firing `input`.
       $(id).addEventListener('input', recalcClose);
+      $(id).addEventListener('blur', recalcClose);
     });
+    if (hasLotto) recalcClose();   // paint the reserve row before any typing
 
     $('closeSubmit').onclick = async () => {
       const counted = parseFloat($('closeCount').value);
       if (isNaN(counted)) return toast('Enter the cash counted', 'error');
+      // Mirrors the server rule — a reserve that isn't at the expected
+      // balance needs a reason on the record. Server check is the real gate.
+      if (hasLotto) {
+        if (Math.abs(lottoClosing() - lottoExpected) > 0.01 && !$('closeLottoNote').value.trim()) {
+          return toast('Lotto reserve isn’t ' + money(lottoExpected) + ' — add a reason', 'error');
+        }
+      }
       $('closeSubmit').disabled = true;
       $('closeSubmit').textContent = 'Closing…';
       try {
@@ -1687,18 +2046,26 @@
           cashSales: parseFloat($('closeCash').value) || 0,
           creditCardSales: parseFloat($('closeCredit').value) || 0,
           debitCardSales: parseFloat($('closeDebit').value) || 0,
-          cashbackPaid: parseFloat($('closeCashback').value) || 0,
+          // Cashback is retired — the field is gone from the form, but the
+          // sales column stays for the historical rows that still hold it.
+          cashbackPaid: 0,
           miscCashSales: parseFloat($('closeMiscCash').value) || 0,
           miscCreditSales: parseFloat($('closeMiscCredit').value) || 0,
           miscDebitSales: parseFloat($('closeMiscDebit').value) || 0,
           miscNotes: $('closeMiscNotes').value.trim(),
           physicalCount: counted,
+          // The closing balance = pot as counted + anything moved in.
+          lottoCounted: hasLotto ? lottoClosing() : null,
+          lottoTopupFromTill: hasLotto ? lottoTopup() : 0,
+          lottoNote: hasLotto ? $('closeLottoNote').value.trim() : '',
         });
         closeSheet();
         const variance = result && result.variance != null ? Number(result.variance) : 0;
         toast('✓ ' + company.toUpperCase() + ' closed · variance ' + money(variance),
               Math.abs(variance) > 30 ? 'warning' : 'success');
-        loadShiftTab();
+        // force: the reserve balance the next close sheet pre-fills from is
+        // only correct if we re-read past the 60s TTL_LIVE cache.
+        loadShiftTab(true);
         // Async follow-up: when all tills are closed for the day, reconcile
         // against Clover + WhatsApp. Fire-and-forget — never affects the close.
         call('rpcReconcileDay', state.token, false).then(r => {

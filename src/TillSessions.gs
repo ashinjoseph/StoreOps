@@ -18,10 +18,16 @@ const TillSessions = (() => {
     status: 6, start_time: 7, end_time: 8,
     expected_opening: 9, opening_float: 10, opening_note: 11,
     closing_cash_counted: 12, cash_left_in_till: 13, cash_removed_at_close: 14,
-    expected_cash: 15, closing_variance: 16, variance_status: 17, notes: 18
+    expected_cash: 15, closing_variance: 16, variance_status: 17, notes: 18,
+    // Lotto reserve — cstore only. See LOTTO_COMPANY below.
+    lotto_reserve_counted: 19, lotto_topup_from_till: 20, lotto_reserve_note: 21
   };
-  const NUM_COLS = 18;
+  const NUM_COLS = 21;
   const DATA_START_ROW = 3;
+
+  // Only the convenience store sells lotto, so only its close asks about the
+  // reserve. One constant to flip if that ever changes.
+  const LOTTO_COMPANY = 'cstore';
 
   function sheet_() {
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.TILL_SESSIONS);
@@ -47,6 +53,61 @@ const TillSessions = (() => {
     )) || 0;
   }
 
+  function getLottoExpected_() {
+    return Number(configValue_('lotto_reserve_default', 500)) || 0;
+  }
+
+  // True once the lotto columns exist on the sheet. Existing installs get
+  // them from menu_migrateTillSessionsLottoReserve; until that has been run,
+  // close_ skips the lotto write and math entirely so nothing breaks.
+  let _hasLotto = null;
+  function hasLottoColumns_() {
+    if (_hasLotto !== null) return _hasLotto;
+    const sh = sheet_();
+    const width = sh.getLastColumn();
+    if (width < COL.lotto_reserve_note) { _hasLotto = false; return false; }
+    const headers = sh.getRange(2, 1, 1, width).getValues()[0];
+    _hasLotto = headers.indexOf('lotto_reserve_counted') !== -1;
+    return _hasLotto;
+  }
+
+  // A date column should read back as a Date, but one that has been formatted
+  // as plain text — or pasted in — comes back as a string, and every range
+  // query drops rows with no date. One bad cell format silently emptied both
+  // the reserve log and Recent Shifts, so parse rather than discard.
+  function toDate_(v) {
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+    if (typeof v !== 'string' || !v.trim()) return null;
+    const s = v.trim();
+    // A bare yyyy-MM-dd parses as UTC midnight, which lands on the previous
+    // day anywhere west of Greenwich. Force local midnight instead.
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + 'T00:00:00') : new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Blank is not zero. A session closed before the lotto migration has no cell
+  // at all, and reporting that pot as $0.00 would put a number nobody counted
+  // in front of the next cashier.
+  //
+  // A money cell normally reads back as a plain number — the `$` is display
+  // formatting. But a column formatted as plain text, or one pasted in from
+  // elsewhere, comes back as the string "$200.00", which `Number()` reads as
+  // NaN. Strip the currency dressing before giving up on it.
+  function numOrNull_(v) {
+    if (typeof v === 'number') return isNaN(v) ? null : v;
+    if (v == null) return null;
+    const s = v.toString().trim();
+    if (!s) return null;
+    const n = Number(s.replace(/[$,\s]/g, ''));
+    return isNaN(n) ? null : n;
+  }
+
+  // Hand-edited sheets carry 'Closed' as readily as 'closed'.
+  function isClosed_(s) {
+    const st = (s.status || '').toLowerCase();
+    return st === 'closed' || st === 'validated';
+  }
+
   function getVarianceStatus_(variance) {
     const ok = Number(configValue_('variance_ok_threshold', 1)) || 1;
     const minor = Number(configValue_('variance_minor_threshold', 30)) || 30;
@@ -62,20 +123,26 @@ const TillSessions = (() => {
       attendanceId:     (row[COL.attendance_id - 1] || '').toString().trim(),
       staffId:          (row[COL.staff_id - 1] || '').toString().trim(),
       company:          (row[COL.company - 1] || '').toString().trim(),
-      date:             row[COL.date - 1] instanceof Date ? row[COL.date - 1] : null,
+      date:             toDate_(row[COL.date - 1]),
       status:           (row[COL.status - 1] || 'open').toString().trim(),
-      startTime:        row[COL.start_time - 1] instanceof Date ? row[COL.start_time - 1] : null,
-      endTime:          row[COL.end_time - 1] instanceof Date ? row[COL.end_time - 1] : null,
-      expectedOpening:  Number(row[COL.expected_opening - 1]) || 0,
-      openingFloat:     Number(row[COL.opening_float - 1]) || 0,
+      startTime:        toDate_(row[COL.start_time - 1]),
+      endTime:          toDate_(row[COL.end_time - 1]),
+      expectedOpening:  numOrNull_(row[COL.expected_opening - 1]) || 0,
+      openingFloat:     numOrNull_(row[COL.opening_float - 1]) || 0,
       openingNote:      (row[COL.opening_note - 1] || '').toString(),
-      closingCashCounted:  Number(row[COL.closing_cash_counted - 1]) || 0,
-      cashLeftInTill:      Number(row[COL.cash_left_in_till - 1]) || 0,
-      cashRemovedAtClose:  Number(row[COL.cash_removed_at_close - 1]) || 0,
-      expectedCash:        Number(row[COL.expected_cash - 1]) || 0,
-      closingVariance:     Number(row[COL.closing_variance - 1]) || 0,
+      closingCashCounted:  numOrNull_(row[COL.closing_cash_counted - 1]) || 0,
+      cashLeftInTill:      numOrNull_(row[COL.cash_left_in_till - 1]) || 0,
+      cashRemovedAtClose:  numOrNull_(row[COL.cash_removed_at_close - 1]) || 0,
+      expectedCash:        numOrNull_(row[COL.expected_cash - 1]) || 0,
+      closingVariance:     numOrNull_(row[COL.closing_variance - 1]) || 0,
       varianceStatus:      (row[COL.variance_status - 1] || '').toString(),
       notes:               (row[COL.notes - 1] || '').toString(),
+      lottoReserveCounted: numOrNull_(row[COL.lotto_reserve_counted - 1]),
+      lottoTopupFromTill:  numOrNull_(row[COL.lotto_topup_from_till - 1]) || 0,
+      lottoReserveNote:    (row[COL.lotto_reserve_note - 1] || '').toString(),
+      // Kept raw so a reserve that won't parse can say what it actually holds
+      // instead of just vanishing. See getLottoLog_'s diagnostic.
+      _lottoRaw:           row[COL.lotto_reserve_counted - 1],
       _rowIndex:           rowIndex,
     };
   }
@@ -91,8 +158,12 @@ const TillSessions = (() => {
     if (_tillCache) return _tillCache;
     const sh = sheet_();
     const last = sh.getLastRow();
+    // Read only as wide as the sheet actually is. On an install that hasn't
+    // run the lotto-reserve migration yet the sheet is 18 columns, and asking
+    // for 21 throws — rowToRecord_ coerces the absent cells to 0 / '' instead.
+    const width = Math.min(NUM_COLS, sh.getLastColumn());
     _tillCache = last < DATA_START_ROW ? [] :
-      sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS)
+      sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, width)
         .getValues()
         .map((row, i) => rowToRecord_(row, i + DATA_START_ROW))
         .filter(r => r.sessionId);
@@ -165,6 +236,22 @@ const TillSessions = (() => {
     const now = new Date();
     const today = Util.todayMidnight();
 
+    // One shift per person per till per day, by design — the session id is
+    // derived from (date, staff, company), so a second open would write a
+    // duplicate id. getById_ resolves that to the first row, which is already
+    // closed, so the new session could never be closed; it would sit `open`
+    // for ever and block everyone else from opening this till. Refuse at the
+    // door instead, and say what to do about it.
+    const sessionId = Util.tillSessionId(today, input.staffId, input.company);
+    const sameDay = getById_(sessionId);
+    if (sameDay) {
+      throw new Error(
+        staff.name + ' already has a ' + input.company + ' shift today (' +
+        sessionId + ', ' + sameDay.status + '). One shift per person per till ' +
+        'per day — an admin can edit that session instead.'
+      );
+    }
+
     // Verify opening float — if mismatch and no note, refuse
     const expectedFloat = getExpectedFloat_(input.company);
     if (Math.abs(input.openingCount - expectedFloat) > 0.01 && !input.openingNote) {
@@ -178,10 +265,9 @@ const TillSessions = (() => {
     const attendance = Attendance.openOrPromote(input.staffId, today, input.actorId, now);
 
     // Step 2: create till_session
-    const sessionId = Util.tillSessionId(today, input.staffId, input.company);
     const sh = sheet_();
     const row = sh.getLastRow() + 1;
-    sh.getRange(row, 1, 1, NUM_COLS).setValues([[
+    const values = [
       sessionId,
       attendance.attendanceId,
       input.staffId,
@@ -192,7 +278,15 @@ const TillSessions = (() => {
       expectedFloat, input.openingCount, input.openingNote || '',
       0, 0, 0, 0, 0,
       '', input.notes || ''
-    ]]);
+    ];
+    // Only widen the row once the lotto columns exist (see hasLottoColumns_).
+    // Non-lotto companies get blanks, not zeros — a vape row reading $0.00
+    // implies it has a reserve, which it doesn't.
+    if (hasLottoColumns_()) {
+      if (input.company === LOTTO_COMPANY) values.push(0, 0, '');
+      else values.push('', '', '');
+    }
+    sh.getRange(row, 1, 1, values.length).setValues([values]);
     bustCache_();
 
     AuditLog.write({
@@ -226,6 +320,7 @@ const TillSessions = (() => {
    *                cashSales, creditCard, debitCard, cashback,
    *                miscCash, miscCredit, miscDebit, miscNotes,
    *                physicalCount, hstCollected?, bottleDeposit?, roundOff?,
+   *                lottoCounted?, lottoTopupFromTill?, lottoNote?,
    *                notes? }
    *
    * Workflow:
@@ -261,6 +356,29 @@ const TillSessions = (() => {
     const now = new Date();
     const floatAmount = getExpectedFloat_(session.company);
 
+    // ── Lotto reserve (cstore only) ─────────────────────────
+    // The reserve is a separate pot of store cash, and it never affects the
+    // till's variance. Payouts came out of the pot, not the drawer. A top-up
+    // happens AFTER the drawer has been counted and reconciled, so it comes
+    // off the cash that gets banked (cash_removed_at_close), not off the
+    // expected total the count is measured against.
+    const lottoOn = session.company === LOTTO_COMPANY && hasLottoColumns_();
+    const lottoExpected = getLottoExpected_();
+    const lottoCounted = lottoOn
+      ? (input.lottoCounted == null ? lottoExpected : Number(input.lottoCounted) || 0)
+      : 0;
+    const lottoTopup = lottoOn ? Math.max(0, Number(input.lottoTopupFromTill) || 0) : 0;
+    const lottoNote = lottoOn ? (input.lottoNote || '').toString().trim() : '';
+
+    // A reserve that isn't at its expected balance needs a reason on the
+    // record — same rule the opening float uses for a mismatched count.
+    if (lottoOn && Math.abs(lottoCounted - lottoExpected) > 0.01 && !lottoNote) {
+      throw new Error(
+        'Lotto reserve counted ' + lottoCounted + ', expected ' + lottoExpected +
+        '. Please provide a reason.'
+      );
+    }
+
     // Build sales payload
     const salesInput = {
       sessionId: session.sessionId,
@@ -288,7 +406,9 @@ const TillSessions = (() => {
                        + salesInput.miscCashSales
                        - salesInput.cashbackPaid;
     const variance = Util.roundMoney(input.physicalCount - expectedCash);
-    const cashRemoved = Util.roundMoney(input.physicalCount - floatAmount);
+    // Takings banked = counted − the float we leave behind − anything moved
+    // into the lotto reserve.
+    const cashRemoved = Util.roundMoney(input.physicalCount - floatAmount - lottoTopup);
     const varianceStatus = getVarianceStatus_(variance);
 
     // Update till_session
@@ -303,6 +423,10 @@ const TillSessions = (() => {
     sh.getRange(row, COL.closing_variance).setValue(variance);
     sh.getRange(row, COL.variance_status).setValue(varianceStatus);
     if (input.notes) sh.getRange(row, COL.notes).setValue(input.notes);
+    if (lottoOn) {
+      sh.getRange(row, COL.lotto_reserve_counted, 1, 3)
+        .setValues([[Util.roundMoney(lottoCounted), Util.roundMoney(lottoTopup), lottoNote]]);
+    }
     bustCache_();   // later getForAttendance_/getById_ must see this close
 
     AuditLog.write({
@@ -315,6 +439,9 @@ const TillSessions = (() => {
         expectedCash: Util.roundMoney(expectedCash),
         variance,
         varianceStatus,
+        lottoReserveCounted: lottoOn ? Util.roundMoney(lottoCounted) : null,
+        lottoTopupFromTill:  lottoOn ? Util.roundMoney(lottoTopup) : null,
+        lottoReserveNote:    lottoNote,
       },
     });
 
@@ -324,6 +451,10 @@ const TillSessions = (() => {
       company: session.company,
       sessionId: session.sessionId,
       variance,
+      // null on a vape close — Notifier reads that as "no pot", not an empty
+      // one, so the summary line stays silent about lotto.
+      lottoReserveCounted: lottoOn ? Util.roundMoney(lottoCounted) : null,
+      lottoTopupFromTill:  lottoOn ? Util.roundMoney(lottoTopup) : 0,
     });
 
     // If this was the LAST open session for the attendance, complete it
@@ -348,6 +479,9 @@ const TillSessions = (() => {
       cashRemoved,
       floatLeft: floatAmount,
       varianceStatus,
+      lottoReserveCounted: lottoOn ? Util.roundMoney(lottoCounted) : null,
+      lottoReserveShort:   lottoOn ? Util.roundMoney(lottoExpected - lottoCounted) : 0,
+      lottoTopupFromTill:  lottoOn ? Util.roundMoney(lottoTopup) : 0,
     };
   }
 
@@ -388,11 +522,19 @@ const TillSessions = (() => {
     const updated = getById_(session.sessionId);
     const salesRow = Sales.getForSession(updated.sessionId);
     if (salesRow) {
-      const expected = updated.openingFloat + salesRow.cashSales + salesRow.miscCashSales - salesRow.cashbackPaid;
+      // Same terms as close_. cashbackPaid is retired from the UI but stays
+      // here — historical rows carry real values and must still recompute.
+      // The lotto top-up is deliberately absent: it never touched expected
+      // cash, only the takings banked.
+      const expected = updated.openingFloat + salesRow.cashSales + salesRow.miscCashSales
+                     - salesRow.cashbackPaid;
       const variance = Util.roundMoney(updated.closingCashCounted - expected);
       sh.getRange(row, COL.expected_cash).setValue(Util.roundMoney(expected));
       sh.getRange(row, COL.closing_variance).setValue(variance);
       sh.getRange(row, COL.variance_status).setValue(getVarianceStatus_(variance));
+      sh.getRange(row, COL.cash_removed_at_close).setValue(
+        Util.roundMoney(updated.closingCashCounted - getExpectedFloat_(updated.company)
+                        - (updated.lottoTopupFromTill || 0)));
       bustCache_();
     }
 
@@ -412,6 +554,122 @@ const TillSessions = (() => {
     return getById_(session.sessionId);
   }
 
+  // Newest first by when the shift actually ended — end_time, not date, so a
+  // shift that runs past midnight sorts by when it really closed.
+  function byCloseTimeDesc_(a, b) {
+    const diff = (b.endTime || b.date || 0) - (a.endTime || a.date || 0);
+    // Equal keys: two shifts closed within the same minute, or rows carrying
+    // only a date. Sessions are appended in the order they happen, so the
+    // lower row is the later close — without this the sort is stable and
+    // hands back the OLDER of the two.
+    return diff || (b._rowIndex - a._rowIndex);
+  }
+
+  /**
+   * What the pot held when it was last counted — the balance the next close
+   * sheet starts from, and the basis for the deficit a later shift may refill
+   * from the drawer.
+   *
+   * Deliberately unwindowed and independent of getForDateRange_: the last
+   * count predates any lookback window after a quiet fortnight, and a windowed
+   * lookup answers "no record on file" for a pot that is demonstrably short.
+   * Sessions that never recorded a count (closed before the migration) are
+   * skipped rather than read as $0.
+   *
+   * @return { counted, date } or null when nothing has ever been counted
+   */
+  function lastReserveCount_() {
+    const last = getAll_()
+      .filter(s => s.company === LOTTO_COMPANY && isClosed_(s) && s.lottoReserveCounted != null)
+      .sort(byCloseTimeDesc_)[0];
+    if (!last) return null;
+    return {
+      counted: Util.roundMoney(last.lottoReserveCounted),
+      date:    last.date ? Util.formatDate(last.date) : null,
+    };
+  }
+
+  /**
+   * Daily lotto-reserve log: one entry per closed cstore session over the
+   * last `days`, newest first. `shortfall` is how far below the expected
+   * balance the pot ended up — the number the reason explains.
+   *
+   * The window bounds the list only. `lastCounted` comes from
+   * lastReserveCount_, which looks past it.
+   *
+   * @param days lookback window (default 14)
+   * @return { expected, lastCounted, lastCountedDate, entries: [...] }
+   */
+  function getLottoLog_(days) {
+    const expected = getLottoExpected_();
+    // `enabled` false means the migration hasn't run, so close_ would drop
+    // anything the form collected — the UI hides the fields rather than
+    // pretending to record them.
+    if (!hasLottoColumns_()) {
+      return { enabled: false, expected, lastCounted: null, lastCountedDate: null, entries: [] };
+    }
+
+    const today = Util.todayMidnight();
+    const from = Util.addDays(today, -(Number(days) || 14));
+    // endOfDay, not midnight: getForDateRange_ rejects anything past `end`, so
+    // a date cell that reads back with a time component — which happens when
+    // the spreadsheet's timezone differs from the script's — would silently
+    // drop every one of today's sessions.
+    const entries = getForDateRange_(from, Util.endOfDay(today), LOTTO_COMPANY)
+      // A session that recorded no count has nothing to say about the pot;
+      // listing it as $0.00 would read as a reserve that was emptied.
+      .filter(s => isClosed_(s) && s.lottoReserveCounted != null)
+      .sort(byCloseTimeDesc_)
+      .map(s => ({
+        sessionId: s.sessionId,
+        date:      s.date ? Util.formatDate(s.date) : null,
+        staffId:   s.staffId,
+        counted:   Util.roundMoney(s.lottoReserveCounted),
+        shortfall: Util.roundMoney(expected - s.lottoReserveCounted),
+        topup:     Util.roundMoney(s.lottoTopupFromTill),
+        note:      s.lottoReserveNote,
+      }));
+
+    const last = lastReserveCount_();
+
+    return {
+      enabled: true,
+      expected,
+      lastCounted:     last ? last.counted : null,
+      lastCountedDate: last ? last.date : null,
+      // Only when the lookup found nothing: say what was actually on the
+      // sheet, so "no record" can be told apart from "the row is there but
+      // something about it didn't read". A balance that goes missing with no
+      // explanation is what made this take three rounds to pin down.
+      diagnostic:      last ? null : reserveDiagnostic_(),
+      entries,
+    };
+  }
+
+  // Why lastReserveCount_ came back empty, in numbers the cashier can read
+  // back to us: how far down the funnel the rows got, and what the newest
+  // closed cstore session actually holds in its reserve cell.
+  function reserveDiagnostic_() {
+    const all    = getAll_();
+    const cstore = all.filter(s => s.company === LOTTO_COMPANY);
+    const closed = cstore.filter(isClosed_);
+    const newest = closed.slice().sort(byCloseTimeDesc_)[0];
+    let cell = null;
+    if (newest) {
+      const raw = newest._lottoRaw;
+      cell = (raw === '' || raw == null ? 'blank' : JSON.stringify(raw)) +
+             ' (' + typeof raw + ')';
+    }
+    return {
+      sessions:  all.length,
+      cstore:    cstore.length,
+      closed:    closed.length,
+      withCount: closed.filter(s => s.lottoReserveCounted != null).length,
+      newestSession: newest ? newest.sessionId : null,
+      newestCell:    cell,
+    };
+  }
+
   return {
     getAll:              getAll_,
     getById:             getById_,
@@ -424,5 +682,10 @@ const TillSessions = (() => {
     edit:                edit_,
     getExpectedFloat:    getExpectedFloat_,
     getVarianceStatus:   getVarianceStatus_,
+    getLottoExpected:    getLottoExpected_,
+    getLottoLog:         getLottoLog_,
+    // Exported so Reconcile can ask which company owns the pot rather than
+    // hard-coding 'cstore' a second time.
+    lottoCompany:        LOTTO_COMPANY,
   };
 })();

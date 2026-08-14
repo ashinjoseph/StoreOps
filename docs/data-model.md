@@ -93,13 +93,50 @@ One row per (date, staff, company). Lifecycle: open → closed → validated.
 | K | opening_note | string | no | Required if mismatch |
 | L | closing_cash_counted | number | no | Full till count at close |
 | M | cash_left_in_till | number | no | Standard float (e.g. $250) |
-| N | cash_removed_at_close | number | no | counted − float = takings |
+| N | cash_removed_at_close | number | no | counted − float − lotto_topup = takings banked |
 | O | expected_cash | number | no | opening + cash_sales + misc_cash − cashback |
 | P | closing_variance | number | no | counted − expected |
 | Q | variance_status | enum | no | `OK` / `minor` / `investigate` / `pending_validation` |
 | R | notes | string | no | |
+| S | lotto_reserve_counted | number | no | cstore only — what's left in the lotto pot at close |
+| T | lotto_topup_from_till | number | no | cstore only — cash moved from the drawer into the pot |
+| U | lotto_reserve_note | string | no | Required when counted ≠ `lotto_reserve_default` |
 
 (ATM tracking removed per design — handled separately if ever needed.)
+
+**Lotto reserve (S–U).** The store keeps a separate pot of cash — expected
+balance `lotto_reserve_default` (config, default $500) — so cashiers can pay
+out lottery wins larger than the drawer holds.
+
+The reserve never affects `closing_variance`. Payouts come out of the pot, not
+the drawer, and the POS cash figure is already net of them. A refill happens
+*after* the drawer has been counted and reconciled, so `lotto_topup_from_till`
+comes off `cash_removed_at_close` — the takings banked — and leaves
+`expected_cash` alone.
+
+So the counted drawer splits three ways, and every close reports it:
+
+```
+closing_cash_counted = cash_left_in_till + lotto_topup_from_till + cash_removed_at_close
+             $650.00 =          $250.00 +               $300.00 +               $100.00
+```
+
+Normally a cashier refills the pot from the drawer at close and nothing is
+recorded. `lotto_topup_from_till` is only used when a previous shift ended
+short (the drawer didn't hold enough to refill) and a later shift makes it up.
+
+The pot's **last known balance** is the newest closed cstore session that
+actually recorded a count — looked up directly, with no date window, and
+skipping rows whose reserve cell is blank (a session closed before the
+migration never counted the pot; it is not a pot counted at zero). The 14-day
+reserve log bounds the list shown in the UI, not that lookup.
+
+Existing sheets gain these columns via **StoreOps → Add lotto reserve to
+till_sessions**; until then the code skips the fields entirely.
+
+**`cashback_paid` (sales, col I) is retired.** The close form no longer asks
+for it and new rows write `0`, but the column and every calculation that reads
+it stay in place so historical sessions still recompute correctly.
 
 ### 4. `sales` — sales by tender, per till_session
 
@@ -241,9 +278,15 @@ Key/value settings.
 | B | value | string | Stored as string; parsed by code as needed |
 | C | description | string | Human-readable hint |
 
+Keys are written when the config tab is first created. A sheet set up by an
+earlier version is missing anything added since, so **StoreOps → Sync config
+keys** appends the absent ones with their defaults — existing values are never
+overwritten. First-time Setup and the lotto migration both run it.
+
 **Required keys** (created with defaults at setup):
 - `cstore_default_opening_float` = `250`
 - `vape_default_opening_float` = `100`
+- `lotto_reserve_default` = `500`
 - `variance_ok_threshold` = `1`
 - `variance_minor_threshold` = `30`
 - `cstore_business_name` = `Convenience Store`
