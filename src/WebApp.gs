@@ -237,6 +237,7 @@ function _rpcGetMyShiftState(token) {
       expected:        log.expected,
       lastCounted:     log.lastCounted,
       lastCountedDate: log.lastCountedDate,
+      diagnostic:      log.diagnostic || null,
       entries: log.entries.map(e => ({
         date:      e.date,
         staffName: names[e.staffId] || e.staffId,

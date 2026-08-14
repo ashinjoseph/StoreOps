@@ -88,9 +88,17 @@ const TillSessions = (() => {
   // Blank is not zero. A session closed before the lotto migration has no cell
   // at all, and reporting that pot as $0.00 would put a number nobody counted
   // in front of the next cashier.
+  //
+  // A money cell normally reads back as a plain number — the `$` is display
+  // formatting. But a column formatted as plain text, or one pasted in from
+  // elsewhere, comes back as the string "$200.00", which `Number()` reads as
+  // NaN. Strip the currency dressing before giving up on it.
   function numOrNull_(v) {
-    if (v === '' || v == null) return null;
-    const n = Number(v);
+    if (typeof v === 'number') return isNaN(v) ? null : v;
+    if (v == null) return null;
+    const s = v.toString().trim();
+    if (!s) return null;
+    const n = Number(s.replace(/[$,\s]/g, ''));
     return isNaN(n) ? null : n;
   }
 
@@ -119,19 +127,22 @@ const TillSessions = (() => {
       status:           (row[COL.status - 1] || 'open').toString().trim(),
       startTime:        toDate_(row[COL.start_time - 1]),
       endTime:          toDate_(row[COL.end_time - 1]),
-      expectedOpening:  Number(row[COL.expected_opening - 1]) || 0,
-      openingFloat:     Number(row[COL.opening_float - 1]) || 0,
+      expectedOpening:  numOrNull_(row[COL.expected_opening - 1]) || 0,
+      openingFloat:     numOrNull_(row[COL.opening_float - 1]) || 0,
       openingNote:      (row[COL.opening_note - 1] || '').toString(),
-      closingCashCounted:  Number(row[COL.closing_cash_counted - 1]) || 0,
-      cashLeftInTill:      Number(row[COL.cash_left_in_till - 1]) || 0,
-      cashRemovedAtClose:  Number(row[COL.cash_removed_at_close - 1]) || 0,
-      expectedCash:        Number(row[COL.expected_cash - 1]) || 0,
-      closingVariance:     Number(row[COL.closing_variance - 1]) || 0,
+      closingCashCounted:  numOrNull_(row[COL.closing_cash_counted - 1]) || 0,
+      cashLeftInTill:      numOrNull_(row[COL.cash_left_in_till - 1]) || 0,
+      cashRemovedAtClose:  numOrNull_(row[COL.cash_removed_at_close - 1]) || 0,
+      expectedCash:        numOrNull_(row[COL.expected_cash - 1]) || 0,
+      closingVariance:     numOrNull_(row[COL.closing_variance - 1]) || 0,
       varianceStatus:      (row[COL.variance_status - 1] || '').toString(),
       notes:               (row[COL.notes - 1] || '').toString(),
       lottoReserveCounted: numOrNull_(row[COL.lotto_reserve_counted - 1]),
-      lottoTopupFromTill:  Number(row[COL.lotto_topup_from_till - 1]) || 0,
+      lottoTopupFromTill:  numOrNull_(row[COL.lotto_topup_from_till - 1]) || 0,
       lottoReserveNote:    (row[COL.lotto_reserve_note - 1] || '').toString(),
+      // Kept raw so a reserve that won't parse can say what it actually holds
+      // instead of just vanishing. See getLottoLog_'s diagnostic.
+      _lottoRaw:           row[COL.lotto_reserve_counted - 1],
       _rowIndex:           rowIndex,
     };
   }
@@ -601,7 +612,36 @@ const TillSessions = (() => {
       expected,
       lastCounted:     last ? last.counted : null,
       lastCountedDate: last ? last.date : null,
+      // Only when the lookup found nothing: say what was actually on the
+      // sheet, so "no record" can be told apart from "the row is there but
+      // something about it didn't read". A balance that goes missing with no
+      // explanation is what made this take three rounds to pin down.
+      diagnostic:      last ? null : reserveDiagnostic_(),
       entries,
+    };
+  }
+
+  // Why lastReserveCount_ came back empty, in numbers the cashier can read
+  // back to us: how far down the funnel the rows got, and what the newest
+  // closed cstore session actually holds in its reserve cell.
+  function reserveDiagnostic_() {
+    const all    = getAll_();
+    const cstore = all.filter(s => s.company === LOTTO_COMPANY);
+    const closed = cstore.filter(isClosed_);
+    const newest = closed.slice().sort(byCloseTimeDesc_)[0];
+    let cell = null;
+    if (newest) {
+      const raw = newest._lottoRaw;
+      cell = (raw === '' || raw == null ? 'blank' : JSON.stringify(raw)) +
+             ' (' + typeof raw + ')';
+    }
+    return {
+      sessions:  all.length,
+      cstore:    cstore.length,
+      closed:    closed.length,
+      withCount: closed.filter(s => s.lottoReserveCounted != null).length,
+      newestSession: newest ? newest.sessionId : null,
+      newestCell:    cell,
     };
   }
 

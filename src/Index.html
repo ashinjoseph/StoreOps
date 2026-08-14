@@ -1727,9 +1727,23 @@
     // with the physical pot the cashier can correct the count on the spot —
     // previously a wrong starting balance silently disabled the top-up row
     // with nothing on screen to explain it.
+    // When the balance is missing, show what the server actually found rather
+    // than only the conclusion — a row that exists but didn't read looks
+    // identical to no row at all otherwise.
+    const lottoDiag = (!lottoKnown && state.lotto && state.lotto.diagnostic)
+      ? ' [' + [
+          state.lotto.diagnostic.cstore + ' cstore',
+          state.lotto.diagnostic.closed + ' closed',
+          state.lotto.diagnostic.withCount + ' with a count',
+          state.lotto.diagnostic.newestCell
+            ? 'newest reserve cell: ' + state.lotto.diagnostic.newestCell
+            : null,
+        ].filter(Boolean).join(' · ') + ']'
+      : '';
+
     const lottoNote = !lottoKnown
       ? 'No closed cstore shift has recorded the reserve yet — starting from ' +
-        money(lottoExpected) + '.'
+        money(lottoExpected) + '.' + lottoDiag
       : 'Reserve was ' + money(lottoStart) +
         (state.lotto.lastCountedDate ? ' at close on ' + fmtDate(state.lotto.lastCountedDate) : '') +
         '. Correct it below if the pot says otherwise.';
