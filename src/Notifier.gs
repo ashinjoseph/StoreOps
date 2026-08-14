@@ -48,7 +48,15 @@ const Notifier = (() => {
         const vstr = v === 0 ? '$0 variance' :
                      v > 0 ? `+$${v.toFixed(2)} over` :
                      `-$${Math.abs(v).toFixed(2)} short`;
-        return `🔴 ${payload.staffName || payload.staffId} closed ${payload.company} shift, ${vstr}`;
+        // Reserve only when the close actually carried one — a vape shift
+        // passes null, and appending "reserve $0" would read as an empty pot.
+        let lottoStr = '';
+        if (payload.lottoReserveCounted != null) {
+          lottoStr = `, lotto reserve $${Number(payload.lottoReserveCounted).toFixed(2)}`;
+          const moved = Number(payload.lottoTopupFromTill) || 0;
+          if (moved > 0.01) lottoStr += ` (+$${moved.toFixed(2)} from till)`;
+        }
+        return `🔴 ${payload.staffName || payload.staffId} closed ${payload.company} shift, ${vstr}${lottoStr}`;
       case 'payment.recorded':
         return `💰 Paid $${(payload.amount || 0).toFixed(2)} to ${payload.staffName || payload.staffId}`;
       case 'commission.computed':

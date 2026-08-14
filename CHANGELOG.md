@@ -243,6 +243,38 @@ This completes v1.0.0.
 - **My Shift** shows the current balance on the CSTORE card (with a "short $X"
   marker) plus a collapsible reserve log — visible to every role, since any
   cashier who might pay out of the pot needs to know what's in it.
+- **The close sheet says where the counted cash goes.** The drawer is counted
+  once and then splits three ways, but the summary stopped at the count — so on
+  a refill day the banked figure quietly dropped by the transfer with nothing on
+  screen to account for it. A new line reads *"$250.00 float · $300.00 reserve ·
+  $100.00 banked"*, and flags itself if a hand-typed transfer would bank a
+  negative. **The variance math is unchanged**: the drawer is counted before the
+  cash moves, so `expected = opening + sales` measured against that count stays
+  the honest reconciliation, and `cash_removed_at_close` already nets the
+  transfer out.
+- **The reconcile WhatsApp carries the reserve every day**, not only when
+  something moved — a balance nobody can see is a balance nobody checks. The
+  cash block gains the same destination line, and the pot gets its own:
+
+  ```
+  💵 *Cash - recorded / counted*
+  $650.00 / $650.00   var +$0.00
+  ↳ float $250.00 back · reserve $300.00 · banked $100.00
+
+  🎟 *Lotto reserve*   $200.00   ⚠️ short $300.00
+  ↳ 400 paid
+  ```
+
+  A short pot carries the cashier's own reason, which is the only thing that
+  explains it to whoever reads the message. `whatsapp_template_shift_close` is
+  approved at Meta with exactly nine parameters, so the reserve rides inside the
+  existing cash parameter rather than taking a tenth — nothing needs
+  re-approving, and it works the moment it deploys.
+- The reserve balance is read once per reconcile from `getLottoLog`, not summed
+  across the day's sessions: the top-up is a flow and adds up, but the pot is a
+  balance and doesn't. It attaches only to the merchant group that holds cstore.
+- `shift.closed` audit lines name the reserve and any transfer, so the log reads
+  without opening the sheet.
 - `Setup.gs` — new `lotto_reserve_default` config key and a one-shot
   **Add lotto reserve to till_sessions** migration for existing sheets.
   Until it runs, `getAll_` reads only as wide as the sheet actually is and the

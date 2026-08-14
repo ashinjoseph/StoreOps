@@ -1817,6 +1817,10 @@
           (hasLotto
             ? '<div class="compute-row"><span>Lotto reserve:</span> <strong id="sumLotto">—</strong></div>'
             : '') +
+          // Where the counted cash actually ends up. The variance is measured
+          // against the drawer as counted; this says what leaves it.
+          '<div class="compute-row" id="sumDestRow" style="display:none">' +
+            '<span>Counted goes to:</span> <strong id="sumDest">—</strong></div>' +
         '</div>',
       actionsHTML:
         '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
@@ -1881,6 +1885,7 @@
         $('sumCounted').textContent = '—';
         $('sumVariance').textContent = '—';
         $('sumVariance').className = '';
+        $('sumDestRow').style.display = 'none';
         return;
       }
       $('sumCounted').textContent = money(counted);
@@ -1891,6 +1896,26 @@
       else if (abs > 1) cls = 'compute-variance-minor';
       $('sumVariance').className = cls;
       $('sumVariance').textContent = (variance >= 0 ? '+' : '') + money(variance).replace('-','-');
+      updateDestination(counted);
+    }
+
+    // The drawer is counted once, then split three ways: the float stays, any
+    // reserve top-up leaves, and the rest is banked. The sheet used to stop at
+    // the count, so on a refill day the banked figure silently dropped by $300
+    // with nothing on screen to account for it.
+    function updateDestination(counted) {
+      const moved = hasLotto ? lottoTopup() : 0;
+      const banked = Math.round((counted - floatValue - moved) * 100) / 100;
+      const parts = [money(floatValue) + ' float'];
+      if (moved > 0.01) parts.push(money(moved) + ' reserve');
+      parts.push(money(banked) + ' banked');
+
+      const el = $('sumDest');
+      el.textContent = parts.join(' · ');
+      // Negative banked means more was moved into the pot than the drawer held
+      // above its float — worth catching here rather than in the sheet.
+      el.className = banked < -0.01 ? 'compute-variance-investigate' : '';
+      $('sumDestRow').style.display = '';
     }
 
     // Offers the refill and keeps its amount honest. `tillCount` is the drawer

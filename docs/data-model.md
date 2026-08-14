@@ -114,6 +114,13 @@ the drawer, and the POS cash figure is already net of them. A refill happens
 comes off `cash_removed_at_close` — the takings banked — and leaves
 `expected_cash` alone.
 
+So the counted drawer splits three ways, and every close reports it:
+
+```
+closing_cash_counted = cash_left_in_till + lotto_topup_from_till + cash_removed_at_close
+             $650.00 =          $250.00 +               $300.00 +               $100.00
+```
+
 Normally a cashier refills the pot from the drawer at close and nothing is
 recorded. `lotto_topup_from_till` is only used when a previous shift ended
 short (the drawer didn't hold enough to refill) and a later shift makes it up.

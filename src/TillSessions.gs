@@ -451,6 +451,10 @@ const TillSessions = (() => {
       company: session.company,
       sessionId: session.sessionId,
       variance,
+      // null on a vape close — Notifier reads that as "no pot", not an empty
+      // one, so the summary line stays silent about lotto.
+      lottoReserveCounted: lottoOn ? Util.roundMoney(lottoCounted) : null,
+      lottoTopupFromTill:  lottoOn ? Util.roundMoney(lottoTopup) : 0,
     });
 
     // If this was the LAST open session for the attendance, complete it
@@ -680,5 +684,8 @@ const TillSessions = (() => {
     getVarianceStatus:   getVarianceStatus_,
     getLottoExpected:    getLottoExpected_,
     getLottoLog:         getLottoLog_,
+    // Exported so Reconcile can ask which company owns the pot rather than
+    // hard-coding 'cstore' a second time.
+    lottoCompany:        LOTTO_COMPANY,
   };
 })();
