@@ -93,8 +93,8 @@ One row per (date, staff, company). Lifecycle: open → closed → validated.
 | K | opening_note | string | no | Required if mismatch |
 | L | closing_cash_counted | number | no | Full till count at close |
 | M | cash_left_in_till | number | no | Standard float (e.g. $250) |
-| N | cash_removed_at_close | number | no | counted − float = takings |
-| O | expected_cash | number | no | opening + cash_sales + misc_cash − cashback − lotto_topup_from_till |
+| N | cash_removed_at_close | number | no | counted − float − lotto_topup = takings banked |
+| O | expected_cash | number | no | opening + cash_sales + misc_cash − cashback |
 | P | closing_variance | number | no | counted − expected |
 | Q | variance_status | enum | no | `OK` / `minor` / `investigate` / `pending_validation` |
 | R | notes | string | no | |
@@ -106,11 +106,24 @@ One row per (date, staff, company). Lifecycle: open → closed → validated.
 
 **Lotto reserve (S–U).** The store keeps a separate pot of cash — expected
 balance `lotto_reserve_default` (config, default $500) — so cashiers can pay
-out lottery wins larger than the drawer holds. Payouts from the pot are *not*
-till transactions and never enter the cash math; only `lotto_topup_from_till`
-does, because that cash physically left the drawer. Existing sheets gain these
-columns via **StoreOps → Add lotto reserve to till_sessions**; until then the
-code skips the fields entirely.
+out lottery wins larger than the drawer holds.
+
+The reserve never affects `closing_variance`. Payouts come out of the pot, not
+the drawer, and the POS cash figure is already net of them. A refill happens
+*after* the drawer has been counted and reconciled, so `lotto_topup_from_till`
+comes off `cash_removed_at_close` — the takings banked — and leaves
+`expected_cash` alone.
+
+Normally a cashier refills the pot from the drawer at close and nothing is
+recorded. `lotto_topup_from_till` is only used when a previous shift ended
+short (the drawer didn't hold enough to refill) and a later shift makes it up.
+
+Existing sheets gain these columns via **StoreOps → Add lotto reserve to
+till_sessions**; until then the code skips the fields entirely.
+
+**`cashback_paid` (sales, col I) is retired.** The close form no longer asks
+for it and new rows write `0`, but the column and every calculation that reads
+it stay in place so historical sessions still recompute correctly.
 
 ### 4. `sales` — sales by tender, per till_session
 

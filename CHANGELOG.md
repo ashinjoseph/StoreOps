@@ -144,18 +144,30 @@ This completes v1.0.0.
   select the pre-filled `0` first, strip anything that isn't a digit or a
   single `.`, and restore the resting value on blur — so a field left untouched
   still reads and submits as `0`, exactly as before.
+- **Cashback is retired from the close sheet.** The store no longer pays
+  cashback, so the field was one more box to tab past on every close. New rows
+  write `0`; the `cashback_paid` column and every calculation that reads it
+  stay, so historical sessions still recompute correctly.
 - **Lotto reserve is now tracked daily.** On heavy lotto days the payouts
   exceed what the drawer has taken, so cashiers pay winners out of a separate
   pot kept in the store. Nothing recorded that pot. The CSTORE close sheet now
-  asks for the reserve counted (pre-filled with the expected $500), an optional
-  "topped up from till" amount, and a reason — **required** whenever the count
-  isn't the expected balance, mirroring the existing opening-float rule.
+  asks for the reserve counted — pre-filled with the **last known balance**, so
+  a blind submit records the truth rather than an optimistic $500.
+- **The extra reserve fields only appear when they mean something.** A normal
+  close, with the pot untouched at $500, shows neither. The *reason* field
+  appears once the counted balance isn't the expected one, and is required from
+  then on. The *move to reserve from till* field appears only when a previous
+  shift left the pot short **and** the till count exceeds the float — there's
+  nothing spare to move otherwise. It auto-fills with what's needed (capped by
+  what's actually spare) and stays editable; the counted balance follows along
+  so a full refill lands on $500 without demanding a reason it doesn't owe.
 - `TillSessions.gs` — `till_sessions` gains `lotto_reserve_counted`,
-  `lotto_topup_from_till` and `lotto_reserve_note` (cols 19-21). Expected cash
-  becomes `opening + cash + misc_cash − cashback − lotto_topup_from_till`: a
-  top-up moved real cash out of the drawer, so it stops reading as a variance.
-  Payouts from the pot never touch till math — that money was never in the
-  till. `getLottoLog()` returns the last 14 days for the UI.
+  `lotto_topup_from_till` and `lotto_reserve_note` (cols 19-21). **The reserve
+  never affects the till variance.** Payouts came out of the pot, not the
+  drawer, and the POS cash figure is already net of them. A refill happens
+  after the drawer has been counted and reconciled, so the top-up comes off
+  `cash_removed_at_close` — the takings banked — and leaves `expected_cash`
+  alone. `getLottoLog()` returns the last 14 days for the UI.
 - **My Shift** shows the current balance on the CSTORE card (with a "short $X"
   marker) plus a collapsible reserve log — visible to every role, since any
   cashier who might pay out of the pot needs to know what's in it.

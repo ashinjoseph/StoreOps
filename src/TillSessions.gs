@@ -297,9 +297,11 @@ const TillSessions = (() => {
     const floatAmount = getExpectedFloat_(session.company);
 
     // ── Lotto reserve (cstore only) ─────────────────────────
-    // The reserve is a separate pot of store cash. Payouts out of it never
-    // touch the till's math — only cash MOVED from the drawer into the pot
-    // does, because that cash physically left the drawer.
+    // The reserve is a separate pot of store cash, and it never affects the
+    // till's variance. Payouts came out of the pot, not the drawer. A top-up
+    // happens AFTER the drawer has been counted and reconciled, so it comes
+    // off the cash that gets banked (cash_removed_at_close), not off the
+    // expected total the count is measured against.
     const lottoOn = session.company === LOTTO_COMPANY && hasLottoColumns_();
     const lottoExpected = getLottoExpected_();
     const lottoCounted = lottoOn
@@ -342,10 +344,11 @@ const TillSessions = (() => {
     const expectedCash = session.openingFloat
                        + salesInput.cashSales
                        + salesInput.miscCashSales
-                       - salesInput.cashbackPaid
-                       - lottoTopup;
+                       - salesInput.cashbackPaid;
     const variance = Util.roundMoney(input.physicalCount - expectedCash);
-    const cashRemoved = Util.roundMoney(input.physicalCount - floatAmount);
+    // Takings banked = counted − the float we leave behind − anything moved
+    // into the lotto reserve.
+    const cashRemoved = Util.roundMoney(input.physicalCount - floatAmount - lottoTopup);
     const varianceStatus = getVarianceStatus_(variance);
 
     // Update till_session
@@ -455,14 +458,19 @@ const TillSessions = (() => {
     const updated = getById_(session.sessionId);
     const salesRow = Sales.getForSession(updated.sessionId);
     if (salesRow) {
-      // Same terms as close_ — the lotto top-up left the drawer, so it has to
-      // come off expected cash here too or the recompute would undo it.
+      // Same terms as close_. cashbackPaid is retired from the UI but stays
+      // here — historical rows carry real values and must still recompute.
+      // The lotto top-up is deliberately absent: it never touched expected
+      // cash, only the takings banked.
       const expected = updated.openingFloat + salesRow.cashSales + salesRow.miscCashSales
-                     - salesRow.cashbackPaid - (updated.lottoTopupFromTill || 0);
+                     - salesRow.cashbackPaid;
       const variance = Util.roundMoney(updated.closingCashCounted - expected);
       sh.getRange(row, COL.expected_cash).setValue(Util.roundMoney(expected));
       sh.getRange(row, COL.closing_variance).setValue(variance);
       sh.getRange(row, COL.variance_status).setValue(getVarianceStatus_(variance));
+      sh.getRange(row, COL.cash_removed_at_close).setValue(
+        Util.roundMoney(updated.closingCashCounted - getExpectedFloat_(updated.company)
+                        - (updated.lottoTopupFromTill || 0)));
       bustCache_();
     }
 
