@@ -74,3 +74,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versions `vX.Y.Z`.
   UI like a real user (no Apps Script editor needed)
 
 This completes v1.0.0.
+
+### Product Master + reconciliation upgrades (Batch 5)
+- `ProductMaster.gs` — thin core product catalog (identity + resolved
+  cost/sell/margin) with chunked `CacheService` reads, dedup on
+  sku(+unit), and an import pipeline from per-type staging sheets.
+- `ProductTypes.gs` — per-type (beer / cigarettes / vape) registry:
+  detail sheet + columns, `derivePricing`, `validate`, UI field schema.
+  Grocery/other are core-only.
+- `Setup.gs` — adds `product_master` + per-type detail sheets, 4
+  per-type import staging tabs, and menu items to import each type and
+  to migrate an existing flat `product_master` to the per-type layout.
+- `ShoppingList.gs` — adding an entry now resolves the product from
+  Product Master (single source of truth for name/category/unit/cost)
+  instead of free-text entry; `shopping_list` gains a `product_id`
+  column.
+- `Index.html` — new **Product Master** tab (search, create, edit,
+  deactivate, per-type pricing form with live margin preview).
+- `Attendance.gs` — `hours_basis` column + `adjustHours` (pin recorded
+  hours to the scheduled window or the actual open→close span).
+- `Payments.gs` — `payShifts` now blocks on unreconciled scheduled vs.
+  actual hours mismatches, with an explicit override that pins the
+  affected shifts to actual hours before paying.
+- `Reconcile.gs` — validation_results gains `cash_sales`; adds a
+  reported-vs-expected total sales check against Clover when available.
+- `Sales.gs` — dashboard results include a per-day aggregation (feeds
+  the sales dashboard's daily breakdown).
+- `scripts/import_product_master.py` + `references/*.xlsx` — Excel →
+  staging-CSV pre-processor and its source pricing sheets (beer,
+  cigarettes) for the Product Master import.

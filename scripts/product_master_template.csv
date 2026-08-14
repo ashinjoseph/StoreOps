@@ -1,0 +1,5 @@
+product_id,sku,barcode,product_name,brand,category,subcategory,pack_size,unit,cost_price,sell_price,sell_price_credit,min_sell_price,margin_amount,margin_pct,supplier,last_invoice_no,source_file,active,notes,created_by,created_at,case_size,lcbo_case_price,deposit_per_unit
+,BEER-COR24,,Corona Extra 24 x 330mL,Corona,beer,Lager,24 x 330mL,each,,,,,,,The Beer Store,,template,,,,,24,48.55,0.10
+,BEER-BUD12,,Budweiser 12 x 355mL,Budweiser,beer,Lager,12 x 355mL,each,,,,,,,The Beer Store,,template,,,,,12,24.95,0.10
+,VAP-ELF20K-BB,,Elfbar GH20000 Berry Blast 20K puffs 2%,Elfbar,vape,Disposable,5ct,each,12.50,24.99,,18.00,,,Yo Vapor,,template,,,,,,,
+,GRO-MILK-2L,,Natrel 2% Milk 2L,Natrel,grocery,Dairy,2L,each,4.25,5.99,,5.49,,,Local,,template,,,,,,,

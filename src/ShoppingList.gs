@@ -15,10 +15,24 @@ const ShoppingList = (() => {
   const COL = {
     entry_id: 1, item_id: 2, item_name: 3, category: 4, quantity: 5, unit: 6,
     unit_price: 7, note: 8, status: 9, added_by: 10, added_at: 11,
-    batch_id: 12, generated_by: 13, generated_at: 14
+    batch_id: 12, generated_by: 13, generated_at: 14,
+    product_id: 15   // single source of truth → product_master (item_id is legacy/order_catalog)
   };
-  const NUM_COLS = 14;
+  const NUM_COLS = 15;
   const DATA_START_ROW = 3;
+
+  // Product-master category display order + Title-case label for grouping/output.
+  const CATEGORY_ORDER = ['vape', 'cigarettes', 'beer', 'grocery', 'other'];
+  function catLabel_(c) {
+    const s = (c || 'other').toString().trim();
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Other';
+  }
+  // Distinct categories present, product-master order first then stragglers.
+  function orderedCategories_(entries) {
+    const cats = CATEGORY_ORDER.slice();
+    entries.forEach(e => { const c = (e.category || 'other'); if (cats.indexOf(c) === -1) cats.push(c); });
+    return cats;
+  }
 
   function sheet_() {
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.SHOPPING_LIST);
@@ -42,6 +56,7 @@ const ShoppingList = (() => {
       batchId:     (row[COL.batch_id - 1] || '').toString().trim(),
       generatedBy: (row[COL.generated_by - 1] || '').toString().trim(),
       generatedAt: row[COL.generated_at - 1] instanceof Date ? row[COL.generated_at - 1] : null,
+      productId:   (row[COL.product_id - 1] || '').toString().trim(),
       _rowIndex:   rowIndex,
     };
   }
@@ -126,56 +141,34 @@ const ShoppingList = (() => {
   }
 
   /**
-   * Add an item to the pending list.
-   * @param input {
-   *   itemId?, itemName, category, quantity, unit?, unitPrice?, note?,
-   *   newItem?, parLevel?, suggestedSupplier?, addedBy
-   * }
-   * If newItem=true, a catalog item is created first and linked.
+   * Add a product to the pending list. Product master is the single source
+   * of truth: name / category / unit / cost are snapshotted from the product
+   * at add time (so the line stays stable even if the product later changes).
+   * @param input { productId (req), quantity (req), note?, addedBy (req) }
    */
   function add_(input) {
     if (!input.addedBy) throw new Error('addedBy required');
-    const name = (input.itemName || '').toString().trim();
-    if (!name) throw new Error('itemName required');
-    // Free-text category (users can add their own); default to 'Other'.
-    const category = (input.category || 'Other').toString().trim() || 'Other';
+    const productId = (input.productId || '').toString().trim();
+    if (!productId) throw new Error('productId required');
     const quantity = Number(input.quantity);
     if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('quantity must be a positive number');
 
-    let itemId = (input.itemId || '').toString().trim();
-    let unit = input.unit || '';
-    let unitPrice = Number(input.unitPrice) || 0;
+    const p = ProductMaster.getById(productId);
+    if (!p) throw new Error('Product not found: ' + productId);
+    if (!p.active) throw new Error('Product is inactive: ' + (p.productName || productId));
 
-    if (input.newItem) {
-      // Persist to the catalog so it's pickable next time.
-      const item = OrderCatalog.create({
-        name: name,
-        category: category,
-        unit: unit,
-        unitPrice: unitPrice,
-        parLevel: Number(input.parLevel) || 0,
-        suggestedSupplier: input.suggestedSupplier || '',
-        actorId: input.addedBy,
-      });
-      itemId = item.itemId;
-      unit = item.unit;
-      if (!input.unitPrice) unitPrice = item.unitPrice;
-    } else if (itemId) {
-      // Snapshot unit/price from the catalog if not overridden.
-      const item = OrderCatalog.getById(itemId);
-      if (item) {
-        if (!unit) unit = item.unit;
-        if (!input.unitPrice) unitPrice = item.unitPrice;
-      }
-    }
+    const name = (p.productName || '').toString().trim();
+    const category = (p.category || 'other').toString().trim();
+    const unit = (p.unit || '').toString().trim();
+    const unitPrice = Util.roundMoney(Number(p.costPrice) || 0);
 
     const entryId = Util.newId('SL');
     const sh = sheet_();
     const row = sh.getLastRow() + 1;
     sh.getRange(row, 1, 1, NUM_COLS).setValues([[
-      entryId, itemId, name, category, quantity, unit,
-      Util.roundMoney(unitPrice), input.note || '', 'pending', input.addedBy, new Date(),
-      '', '', '',
+      entryId, '', name, category, quantity, unit,
+      unitPrice, input.note || '', 'pending', input.addedBy, new Date(),
+      '', '', '', productId,
     ]]);
 
     AuditLog.write({
@@ -183,7 +176,7 @@ const ShoppingList = (() => {
       action: 'shopping_list.add',
       targetType: 'shopping_list',
       targetId: entryId,
-      after: { itemName: name, category, quantity, unit },
+      after: { productId, itemName: name, category, quantity, unit, unitPrice },
     });
 
     return getById_(entryId);
@@ -285,20 +278,16 @@ const ShoppingList = (() => {
     const friendly = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEE d MMM yyyy');
     const lines = ['🛒 *Shopping List*', '📅 ' + friendly + (byName ? '   ·   by ' + byName : ''), ''];
 
-    // Category order: known categories first, then any stragglers.
-    const cats = ORDER_CATEGORIES.slice();
-    entries.forEach(e => {
-      const c = e.category || 'Other';
-      if (cats.indexOf(c) === -1) cats.push(c);
-    });
+    // Category order: product-master order first, then any stragglers.
+    const cats = orderedCategories_(entries);
 
     let total = 0;
     let anyPrice = false;
     let count = 0;
     cats.forEach(cat => {
-      const inCat = entries.filter(e => (e.category || 'Other') === cat);
+      const inCat = entries.filter(e => (e.category || 'other') === cat);
       if (inCat.length === 0) return;
-      lines.push('*' + cat + '*');
+      lines.push('*' + catLabel_(cat) + '*');
       inCat.forEach(e => {
         const unit = e.unit ? ' ' + e.unit : '';
         let line = '•  ' + e.itemName + '   ×' + e.quantity + unit;
@@ -321,46 +310,39 @@ const ShoppingList = (() => {
     return lines.join('\n').trim();
   }
 
-  // Split the list into the 3 shopping_list template params: the date/by
-  // line, the multi-line item block (its line breaks survive Meta validation
-  // as U+2028 once the Notifier flattens the param), and a one-line summary.
+  // Build the 3 shopping_list template params. WhatsApp template parameters
+  // can't contain line breaks (and U+2028 renders as a stray glyph), so the
+  // item list is one line: "Category: item xqty, item xqty - Category: ...".
   function formatListParts_(entries, byName) {
     const friendly = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEE d MMM yyyy');
     const dateBy = friendly + (byName ? ' · by ' + byName : '');
 
-    const cats = ORDER_CATEGORIES.slice();
-    entries.forEach(e => {
-      const c = e.category || 'Other';
-      if (cats.indexOf(c) === -1) cats.push(c);
-    });
+    const cats = orderedCategories_(entries);
 
-    const lines = [];
     let total = 0, anyPrice = false, count = 0;
+    const chunks = [];
     cats.forEach(cat => {
-      const inCat = entries.filter(e => (e.category || 'Other') === cat);
+      const inCat = entries.filter(e => (e.category || 'other') === cat);
       if (inCat.length === 0) return;
-      lines.push(cat);
-      inCat.forEach(e => {
-        const unit = e.unit ? ' ' + e.unit : '';
-        let line = '• ' + e.itemName + ' ×' + e.quantity + unit;
+      const items = inCat.map(e => {
+        let s = e.itemName + ' ×' + e.quantity + (e.unit ? ' ' + e.unit : '');
         if (e.unitPrice > 0) {
           const lineCost = Util.roundMoney(e.quantity * e.unitPrice);
-          line += ' — ' + Util.formatMoney(lineCost);
+          s += ' ' + Util.formatMoney(lineCost);
           total += lineCost;
           anyPrice = true;
         }
-        if (e.note) line += ' (' + e.note + ')';
-        lines.push(line);
+        if (e.note) s += ' (' + e.note + ')';
         count++;
+        return s;
       });
-      lines.push('');
+      chunks.push(catLabel_(cat) + ': ' + items.join(', '));
     });
-    while (lines.length && lines[lines.length - 1] === '') lines.pop();
 
     let summary = count + ' item' + (count === 1 ? '' : 's');
     if (anyPrice) summary += ' · est. ' + Util.formatMoney(Util.roundMoney(total));
 
-    return { dateBy: dateBy, itemsBlock: lines.join('\n'), summary: summary };
+    return { dateBy: dateBy, itemsBlock: chunks.join(' — '), summary: summary };
   }
 
   return {

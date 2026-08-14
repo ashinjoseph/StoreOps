@@ -321,6 +321,8 @@
   .sched-cancelled { background: #f0f1f5; color: #8a8e98; text-decoration: line-through; }
   .sched-time { font-size: 11px; color: #6a6e79; margin-top: 3px; font-variant-numeric: tabular-nums; }
   .sched-empty { color: #b0b6c5; font-size: 10px; }
+  .sched-flag { font-size: 10px; font-weight: 700; color: #92611a; margin-top: 3px; }
+  .sched-flag-ok { color: #15803d; }
   .schedule-today { background: #fffbe6 !important; }
 
   /* ── Payroll ───────────────────────────────────────── */
@@ -365,6 +367,11 @@
   }
   .payroll-body-row-label { color: #6a6e79; }
   .payroll-body-row-value { font-weight: 600; }
+  .payroll-warn-chip { margin-top: 6px; padding: 6px 9px; border-radius: 8px; background: #fef3c7; color: #92611a; font-size: 11.5px; font-weight: 700; }
+  /* pay-form schedule-mismatch validation panel */
+  .pay-warn { background: #fef3c7; border: 1px solid #f7e0a3; border-radius: 10px; padding: 12px; margin-bottom: 14px; }
+  .pay-warn-title { font-size: 13px; font-weight: 800; color: #92611a; }
+  .pay-warn-text { font-size: 12px; color: #7a5312; margin: 4px 0 8px; line-height: 1.5; }
   .payroll-actions { padding: 10px 16px 14px; display: flex; gap: 8px; }
   .payroll-btn { flex: 1; padding: 11px; border-radius: 9px; font-size: 13px; font-weight: 700; }
   .payroll-btn-primary { background: #15803d; color: white; }
@@ -387,7 +394,7 @@
   .filter-field input, .filter-field select { width: 100%; padding: 9px 10px; border: 1px solid #d8dae1; border-radius: 8px; font-size: 13px; }
 
   .sales-totals {
-    display: grid; grid-template-columns: repeat(5, 1fr);
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
     gap: 8px; margin-bottom: 12px;
   }
   .sales-total-card {
@@ -397,7 +404,7 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   }
   .sales-total-label { font-size: 10px; font-weight: 700; color: #6a6e79; letter-spacing: 0.7px; text-transform: uppercase; }
-  .sales-total-amount { font-size: 16px; font-weight: 800; margin-top: 4px; letter-spacing: -0.3px; }
+  .sales-total-amount { font-size: 16px; font-weight: 800; margin-top: 4px; letter-spacing: -0.3px; font-variant-numeric: tabular-nums; }
 
   .sales-table {
     background: white;
@@ -421,7 +428,7 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
-  .sales-row .right { text-align: right; }
+  .sales-row .right { text-align: right; font-variant-numeric: tabular-nums; }
   .pagination {
     display: flex; align-items: center; justify-content: space-between;
     padding: 10px 14px;
@@ -431,6 +438,37 @@
   }
   .pagination button { padding: 6px 12px; border-radius: 7px; background: #f0f1f5; font-weight: 600; font-size: 12px; }
   .pagination button:disabled { color: #b0b6c5; cursor: not-allowed; }
+
+  /* ── Daily sales bar chart ─────────────────────────── */
+  .sales-chart { background: white; border-radius: 12px; padding: 12px 10px 8px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .sc-track { display: flex; align-items: flex-end; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  .sc-col { flex: 1 0 38px; min-width: 38px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; background: none; border: 0; cursor: pointer; padding: 0; }
+  .sc-amt { font-size: 9px; font-weight: 700; color: #6a6e79; font-variant-numeric: tabular-nums; }
+  .sc-bar { width: 100%; max-width: 30px; min-height: 3px; background: #c7d2f7; border-radius: 5px 5px 0 0; transition: background .15s ease, height .2s ease; }
+  .sc-col:hover .sc-bar { background: #9db4f0; }
+  .sc-col.sel .sc-bar { background: #1a4ca1; }
+  .sc-col.sel .sc-amt { color: #1a4ca1; }
+  .sc-lbl { font-size: 10px; line-height: 1.15; color: #6a6e79; text-align: center; font-weight: 600; }
+
+  /* ── Day accordion ─────────────────────────────────── */
+  .day-acc { display: flex; flex-direction: column; gap: 8px; }
+  .day-item { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden; }
+  .day-head { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; background: none; border: 0; cursor: pointer; font-size: 13px; color: #1a2540; text-align: left; }
+  .day-item.open .day-head { border-bottom: 1px solid #f0f1f5; }
+  .day-when { display: flex; align-items: baseline; gap: 6px; }
+  .day-caret { color: #9aa0ac; font-size: 11px; }
+  .day-meta { color: #6a6e79; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .day-meta strong { color: #1a2540; }
+  .day-body { padding: 6px 13px 10px; }
+  .day-sess { padding: 7px 0; border-bottom: 1px solid #f5f6f8; }
+  .day-sess:last-child { border-bottom: 0; }
+  .ds-top { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; align-items: baseline; }
+  .ds-top strong { font-variant-numeric: tabular-nums; }
+  .ds-sub { font-size: 11px; color: #6a6e79; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .day-note { font-size: 11px; color: #92611a; padding: 4px 0; }
+
+  /* reconciliation history collapse toggle */
+  .recon-hist-toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 6px 0; background: none; border: 0; cursor: pointer; font-size: 11px; font-weight: 700; color: #6a6e79; text-transform: uppercase; letter-spacing: 0.5px; }
 
   /* ── History ───────────────────────────────────────── */
   .history-item {
@@ -572,7 +610,8 @@
   .recon-badge.ok { background: #dcfce7; color: #15803d; }
   .recon-badge.bad { background: #fee2e2; color: #b91c1c; }
   .recon-badge.warn { background: #fef3c7; color: #92611a; }
-  .recon-line { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .recon-line { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .recon-line > span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
   .recon-line small { color: #6a6e79; }
   .recon-ok { color: #15803d !important; }
   .recon-diff { color: #b91c1c !important; }
@@ -580,7 +619,62 @@
   .recon-table { border-top: 1px solid #f0f1f5; }
   .recon-trow { display: grid; grid-template-columns: 1.1fr 1.1fr 0.8fr 0.9fr 0.9fr 0.9fr; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f5f6f8; align-items: center; }
   .recon-trow.head { font-size: 10px; font-weight: 700; color: #6a6e79; text-transform: uppercase; letter-spacing: 0.4px; }
-  .recon-trow .r { text-align: right; }
+  .recon-trow .r { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ── Sales / reconciliation tables → stacked cards on small screens ── */
+  @media (max-width: 560px) {
+    .filter-row { grid-template-columns: 1fr; }
+
+    /* Hide the column-header rows — labels move inline via data-label. */
+    .sales-row.header, .recon-trow.head { display: none; }
+
+    /* Each grid row becomes a self-contained card. */
+    .sales-row, .recon-trow {
+      display: block;
+      padding: 10px 12px;
+      border: 1px solid #eef0f4;
+      border-radius: 10px;
+      margin-bottom: 8px;
+    }
+    .sales-table .sales-row:last-of-type,
+    .recon-table .recon-trow:last-of-type { margin-bottom: 0; }
+
+    /* Every cell becomes a label / value line. */
+    .sales-row > div, .recon-trow > div {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      padding: 3px 0;
+      text-align: right;
+    }
+    .sales-row > div[data-label]::before,
+    .recon-trow > div[data-label]::before {
+      content: attr(data-label);
+      flex: 0 0 auto;
+      color: #6a6e79;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      text-align: left;
+    }
+
+    /* First cell (no data-label) is the card title. */
+    .sales-row > div:first-child, .recon-trow > div:first-child {
+      display: block;
+      text-align: left;
+      font-weight: 800;
+      font-size: 13px;
+      border-bottom: 1px solid #f0f1f5;
+      margin-bottom: 4px;
+      padding-bottom: 6px;
+    }
+
+    /* Reconciliation cards keep the wrapper border off the inner rows. */
+    .recon-table { border-top: 0; }
+    .sales-totals { grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); }
+  }
 
   /* ── Modal (bottom sheet) ──────────────────────────── */
   .backdrop {
@@ -621,6 +715,17 @@
   .sheet-subtitle { font-size: 12px; opacity: 0.78; margin-top: 3px; }
   .sheet-body { padding: 16px 18px; }
   .sheet-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  /* shopping-list product picker */
+  .si-results { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .si-row { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; background: #f7f8fa; border: 1px solid #eef0f4; border-radius: 10px; padding: 9px 11px; cursor: pointer; }
+  .si-row:active { background: #eef2ff; }
+  .si-name { font-size: 14px; font-weight: 700; color: #1a2540; }
+  .si-meta { font-size: 11px; color: #6a6e79; }
+  .si-empty { font-size: 13px; color: #6a6e79; padding: 14px 4px; text-align: center; }
+  .si-pick { background: #eef2ff; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+  .si-pick-name { font-size: 15px; font-weight: 800; color: #1a2540; }
+  .si-pick-meta { font-size: 12px; color: #4a5570; margin-top: 2px; }
+
   .sheet-field { margin-bottom: 12px; }
   .sheet-field label {
     display: block; font-size: 10px; font-weight: 700;
@@ -722,6 +827,54 @@
   .toast.success { background: #15803d; }
   .toast.error { background: #b91c1c; }
   .toast.warning { background: #d97706; }
+
+  /* Product Master tab */
+  .products-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+  .products-controls .pm-search { flex: 1 1 220px; min-width: 0; }
+  .products-controls select { flex: 0 1 140px; min-width: 100px; }
+  .products-controls .btn-primary {
+    padding: 9px 12px; border-radius: 9px; font-size: 13px; font-weight: 700;
+    background: #1a4ca1; color: white;
+    flex: 0 0 auto;
+  }
+  .products-controls .btn-primary:active { background: #133b7d; }
+  .products-filter-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+  .products-filter-row select { flex: 1 1 130px; min-width: 0; }
+  .products-filter-row .pm-clear {
+    background: transparent; color: #1a4ca1; font-size: 12px; font-weight: 600;
+    padding: 6px 10px; border-radius: 6px; flex: 0 0 auto;
+  }
+  .products-filter-row .pm-clear:active { background: #e8edf5; }
+  .product-row-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding: 13px 16px;
+  }
+  .product-row-margin {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1a2540;
+    white-space: nowrap;
+  }
+  .product-row-meta { font-size: 11px; color: #6a6e79; margin-top: 3px; font-weight: 500; }
+  .badge-warn {
+    background: #fde68a; color: #92611a; font-size: 10px;
+    padding: 2px 6px; border-radius: 4px; font-weight: 700;
+    margin-left: 6px; vertical-align: middle;
+  }
+  .badge-inactive {
+    color: #6a6e79; font-size: 11px; font-weight: 600;
+    align-self: center; padding: 0 10px;
+  }
+  .product-margin-preview {
+    margin-top: 12px; padding: 10px 12px; border-radius: 9px;
+    background: #f5f7fb; font-size: 13px; font-weight: 600; color: #1a2540;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .product-margin-preview.bad { background: #fee2e2; color: #b91c1c; }
+  .product-margin-preview .meta { font-size: 11px; color: #6a6e79; font-weight: 500; }
+  .product-margin-preview.bad .meta { color: #b91c1c; }
 </style>
 </head>
 <body>
@@ -767,6 +920,7 @@
     <div class="view" id="view-rules"></div>
     <div class="view" id="view-shopping"></div>
     <div class="view" id="view-suppliers"></div>
+    <div class="view" id="view-products"></div>
     <div class="view" id="view-history"></div>
     <div class="view" id="view-more"></div>
   </main>
@@ -908,6 +1062,31 @@
     return h + 'h ' + (m < 10 ? '0' : '') + m + 'm';
   }
   function haptic() { if (navigator.vibrate) navigator.vibrate(10); }
+
+  // Title-case a product-master category for display ("beer" → "Beer").
+  function catLabel(c) {
+    const s = (c || '').toString().trim();
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Other';
+  }
+  // Compact money for chart labels: 1361 → "$1.4k", 950 → "$950".
+  function compactMoney(n) {
+    const v = Math.abs(Number(n) || 0);
+    if (v >= 1000) return '$' + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k';
+    return '$' + Math.round(v);
+  }
+  // Split a server date string ("2026-06-23") into weekday + short label.
+  function dayParts(dateStr) {
+    if (!dateStr) return { weekday: '', label: '—', dayNum: '' };
+    let dt;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+    dt = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(dateStr);
+    if (isNaN(dt)) return { weekday: '', label: dateStr, dayNum: '' };
+    return {
+      weekday: dt.toLocaleDateString('en-US', { weekday: 'short' }),
+      label: dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      dayNum: dt.getDate(),
+    };
+  }
 
   function todayMidnight() { const d = new Date(); d.setHours(0,0,0,0); return d; }
   function mondayOf(d) {
@@ -1060,7 +1239,7 @@
       ['rpcGetShoppingList',   [state.token],     TTL_LIVE],
       ['rpcGetSuppliers',      [state.token],     TTL_REF],
       ['rpcGetPaymentHistory', [state.token, 25], TTL_SEMI],
-      ['rpcGetOrderCatalog',   [state.token],     TTL_REF],   // add-item modal
+      ['rpcGetProductMaster',  [state.token, {}], TTL_REF],   // shopping add-item picker + products tab
       ['rpcGetStaffDirectory', [state.token],     TTL_REF],   // sales/rule pickers
     ];
     if (mgr) {
@@ -1106,13 +1285,14 @@
 
   // Tabs accessed only via the "More" drawer (no direct bottom-bar button).
   // Every role gets the More drawer; History/Shopping/Suppliers live there for all.
-  const DRAWER_TABS = ['shopping', 'suppliers', 'history', 'payroll', 'sales', 'commissions', 'rules'];
+  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules'];
 
   // Items shown in the "More" drawer, with role visibility.
   const ALL_ROLES = ['admin', 'manager', 'payroll_admin', 'employee'];
   const MORE_ITEMS = [
     { tab: 'shopping',    icon: '🛒', label: 'Shopping List',    meta: 'Add items to order',              roles: ALL_ROLES },
     { tab: 'suppliers',   icon: '🚚', label: 'Suppliers',        meta: 'Where to buy what (reference)',    roles: ALL_ROLES },
+    { tab: 'products',    icon: '📦', label: 'Product Master',   meta: 'Cost, sell, margin per product',   roles: ALL_ROLES },
     { tab: 'history',     icon: '📋', label: 'History',          meta: 'Payment records',                 roles: ALL_ROLES },
     { tab: 'sales',       icon: '📊', label: 'Sales',            meta: 'Sales dashboard & filters',       roles: ['admin', 'manager', 'payroll_admin'] },
     { tab: 'payroll',     icon: '💰', label: 'Payroll',          meta: 'Pay owed shifts & bonuses',       roles: ['admin', 'payroll_admin'] },
@@ -1143,6 +1323,7 @@
       payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
       commissions: loadCommissionsTab, rules: loadRulesTab, more: loadMoreTab,
       shopping: loadShoppingTab, suppliers: loadSuppliersTab,
+      products: loadProductsTab,
     };
   }
 
@@ -1160,6 +1341,7 @@
       payroll: 'Payroll', sales: 'Sales', history: 'History',
       commissions: 'Commissions', rules: 'Commission Rules', more: 'More',
       shopping: 'Shopping List', suppliers: 'Suppliers',
+      products: 'Product Master',
     };
     $('headerTitle').textContent = titles[tab] || 'StoreOps';
     // Clear running timers from previous tab
@@ -1558,6 +1740,16 @@
           } else if (cell.hoursWorked) {
             html += '<div class="sched-time">' + cell.hoursWorked.toFixed(2) + 'h</div>';
           }
+          if (cell.scheduledHours > 0 && cell.actualHours > 0 &&
+              Math.abs(cell.scheduledHours - cell.actualHours) >= 0.01) {
+            if (cell.hoursBasis) {
+              html += '<div class="sched-flag sched-flag-ok" title="Reviewed — hours set to ' +
+                esc(cell.hoursBasis) + '">✓ ' + esc(cell.hoursBasis) + '</div>';
+            } else {
+              html += '<div class="sched-flag" title="Scheduled ' + cell.scheduledHours.toFixed(2) +
+                'h vs worked ' + cell.actualHours.toFixed(2) + 'h — tap to adjust">⚠︎ sched≠worked</div>';
+            }
+          }
         } else {
           html += '<div class="sched-empty">—</div>';
         }
@@ -1599,14 +1791,35 @@
 
     let bodyHTML;
     if (isPastWork) {
+      const canAdjust = state.me.role === 'admin' || state.me.role === 'manager';
+      const sH = cell.scheduledHours || 0;
+      const aH = cell.actualHours || 0;
+      const mismatch = sH > 0 && aH > 0 && Math.abs(sH - aH) >= 0.01;
       bodyHTML =
         '<div style="font-size:13px;color:#4a4e59;line-height:1.6">' +
-        '<div>Status: <strong>' + esc(cell.status) + '</strong></div>' +
-        (cell.hoursWorked ? '<div>Hours worked: <strong>' + cell.hoursWorked.toFixed(2) + '</strong></div>' : '') +
-        '</div>' +
-        '<div style="margin-top:14px;padding:12px;background:#f5f6f8;border-radius:9px;font-size:12px;color:#6a6e79">' +
-        'Cannot edit a shift that\'s in progress or worked. Use admin tools to correct actual times if needed.' +
+          '<div>Status: <strong>' + esc(cell.status) + '</strong></div>' +
+          (cell.hoursWorked ? '<div>Recorded hours: <strong>' + cell.hoursWorked.toFixed(2) + 'h</strong></div>' : '') +
+          (sH > 0 ? '<div>Scheduled: <strong>' + sH.toFixed(2) + 'h</strong></div>' : '') +
+          (aH > 0 ? '<div>Actual (open→close): <strong>' + aH.toFixed(2) + 'h</strong></div>' : '') +
         '</div>';
+      if (mismatch && canAdjust) {
+        const reviewed = !!cell.hoursBasis;
+        bodyHTML +=
+          '<div style="margin-top:14px;padding:12px;background:' + (reviewed ? '#dcfce7' : '#fef3c7') + ';border-radius:9px;font-size:12px;color:' + (reviewed ? '#15803d' : '#92611a') + '">' +
+            (reviewed ? '✓ Reviewed — recorded hours set to ' + esc(cell.hoursBasis) + '. Change to:'
+                      : '⚠︎ Scheduled and actual hours differ. Set recorded hours to:') +
+            '<div style="display:flex;gap:8px;margin-top:10px">' +
+              '<button class="btn-primary" id="useSchedBtn" style="flex:1;padding:9px;font-size:12px;background:#1a4ca1">Scheduled ' + sH.toFixed(2) + 'h</button>' +
+              '<button class="btn-primary" id="useActualBtn" style="flex:1;padding:9px;font-size:12px;background:#15803d">Actual ' + aH.toFixed(2) + 'h</button>' +
+            '</div>' +
+          '</div>';
+      } else {
+        bodyHTML +=
+          '<div style="margin-top:14px;padding:12px;background:#f5f6f8;border-radius:9px;font-size:12px;color:#6a6e79">' +
+            (mismatch ? 'Scheduled and actual hours differ — ask an admin/manager to adjust.'
+                      : 'To correct the actual open/close times, use admin tools.') +
+          '</div>';
+      }
     } else {
       bodyHTML =
         '<div class="sheet-row">' +
@@ -1680,6 +1893,20 @@
         cancelBtn.disabled = false;
       }
     };
+    [['useSchedBtn', 'scheduled'], ['useActualBtn', 'actual']].forEach(([id, basis]) => {
+      const b = $(id);
+      if (!b) return;
+      b.onclick = async () => {
+        haptic();
+        b.disabled = true;
+        try {
+          await call('rpcAdjustAttendanceHours', state.token, cell.attendanceId, basis);
+          closeSheet();
+          toast('✓ Hours set to ' + basis, 'success');
+          loadScheduleTab();
+        } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+      };
+    });
   }
 
   // ============================================================
@@ -1883,12 +2110,12 @@
     if (list.length === 0) {
       html += '<div class="empty" style="padding:20px"><div class="empty-icon">🛒</div>Nothing on the list yet. Tap "+ Add item".</div>';
     } else {
-      const cats = ORDER_CATEGORIES.slice();
-      list.forEach(e => { const c = e.category || 'Other'; if (cats.indexOf(c) === -1) cats.push(c); });
+      const cats = ['vape', 'cigarettes', 'beer', 'grocery', 'other'];
+      list.forEach(e => { const c = (e.category || 'other'); if (cats.indexOf(c) === -1) cats.push(c); });
       cats.forEach(cat => {
-        const inCat = list.filter(e => (e.category || 'Other') === cat);
+        const inCat = list.filter(e => (e.category || 'other') === cat);
         if (inCat.length === 0) return;
-        html += '<div class="recent-title" style="margin:10px 0 6px">' + esc(cat) + '</div>';
+        html += '<div class="recent-title" style="margin:10px 0 6px">' + esc(catLabel(cat)) + '</div>';
         inCat.forEach(e => {
           const canRemove = e.addedBy === state.me.staffId || privileged;
           html += '<div class="history-item shop-row">' +
@@ -2012,102 +2239,86 @@
     }
   }
 
+  // Step 1: search the product master and pick a product. Items can ONLY be
+  // added by referencing a product (single source of truth). Managers/admins
+  // get an inline "Create new product" shortcut.
   async function openAddShoppingItem() {
+    const privileged = ['admin', 'manager'].indexOf(state.me.role) >= 0;
     openSheet({
-      title: 'Add item', subtitle: 'Pick from the catalog or add a new one',
-      bodyHTML: '<div class="loading"><div class="spinner"></div>Loading catalog…</div>',
+      title: 'Add item', subtitle: 'Search the product master',
+      bodyHTML: '<div class="loading"><div class="spinner"></div>Loading products…</div>',
       actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
     });
-    let catalog = [];
-    try { catalog = await cachedCall('rpcGetOrderCatalog', [state.token], TTL_REF); } catch (e) {}
+    let products = [];
+    try { products = await cachedCall('rpcGetProductMaster', [state.token, {}], TTL_REF); } catch (e) {}
 
-    // Category list = starter set ∪ categories already in the catalog,
-    // plus a "+ New category…" option so users can add their own (e.g. Beer).
-    const cats = ORDER_CATEGORIES.slice();
-    catalog.forEach(i => { if (i.category && cats.indexOf(i.category) === -1) cats.push(i.category); });
-    const catOptions = cats.map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('') +
-      '<option value="__newcat__">+ New category…</option>';
     const bodyHTML =
-      '<div class="sheet-field"><label>Category</label>' +
-        '<select id="siCategory">' + catOptions + '</select></div>' +
-      '<div class="sheet-field" id="siNewCatWrap" style="display:none"><label>New category name</label>' +
-        '<input type="text" id="siNewCat" placeholder="e.g. Beer"></div>' +
-      '<div class="sheet-field"><label>Item</label>' +
-        '<select id="siItem"></select></div>' +
-      '<div id="siNewWrap" style="display:none">' +
-        '<div class="sheet-field"><label>New item name</label><input type="text" id="siNewName" placeholder="e.g. 2% Milk 1L"></div>' +
-        '<div class="sheet-field"><label>Unit (optional)</label><input type="text" id="siNewUnit" placeholder="each / carton / case"></div>' +
-        '<div class="sheet-field"><label>Unit price $ (optional)</label><input type="number" step="0.01" id="siNewPrice" inputmode="decimal" placeholder="0.00"></div>' +
-        '<div class="sheet-field"><label>Par level — target stock (optional)</label><input type="number" step="1" id="siNewPar" inputmode="numeric" placeholder="e.g. 12"></div>' +
-      '</div>' +
+      '<div class="sheet-field"><input type="text" id="siSearch" class="pm-search" placeholder="Search name / brand / SKU…" autocomplete="off"></div>' +
+      (privileged ? '<button class="more-back" id="siNewProd" style="margin:0 0 8px">+ Create new product</button>' : '') +
+      '<div id="siResults" class="si-results"></div>';
+    openSheet({
+      title: 'Add item', subtitle: 'Tap a product to add', bodyHTML,
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>',
+    });
+
+    function renderResults() {
+      const terms = ($('siSearch').value || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+      let list = products;
+      if (terms.length) list = products.filter(p => {
+        const hay = [p.sku, p.productName, p.brand, p.category, p.subcategory].join(' ').toLowerCase();
+        return terms.every(t => hay.indexOf(t) >= 0);
+      });
+      list = list.slice(0, 40);
+      if (!list.length) {
+        $('siResults').innerHTML = '<div class="si-empty">No matching products.' +
+          (privileged ? ' Use “+ Create new product”.' : ' Ask a manager to add it.') + '</div>';
+        return;
+      }
+      $('siResults').innerHTML = list.map(p =>
+        '<button class="si-row" data-pid="' + esc(p.productId) + '">' +
+          '<span class="si-name">' + esc(p.productName) + '</span>' +
+          '<span class="si-meta">' + (p.brand ? esc(p.brand) + ' · ' : '') + esc(catLabel(p.category)) +
+            (p.unit ? ' · ' + esc(p.unit) : '') + ' · cost ' + money(p.costPrice) + '</span>' +
+        '</button>'
+      ).join('');
+      $('siResults').querySelectorAll('[data-pid]').forEach(b => {
+        b.onclick = () => { const prod = products.find(x => x.productId === b.dataset.pid); if (prod) openAddQtyStep(prod); };
+      });
+    }
+
+    $('siSearch').oninput = renderResults;
+    renderResults();
+    if (privileged) {
+      const np = $('siNewProd');
+      if (np) np.onclick = () => openProductForm(null, { onSaved: (created) => openAddQtyStep(created) });
+    }
+    setTimeout(() => { const s = $('siSearch'); if (s) s.focus(); }, 60);
+  }
+
+  // Step 2: set quantity + note for the chosen product, then add. Name /
+  // category / unit / cost are taken from the product server-side.
+  function openAddQtyStep(product) {
+    const meta = (product.brand ? esc(product.brand) + ' · ' : '') + esc(catLabel(product.category)) +
+      (product.unit ? ' · ' + esc(product.unit) : '') + ' · cost ' + money(product.costPrice);
+    const bodyHTML =
+      '<div class="si-pick"><div class="si-pick-name">' + esc(product.productName) + '</div>' +
+        '<div class="si-pick-meta">' + meta + '</div></div>' +
       '<div class="sheet-field"><label>Quantity to order</label><input type="number" step="0.01" id="siQty" inputmode="decimal" value="1"></div>' +
       '<div class="sheet-field"><label>Note (optional)</label><input type="text" id="siNote" placeholder="e.g. urgent, the big bags"></div>';
-
-    const actionsHTML =
-      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
-      '<button class="sheet-submit" id="siAddBtn">Add to list</button>';
-
-    openSheet({ title: 'Add item', subtitle: 'Pick from the catalog or add a new one', bodyHTML, actionsHTML });
-
-    function refreshItems() {
-      const cat = $('siCategory').value;
-      const items = catalog.filter(i => i.category === cat);
-      $('siItem').innerHTML = '<option value="__new__">+ Add a new item…</option>' +
-        items.map(i => '<option value="' + esc(i.itemId) + '">' + esc(i.name) +
-          (i.unitPrice > 0 ? ' — ' + money(i.unitPrice) : '') + '</option>').join('');
-      onItemChange();
-    }
-    function onItemChange() {
-      const isNew = $('siItem').value === '__new__';
-      $('siNewWrap').style.display = isNew ? 'block' : 'none';
-      if (!isNew) {
-        const item = catalog.find(i => i.itemId === $('siItem').value);
-        if (item && item.parLevel > 0) $('siQty').value = item.parLevel;
-      }
-    }
-    function onCatChange() {
-      // For a brand-new category there are no existing items, so the item
-      // dropdown naturally collapses to "+ Add a new item…" (new-item mode).
-      $('siNewCatWrap').style.display = $('siCategory').value === '__newcat__' ? 'block' : 'none';
-      refreshItems();
-    }
-    $('siCategory').onchange = onCatChange;
-    $('siItem').onchange = onItemChange;
-    refreshItems();
-
+    openSheet({
+      title: 'Add to list', subtitle: 'Quantity & note', bodyHTML,
+      actionsHTML: '<button class="sheet-cancel" id="siBack">‹ Back</button>' +
+        '<button class="sheet-submit" id="siAddBtn">Add to list</button>',
+    });
+    $('siBack').onclick = () => openAddShoppingItem();
+    setTimeout(() => { const q = $('siQty'); if (q) { q.focus(); q.select(); } }, 60);
     $('siAddBtn').onclick = async () => {
-      let category = $('siCategory').value;
-      if (category === '__newcat__') {
-        category = $('siNewCat').value.trim();
-        if (!category) return toast('Enter the new category name', 'error');
-      }
-      const itemSel = $('siItem').value;
-      const isNew = itemSel === '__new__';
       const qty = parseFloat($('siQty').value);
-      const note = $('siNote').value;
       if (!Number.isFinite(qty) || qty <= 0) return toast('Enter a valid quantity', 'error');
-
-      const payload = { category, quantity: qty, note };
-      if (isNew) {
-        const name = $('siNewName').value.trim();
-        if (!name) return toast('Enter the new item name', 'error');
-        payload.newItem = true;
-        payload.itemName = name;
-        payload.unit = $('siNewUnit').value.trim();
-        payload.unitPrice = parseFloat($('siNewPrice').value) || 0;
-        payload.parLevel = parseFloat($('siNewPar').value) || 0;
-      } else {
-        const item = catalog.find(i => i.itemId === itemSel);
-        if (!item) return toast('Pick an item', 'error');
-        payload.itemId = item.itemId;
-        payload.itemName = item.name;
-        payload.unit = item.unit;
-      }
-
       haptic();
       const btn = $('siAddBtn'); btn.disabled = true; btn.textContent = 'Adding…';
       try {
-        await call('rpcAddToShoppingList', state.token, payload);
+        await call('rpcAddToShoppingList', state.token, { productId: product.productId, quantity: qty, note: $('siNote').value });
         closeSheet();
         toast('✓ Added', 'success');
         loadShoppingTab();
@@ -2115,12 +2326,14 @@
     };
   }
 
-  // Edit an existing item's name / quantity / note (modal sheet). Values are
-  // set via JS after render to avoid HTML-attribute escaping issues.
+  // Edit an entry's quantity / note (modal sheet). The item name comes from
+  // the product master and is not editable here.
   function openEditShoppingItem(entry) {
     if (!entry) return;
     const bodyHTML =
-      '<div class="sheet-field"><label>Item name</label><input type="text" id="seName"></div>' +
+      '<div class="si-pick"><div class="si-pick-name">' + esc(entry.itemName) + '</div>' +
+        '<div class="si-pick-meta">' + esc(catLabel(entry.category)) +
+          (entry.unit ? ' · ' + esc(entry.unit) : '') + '</div></div>' +
       '<div class="sheet-field"><label>Quantity</label><input type="number" step="0.01" id="seQty" inputmode="decimal"></div>' +
       '<div class="sheet-field"><label>Note (optional)</label><input type="text" id="seNote"></div>';
     openSheet({
@@ -2130,20 +2343,17 @@
         '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
         '<button class="sheet-submit" id="seSaveBtn">Save</button>',
     });
-    $('seName').value = entry.itemName;
     $('seQty').value = entry.quantity;
     $('seNote').value = entry.note || '';
 
     $('seSaveBtn').onclick = async () => {
-      const itemName = $('seName').value.trim();
       const qty = parseFloat($('seQty').value);
       const note = $('seNote').value;
-      if (!itemName) return toast('Enter the item name', 'error');
       if (!Number.isFinite(qty) || qty <= 0) return toast('Enter a valid quantity', 'error');
       haptic();
       const btn = $('seSaveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
       try {
-        await call('rpcEditShoppingListEntry', state.token, entry.entryId, { itemName, quantity: qty, note });
+        await call('rpcEditShoppingListEntry', state.token, entry.entryId, { quantity: qty, note });
         closeSheet();
         toast('✓ Saved', 'success');
         loadShoppingTab();
@@ -2195,6 +2405,522 @@
   }
 
   // ============================================================
+  //  ░░  TAB: PRODUCT MASTER  ░░
+  // ============================================================
+  const PRODUCT_CATEGORIES_UI = ['vape', 'cigarettes', 'beer', 'grocery', 'other'];
+
+  const PM_SORTS = {
+    name_asc:    { label: 'Name (A–Z)',        cmp: (a, b) => (a.productName || '').localeCompare(b.productName || '') },
+    margin_desc: { label: 'Margin % (high→low)', cmp: (a, b) => (b.marginPct || 0) - (a.marginPct || 0) },
+    sell_desc:   { label: 'Sell $ (high→low)',  cmp: (a, b) => (b.sellPrice || 0) - (a.sellPrice || 0) },
+    sell_asc:    { label: 'Sell $ (low→high)',  cmp: (a, b) => (a.sellPrice || 0) - (b.sellPrice || 0) },
+  };
+
+  function pmDefaultFilter() {
+    return { query: '', category: '', brand: '', supplier: '', sort: 'name_asc' };
+  }
+
+  // Distinct non-blank values for a field, scoped to records that match `categoryFilter`.
+  function pmDistinct(records, field, categoryFilter) {
+    const inScope = categoryFilter ? records.filter(r => r.category === categoryFilter) : records;
+    const set = new Set();
+    inScope.forEach(r => {
+      const v = (r[field] || '').toString().trim();
+      if (v) set.add(v);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }
+
+  async function loadProductsTab(force) {
+    const view = $('view-products');
+    if (force || !cacheFresh('rpcGetProductMaster', [state.token, {}], TTL_REF)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading products…</div>';
+    }
+    try {
+      const products = await cachedCall('rpcGetProductMaster', [state.token, {}], TTL_REF, { force });
+      state.products = products || [];
+      if (!state.productsFilter) state.productsFilter = pmDefaultFilter();
+      renderProductsTab();
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function renderProductsTab() {
+    const view = $('view-products');
+    const products = state.products || [];
+    if (!state.productsFilter) state.productsFilter = pmDefaultFilter();
+    const filter = state.productsFilter;
+    const privileged = state.me && (state.me.role === 'admin' || state.me.role === 'manager');
+
+    // Capture focus + caret position so re-render doesn't kill an active
+    // <input> (the search box loses focus after every keystroke otherwise).
+    const activeEl = document.activeElement;
+    const activeId = activeEl && activeEl.id;
+    let savedSelStart = 0, savedSelEnd = 0;
+    if (activeEl && activeEl.tagName === 'INPUT' && typeof activeEl.selectionStart === 'number') {
+      savedSelStart = activeEl.selectionStart;
+      savedSelEnd = activeEl.selectionEnd;
+    }
+
+    // Brand + supplier dropdowns are scoped to the active category — keeps
+    // them from listing values that can't match anyway.
+    const brandOptions = pmDistinct(products, 'brand', filter.category);
+    const supplierOptions = pmDistinct(products, 'supplier', filter.category);
+
+    // Auto-clear stale selections that aren't in the current option set
+    // (e.g. category change invalidated the brand filter).
+    if (filter.brand && brandOptions.indexOf(filter.brand) === -1) filter.brand = '';
+    if (filter.supplier && supplierOptions.indexOf(filter.supplier) === -1) filter.supplier = '';
+
+    const terms = (filter.query || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const visible = products.filter(p => {
+      if (filter.category && p.category !== filter.category) return false;
+      if (filter.brand && p.brand !== filter.brand) return false;
+      if (filter.supplier && p.supplier !== filter.supplier) return false;
+      if (terms.length === 0) return true;
+      const hay = [p.sku, p.productName, p.brand, p.category, p.subcategory].join(' ').toLowerCase();
+      return terms.every(t => hay.indexOf(t) >= 0);
+    });
+
+    const sorter = (PM_SORTS[filter.sort] || PM_SORTS.name_asc).cmp;
+    visible.sort(sorter);
+
+    const activeFilterCount =
+      (filter.category ? 1 : 0) +
+      (filter.brand ? 1 : 0) +
+      (filter.supplier ? 1 : 0) +
+      (filter.query ? 1 : 0);
+
+    let html = moreBack();
+    html += '<div class="products-controls">' +
+      '<input id="pmSearch" class="pm-search" placeholder="Search SKU / name / brand…" value="' + esc(filter.query) + '" autocomplete="off">' +
+      (privileged ? '<button class="btn-primary" id="pmAddBtn">+ Add</button>' : '') +
+    '</div>';
+
+    html += '<div class="products-filter-row">' +
+      '<select id="pmCat" title="Category">' +
+        '<option value="">All categories</option>' +
+        PRODUCT_CATEGORIES_UI.map(c =>
+          '<option value="' + c + '"' + (filter.category === c ? ' selected' : '') + '>' + c + '</option>'
+        ).join('') +
+      '</select>' +
+      '<select id="pmBrand" title="Brand"' + (brandOptions.length === 0 ? ' disabled' : '') + '>' +
+        '<option value="">All brands' + (brandOptions.length ? ' (' + brandOptions.length + ')' : '') + '</option>' +
+        brandOptions.map(b =>
+          '<option value="' + esc(b) + '"' + (filter.brand === b ? ' selected' : '') + '>' + esc(b) + '</option>'
+        ).join('') +
+      '</select>' +
+      '<select id="pmSupplier" title="Supplier"' + (supplierOptions.length === 0 ? ' disabled' : '') + '>' +
+        '<option value="">All suppliers' + (supplierOptions.length ? ' (' + supplierOptions.length + ')' : '') + '</option>' +
+        supplierOptions.map(s =>
+          '<option value="' + esc(s) + '"' + (filter.supplier === s ? ' selected' : '') + '>' + esc(s) + '</option>'
+        ).join('') +
+      '</select>' +
+      '<select id="pmSort" title="Sort">' +
+        Object.keys(PM_SORTS).map(k =>
+          '<option value="' + k + '"' + (filter.sort === k ? ' selected' : '') + '>' + esc(PM_SORTS[k].label) + '</option>'
+        ).join('') +
+      '</select>' +
+      (activeFilterCount > 0 ? '<button class="pm-clear" id="pmClearFilters">Clear</button>' : '') +
+    '</div>';
+
+    html += '<div class="mypay-section-title">' + visible.length + ' product' + (visible.length === 1 ? '' : 's') +
+      (visible.length > 200 ? ' — showing first 200; refine search' : '') + '</div>';
+
+    visible.slice(0, 200).forEach(p => {
+      // Floor flag: sell < min, with $0.005 tolerance to avoid false flags from rounding.
+      const belowMin = (p.minSellPrice > 0 && p.sellPrice > 0 &&
+                       (p.sellPrice + 0.005) < p.minSellPrice);
+      const flagBadge = belowMin
+        ? ' <span class="badge-warn" title="Sell price is below the min sell floor">⚠ below min</span>'
+        : '';
+      const marginPctStr = p.sellPrice > 0
+        ? (Math.round(p.marginPct * 1000) / 10).toFixed(1) + '%'
+        : '—';
+      html += '<div class="payroll-card">' +
+        '<div class="product-row-head">' +
+          '<div style="min-width:0; flex:1">' +
+            '<div class="payroll-name" style="overflow:hidden; text-overflow:ellipsis">' +
+              esc(p.productName) + flagBadge +
+            '</div>' +
+            '<div class="product-row-meta">' +
+              (p.brand ? esc(p.brand) + ' · ' : '') +
+              esc(p.category) +
+              (p.sku ? ' · SKU ' + esc(p.sku) : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="product-row-margin">' +
+            money(p.sellPrice) +
+            '<div class="product-row-meta">cost ' + money(p.costPrice) + ' · margin ' + marginPctStr + '</div>' +
+          '</div>' +
+        '</div>' +
+        (privileged
+          ? '<div class="payroll-actions">' +
+              '<button class="payroll-btn payroll-btn-secondary" data-edit-product="' + esc(p.productId) + '">Edit</button>' +
+              (p.active
+                ? '<button class="payroll-btn" data-deactivate-product="' + esc(p.productId) + '">Deactivate</button>'
+                : '<span class="badge-inactive">Inactive</span>')
+            + '</div>'
+          : '') +
+      '</div>';
+    });
+
+    view.innerHTML = html;
+
+    // Restore focus + caret on the element that was active before innerHTML
+    // (search input is the one that hurts; this generalizes to any input).
+    if (activeId) {
+      const restored = $(activeId);
+      if (restored) {
+        restored.focus();
+        if (restored.tagName === 'INPUT' && typeof restored.setSelectionRange === 'function') {
+          try { restored.setSelectionRange(savedSelStart, savedSelEnd); } catch (e) { /* type may not support */ }
+        }
+      }
+    }
+
+    // Wire controls
+    const searchEl = $('pmSearch');
+    if (searchEl) {
+      searchEl.oninput = (e) => { state.productsFilter.query = e.target.value; renderProductsTab(); };
+    }
+    const catEl = $('pmCat');
+    if (catEl) {
+      catEl.onchange = (e) => {
+        state.productsFilter.category = e.target.value;
+        // brand/supplier auto-clear (if stale) happens inside renderProductsTab
+        renderProductsTab();
+      };
+    }
+    const brandEl = $('pmBrand');
+    if (brandEl) {
+      brandEl.onchange = (e) => { state.productsFilter.brand = e.target.value; renderProductsTab(); };
+    }
+    const supplierEl = $('pmSupplier');
+    if (supplierEl) {
+      supplierEl.onchange = (e) => { state.productsFilter.supplier = e.target.value; renderProductsTab(); };
+    }
+    const sortEl = $('pmSort');
+    if (sortEl) {
+      sortEl.onchange = (e) => { state.productsFilter.sort = e.target.value; renderProductsTab(); };
+    }
+    const clearEl = $('pmClearFilters');
+    if (clearEl) {
+      clearEl.onclick = () => {
+        state.productsFilter = pmDefaultFilter();
+        renderProductsTab();
+      };
+    }
+    if (privileged) {
+      const addBtn = $('pmAddBtn');
+      if (addBtn) addBtn.onclick = () => openProductForm(null);
+      view.querySelectorAll('[data-edit-product]').forEach(b => {
+        b.onclick = () => openProductForm(products.find(p => p.productId === b.dataset.editProduct));
+      });
+      view.querySelectorAll('[data-deactivate-product]').forEach(b => {
+        b.onclick = () => deactivateProduct(b.dataset.deactivateProduct);
+      });
+    }
+  }
+
+  // Form descriptors per category (which detail fields to render, whether
+  // core cost/sell are editable). Cached so switching category is instant.
+  async function fetchPmSchema(category) {
+    if (!state.pmSchemaCache) state.pmSchemaCache = {};
+    if (state.pmSchemaCache[category]) return state.pmSchemaCache[category];
+    const sc = await call('rpcGetProductTypeSchema', state.token, category);
+    state.pmSchemaCache[category] = sc;
+    return sc;
+  }
+
+  async function openProductForm(product, opts) {
+    opts = opts || {};
+    const isEdit = !!product;
+    let p = product || {};
+    // On edit, fetch the full record (incl. per-type detail) — the product
+    // list only carries the core fields.
+    if (isEdit && p.productId) {
+      try { const full = await call('rpcGetProduct', state.token, p.productId); if (full) p = full; }
+      catch (e) { /* fall back to the list summary */ }
+    }
+    const initialCategory = p.category || 'vape';
+    let currentSchema = await fetchPmSchema(initialCategory);
+    const initialDetail = p.detail || {};
+    const initial = {
+      sku:             p.sku || '',
+      productName:     p.productName || '',
+      brand:           p.brand || '',
+      category:        initialCategory,
+      subcategory:     p.subcategory || '',
+      packSize:        p.packSize || '',
+      unit:            p.unit || '',
+      costPrice:       p.costPrice != null ? String(p.costPrice) : '',
+      sellPrice:       p.sellPrice != null ? String(p.sellPrice) : '',
+      sellPriceCredit: p.sellPriceCredit ? String(p.sellPriceCredit) : '',
+      minSellPrice:    p.minSellPrice ? String(p.minSellPrice) : '',
+      supplier:        p.supplier || '',
+      notes:           p.notes || '',
+    };
+
+    const catOptions = PRODUCT_CATEGORIES_UI.map(c =>
+      '<option value="' + c + '"' + (initial.category === c ? ' selected' : '') + '>' + c + '</option>'
+    ).join('');
+
+    const skuHint = isEdit
+      ? '<div style="font-size:10px;color:#8a8e98;margin-top:3px">SKU is locked on edit (dedup key).</div>'
+      : '<div style="font-size:10px;color:#8a8e98;margin-top:3px">Leave blank to dedup by brand + name.</div>';
+
+    const bodyHTML =
+      '<div class="sheet-field"><label>Category</label>' +
+        '<select id="pmCategory">' + catOptions + '</select></div>' +
+
+      '<div class="sheet-field"><label>Brand</label>' +
+        '<input type="text" id="pmBrand" value="' + esc(initial.brand) + '" placeholder="e.g. Elfbar"></div>' +
+
+      '<div class="sheet-field"><label>Product name</label>' +
+        '<input type="text" id="pmName" value="' + esc(initial.productName) + '" placeholder="e.g. Elfbar GH20000 Berry Blast">' +
+        '<div style="font-size:10px;color:#8a8e98;margin-top:3px">Display name. Type-specific details (puffs, mL, case price…) go in the fields below.</div></div>' +
+
+      '<div class="sheet-field"><label>SKU' + (isEdit ? ' (locked)' : ' (optional)') + '</label>' +
+        '<input type="text" id="pmSku" value="' + esc(initial.sku) + '"' + (isEdit ? ' disabled' : '') + '>' + skuHint + '</div>' +
+
+      '<div class="sheet-field" style="display:flex;gap:8px">' +
+        '<div style="flex:1.5"><label>Subcategory</label>' +
+          '<input type="text" id="pmSubcategory" value="' + esc(initial.subcategory) + '" placeholder="Disposable Device"></div>' +
+        '<div style="flex:1"><label>Pack size</label>' +
+          '<input type="text" id="pmPackSize" value="' + esc(initial.packSize) + '" placeholder="5ct"></div>' +
+        '<div style="flex:1"><label>Unit</label>' +
+          '<input type="text" id="pmUnit" value="' + esc(initial.unit) + '" placeholder="each"></div>' +
+      '</div>' +
+
+      // Per-type input fields (rendered from the server schema). For beer /
+      // cigarettes / vape these feed the auto-derived cost/sell below.
+      '<div id="pmDetailBlock"></div>' +
+
+      '<div class="sheet-field" style="display:flex;gap:8px">' +
+        '<div style="flex:1"><label id="pmCostLabel">Cost $</label>' +
+          '<input type="number" step="0.01" inputmode="decimal" id="pmCost" value="' + esc(initial.costPrice) + '"></div>' +
+        '<div style="flex:1"><label id="pmSellLabel">Sell $</label>' +
+          '<input type="number" step="0.01" inputmode="decimal" id="pmSell" value="' + esc(initial.sellPrice) + '">' +
+          '<div id="pmSellHint" style="font-size:10px;color:#8a8e98;margin-top:3px;display:none">Auto-derived from the type inputs above.</div></div>' +
+      '</div>' +
+
+      '<div class="sheet-field" style="display:flex;gap:8px">' +
+        '<div style="flex:1"><label>Sell (credit) $</label>' +
+          '<input type="number" step="0.01" inputmode="decimal" id="pmSellCredit" value="' + esc(initial.sellPriceCredit) + '"></div>' +
+        '<div style="flex:1"><label>Min sell $ (floor)</label>' +
+          '<input type="number" step="0.01" inputmode="decimal" id="pmMinSell" value="' + esc(initial.minSellPrice) + '"></div>' +
+      '</div>' +
+
+      '<div class="sheet-field"><label>Supplier (optional)</label>' +
+        '<input type="text" id="pmSupplier" value="' + esc(initial.supplier) + '"></div>' +
+
+      '<div class="sheet-field"><label>Notes (optional)</label>' +
+        '<input type="text" id="pmNotes" value="' + esc(initial.notes) + '"></div>' +
+
+      '<div id="pmMarginPreview" class="product-margin-preview">' +
+        '<span>Margin</span>' +
+        '<span><span id="pmMarginAmt">$0.00</span> <span class="meta" id="pmMarginPct">(0.0%)</span></span>' +
+      '</div>';
+
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-submit" id="pmSaveBtn">' + (isEdit ? 'Save changes' : 'Create product') + '</button>';
+
+    openSheet({
+      title: isEdit ? 'Edit product' : 'New product',
+      subtitle: isEdit ? 'SKU is locked on edit' : 'Cost, sell, margin & floor',
+      bodyHTML,
+      actionsHTML,
+    });
+
+    function updateMarginPreview() {
+      const cost = parseFloat($('pmCost').value) || 0;
+      const sell = parseFloat($('pmSell').value) || 0;
+      const minSell = parseFloat($('pmMinSell').value) || 0;
+      const amt = Math.round((sell - cost) * 100) / 100;
+      const pct = sell > 0 ? ((sell - cost) / sell) * 100 : 0;
+      const belowMin = (minSell > 0 && sell > 0 && (sell + 0.005) < minSell);
+      $('pmMarginAmt').textContent = money(amt);
+      $('pmMarginPct').textContent = '(' + pct.toFixed(1) + '%)' + (belowMin ? ' — sell below min floor!' : '');
+      $('pmMarginPreview').classList.toggle('bad', belowMin || amt < 0);
+    }
+
+    const round2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+
+    // Read the dynamic detail inputs into a snake_case object. Percent
+    // fields are shown as 0–100 but stored as 0..1 (matching the server).
+    function readDetailInputs(schema) {
+      const d = {};
+      (schema.detailFields || []).forEach(f => {
+        const el = $('pmd_' + f.key);
+        if (!el) return;
+        if (f.type === 'percent') { const v = parseFloat(el.value); d[f.key] = isNaN(v) ? 0 : v / 100; }
+        else if (f.type === 'number') { const v = parseFloat(el.value); d[f.key] = isNaN(v) ? 0 : v; }
+        else d[f.key] = el.value.trim();
+      });
+      return d;
+    }
+
+    // Client mirror of ProductTypes.derivePricing — PREVIEW ONLY; the server
+    // is the source of truth on save. Margin inputs (d.*_pct) are 0..1.
+    function deriveClient(cat, d) {
+      if (cat === 'beer') {
+        let cost = d.cost_input || 0;
+        if (cost <= 0 && d.lcbo_case_price > 0 && d.units_per_case > 0) cost = d.lcbo_case_price / d.units_per_case;
+        const m = d.target_margin_pct || 0;
+        const base = (m > 0 && m < 1) ? cost / (1 - m) : cost;
+        const sell = round2(base + (d.deposit_per_unit || 0));
+        return { cost: round2(cost), sell: sell, credit: sell };
+      }
+      if (cat === 'cigarettes') {
+        const packs = d.packs_per_carton || 0;
+        const costPerPack = packs > 0 ? (d.cost_per_carton || 0) / packs : 0;
+        const m = d.target_margin_pct || 0;
+        const sell = (m > 0 && m < 1) ? costPerPack / (1 - m) : costPerPack;
+        return { cost: round2(costPerPack), sell: round2(sell), credit: round2(sell) };
+      }
+      if (cat === 'vape') {
+        const sell = round2(d.sale_price || 0);
+        const credit = d.sale_price_credit ? round2(d.sale_price_credit) : sell;
+        return { cost: round2(d.purchase_price || 0), sell: sell, credit: credit };
+      }
+      return null;   // grocery / other: cost & sell entered directly
+    }
+
+    function recompute() {
+      const schema = currentSchema;
+      if (!schema.costEditable || !schema.sellEditable) {
+        const r = deriveClient(schema.category, readDetailInputs(schema));
+        if (r) {
+          if (!schema.costEditable) $('pmCost').value = r.cost ? r.cost.toFixed(2) : '';
+          if (!schema.sellEditable) {
+            $('pmSell').value = r.sell ? r.sell.toFixed(2) : '';
+            $('pmSellCredit').value = r.credit ? r.credit.toFixed(2) : '';
+          }
+        }
+      }
+      updateMarginPreview();
+    }
+
+    function typeTitle(cat) {
+      return cat === 'beer' ? '🍺 Beer pricing (LCBO case model)'
+           : cat === 'cigarettes' ? '🚬 Cigarette pricing (carton → pack)'
+           : cat === 'vape' ? '💨 Vape attributes & pricing'
+           : '';
+    }
+
+    function renderDetailBlock(schema, dv) {
+      const fields = schema.detailFields || [];
+      if (!fields.length) return '';
+      let h = '<div class="sheet-field" style="background:#f5f7ff;border:1px solid #d8def0;border-radius:6px;padding:8px">' +
+        '<div style="font-size:11px;font-weight:600;color:#283593;margin-bottom:6px">' + esc(typeTitle(schema.category)) + '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+      fields.forEach(f => {
+        let val = dv ? dv[f.key] : '';
+        if (f.type === 'percent' && val !== '' && val != null) val = Number(val) * 100;
+        const inputType = (f.type === 'number' || f.type === 'percent') ? 'number' : 'text';
+        const step = f.step ? ' step="' + esc(f.step) + '"' : (f.type === 'percent' ? ' step="0.1"' : '');
+        const label = f.label + (f.type === 'percent' ? ' %' : '');
+        h += '<div style="flex:1 1 45%;min-width:120px"><label>' + esc(label) + '</label>' +
+          '<input id="pmd_' + esc(f.key) + '" type="' + inputType + '"' + step +
+          (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') +
+          ' value="' + esc(val == null || val === '' ? '' : String(val)) + '"></div>';
+      });
+      h += '</div></div>';
+      return h;
+    }
+
+    function applySchema(schema, detailValues) {
+      currentSchema = schema;
+      $('pmDetailBlock').innerHTML = renderDetailBlock(schema, detailValues);
+      $('pmCost').readOnly = !schema.costEditable;
+      $('pmSell').readOnly = !schema.sellEditable;
+      $('pmSellCredit').readOnly = !schema.sellEditable;
+      $('pmSellHint').style.display = schema.sellEditable ? 'none' : '';
+      $('pmCostLabel').textContent = schema.costEditable ? 'Cost $' : 'Cost $ (auto)';
+      $('pmSellLabel').textContent = schema.sellEditable ? 'Sell $' : 'Sell $ (auto)';
+      (schema.detailFields || []).forEach(f => {
+        const el = $('pmd_' + f.key);
+        if (el) el.oninput = recompute;
+      });
+      recompute();
+    }
+
+    ['pmCost', 'pmSell', 'pmSellCredit', 'pmMinSell'].forEach(id => {
+      const el = $(id); if (el) el.oninput = updateMarginPreview;
+    });
+
+    $('pmCategory').onchange = async () => {
+      const cat = $('pmCategory').value;
+      let schema;
+      try { schema = await fetchPmSchema(cat); }
+      catch (e) { toast('Could not load ' + cat + ' fields', 'error'); return; }
+      applySchema(schema, {});   // reset detail inputs on a type switch
+    };
+
+    applySchema(currentSchema, initialDetail);
+
+    $('pmSaveBtn').onclick = async () => {
+      const productName = $('pmName').value.trim();
+      if (!productName) { toast('Product name is required', 'error'); return; }
+      const category = $('pmCategory').value;
+      const schema = currentSchema;
+      const payload = {
+        productName: productName,
+        brand:        $('pmBrand').value.trim(),
+        category:     category,
+        subcategory:  $('pmSubcategory').value.trim(),
+        packSize:     $('pmPackSize').value.trim(),
+        unit:         $('pmUnit').value.trim(),
+        supplier:     $('pmSupplier').value.trim(),
+        notes:        $('pmNotes').value.trim(),
+        minSellPrice: parseFloat($('pmMinSell').value) || 0,
+        detail:       readDetailInputs(schema),
+      };
+      if (schema.costEditable) payload.costPrice = parseFloat($('pmCost').value) || 0;
+      if (schema.sellEditable) {
+        payload.sellPrice = parseFloat($('pmSell').value) || 0;
+        payload.sellPriceCredit = parseFloat($('pmSellCredit').value) || 0;
+      }
+
+      $('pmSaveBtn').disabled = true;
+      try {
+        if (isEdit) {
+          await call('rpcUpdateProduct', state.token, p.productId, payload);
+          toast('Saved', 'success');
+          closeSheet();
+          loadProductsTab(true);
+        } else {
+          payload.sku = $('pmSku').value.trim();
+          const created = await call('rpcCreateProduct', state.token, payload);
+          toast('Created', 'success');
+          // Hand the new product to a caller (e.g. the shopping-list add flow)
+          // instead of the default close + product-tab reload.
+          if (opts.onSaved) { opts.onSaved(created); return; }
+          closeSheet();
+          loadProductsTab(true);
+        }
+      } catch (e) {
+        $('pmSaveBtn').disabled = false;
+        toast(e.message || 'Save failed', 'error');
+      }
+    };
+  }
+
+  async function deactivateProduct(productId) {
+    if (!confirm('Deactivate this product? It stays in the data (soft-delete) but won\'t appear in the active list.')) return;
+    try {
+      await call('rpcDeactivateProduct', state.token, productId);
+      toast('Deactivated', 'warning');
+      loadProductsTab(true);
+    } catch (e) {
+      toast(e.message || 'Deactivate failed', 'error');
+    }
+  }
+
+  // ============================================================
   //  ░░  TAB: PAYROLL  ░░
   // ============================================================
   async function loadPayrollTab(force) {
@@ -2240,6 +2966,9 @@
             '<span class="payroll-body-row-value">' + p.unpaidShiftCount + ' (' + money(p.shiftsOwed) + ')</span></div>' +
           '<div class="payroll-body-row"><span class="payroll-body-row-label">Pending bonuses</span>' +
             '<span class="payroll-body-row-value">' + p.pendingBonusCount + ' (' + money(p.bonusesOwed) + ')</span></div>' +
+          (p.hasMismatch
+            ? '<div class="payroll-warn-chip">⚠ ' + p.mismatchCount + ' shift' + (p.mismatchCount === 1 ? '' : 's') + ' need schedule review before pay</div>'
+            : '') +
         '</div>' +
         '<div class="payroll-actions">' +
           (p.shiftsOwed > 0.005
@@ -2300,6 +3029,12 @@
       $('sheetTitle').textContent = staff.staffName;
       return;
     }
+
+    // Payroll guard: block payment while any unpaid shift has scheduled hours
+    // ≠ actual (open→close) that hasn't been reconciled. The manager must fix
+    // the schedule or override to pay per actual.
+    const mismatched = unpaidShifts.filter(s => s.mismatch);
+    if (mismatched.length) { renderPayMismatch_(owed, staff, mismatched); return; }
     const shiftLines = unpaidShifts.map(s =>
       '<div class="payroll-body-row" style="font-size:12px">' +
         '<span class="payroll-body-row-label">' + esc(s.dateStr) + ' · ' + (s.hoursWorked || 0).toFixed(2) + 'h × ' + money(s.rate) + '</span>' +
@@ -2383,6 +3118,81 @@
   }
 
   // ── Pay bonus list modal ────────────────────────────────
+  // Validation panel shown when a staff member has unreconciled scheduled-vs-
+  // actual hour mismatches. Manager either fixes the schedule or overrides to
+  // pay per actual (server pins those shifts to actual hours, then pays).
+  function renderPayMismatch_(owed, staff, mismatched) {
+    const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+    // Total if paid per actual: mismatched shifts → actual hours × rate (less
+    // anything already paid); clean shifts → their normal remaining.
+    const actualTotal = r2((owed.unpaidShifts || []).reduce((sum, s) => {
+      const line = s.mismatch
+        ? Math.max(0, r2(s.actualHours * s.rate) - (s.paid || 0))
+        : s.remaining;
+      return sum + line;
+    }, 0));
+
+    const rows = mismatched.map(s =>
+      '<div class="payroll-body-row" style="font-size:12px">' +
+        '<span class="payroll-body-row-label">' + esc(s.dateStr) + '</span>' +
+        '<span class="payroll-body-row-value">sched ' + Number(s.scheduledHours).toFixed(2) +
+          'h · actual ' + Number(s.actualHours).toFixed(2) + 'h</span>' +
+      '</div>'
+    ).join('');
+
+    const bodyHTML =
+      '<div class="pay-warn">' +
+        '<div class="pay-warn-title">⚠ Schedule not reconciled</div>' +
+        '<div class="pay-warn-text">' + mismatched.length + ' shift' + (mismatched.length === 1 ? '' : 's') +
+          ' have scheduled hours ≠ actual (open→close). Payment is blocked. Correct the schedule ' +
+          '(set recorded hours per shift), or override to pay per actual.</div>' +
+        rows +
+      '</div>' +
+      '<div class="sheet-field"><label>Method</label>' +
+        '<select id="payMethod"><option value="cash">Cash</option><option value="bank">Bank</option>' +
+        '<option value="etransfer">e-Transfer</option><option value="other">Other</option></select></div>' +
+      '<div class="sheet-field"><label>Notes (optional)</label>' +
+        '<input type="text" id="payNotes" placeholder="e.g. April 1-7 payroll"></div>';
+
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-submit" id="fixSchedBtn" style="background:#1a4ca1">Fix in Schedule</button>' +
+      '<button class="sheet-submit" id="overrideBtn" style="background:#15803d">Override · pay actual ' + money(actualTotal) + '</button>';
+
+    openSheet({ title: 'Pay ' + staff.staffName, subtitle: 'Needs schedule review', bodyHTML, actionsHTML });
+
+    $('fixSchedBtn').onclick = () => {
+      haptic();
+      closeSheet();
+      const first = mismatched[0];
+      if (first && first.date) state.weekStart = mondayOf(new Date(first.date));
+      switchTab('schedule');
+      toast('Reconcile the flagged shift, then pay again', 'warning');
+    };
+
+    $('overrideBtn').onclick = async () => {
+      if (!confirm('Override: set the ' + mismatched.length + ' mismatched shift(s) to ACTUAL hours and pay ' +
+        money(actualTotal) + ' to ' + staff.staffName + '?')) return;
+      haptic();
+      const btn = $('overrideBtn'); btn.disabled = true; btn.textContent = 'Paying…';
+      try {
+        const result = await call('rpcPayShifts', state.token, {
+          staffId: staff.staffId,
+          amount: actualTotal,
+          method: $('payMethod').value,
+          notes: $('payNotes').value.trim(),
+          overrideMismatch: true,
+        });
+        closeSheet();
+        toast('✓ Paid per actual · ' + money(result.totalAmount || actualTotal), 'success');
+        loadPayrollTab();
+      } catch (e) {
+        toast(e.message, 'error');
+        btn.disabled = false; btn.textContent = 'Override · pay actual ' + money(actualTotal);
+      }
+    };
+  }
+
   async function openPayBonusList(staffId, staffRow) {
     openSheet({
       title: 'Pay bonus', subtitle: '',
@@ -2913,6 +3723,8 @@
   // ============================================================
   //  ░░  TAB: SALES DASHBOARD  ░░
   // ============================================================
+  const SALES_FETCH_CAP = 1000;   // pull the whole range so days group client-side
+
   async function loadSalesTab(force) {
     const f = state.salesFilters;
     if (!f.startDate) {
@@ -2920,6 +3732,8 @@
       f.startDate = isoDate(addDays(today, -6));
       f.endDate = isoDate(today);
     }
+    f.page = 1;
+    f.pageSize = SALES_FETCH_CAP;
     const view = $('view-sales');
     if (!view.querySelector('#salesFilterCard')) {
       view.innerHTML = renderSalesScaffold();
@@ -2968,6 +3782,7 @@
     const el = $('reconPanel');
     if (!el) return;
     rows = rows || [];
+    state.reconRows = rows;
     const todayStr = isoDate(todayMidnight());
     const todayRows = rows.filter(r => r.businessDate === todayStr);
     const pastRows  = rows.filter(r => r.businessDate !== todayStr);
@@ -2985,28 +3800,39 @@
       todayRows.forEach(r => { html += reconGroupDetail_(r); });
     }
 
-    // History — per-shift, newest first
+    // History — per-shift, newest first; collapsed behind a toggle so the
+    // panel stays short. Expand to reveal the full per-shift table.
     if (pastRows.length) {
-      html += '<div class="recon-hist-title">History</div>' +
-        '<div class="recon-table">' +
-        '<div class="recon-trow head"><div>When</div><div>Store</div>' +
-          '<div class="r">Cash Δ</div><div class="r">Card</div><div class="r">Clover</div><div class="r">Status</div></div>';
-      pastRows.forEach(r => {
-        const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
-        html += '<div class="recon-trow">' +
-          '<div>' + esc(r.businessDate) + '<br><small style="color:#9aa0ac">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></div>' +
-          '<div>' + esc(r.companies) + '</div>' +
-          '<div class="r">' + signedMoney_(r.cashVariance) + '</div>' +
-          '<div class="r">' + money(r.cashierCard) + '</div>' +
-          '<div class="r">' + money(r.cloverCard) + '</div>' +
-          '<div class="r"><span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
-        '</div>';
-      });
-      html += '</div>';
+      const open = !!state.reconHistOpen;
+      html += '<button class="recon-hist-toggle" id="reconHistToggle">' +
+        '<span class="day-caret">' + (open ? '▾' : '▸') + '</span> History (' + pastRows.length + ' shifts)</button>';
+      if (open) {
+        html += '<div class="recon-table">' +
+          '<div class="recon-trow head"><div>When</div><div>Store</div>' +
+            '<div class="r">Cash Δ</div><div class="r">Card</div><div class="r">Clover</div><div class="r">Status</div></div>';
+        pastRows.forEach(r => {
+          const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
+          html += '<div class="recon-trow">' +
+            '<div>' + esc(r.businessDate) + '<br><small style="color:#9aa0ac">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></div>' +
+            '<div data-label="Store">' + esc(r.companies) + '</div>' +
+            '<div class="r" data-label="Cash Δ">' + signedMoney_(r.cashVariance) + '</div>' +
+            '<div class="r" data-label="Card">' + money(r.cashierCard) + '</div>' +
+            '<div class="r" data-label="Clover">' + money(r.cloverCard) + '</div>' +
+            '<div class="r" data-label="Status"><span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
+          '</div>';
+        });
+        html += '</div>';
+      }
     }
 
     html += '</div>';
     el.innerHTML = html;
+    const histToggle = $('reconHistToggle');
+    if (histToggle) histToggle.onclick = () => {
+      haptic();
+      state.reconHistOpen = !state.reconHistOpen;
+      renderReconPanel(state.reconRows || []);
+    };
     $('reconRunBtn').onclick = async () => {
       haptic();
       const b = $('reconRunBtn'); b.disabled = true; b.textContent = 'Reconciling…';
@@ -3029,29 +3855,47 @@
 
   function reconGroupDetail_(r) {
     const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
+    const cloverUnavailable = r.status === 'clover_unavailable';
+    const recorded = Math.round((r.cashCounted - r.cashVariance) * 100) / 100;   // till-recorded cash
+    const reported = Math.round(((r.cashSales || 0) + r.cashierCard) * 100) / 100; // total sales (excl float)
+
     let h = '<div class="recon-group">' +
       '<div class="recon-group-head"><span>' + esc(r.companies) +
         ' <small style="color:#9aa0ac;font-weight:600">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></span>' +
-        '<span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
-      '<div class="recon-line"><span>Cash counted</span><span>' + money(r.cashCounted) +
-        ' <small>(var ' + signedMoney_(r.cashVariance) + ')</small></span></div>';
-    if (r.status === 'clover_unavailable') {
-      h += '<div class="recon-line"><span>Card (cashier)</span><span>' + money(r.cashierCard) +
+        '<span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>';
+
+    // Total sales — reported vs expected (cash side cancels, so Δ = card Δ)
+    if (cloverUnavailable) {
+      h += '<div class="recon-line"><span>Total sales</span><span>' + money(reported) + ' <small>reported</small></span></div>';
+    } else {
+      const expected = Math.round(((r.cashSales || 0) + r.cloverCard) * 100) / 100;
+      const tdiff = Math.round((reported - expected) * 100) / 100;
+      h += '<div class="recon-line"><span>Total sales</span><span>' + money(reported) + ' / ' + money(expected) +
+        ' <small class="' + (Math.abs(tdiff) < 0.005 ? 'recon-ok' : 'recon-diff') + '">(' + signedMoney_(tdiff) + ')</small></span></div>';
+    }
+
+    // Cash — recorded / counted (var)
+    h += '<div class="recon-line"><span>Cash (recorded / counted)</span><span>' + money(recorded) + ' / ' + money(r.cashCounted) +
+      ' <small>(var ' + signedMoney_(r.cashVariance) + ')</small></span></div>';
+
+    if (cloverUnavailable) {
+      h += '<div class="recon-line"><span>Cards (cashier)</span><span>' + money(r.cashierCard) +
         ' <small>Clover unavailable</small></span></div>';
     } else {
-      h += reconRow_('Credit', r.cashierCredit, r.cloverCredit) +
-           reconRow_('Debit',  r.cashierDebit,  r.cloverDebit) +
-           reconRow_('Total',  r.cashierCard,   r.cloverCard);
+      h += reconRow_('Credit', r.cloverCredit, r.cashierCredit) +
+           reconRow_('Debit',  r.cloverDebit,  r.cashierDebit) +
+           reconRow_('Total',  r.cloverCard,   r.cashierCard);
     }
     h += '</div>';
     return h;
   }
 
-  function reconRow_(label, cashier, clover) {
+  // Display "Clover / cashier"; Δ = cashier − clover (positive = cashier over).
+  function reconRow_(label, clover, cashier) {
     const diff = Math.round((cashier - clover) * 100) / 100;
     const ok = Math.abs(diff) < 0.005;
     return '<div class="recon-line"><span>' + label + '</span>' +
-      '<span>' + money(cashier) + ' vs ' + money(clover) +
+      '<span>' + money(clover) + ' / ' + money(cashier) +
       ' <small class="' + (ok ? 'recon-ok' : 'recon-diff') + '">(' + signedMoney_(diff) + ')</small></span></div>';
   }
 
@@ -3111,48 +3955,116 @@
     };
   }
 
+  // Fresh data from the server: reset expansion (newest day open) and paint.
   function renderSalesResults(data) {
+    state.salesData = data;
+    state.salesExpandedDays = {};
+    const daily = data.daily || [];
+    if (daily.length) state.salesExpandedDays[daily[daily.length - 1].dateStr] = true;
+    renderSalesBody();
+  }
+
+  // Re-render the results body (chart + day accordion) from cached data +
+  // current expansion state — called on every fold/unfold without re-fetching.
+  function renderSalesBody() {
+    const data = state.salesData || {};
     const t = data.totals || {};
+    const daily = data.daily || [];                 // oldest → newest
+    const expanded = state.salesExpandedDays || (state.salesExpandedDays = {});
+
+    // session rows grouped by day string
+    const byDay = {};
+    (data.rows || []).forEach(r => { const k = r.date || '—'; (byDay[k] = byDay[k] || []).push(r); });
+
+    const card = (label, val) =>
+      '<div class="sales-total-card"><div class="sales-total-label">' + label +
+      '</div><div class="sales-total-amount">' + money(val) + '</div></div>';
+
+    // 1. range summary cards
     let html = '<div class="sales-totals">' +
-      '<div class="sales-total-card"><div class="sales-total-label">Total</div><div class="sales-total-amount">' + money(t.total) + '</div></div>' +
-      '<div class="sales-total-card"><div class="sales-total-label">Cash</div><div class="sales-total-amount">' + money(t.cash) + '</div></div>' +
-      '<div class="sales-total-card"><div class="sales-total-label">Credit</div><div class="sales-total-amount">' + money(t.credit) + '</div></div>' +
-      '<div class="sales-total-card"><div class="sales-total-label">Debit</div><div class="sales-total-amount">' + money(t.debit) + '</div></div>' +
-      '<div class="sales-total-card"><div class="sales-total-label">Misc</div><div class="sales-total-amount">' + money(t.misc) + '</div></div>' +
-    '</div>';
+      card('Total', t.total) + card('Cash', t.cash) + card('Credit', t.credit) +
+      card('Debit', t.debit) + card('Misc', t.misc) + '</div>';
 
-    html += '<div class="sales-table">';
-    html += '<div class="sales-row header">' +
-      '<div>Date</div><div>Company</div><div>Staff</div>' +
-      '<div class="right">Cash</div><div class="right">Credit</div><div class="right">Debit</div><div class="right">Misc</div>' +
-      '<div class="right">Total</div>' +
-    '</div>';
+    // 2. bar chart — total sales per day (tap a bar to open that day)
+    if (daily.length) {
+      const max = Math.max.apply(null, daily.map(d => d.total).concat([1]));
+      html += '<div class="sales-chart"><div class="sc-track">';
+      daily.forEach(d => {
+        const p = dayParts(d.dateStr);
+        const h = Math.max(3, Math.round((d.total / max) * 92));
+        html += '<button class="sc-col' + (expanded[d.dateStr] ? ' sel' : '') + '" data-day="' + esc(d.dateStr) + '" ' +
+          'title="' + esc(p.weekday + ' ' + p.label + ' · ' + money(d.total)) + '">' +
+          '<span class="sc-amt">' + esc(compactMoney(d.total)) + '</span>' +
+          '<span class="sc-bar" style="height:' + h + 'px"></span>' +
+          '<span class="sc-lbl">' + esc(p.weekday) + '<br>' + esc(p.dayNum) + '</span>' +
+        '</button>';
+      });
+      html += '</div></div>';
+    }
 
-    (data.rows || []).forEach(r => {
-      const miscTitle = r.miscNotes ? ' title="' + esc(r.miscNotes) + '"' : '';
-      html += '<div class="sales-row">' +
-        '<div>' + esc(r.dateStr || r.date || '—') + '</div>' +
-        '<div>' + esc((r.company || '').toUpperCase()) + '</div>' +
-        '<div>' + esc(r.staffName || '—') + '</div>' +
-        '<div class="right">' + money(r.cash) + '</div>' +
-        '<div class="right">' + money(r.credit) + '</div>' +
-        '<div class="right">' + money(r.debit) + '</div>' +
-        '<div class="right"' + miscTitle + '>' + money(r.misc) + '</div>' +
-        '<div class="right"><strong>' + money(r.total) + '</strong></div>' +
-      '</div>';
-    });
+    // 3. day accordion — newest first; tap a day to fold/unfold its sessions
+    html += '<div class="day-acc">';
+    if (!daily.length) {
+      html += '<div class="recon-empty">No sales in this range.</div>';
+    } else {
+      daily.slice().reverse().forEach(d => {
+        const p = dayParts(d.dateStr);
+        const open = !!expanded[d.dateStr];
+        html += '<div class="day-item' + (open ? ' open' : '') + '" id="day-' + esc(d.dateStr) + '">' +
+          '<button class="day-head" data-day="' + esc(d.dateStr) + '">' +
+            '<span class="day-when"><span class="day-caret">' + (open ? '▾' : '▸') + '</span> ' +
+              '<strong>' + esc(p.weekday) + '</strong> ' + esc(p.label) + '</span>' +
+            '<span class="day-meta">' + d.sessionCount + ' sess · <strong>' + money(d.total) + '</strong></span>' +
+          '</button>';
+        if (open) {
+          const sessions = byDay[d.dateStr] || [];
+          html += '<div class="day-body">';
+          if (!sessions.length) {
+            html += '<div class="day-note">Detail not loaded — narrow the date range.</div>';
+          } else {
+            sessions.forEach(r => {
+              const miscTitle = r.miscNotes ? ' title="' + esc(r.miscNotes) + '"' : '';
+              html += '<div class="day-sess">' +
+                '<div class="ds-top"><span>' + esc((r.company || '').toUpperCase()) + ' · ' + esc(r.staffName || '—') +
+                  '</span><strong>' + money(r.total) + '</strong></div>' +
+                '<div class="ds-sub"' + miscTitle + '>cash ' + money(r.cash) + ' · cr ' + money(r.credit) +
+                  ' · db ' + money(r.debit) + (r.misc ? ' · misc ' + money(r.misc) : '') + '</div>' +
+              '</div>';
+            });
+          }
+          html += '</div>';
+        }
+        html += '</div>';
+      });
+    }
+    html += '</div>';
 
-    html += '<div class="pagination">' +
-      '<span>Page ' + (data.page || 1) + ' of ' + (data.pageCount || 1) + ' · ' + (data.rowCount || 0) + ' rows</span>' +
-      '<div>' +
-        '<button id="prevPage"' + ((data.page || 1) <= 1 ? ' disabled' : '') + '>‹ Prev</button> ' +
-        '<button id="nextPage"' + ((data.page || 1) >= (data.pageCount || 1) ? ' disabled' : '') + '>Next ›</button>' +
-      '</div>' +
-    '</div></div>';
+    if ((data.rowCount || 0) > (data.rows || []).length) {
+      html += '<div class="day-note" style="margin-top:8px">Showing the first ' + (data.rows || []).length +
+        ' of ' + data.rowCount + ' sessions — narrow the range for full day detail.</div>';
+    }
 
     $('salesResults').innerHTML = html;
-    const prev = $('prevPage'); if (prev) prev.onclick = () => { state.salesFilters.page = (state.salesFilters.page || 1) - 1; loadSalesTab(); };
-    const next = $('nextPage'); if (next) next.onclick = () => { state.salesFilters.page = (state.salesFilters.page || 1) + 1; loadSalesTab(); };
+
+    // bar → expand that day + scroll to it
+    $('salesResults').querySelectorAll('.sc-col').forEach(b => {
+      b.onclick = () => {
+        const day = b.dataset.day;
+        state.salesExpandedDays[day] = true;
+        renderSalesBody();
+        const el = $('day-' + day);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      };
+    });
+    // day header → fold/unfold
+    $('salesResults').querySelectorAll('.day-head').forEach(b => {
+      b.onclick = () => {
+        haptic();
+        const day = b.dataset.day;
+        state.salesExpandedDays[day] = !state.salesExpandedDays[day];
+        renderSalesBody();
+      };
+    });
   }
 
   // ============================================================

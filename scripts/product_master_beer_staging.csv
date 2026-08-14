@@ -1,0 +1,84 @@
+sku,barcode,product_name,brand,category,subcategory,pack_size,unit,supplier,min_sell_price,notes,source_file,sell_unit,lcbo_case_price,units_per_case,packs_per_case,cost_input,deposit_per_unit,target_margin_pct
+17853,,Corona Extra 473Ml +,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,73.68,24.0,24.0,3.07,0.1,0.2108
+288837,,Muskoka Mad Tom Ipa 473Ml,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,72.48,24.0,24.0,3.02,0.1,0.2237
+16907,,Rickard'S Red,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,66.96,24.0,24.0,2.79,0.1,0.283
+17819,,Stella Artois 6-Pk Tc,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,66.56,24.0,4.0,2.773333333,0.1,0.1829
+17819,,Stella Artois 6-Pk Tc,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,66.56,24.0,4.0,16.64,0.6,0.18
+17817,,Corona Extra 6Pk Tc+,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,65.76,24.0,4.0,16.44,0.6,0.249
+492009,,Steam Whistle Can-473,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,65.04,24.0,24.0,2.71,0.1,0.285
+302810,,Heineken 6 Pk Tc+,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,63.64,24.0,4.0,2.651666667,0.1,0.218
+302810,,Heineken 6 Pk Tc+,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,63.64,24.0,4.0,15.91,0.6,0.212
+691683,,Labatt Maximum Ice,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,58.8,24.0,24.0,2.45,0.1,0.153
+311779,,Bud Light 6X473,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,55.0,24.0,4.0,2.291666667,0.1,0.2076
+311779,,Bud Light 6X473,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,55.0,24.0,4.0,13.75,0.6,0.2
+422345,,Moosehead Lager 6-Pk-Tc,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,53.84,24.0,4.0,2.243333333,0.1,0.2249
+422345,,Moosehead Lager 6-Pk-Tc,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,53.84,24.0,4.0,13.46,0.6,0.2215
+300699,,Molson Canadian 6 Pk-Tc,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,53.08,24.0,4.0,2.211666667,0.1,0.2353
+300699,,Molson Canadian 6 Pk-Tc,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,53.08,24.0,4.0,13.27,0.6,0.228
+311787,,Budweiser 6X473,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,51.48,24.0,4.0,2.145,0.1,0.2577854671
+311787,,Budweiser 6X473,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,51.48,24.0,4.0,12.87,0.6,0.238
+177717,,Carling Ice,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,50.16,24.0,24.0,2.09,0.1,0.2768
+382291,,Laker Red,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,46.8,24.0,24.0,1.95,0.1,0.1841
+488411,,Carling lager 6-Pk-Can+,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,45.16,24.0,4.0,1.881666667,0.1,0.2134
+488411,,Carling lager 6-Pk-Can+,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,45.16,24.0,4.0,11.29,0.6,0.21
+36809,,Pabst Blue Ribbon 5.9% 6Tc+,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,45.12,24.0,4.0,1.88,0.1,0.2134
+36809,,Pabst Blue Ribbon 5.9% 6Tc+,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,45.12,24.0,4.0,11.28,0.6,0.212
+15256,,Busch Ice 6 Pk-Tc,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,45.08,24.0,4.0,1.878333333,0.1,0.245
+15256,,Busch Ice 6 Pk-Tc,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,45.08,24.0,4.0,11.27,0.6,0.2431
+15258,,Labatt Blue 6Pk-Tc,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,45.08,24.0,4.0,1.878333333,0.1,0.2134
+15258,,Labatt Blue 6Pk-Tc,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,45.08,24.0,4.0,11.27,0.6,0.212
+38600,,Lowenbrau 6X473,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,45.08,24.0,4.0,1.878333333,0.1,0.2134
+38600,,Lowenbrau 6X473,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,45.08,24.0,4.0,11.27,0.6,0.212
+666875,,Dab Original 6Pk-Tc+,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,44.32,24.0,4.0,11.08,0.6,0.25
+15402,,Old Milwaukee,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,41.56,24.0,4.0,1.731666667,0.1,0.2762
+15402,,Old Milwaukee,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,41.56,24.0,4.0,10.39,0.6,0.224
+15400,,Old Milwaukee Ice 6Pk-Tc,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,41.56,24.0,4.0,1.731666667,0.1,0.2762
+15400,,Old Milwaukee Ice 6Pk-Tc,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,41.56,24.0,4.0,10.39,0.6,0.224
+32741,,Laker Lager 6X473Ml,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,39.96,24.0,4.0,1.665,0.1,0.3033472803
+32741,,Laker Lager 6X473Ml,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,39.96,24.0,4.0,9.99,0.6,0.254
+300020,,Heineken 24 Pk-B+,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,39.53,24.0,1.0,1.647083333,0.1,0.3096
+18.0,,Heineken 330ml bottle,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,59.1,24.0,4.0,14.775,0.6,0.257
+26620,,Laker Ice 6X473,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,38.96,24.0,4.0,1.623333333,0.1,0.32
+26620,,Laker Ice 6X473,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,38.96,24.0,4.0,9.74,0.6,0.198
+922682,,Molson Dry 710Ml,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,30.6,12.0,12.0,2.55,0.1,0.2478
+40771,,Busch Bullet,,beer,Beer,,4-Pack,,,,master_beer_sheet.xlsx,4-Pack,24.12,24.0,6.0,4.02,0.4,0.2102
+296244.0,,Guinness Draught Stout,,beer,Beer,,4-Pack,,,,master_beer_sheet.xlsx,4-Pack,65.52,24.0,6.0,10.92,0.4,0.251
+296244.0,,Guinness Draught Stout,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,65.52,24.0,6.0,2.73,0.1,0.26
+459818.0,,Sapporo Premium Beer,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,66.55,24.0,6.0,2.772916667,0.1,0.268
+459818.0,,Sapporo Premium Beer,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,66.55,24.0,6.0,11.09166667,0.4,0.24
+37102.0,,Fax Amber,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,43.12,24.0,6.0,1.796666667,0.1,0.248
+906669.0,,Coors Light,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,54.69,24.0,6.0,2.27875,0.1,0.212
+49673.0,,Coors Seltzer Slushie Green Apple,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,61.96,24.0,6.0,2.581666667,0.1,0.238
+,,Tiger Lager,,beer,Beer,,Single,,,,master_beer_sheet.xlsx,Single,62.44,24.0,24.0,2.601666667,0.1,0.255
+676841.0,,Red Stripe Lager,,beer,Beer,,6-Pack,,,,master_beer_sheet.xlsx,6-Pack,49.45,24.0,4.0,12.3625,0.6,0.2679
+36576,,Jameson Whiskey Lemonade,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,66.0,24.0,24.0,2.75,0.1,0.275
+31284,,White Claw Blackberry,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,64.8,24.0,24.0,2.7,0.1,0.2035
+14487,,White Claw Hard Seltzer Mango,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,64.8,24.0,24.0,2.7,0.1,0.2035
+14488,,White Claw Hard Seltzer Natural Lime,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,64.8,24.0,24.0,2.7,0.1,0.2035
+48811,,Mike'S Harder 7% Strawberry,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,62.16,24.0,24.0,2.59,0.1,0.236
+36697,,Mikes Harder Lemonade,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,62.16,24.0,24.0,2.59,0.1,0.236
+570283,,Twisted Tea Original,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,60.24,24.0,24.0,2.51,0.1,0.2596
+42281.0,,Twisted Tea Extreme Blue Razz,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,60.24,24.0,24.0,2.51,0.1,0.2596
+48806.0,,Twisted Tea Extreme Lemon,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,60.24,24.0,24.0,2.51,0.1,0.2596
+31250,,Black Fly Tequila Sunrise Cocktail In A,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,60.0,24.0,24.0,2.5,0.1,0.2625
+36648,,Black Fly Vodka Crushed Black Cherry,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,60.0,24.0,24.0,2.5,0.1,0.2625
+553578,,Black Fly Vodka Crushed Orange,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,60.0,24.0,24.0,2.5,0.1,0.2625
+14484,,Arizona Hard Green Tea,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,56.4,24.0,24.0,2.35,0.1,0.286
+449157,,Smirnoff Ice Tall Can,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,55.2,24.0,24.0,2.3,0.1,0.255
+612713,,Black Fly Vodka Cranberry 4 Pk-Pet,,beer,Cooler/RTD,,4-Pack,,,,master_beer_sheet.xlsx,4-Pack,53.34,24.0,6.0,8.89,0.4,0.233
+48415,,Molson Cold Shot Max 7.1%,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,52.8,24.0,24.0,2.2,0.1,0.2388
+448613,,Black Fly Vodka Sour Raspberry,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,52.56,24.0,24.0,2.19,0.1,0.354
+31311,,Captain Morgan Mango Mai Tai,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,51.12,24.0,24.0,2.13,0.1,0.263
+17488,,Molson Cold Shots 4X222-C,,beer,Cooler/RTD,,4-Pack,,,,master_beer_sheet.xlsx,4-Pack,23.28,24.0,6.0,3.88,0.4,0.2377
+48833.0,,Sun Cruiser Classic Iced Tea,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,60.04,24.0,6.0,2.501666667,0.1,0.263
+77933.0,,Rev PET,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,50.12,24.0,6.0,2.088333333,0.1,0.278
+19303.0,,Crown Royal Whisky & Cola,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,59.84,24.0,6.0,2.493333333,0.1,0.264
+42273.0,,Cottage Springs Punched Up Pink Lemonade,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,62.82,24.0,6.0,2.6175,0.1,0.25
+25664.0,,Flying Monkeys Velvet Bubble Lord Blueberry Sour,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,74.3,24.0,6.0,3.095833333,0.1,0.205
+42500.0,,White Claw Surge Passion Fruit,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,64.6,24.0,6.0,2.691666667,0.1,0.27
+31288.0,,White Claw Surge Blood Orange,,beer,Cooler/RTD,,Single,,,,master_beer_sheet.xlsx,Single,59.3,24.0,6.0,2.470833333,0.1,0.33
+15563,,Somersby Apple Cider 473Ml,,beer,Cider,,Single,,,,master_beer_sheet.xlsx,Single,64.08,24.0,24.0,2.67,0.1,0.2124
+16778,,Bask Crisp Rose,,beer,Wine,,Single,,,,master_beer_sheet.xlsx,Single,125.16,12.0,12.0,10.43,0.2,0.2437
+21442,,Honest Lot Cabernet Sauvignon,,beer,Wine,,Single,,,,master_beer_sheet.xlsx,Single,125.16,12.0,12.0,10.43,0.2,0.2437
+328534,,Jackson-Triggs Cabernet Sauvignon,,beer,Wine,,Single,,,,master_beer_sheet.xlsx,Single,120.0,12.0,12.0,10.0,0.2,0.2476
+338855,,Bodacious Smooth Red,,beer,Wine,,Single,,,,master_beer_sheet.xlsx,Single,109.56,12.0,12.0,9.13,0.2,0.2256
