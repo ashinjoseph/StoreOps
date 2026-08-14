@@ -261,6 +261,18 @@
     background: #eef2ff; border-radius: 8px;
     padding: 8px 10px; margin-bottom: 10px;
   }
+  /* One-tap refill. 44px so it's a real thumb target on a phone. */
+  .lotto-topup-btn {
+    width: 100%; min-height: 44px; margin-bottom: 10px;
+    border: 0; border-radius: 10px; cursor: pointer;
+    background: #1a237e; color: #fff;
+    font-size: 15px; font-weight: 600;
+  }
+  .lotto-topup-btn:active { transform: scale(0.99); }
+  .lotto-topup-btn-undo {
+    background: #fff; color: #4a5570; border: 1px solid #cbd2e0; font-weight: 500;
+  }
+  .lotto-action-note { background: #fff7ed; color: #92400e; }
   .lotto-log { margin-top: 22px; }
   .lotto-log > summary {
     cursor: pointer; list-style: none;
@@ -1757,8 +1769,16 @@
         '<div class="lotto-hint">' + esc(lottoNote) + '</div>' +
         '<div class="sheet-field"><label>Reserve counted ($)</label>' +
           moneyInput('closeLotto', String(lottoStart)) + '</div>' +
+        // Refilling the pot is an action, not a sum to work out. The button
+        // states the amount and applies it in one tap; the field below only
+        // appears once it has, for the rare case a different amount moved.
+        '<div id="closeLottoActionWrap" style="display:none">' +
+          '<button type="button" class="lotto-topup-btn" id="closeLottoTopupBtn"></button>' +
+          '<div class="lotto-hint lotto-action-note" id="closeLottoActionNote" ' +
+            'style="display:none"></div>' +
+        '</div>' +
         '<div class="sheet-field" id="closeLottoTopupWrap" style="display:none">' +
-          '<label>Move to reserve from till ($)</label>' +
+          '<label>Moving from till into reserve ($)</label>' +
           moneyInput('closeLottoTopup', '0') + '</div>' +
         '<div class="sheet-field" id="closeLottoNoteWrap" style="display:none">' +
           '<label>Reason reserve isn\'t ' + money(lottoExpected) + '</label>' +
@@ -1822,7 +1842,11 @@
       } catch (e) {}
     })();
 
-    // Once the cashier edits the top-up by hand, stop auto-filling it — a
+    // The refill is opt-in: nothing moves out of the drawer until the cashier
+    // taps the button. Auto-filling it recorded a transfer that may never have
+    // physically happened, and gave no hint of what the number meant.
+    let topupApplied = false;
+    // Once the cashier edits the amount by hand, stop auto-filling it — a
     // deliberate number always beats our suggestion.
     let topupTouched = false;
 
@@ -1869,28 +1893,58 @@
       $('sumVariance').textContent = (variance >= 0 ? '+' : '') + money(variance).replace('-','-');
     }
 
-    // Reveals the two optional reserve rows and keeps the suggested top-up in
-    // step with the till count. `tillCount` is the drawer count, not the pot.
+    // Offers the refill and keeps its amount honest. `tillCount` is the drawer
+    // count, not the pot.
     function updateLotto(tillCount) {
       const base = lottoBase();               // pot as counted, before moving cash in
-      // Cash above the float is what's spare to move. If the float hasn't
-      // loaded yet it's 0, so `spare` is merely generous — never a reason to
-      // hide the row. Suppressing a field because a fetch is in flight is what
-      // made this look broken.
-      const spare = isNaN(tillCount) ? 0 : Math.max(0, tillCount - floatValue);
+      const countKnown = !isNaN(tillCount);
+      // Cash above the float is what's spare to move. Before the drawer has
+      // been counted, don't cap at all — an offer that stays hidden until an
+      // unrelated box is filled in is the dead end this feature kept falling
+      // into. Once the count exists it caps the offer honestly.
+      const spare = countKnown ? Math.max(0, tillCount - floatValue) : Infinity;
 
-      // Offer a refill only for what a previous shift left missing, and only
-      // as far as the drawer can cover it.
-      const canTopUp = lottoCarryDeficit > 0.01 && spare > 0.01;
-      $('closeLottoTopupWrap').style.display = canTopUp ? '' : 'none';
+      // What the pot is still missing, measured from the figure in front of
+      // the cashier. Capping the offer by this is what stops a hand-corrected
+      // count from overfilling: type $500 into a pot the form thought was
+      // $200 and the offer withdraws itself instead of moving another $300 in
+      // and then demanding a reason for ending at $800.
+      const needed = Math.max(0, lottoExpected - base);
+
+      // Only a deficit carried in from a PREVIOUS shift may be refilled from
+      // the drawer — a payout made during this shift is already netted out of
+      // the POS cash figure, so moving cash for it would count it twice.
+      const offer = Math.round(Math.min(lottoCarryDeficit, needed, spare) * 100) / 100;
+      const canTopUp = offer > 0.01;
 
       if (!canTopUp) {
-        // A hidden field must never contribute — if the count drops back below
-        // the float, any amount already typed is off the table again.
-        $('closeLottoTopup').value = '0';
+        // Nothing left to move: the pot is full, nothing was carried in, or
+        // the drawer can't cover it. A hidden field must never contribute.
+        topupApplied = false;
         topupTouched = false;
-      } else if (!topupTouched) {
-        $('closeLottoTopup').value = Math.round(Math.min(lottoCarryDeficit, spare) * 100) / 100;
+        $('closeLottoTopup').value = '0';
+      } else if (topupApplied && !topupTouched) {
+        $('closeLottoTopup').value = offer;
+      }
+
+      $('closeLottoActionWrap').style.display = (canTopUp || topupApplied) ? '' : 'none';
+      $('closeLottoTopupWrap').style.display = topupApplied ? '' : 'none';
+
+      const btn = $('closeLottoTopupBtn');
+      btn.textContent = topupApplied
+        ? 'Undo — take nothing from the till'
+        : 'Move ' + money(offer) + ' from till into reserve';
+      btn.className = 'lotto-topup-btn' + (topupApplied ? ' lotto-topup-btn-undo' : '');
+
+      // When the drawer can't cover the shortfall, say so — otherwise the
+      // button just quietly offers a smaller number than the pot is missing.
+      const shortfallWanted = Math.min(lottoCarryDeficit, needed);
+      const capped = countKnown && !topupTouched && spare < shortfallWanted - 0.01;
+      $('closeLottoActionNote').style.display = capped ? '' : 'none';
+      if (capped) {
+        $('closeLottoActionNote').textContent =
+          'Pot is ' + money(shortfallWanted) + ' short, but only ' + money(spare) +
+          ' is spare above the ' + money(floatValue) + ' float.';
       }
 
       const moved = lottoTopup();
@@ -1931,6 +1985,12 @@
       // Only a real keystroke counts as "touched" — our own auto-fill writes
       // .value directly, which fires nothing.
       $('closeLottoTopup').addEventListener('input', () => { topupTouched = true; });
+      $('closeLottoTopupBtn').onclick = () => {
+        haptic();
+        topupApplied = !topupApplied;
+        topupTouched = false;   // a fresh tap re-takes the suggested amount
+        recalcClose();
+      };
     }
 
     const recalcOn = ['closeCash','closeMiscCash','closeCount'];

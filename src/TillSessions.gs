@@ -236,6 +236,22 @@ const TillSessions = (() => {
     const now = new Date();
     const today = Util.todayMidnight();
 
+    // One shift per person per till per day, by design — the session id is
+    // derived from (date, staff, company), so a second open would write a
+    // duplicate id. getById_ resolves that to the first row, which is already
+    // closed, so the new session could never be closed; it would sit `open`
+    // for ever and block everyone else from opening this till. Refuse at the
+    // door instead, and say what to do about it.
+    const sessionId = Util.tillSessionId(today, input.staffId, input.company);
+    const sameDay = getById_(sessionId);
+    if (sameDay) {
+      throw new Error(
+        staff.name + ' already has a ' + input.company + ' shift today (' +
+        sessionId + ', ' + sameDay.status + '). One shift per person per till ' +
+        'per day — an admin can edit that session instead.'
+      );
+    }
+
     // Verify opening float — if mismatch and no note, refuse
     const expectedFloat = getExpectedFloat_(input.company);
     if (Math.abs(input.openingCount - expectedFloat) > 0.01 && !input.openingNote) {
@@ -249,7 +265,6 @@ const TillSessions = (() => {
     const attendance = Attendance.openOrPromote(input.staffId, today, input.actorId, now);
 
     // Step 2: create till_session
-    const sessionId = Util.tillSessionId(today, input.staffId, input.company);
     const sh = sheet_();
     const row = sh.getLastRow() + 1;
     const values = [

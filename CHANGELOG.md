@@ -156,10 +156,21 @@ This completes v1.0.0.
 - **The extra reserve fields only appear when they mean something.** A normal
   close, with the pot untouched at $500, shows neither. The *reason* field
   appears once the closing balance isn't the expected one, and is required from
-  then on. The *move to reserve from till* field appears only when a previous
-  shift left the pot short **and** the till count exceeds the float — there's
-  nothing spare to move otherwise. It auto-fills with what's needed (capped by
-  what's actually spare) and stays editable.
+  then on.
+- **Refilling the pot is a button, not a sum to work out.** When a previous
+  shift left the pot short, the close sheet offers *"Move $300.00 from till
+  into reserve"* — one tap, stating the amount, with an editable field
+  appearing only if a different amount actually moved. It shows as soon as
+  there's a deficit rather than waiting for the drawer count, and caps itself
+  once that count exists, saying so — *"Pot is $300.00 short, but only $150.00
+  is spare above the $250.00 float"* — instead of quietly offering less. The
+  transfer is opt-in: nothing is recorded as moved until the button is tapped,
+  because a pre-filled amount recorded cash leaving a drawer that may never
+  have been opened.
+- **The offer is capped by what the pot is actually missing.** It was capped
+  only by the carried deficit and the spare cash, so hand-correcting the count
+  to $500 still moved another $300 in — closing at $800 and then demanding a
+  reason for it. Correcting the count now withdraws the offer instead.
 - **"Reserve counted" is the pot as you count it**, before moving anything in;
   the closing balance is derived as `counted + moved in` and shown in the
   summary. The form previously wrote a computed value back into that field,
@@ -216,6 +227,12 @@ This completes v1.0.0.
   one click that turns lotto on also puts its $500 in the config tab.
 - `open_` leaves the lotto columns blank for non-CSTORE rows instead of writing
   `0`, which made vape sessions look like they had a reserve.
+- **One shift per person per till per day is now enforced at open.** The
+  session id is derived from (date, staff, company), so a second open wrote a
+  duplicate id; closing it resolved to the first row, found it already closed,
+  and refused — leaving a session stuck `open` for ever, which then blocked
+  *everyone* from opening that till. It's rejected up front instead, naming the
+  existing session.
 - `TillSessions.gs` — `till_sessions` gains `lotto_reserve_counted`,
   `lotto_topup_from_till` and `lotto_reserve_note` (cols 19-21). **The reserve
   never affects the till variance.** Payouts came out of the pot, not the
