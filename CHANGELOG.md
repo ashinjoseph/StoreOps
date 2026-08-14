@@ -186,6 +186,12 @@ This completes v1.0.0.
   scans closed cstore sessions directly, with no date window: the pot's last
   count predates any window after a quiet fortnight, and the balance shouldn't
   depend on how far back a list happens to show.
+- **The balance chains shift-to-shift, not day-to-day.** Ordering is by
+  `end_time`, so a shift that runs past midnight is placed by when it actually
+  closed, and a second cashier the same day inherits what the first one left.
+  Equal keys tie-break on sheet row: rows are appended in the order they
+  happen, and a stable sort was otherwise handing back the *older* of two
+  shifts that closed in the same minute.
 - **A blank reserve cell is no longer read as `$0.00`.** Sessions closed before
   the migration have no reserve recorded at all; as the newest row, one would
   have reported the pot as empty. They're skipped — by the balance lookup and

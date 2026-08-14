@@ -535,9 +535,15 @@ const TillSessions = (() => {
     return getById_(session.sessionId);
   }
 
-  // Newest first by when the shift actually ended.
+  // Newest first by when the shift actually ended — end_time, not date, so a
+  // shift that runs past midnight sorts by when it really closed.
   function byCloseTimeDesc_(a, b) {
-    return (b.endTime || b.date || 0) - (a.endTime || a.date || 0);
+    const diff = (b.endTime || b.date || 0) - (a.endTime || a.date || 0);
+    // Equal keys: two shifts closed within the same minute, or rows carrying
+    // only a date. Sessions are appended in the order they happen, so the
+    // lower row is the later close — without this the sort is stable and
+    // hands back the OLDER of the two.
+    return diff || (b._rowIndex - a._rowIndex);
   }
 
   /**
