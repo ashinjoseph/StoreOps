@@ -178,10 +178,36 @@ This completes v1.0.0.
 - Closing or opening a shift refreshes shift state with `force`. Without it the
   next close sheet could read a `TTL_LIVE` cache up to 60s old and pre-fill the
   reserve from pre-close state — the cause of the missing row.
+- **The last known balance is now looked up directly, not through the log.** It
+  came from the newest entry of the 14-day reserve log, so it inherited every
+  way that list can come up empty — and the close sheet then announced *"no
+  previous count on record"* and assumed a full pot, which silently zeroes the
+  carried deficit and makes the top-up row unreachable. `lastReserveCount_`
+  scans closed cstore sessions directly, with no date window: the pot's last
+  count predates any window after a quiet fortnight, and the balance shouldn't
+  depend on how far back a list happens to show.
+- **A blank reserve cell is no longer read as `$0.00`.** Sessions closed before
+  the migration have no reserve recorded at all; as the newest row, one would
+  have reported the pot as empty. They're skipped — by the balance lookup and
+  by the log — so "never counted" stays distinct from "counted zero".
+- **Date cells are parsed, not discarded.** `rowToRecord_` kept a date only if
+  the cell was already a `Date`, so a column formatted as plain text turned
+  every session into one with no date — and every date-range query drops those.
+  That empties the reserve log and Recent Shifts together, with nothing to
+  explain it. Strings are now parsed (a bare `yyyy-MM-dd` at local midnight, so
+  it can't slip to the previous day). Closed-status checks are
+  case-insensitive, for sheets edited by hand.
 - `getForDateRange` end bounds use `Util.endOfDay`. Passing midnight meant any
   date cell that read back with a time component — which happens whenever the
   spreadsheet's timezone differs from the script's — dropped today's sessions
   from the reserve log and from Recent Shifts.
+- **Config keys reach sheets that already exist.** `setupConfigSheet_` returns
+  early on an existing config tab, so every key added after a spreadsheet was
+  first set up — `lotto_reserve_default` among them — never landed in it, and
+  the code ran on its in-code fallback with nothing to edit. New
+  **StoreOps → Sync config keys** appends whatever is missing, leaving existing
+  values alone; First-time Setup and the lotto migration both call it, so the
+  one click that turns lotto on also puts its $500 in the config tab.
 - `open_` leaves the lotto columns blank for non-CSTORE rows instead of writing
   `0`, which made vape sessions look like they had a reserve.
 - `TillSessions.gs` — `till_sessions` gains `lotto_reserve_counted`,

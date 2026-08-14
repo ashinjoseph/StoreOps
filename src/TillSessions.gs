@@ -71,6 +71,35 @@ const TillSessions = (() => {
     return _hasLotto;
   }
 
+  // A date column should read back as a Date, but one that has been formatted
+  // as plain text — or pasted in — comes back as a string, and every range
+  // query drops rows with no date. One bad cell format silently emptied both
+  // the reserve log and Recent Shifts, so parse rather than discard.
+  function toDate_(v) {
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+    if (typeof v !== 'string' || !v.trim()) return null;
+    const s = v.trim();
+    // A bare yyyy-MM-dd parses as UTC midnight, which lands on the previous
+    // day anywhere west of Greenwich. Force local midnight instead.
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + 'T00:00:00') : new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Blank is not zero. A session closed before the lotto migration has no cell
+  // at all, and reporting that pot as $0.00 would put a number nobody counted
+  // in front of the next cashier.
+  function numOrNull_(v) {
+    if (v === '' || v == null) return null;
+    const n = Number(v);
+    return isNaN(n) ? null : n;
+  }
+
+  // Hand-edited sheets carry 'Closed' as readily as 'closed'.
+  function isClosed_(s) {
+    const st = (s.status || '').toLowerCase();
+    return st === 'closed' || st === 'validated';
+  }
+
   function getVarianceStatus_(variance) {
     const ok = Number(configValue_('variance_ok_threshold', 1)) || 1;
     const minor = Number(configValue_('variance_minor_threshold', 30)) || 30;
@@ -86,10 +115,10 @@ const TillSessions = (() => {
       attendanceId:     (row[COL.attendance_id - 1] || '').toString().trim(),
       staffId:          (row[COL.staff_id - 1] || '').toString().trim(),
       company:          (row[COL.company - 1] || '').toString().trim(),
-      date:             row[COL.date - 1] instanceof Date ? row[COL.date - 1] : null,
+      date:             toDate_(row[COL.date - 1]),
       status:           (row[COL.status - 1] || 'open').toString().trim(),
-      startTime:        row[COL.start_time - 1] instanceof Date ? row[COL.start_time - 1] : null,
-      endTime:          row[COL.end_time - 1] instanceof Date ? row[COL.end_time - 1] : null,
+      startTime:        toDate_(row[COL.start_time - 1]),
+      endTime:          toDate_(row[COL.end_time - 1]),
       expectedOpening:  Number(row[COL.expected_opening - 1]) || 0,
       openingFloat:     Number(row[COL.opening_float - 1]) || 0,
       openingNote:      (row[COL.opening_note - 1] || '').toString(),
@@ -100,7 +129,7 @@ const TillSessions = (() => {
       closingVariance:     Number(row[COL.closing_variance - 1]) || 0,
       varianceStatus:      (row[COL.variance_status - 1] || '').toString(),
       notes:               (row[COL.notes - 1] || '').toString(),
-      lottoReserveCounted: Number(row[COL.lotto_reserve_counted - 1]) || 0,
+      lottoReserveCounted: numOrNull_(row[COL.lotto_reserve_counted - 1]),
       lottoTopupFromTill:  Number(row[COL.lotto_topup_from_till - 1]) || 0,
       lottoReserveNote:    (row[COL.lotto_reserve_note - 1] || '').toString(),
       _rowIndex:           rowIndex,
@@ -495,10 +524,42 @@ const TillSessions = (() => {
     return getById_(session.sessionId);
   }
 
+  // Newest first by when the shift actually ended.
+  function byCloseTimeDesc_(a, b) {
+    return (b.endTime || b.date || 0) - (a.endTime || a.date || 0);
+  }
+
+  /**
+   * What the pot held when it was last counted — the balance the next close
+   * sheet starts from, and the basis for the deficit a later shift may refill
+   * from the drawer.
+   *
+   * Deliberately unwindowed and independent of getForDateRange_: the last
+   * count predates any lookback window after a quiet fortnight, and a windowed
+   * lookup answers "no record on file" for a pot that is demonstrably short.
+   * Sessions that never recorded a count (closed before the migration) are
+   * skipped rather than read as $0.
+   *
+   * @return { counted, date } or null when nothing has ever been counted
+   */
+  function lastReserveCount_() {
+    const last = getAll_()
+      .filter(s => s.company === LOTTO_COMPANY && isClosed_(s) && s.lottoReserveCounted != null)
+      .sort(byCloseTimeDesc_)[0];
+    if (!last) return null;
+    return {
+      counted: Util.roundMoney(last.lottoReserveCounted),
+      date:    last.date ? Util.formatDate(last.date) : null,
+    };
+  }
+
   /**
    * Daily lotto-reserve log: one entry per closed cstore session over the
    * last `days`, newest first. `shortfall` is how far below the expected
    * balance the pot ended up — the number the reason explains.
+   *
+   * The window bounds the list only. `lastCounted` comes from
+   * lastReserveCount_, which looks past it.
    *
    * @param days lookback window (default 14)
    * @return { expected, lastCounted, lastCountedDate, entries: [...] }
@@ -519,8 +580,10 @@ const TillSessions = (() => {
     // the spreadsheet's timezone differs from the script's — would silently
     // drop every one of today's sessions.
     const entries = getForDateRange_(from, Util.endOfDay(today), LOTTO_COMPANY)
-      .filter(s => s.status === 'closed' || s.status === 'validated')
-      .sort((a, b) => (b.endTime || b.date || 0) - (a.endTime || a.date || 0))
+      // A session that recorded no count has nothing to say about the pot;
+      // listing it as $0.00 would read as a reserve that was emptied.
+      .filter(s => isClosed_(s) && s.lottoReserveCounted != null)
+      .sort(byCloseTimeDesc_)
       .map(s => ({
         sessionId: s.sessionId,
         date:      s.date ? Util.formatDate(s.date) : null,
@@ -531,11 +594,13 @@ const TillSessions = (() => {
         note:      s.lottoReserveNote,
       }));
 
+    const last = lastReserveCount_();
+
     return {
       enabled: true,
       expected,
-      lastCounted:     entries.length ? entries[0].counted : null,
-      lastCountedDate: entries.length ? entries[0].date : null,
+      lastCounted:     last ? last.counted : null,
+      lastCountedDate: last ? last.date : null,
       entries,
     };
   }

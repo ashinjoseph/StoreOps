@@ -118,6 +118,12 @@ Normally a cashier refills the pot from the drawer at close and nothing is
 recorded. `lotto_topup_from_till` is only used when a previous shift ended
 short (the drawer didn't hold enough to refill) and a later shift makes it up.
 
+The pot's **last known balance** is the newest closed cstore session that
+actually recorded a count — looked up directly, with no date window, and
+skipping rows whose reserve cell is blank (a session closed before the
+migration never counted the pot; it is not a pot counted at zero). The 14-day
+reserve log bounds the list shown in the UI, not that lookup.
+
 Existing sheets gain these columns via **StoreOps → Add lotto reserve to
 till_sessions**; until then the code skips the fields entirely.
 
@@ -265,9 +271,15 @@ Key/value settings.
 | B | value | string | Stored as string; parsed by code as needed |
 | C | description | string | Human-readable hint |
 
+Keys are written when the config tab is first created. A sheet set up by an
+earlier version is missing anything added since, so **StoreOps → Sync config
+keys** appends the absent ones with their defaults — existing values are never
+overwritten. First-time Setup and the lotto migration both run it.
+
 **Required keys** (created with defaults at setup):
 - `cstore_default_opening_float` = `250`
 - `vape_default_opening_float` = `100`
+- `lotto_reserve_default` = `500`
 - `variance_ok_threshold` = `1`
 - `variance_minor_threshold` = `30`
 - `cstore_business_name` = `Convenience Store`

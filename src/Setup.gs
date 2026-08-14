@@ -76,6 +76,7 @@ function onOpen() {
     .addItem('🧱 Migrate Product Master → v2 (per-type)', 'menu_migrateProductMasterV2')
     .addItem('🛒 Add product_id to shopping_list', 'menu_migrateShoppingListProductId')
     .addItem('🎟️ Add lotto reserve to till_sessions', 'menu_migrateTillSessionsLottoReserve')
+    .addItem('🔑 Sync config keys',                 'menu_syncConfigKeys')
     .addSeparator()
     .addItem('⚠️ Reset Data (keeps schema)',         'resetDataTables')
     .addToUi();
@@ -314,6 +315,10 @@ function firstTimeSetup() {
     }
   });
 
+  // setupConfigSheet_ skips a config tab that already exists, so re-running
+  // setup on an older sheet would leave newer keys missing. Add them here.
+  try { syncConfigKeys_(); } catch (e) { console.error('config sync: ' + e.message); }
+
   // Remove the default "Sheet1" if it's still empty
   const sheet1 = ss.getSheetByName('Sheet1');
   if (sheet1 && sheet1.getLastRow() <= 1 && sheet1.getLastColumn() <= 1) {
@@ -346,15 +351,14 @@ function firstTimeSetup() {
 //  Per-sheet setup functions
 // ============================================================
 
-function setupConfigSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (ss.getSheetByName(SHEETS.CONFIG)) return;
-  const sh = ss.insertSheet(SHEETS.CONFIG);
-
-  writeHeader_(sh, '⚙️  Configuration', 3);
-  writeColumnHeaders_(sh, ['key', 'value', 'description']);
-
-  const defaults = [
+// Every config key the code reads, with its default and a human-readable
+// hint. Shared so menu_syncConfigKeys can add whatever a sheet created by an
+// older version is missing — setupConfigSheet_ only ever runs once per
+// spreadsheet, so a key added later would otherwise never reach the tab and
+// the code would silently run on its in-code fallback. A function, not a
+// const: it calls getScriptTimeZone, which shouldn't run on every execution.
+function configDefaults_() {
+  return [
     ['cstore_default_opening_float', '250',            'Cstore opening float (dollars)'],
     ['vape_default_opening_float',   '100',            'Vape opening float (dollars)'],
     ['lotto_reserve_default',        '500',            'Expected lotto reserve balance at cstore close (dollars)'],
@@ -385,12 +389,65 @@ function setupConfigSheet_() {
     ['card_variance_threshold',      '1',              'Card credit/debit/total mismatch under this = OK (dollars)'],
     ['timezone',                     Session.getScriptTimeZone(), 'Default timezone (script setting overrides)'],
   ];
+}
+
+function setupConfigSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName(SHEETS.CONFIG)) return;
+  const sh = ss.insertSheet(SHEETS.CONFIG);
+
+  writeHeader_(sh, '⚙️  Configuration', 3);
+  writeColumnHeaders_(sh, ['key', 'value', 'description']);
+
+  const defaults = configDefaults_();
   sh.getRange(3, 1, defaults.length, 3).setValues(defaults);
 
   sh.setColumnWidth(1, 220);
   sh.setColumnWidth(2, 220);
   sh.setColumnWidth(3, 420);
   sh.setFrozenRows(2);
+}
+
+/**
+ * Append any config key the code knows about that isn't in the sheet yet.
+ * Never touches an existing value — a store's tuned float or thresholds stay
+ * exactly as they are; only genuinely absent keys are added, with their
+ * default and description.
+ *
+ * Idempotent: running it twice adds nothing the second time.
+ *
+ * @return { added: [key, ...] }  (also used by the lotto migration)
+ */
+function syncConfigKeys_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.CONFIG);
+  if (!sh) throw new Error('config sheet not found — run First-time Setup first.');
+
+  const last = sh.getLastRow();
+  const existing = last < 3 ? [] :
+    sh.getRange(3, 1, last - 2, 1).getValues()
+      .map(r => (r[0] || '').toString().trim())
+      .filter(k => k);
+
+  const missing = configDefaults_().filter(d => existing.indexOf(d[0]) === -1);
+  if (missing.length) {
+    sh.getRange(Math.max(last + 1, 3), 1, missing.length, 3).setValues(missing);
+  }
+  return { added: missing.map(m => m[0]) };
+}
+
+function menu_syncConfigKeys() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const result = syncConfigKeys_();
+    ui.alert(result.added.length
+      ? 'Added ' + result.added.length + ' config key(s):\n\n  • ' +
+        result.added.join('\n  • ') +
+        '\n\nExisting values were left untouched. Edit the values in the ' +
+        'config tab as needed.'
+      : 'Config is already up to date — nothing to add.');
+  } catch (e) {
+    ui.alert('Sync failed — ' + e.message);
+  }
 }
 
 function setupStaffSheet_() {
@@ -1026,8 +1083,19 @@ function menu_migrateTillSessionsLottoReserve() {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.TILL_SESSIONS);
   if (!sh) { ui.alert('till_sessions not found — run First-time Setup first.'); return; }
   const headers = sh.getRange(2, 1, 1, Math.max(sh.getLastColumn(), 21)).getValues()[0];
+  // The expected balance lives in the config tab, and setupConfigSheet_ skips
+  // sheets that already exist — so land the key here too, where the one click
+  // that turns the feature on can carry it.
+  let configNote = '';
+  try {
+    const synced = syncConfigKeys_();
+    if (synced.added.length) configNote = '\n\nAlso added to config: ' + synced.added.join(', ') + '.';
+  } catch (e) {
+    // A missing config tab shouldn't block the column migration.
+    configNote = '\n\nConfig keys not synced — ' + e.message;
+  }
   if (headers.indexOf('lotto_reserve_counted') !== -1) {
-    ui.alert('Already migrated — lotto reserve columns present.');
+    ui.alert('Already migrated — lotto reserve columns present.' + configNote);
     return;
   }
   sh.getRange(2, 19, 1, 3)
@@ -1038,7 +1106,7 @@ function menu_migrateTillSessionsLottoReserve() {
   sh.setColumnWidth(19, 130);
   sh.setColumnWidth(20, 130);
   sh.setColumnWidth(21, 220);
-  ui.alert('Added lotto reserve columns at 19-21. Existing rows are unchanged.');
+  ui.alert('Added lotto reserve columns at 19-21. Existing rows are unchanged.' + configNote);
 }
 
 // ============================================================
