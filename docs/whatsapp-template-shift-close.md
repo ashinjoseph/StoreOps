@@ -67,9 +67,19 @@ Add a single **Visit website** button:
 |---|---|
 | Type | URL (static) |
 | Button text | `View 7-day report` |
-| URL | your deployed web app URL + `?v=recon` |
+| URL | the deployed web app URL + `?v=recon` |
 
-e.g. `https://script.google.com/macros/s/AKfycb.../exec?v=recon`
+For the current primary deployment (`AKfycbyaRT5Gi…`), paste this verbatim:
+
+```
+https://script.google.com/macros/s/AKfycbyaRT5Gi2aepnsrafOwn-bErrmDawFXvhsB-pSkgb5E2PPfoOLyNQIRL9zx8lgP1wIe/exec?v=recon
+```
+
+**Check this is still the live deployment before submitting.** The URL is baked
+into the approved template, and a web app deployed to a different script project
+gets a different URL — which is exactly what happened at the cutover, when the
+primary moved to a copy of the original prod workbook. Submitting a stale URL
+costs a second approval round.
 
 It opens the read-only report: who is holding cash, how the lotto pot moved,
 and whether each day added up — no login.
