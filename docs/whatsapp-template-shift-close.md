@@ -49,7 +49,7 @@ approved, and the switch is one config edit with no window where neither works.
 🎟 Lotto reserve
 {{9}}
 
-💳 Cards
+💳 Cards · Clover / cashier
 Credit {{10}}
 Debit {{11}}
 Total {{12}}
@@ -74,7 +74,7 @@ what the message actually looks like.
 | 5 | `reported $651.00 / expected $650.00 (+$1.00) ✅` | Total sales vs Clover |
 | 6 | `$950.00 / $950.00 (var +$0.00) ✅` | Cash recorded vs counted |
 | 7 | `float $350.00 back · reserve $300.00 · $300.00 in hand` | Where the counted cash went |
-| 8 | `Ashin $300.00 · $1240.00 still out with 2 people` | Who carries it, what is still out |
+| 8 | `Ashin $1240.00 · Meera $640.00` | Who is holding cash, by name |
 | 9 | `$500.00 (+$300.00 moved in)` | Lotto pot balance and movement |
 | 10 | `$1.00 / $1.00 (+$0.00) ✅` | Credit, Clover vs cashier |
 | 11 | `$50.00 / $50.00 (+$0.00) ✅` | Debit, Clover vs cashier |
@@ -90,13 +90,67 @@ The values change shape with the situation — the template does not.
 | 5 | `reported $651.00 / expected $650.00 (+$1.00) ✅` | `reported $651.00 (no Clover)` |
 | 6 | `$950.00 / $950.00 (var +$0.00) ✅` | `$950.00 / $910.00 (var -$40.00) ⚠️` |
 | 7 | `float $250.00 back · $400.00 in hand` | `float $250.00 back · reserve $300.00 · $100.00 in hand` |
-| 8 | `nothing taken out today · $0.00 still out` | `Ashin $650.00 · $2180.00 still out with 3 people · ⚠️ 1 held over the limit` |
+| 8 | `nobody is holding cash` | `Ashin $1240.00 · Meera $640.00 · ⚠️ 1 shift held over the limit` |
 | 9 | `$500.00` | `$200.00 - short $300.00 - 400 paid` |
-| 13 | `✅ All matched` | `⚠️ Clover unavailable - cards not verified` |
+| 13 | `✅ All matched` | `⚠️ cash short $40.00 · cards off $12.00` |
 
 Parameter 9 reads `not tracked on this till` for a vape-only day, or on a
 spreadsheet that hasn't run the lotto migration. A fixed template can't drop
 a section, so it says so rather than sending a bare dash.
+
+Parameter 8 always names people. A total with a headcount — *"$1240 out with
+2 people"* — says there is something to chase without saying who to chase,
+which is the half that makes it actionable. Where the cash handling tables
+aren't set up yet it falls back to today's takings, marked `(today)`.
+
+## How {{5}}, {{12}} and {{13}} are worked out
+
+**{{5}} Total sales** compares what the cashier *said* against what can be
+*measured*:
+
+```
+reported = cash sales + misc cash          (typed at close)
+         + credit + debit + misc card      (typed at close)
+
+expected = (cash counted − opening float)  (the drawer, actually counted)
+         + Clover card total               (the processor, not the cashier)
+
+difference = reported − expected
+```
+
+Every term on the `reported` side is somebody's typing; every term on the
+`expected` side is measured. So this line catches a mistyped sales figure,
+not a theft — the drawer count is on the *expected* side.
+
+**{{12}} Card total** is simply the two card figures against each other:
+
+```
+Clover total  = Clover credit + Clover debit
+cashier total = credit + misc credit + debit + misc debit
+difference    = cashier − Clover
+```
+
+**{{13}} Result** is a roll-up over **both** cash and cards:
+
+```
+Clover unreachable                     → ⚠️ Clover unavailable - cards not verified
+|cash variance| > variance_ok_threshold → ⚠️ cash short/over $X
+|card difference| > card_variance_threshold → ⚠️ cards off $X
+neither                                → ✅ All matched
+```
+
+Both thresholds live in the `config` tab and default to `$1`. Cash variance is
+`counted − (opening float + cash sales)`, summed across the day's sessions —
+the same number the close sheet shows.
+
+> **This changed in this release.** The old status tested the card difference
+> *only*. A drawer $40 short still reported **✅ All matched** as long as the
+> card totals agreed — the line most people read, saying the one thing it
+> hadn't checked. It now fails on either, and names which.
+
+Note what is deliberately **not** in `{{13}}`: the `{{5}}` total-sales
+difference. It is a derived cross-check that double-counts the cash variance
+already reported, so folding it in would flag the same shortfall twice.
 
 ## Structural rules this satisfies
 

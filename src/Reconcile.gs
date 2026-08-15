@@ -204,8 +204,15 @@ const Reconcile = (() => {
       const cloverCard   = clover.ok ? clover.total  : 0;
       const cardDiff = Util.roundMoney(cashierCard - cloverCard);
 
+      // The roll-up must cover the CASH too. It used to test cardDiff alone,
+      // which meant a drawer $40 short still reported "All matched" as long as
+      // the card totals agreed — the one line most people read, saying the one
+      // thing it hadn't checked.
+      const cashThreshold = Number(configValue_('variance_ok_threshold', 1)) || 1;
+      const cashOff = Math.abs(Util.roundMoney(g.cashVariance)) > cashThreshold;
+      const cardsOff = Math.abs(cardDiff) > threshold;
       const status = !clover.ok ? 'clover_unavailable'
-        : (Math.abs(cardDiff) <= threshold ? 'OK' : 'investigate');
+        : (cashOff || cardsOff ? 'investigate' : 'OK');
 
       const rec = {
         merchant: g.merchant.merchantId || '(not configured)',
@@ -229,9 +236,11 @@ const Reconcile = (() => {
           .map(id => ({ name: staffNames[id] || id, amount: g.tookCash[id] }))
           .sort((a, b) => b.amount - a.amount),
         // Business-wide, not per-merchant — but it belongs on the message that
-        // reports the day's cash, and only needs saying once.
+        // reports the day's cash, and only needs saying once. null (not [])
+        // means the tables aren't there, which reads differently from
+        // "nobody is holding anything".
         cashOutTotal: cashOut ? cashOut.grandTotal : null,
-        cashOutHolders: cashOut ? cashOut.holders.length : 0,
+        cashOutHolders: cashOut ? cashOut.holders.map(h => ({ name: h.name, total: h.total })) : null,
         cashOutStale: cashOut ? cashOut.stale.length : 0,
         // Only the group that actually holds cstore carries the pot.
         lotto: (lotto && g.companies[TillSessions.lottoCompany]) ? {
@@ -304,22 +313,31 @@ const Reconcile = (() => {
   }
 
   /**
-   * Who is carrying today's takings, and how much is still out overall.
-   * Today's movement and the standing balance answer different questions —
-   * "did the cash leave" versus "has it ever come back" — so both are here.
+   * Who is carrying cash, by name. Always by name: "$1240 out with 2 people"
+   * tells you there is a problem without telling you whose problem it is,
+   * which is the half that would let you act on it.
+   *
+   * Prefers the standing balance (every unsettled shift, not just today's) —
+   * that is the number that should worry someone if it keeps climbing. Falls
+   * back to today's takings when the cash handling tables aren't there yet.
    */
   function inHandParam_(m) {
-    const took = m.tookCash || [];
-    const parts = took.length
-      ? took.map(t => t.name + ' ' + Util.formatMoney(t.amount))
-      : ['nothing taken out today'];
-    if (m.cashOutTotal != null) {
-      parts.push(Util.formatMoney(m.cashOutTotal) + ' still out' +
-        (m.cashOutHolders ? ' with ' + m.cashOutHolders +
-          (m.cashOutHolders === 1 ? ' person' : ' people') : ''));
-      if (m.cashOutStale) parts.push('⚠️ ' + m.cashOutStale + ' held over the limit');
+    if (m.cashOutHolders && m.cashOutHolders.length) {
+      const parts = m.cashOutHolders.map(h => h.name + ' ' + Util.formatMoney(h.total));
+      if (m.cashOutStale) {
+        parts.push('⚠️ ' + m.cashOutStale +
+          (m.cashOutStale === 1 ? ' shift' : ' shifts') + ' held over the limit');
+      }
+      return parts.join(' · ');
     }
-    return parts.join(' · ');
+    if (m.cashOutHolders) return 'nobody is holding cash';
+
+    // Cash handling not set up — report what left the drawer today, which the
+    // sessions tell us regardless.
+    const took = m.tookCash || [];
+    return took.length
+      ? took.map(t => t.name + ' ' + Util.formatMoney(t.amount)).join(' · ') + ' (today)'
+      : 'nothing taken out today';
   }
 
   /** The pot, as one line. Fixed templates can't drop a section, so a till
@@ -349,6 +367,27 @@ const Reconcile = (() => {
    * no run of 4+ spaces inside a value. flattenForTemplate_ enforces it, but
    * building them clean means it never has to.
    */
+  /**
+   * The bottom line, naming what is wrong rather than only that something is.
+   * "⚠️ Review needed" sent the reader back through the whole message to find
+   * out what; this says it in the same breath.
+   */
+  function statusParam_(m) {
+    if (!m.cloverOk) return '⚠️ Clover unavailable - cards not verified';
+    const cashThreshold = Number(configValue_('variance_ok_threshold', 1)) || 1;
+    const cardThreshold = Number(configValue_('card_variance_threshold', 1)) || 1;
+    const problems = [];
+    const cashVar = Number(m.cashVariance) || 0;
+    if (Math.abs(cashVar) > cashThreshold) {
+      problems.push('cash ' + (cashVar < 0 ? 'short ' : 'over ') + Util.formatMoney(Math.abs(cashVar)));
+    }
+    const cardVar = Number(m.cardDiff) || 0;
+    if (Math.abs(cardVar) > cardThreshold) {
+      problems.push('cards off ' + Util.formatMoney(Math.abs(cardVar)));
+    }
+    return problems.length ? '⚠️ ' + problems.join(' · ') : '✅ All matched';
+  }
+
   function reconParams_(dateObj, m) {
     const friendly = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'EEE d MMM yyyy');
     const windowStr = hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd);
@@ -367,14 +406,13 @@ const Reconcile = (() => {
       credit = Util.formatMoney(m.cloverCredit) + ' / ' + Util.formatMoney(m.cashierCredit) + ' (' + signed_(m.creditDiff) + ') ' + mark_(m.creditDiff);
       debit  = Util.formatMoney(m.cloverDebit) + ' / ' + Util.formatMoney(m.cashierDebit) + ' (' + signed_(m.debitDiff) + ') ' + mark_(m.debitDiff);
       total  = Util.formatMoney(m.cloverCard) + ' / ' + Util.formatMoney(m.cashierCard) + ' (' + signed_(m.cardDiff) + ') ' + mark_(m.cardDiff);
-      status = m.status === 'OK' ? '✅ All matched' : '⚠️ Review needed';
     } else {
       totalLine = 'reported ' + Util.formatMoney(reported) + ' (no Clover)';
       credit = Util.formatMoney(m.cashierCredit) + ' (cashier, no Clover)';
       debit  = Util.formatMoney(m.cashierDebit) + ' (cashier, no Clover)';
       total  = Util.formatMoney(m.cashierCard) + ' (cashier, no Clover)';
-      status = '⚠️ Clover unavailable - cards not verified';
     }
+    status = statusParam_(m);
 
     return [
       friendly,            // {{1}}  Sat 15 Aug 2026
@@ -465,7 +503,7 @@ const Reconcile = (() => {
         lines.push('Debit   ' + Util.formatMoney(m.cloverDebit) + ' / ' + Util.formatMoney(m.cashierDebit) + '   ' + signed_(m.debitDiff) + ' ' + mark_(m.debitDiff));
         lines.push('Total   ' + Util.formatMoney(m.cloverCard) + ' / ' + Util.formatMoney(m.cashierCard) + '   ' + signed_(m.cardDiff) + ' ' + mark_(m.cardDiff));
         lines.push('');
-        lines.push(m.status === 'OK' ? '✅ *All matched*' : '⚠️ *Review needed*');
+        lines.push('*' + statusParam_(m) + '*');
       } else {
         lines.push('\u{1F4B3} *Cards*  cashier ' + Util.formatMoney(m.cashierCard) + '   ⚠️ Clover unavailable');
       }

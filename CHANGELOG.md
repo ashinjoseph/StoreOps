@@ -373,3 +373,17 @@ This completes v1.0.0.
 - Deploying before the new template is approved costs the message, not the
   data: Meta rejects the send on a parameter-count mismatch, `dispatch_` mutes
   it, and the reconciliation still runs and still writes its row.
+- **"All matched" now checks the cash too.** The status tested the card
+  difference *only*, so a drawer $40 short still reported ✅ All matched as long
+  as Clover and the cashier agreed on cards — the one line most people read,
+  saying the one thing it hadn't checked. It now fails on either and names
+  which: *"⚠️ cash short $40.00 · cards off $12.00"*. The `{{5}}` total-sales
+  difference is deliberately left out of the roll-up: it is a derived
+  cross-check that already contains the cash variance, and folding it in would
+  flag the same shortfall twice.
+- **Cash in hand names people.** *"$1240.00 still out with 2 people"* said there
+  was something to chase without saying who to chase. It lists holders by name
+  with their balances, and falls back to today's takings marked `(today)` where
+  the cash handling tables aren't set up yet.
+- The cards block is labelled `Clover / cashier` so the two figures in each row
+  are identified rather than inferred.
