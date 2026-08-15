@@ -33,6 +33,8 @@ const SHEETS = {
   PM_CIG_STAGING:     '_pm_cig_staging',
   PM_VAPE_STAGING:    '_pm_vape_staging',
   PM_OTHER_STAGING:   '_pm_other_staging',
+  CASH_HANDOVERS:     'cash_handovers',
+  CASH_HANDOVER_ITEMS:'cash_handover_items',
 };
 
 const COLORS = {
@@ -56,6 +58,9 @@ const SHOPPING_STATUSES = ['pending', 'bought', 'cleared', 'removed'];
 // product_master uses its own lowercase/snake_case enum, distinct from
 // ORDER_CATEGORIES (which is Title Case + user-mutable for ShoppingList UX).
 const PRODUCT_CATEGORIES = ['vape', 'cigarettes', 'beer', 'grocery', 'other'];
+// A handover is never deleted — `voided` keeps the row (and who recorded it)
+// on the record, which is the whole point of the ledger.
+const CASH_HANDOVER_STATUSES = ['recorded', 'voided'];
 
 // ============================================================
 //  Menu (on sheet open)
@@ -76,6 +81,7 @@ function onOpen() {
     .addItem('🧱 Migrate Product Master → v2 (per-type)', 'menu_migrateProductMasterV2')
     .addItem('🛒 Add product_id to shopping_list', 'menu_migrateShoppingListProductId')
     .addItem('🎟️ Add lotto reserve to till_sessions', 'menu_migrateTillSessionsLottoReserve')
+    .addItem('💵 Add cash handling tables',          'menu_migrateCashHandling')
     .addItem('🔑 Sync config keys',                 'menu_syncConfigKeys')
     .addSeparator()
     .addItem('⚠️ Reset Data (keeps schema)',         'resetDataTables')
@@ -301,6 +307,8 @@ function firstTimeSetup() {
     ['_pm_cig_staging',    setupCigStagingSheet_],
     ['_pm_vape_staging',   setupVapeStagingSheet_],
     ['_pm_other_staging',  setupOtherStagingSheet_],
+    ['cash_handovers',      setupCashHandoversSheet_],
+    ['cash_handover_items', setupCashHandoverItemsSheet_],
   ];
 
   const succeeded = [];
@@ -378,7 +386,7 @@ function configDefaults_() {
     ['whatsapp_template_name',       '',               'Generic fallback template (body as {{1}}, flattened). Blank = plain text'],
     ['whatsapp_template_lang',       'en',             'Template language code (applies to all whatsapp_template_* names)'],
     ['whatsapp_template_shift_open', '',               'Approved template for shift-open notice: {{1}} name, {{2}} company, {{3}} time'],
-    ['whatsapp_template_shift_close','',               'Approved template for shift close/reconcile: {{1}} date {{2}} company {{3}} window {{4}} cash counted {{5}} cash variance {{6}} credit {{7}} debit {{8}} total {{9}} status'],
+    ['whatsapp_template_shift_close','',               'Approved template for shift close/reconcile, 13 params: {{1}} date {{2}} company {{3}} window {{4}} staff {{5}} total sales {{6}} cash recorded/counted {{7}} where the cash went {{8}} cash in hand {{9}} lotto reserve {{10}} credit {{11}} debit {{12}} card total {{13}} status'],
     ['whatsapp_template_shopping_list','',             'Approved template for shopping list: {{1}} date·by, {{2}} item lines, {{3}} summary'],
     ['clover_enabled',               'false',          'Toggle Clover card reconciliation at end of day'],
     ['clover_base_url',              'https://api.clover.com', 'Clover REST API base (sandbox: https://sandbox.dev.clover.com)'],
@@ -387,6 +395,9 @@ function configDefaults_() {
     ['clover_vape_merchant_id',      '',               'Clover merchant ID for vape (same as cstore = one shared account)'],
     ['clover_vape_token',            '',               'Clover API token (Bearer) for vape'],
     ['card_variance_threshold',      '1',              'Card credit/debit/total mismatch under this = OK (dollars)'],
+    ['cash_manager_staff_id',        '',               'Staff who holds the business cash; shift takings are handed over to them. Blank = cash handling not configured'],
+    ['cash_handover_stale_days',     '7',              'Flag cash still out with a cashier after this many days'],
+    ['public_report_url',            '',               'Deployed web app /exec URL. The reconcile message links to <url>?v=recon (7-day read-only report, no login). Blank = no link sent'],
     ['timezone',                     Session.getScriptTimeZone(), 'Default timezone (script setting overrides)'],
   ];
 }
@@ -1078,6 +1089,92 @@ function menu_migrateShoppingListProductId() {
 // EXISTING till_sessions tab. Idempotent — no-op once the headers are there.
 // Fresh installs already get them via setupTillSessionsSheet_. Until this
 // runs, TillSessions simply skips the lotto fields, so the app keeps working.
+// ============================================================
+//  Cash handling — shift takings held by a cashier until handed
+//  to the cash manager.
+// ============================================================
+//  `cash_handovers` is the header (who moved cash to whom, and — the
+//  part that matters in a dispute — who recorded it). `cash_handover_items`
+//  says which till sessions each handover settles, so "whose cash is still
+//  out, and from which shift" is answerable and not just a running total.
+// ============================================================
+function setupCashHandoversSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName(SHEETS.CASH_HANDOVERS)) return;
+  const sh = ss.insertSheet(SHEETS.CASH_HANDOVERS);
+
+  writeHeader_(sh, '💵  Cash Handovers', 12);
+  writeColumnHeaders_(sh, [
+    'handover_id', 'from_staff_id', 'to_staff_id', 'amount', 'handed_on',
+    'recorded_by', 'recorded_at', 'method', 'status', 'notes',
+    'voided_by', 'voided_at'
+  ]);
+  applyEnumValidation_(sh, 8, PAYMENT_METHODS);
+  applyEnumValidation_(sh, 9, CASH_HANDOVER_STATUSES);
+  sh.getRange(3, 4, 5000, 1).setNumberFormat('$#,##0.00');       // amount
+  sh.getRange(3, 5, 5000, 1).setNumberFormat('yyyy-MM-dd');      // handed_on
+  sh.getRange(3, 7, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+  sh.getRange(3, 12, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
+
+  setColWidths_(sh, [110, 110, 110, 100, 100, 110, 150, 90, 90, 240, 100, 150]);
+  sh.setFrozenRows(2);
+}
+
+function setupCashHandoverItemsSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName(SHEETS.CASH_HANDOVER_ITEMS)) return;
+  const sh = ss.insertSheet(SHEETS.CASH_HANDOVER_ITEMS);
+
+  writeHeader_(sh, '💵  Cash Handover Items', 5);
+  writeColumnHeaders_(sh, ['item_id', 'handover_id', 'session_id', 'amount', 'notes']);
+  sh.getRange(3, 4, 5000, 1).setNumberFormat('$#,##0.00');
+
+  setColWidths_(sh, [110, 110, 170, 100, 240]);
+  sh.setFrozenRows(2);
+}
+
+/**
+ * One-shot migration for spreadsheets set up before cash handling existed.
+ * Creates whichever of the two tables is missing and lands the config keys.
+ * Until it runs, CashHandling.sheetsExist_() is false and the whole feature
+ * stays invisible — so the code is safe to deploy ahead of the click.
+ */
+function menu_migrateCashHandling() {
+  const ui = SpreadsheetApp.getUi();
+  const created = [];
+  try {
+    if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.CASH_HANDOVERS)) {
+      setupCashHandoversSheet_();
+      created.push(SHEETS.CASH_HANDOVERS);
+    }
+    if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.CASH_HANDOVER_ITEMS)) {
+      setupCashHandoverItemsSheet_();
+      created.push(SHEETS.CASH_HANDOVER_ITEMS);
+    }
+  } catch (e) {
+    ui.alert('Could not create the cash handling tables — ' + e.message);
+    return;
+  }
+
+  let configNote = '';
+  try {
+    const synced = syncConfigKeys_();
+    if (synced.added.length) configNote = '\n\nAdded to config: ' + synced.added.join(', ') + '.';
+  } catch (e) {
+    configNote = '\n\nConfig keys not synced — ' + e.message;
+  }
+
+  ui.alert(
+    (created.length
+      ? 'Created: ' + created.join(', ') + '.'
+      : 'Both cash handling tables already exist — nothing to create.') +
+    configNote +
+    '\n\nSet cash_manager_staff_id in the config tab to the staff_id of whoever ' +
+    'holds the business cash. Until it is set, the Cash Handling tab shows each ' +
+    'person their own balance but cannot record a handover.'
+  );
+}
+
 function menu_migrateTillSessionsLottoReserve() {
   const ui = SpreadsheetApp.getUi();
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.TILL_SESSIONS);

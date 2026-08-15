@@ -206,6 +206,214 @@ const Sales = (() => {
    * @param input { startDate, endDate, staffId?, company?, page?, pageSize? }
    * @returns { rows, totalCount, page, pageSize, totals: { cash, credit, debit } }
    */
+  // ============================================================
+  //  Insights
+  // ============================================================
+  //  Everything here answers a question a corner store actually asks:
+  //  is trade up or down, which days carry the week, which part of the
+  //  month pays, and how much of it still arrives as cash.
+  //
+  //  Two rules run through all of it.
+  //
+  //  Averages divide by DAYS THAT TRADED, never by calendar days in the
+  //  range. A week the shop was shut would otherwise read as a collapse
+  //  in trade rather than an absence of it.
+  //
+  //  Where the range is too short to support a claim, the block comes
+  //  back with `insufficient` and a reason, and the UI prints the reason.
+  //  A rolling average drawn through three points looks exactly as
+  //  confident as one drawn through ninety, which is how a dashboard
+  //  starts lying.
+  // ============================================================
+
+  const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  // Days 1-10 / 11-20 / 21-end. Buckets hold different numbers of days —
+  // and a partial range truncates one — so they are only ever compared as
+  // per-day averages, never as sums.
+  const MONTH_BUCKETS = [
+    { key: 'early', label: 'Days 1-10',  from: 1,  to: 10 },
+    { key: 'mid',   label: 'Days 11-20', from: 11, to: 20 },
+    { key: 'late',  label: 'Days 21-end', from: 21, to: 31 },
+  ];
+
+  function pctChange_(now, before) {
+    if (!before) return null;          // no baseline — "+∞%" says nothing
+    return Math.round(((now - before) / Math.abs(before)) * 1000) / 10;
+  }
+
+  function sumTotals_(rows) {
+    let cash = 0, total = 0;
+    rows.forEach(r => {
+      const c = (r.cashSales || 0) + (r.miscCashSales || 0);
+      cash += c;
+      total += totalForRow_(r);
+    });
+    return { cash: Util.roundMoney(cash), total: Util.roundMoney(total) };
+  }
+
+  // Trailing mean over `window` days of the daily series. Emitted only from
+  // the point a full window exists, so the line never starts on a partial
+  // average that looks like a dip.
+  function rollingAverage_(daily, window) {
+    const out = [];
+    for (let i = 0; i < daily.length; i++) {
+      if (i + 1 < window) { out.push(null); continue; }
+      let sum = 0;
+      for (let j = i - window + 1; j <= i; j++) sum += daily[j].total;
+      out.push(Util.roundMoney(sum / window));
+    }
+    return out;
+  }
+
+  function trendInsight_(daily, totals, prevRows, dayCount) {
+    const prev = sumTotals_(prevRows);
+    const perDay = dayCount ? Util.roundMoney(totals.total / dayCount) : 0;
+    const block = {
+      total: totals.total,
+      previousTotal: prev.total,
+      changePct: pctChange_(totals.total, prev.total),
+      changeAmount: Util.roundMoney(totals.total - prev.total),
+      perTradingDay: perDay,
+      tradingDays: dayCount,
+      best: null, worst: null,
+      rolling7: null,
+    };
+    if (daily.length) {
+      const sorted = daily.slice().sort((a, b) => b.total - a.total);
+      block.best  = { dateStr: sorted[0].dateStr, total: sorted[0].total };
+      block.worst = { dateStr: sorted[sorted.length - 1].dateStr, total: sorted[sorted.length - 1].total };
+    }
+    if (daily.length >= 7) {
+      block.rolling7 = rollingAverage_(daily, 7);
+    } else {
+      block.rollingInsufficient = 'Needs 7 days of sales for a rolling average — this range has ' + daily.length + '.';
+    }
+    return block;
+  }
+
+  function dayOfWeekInsight_(daily) {
+    const buckets = DOW_NAMES.map((n, i) => ({ dow: i, name: n, short: DOW_SHORT[i], total: 0, days: 0, average: 0 }));
+    daily.forEach(d => {
+      if (!d.dateMs) return;
+      const b = buckets[new Date(d.dateMs).getDay()];
+      b.total = Util.roundMoney(b.total + d.total);
+      b.days++;
+    });
+    buckets.forEach(b => { b.average = b.days ? Util.roundMoney(b.total / b.days) : 0; });
+
+    const traded = buckets.filter(b => b.days > 0);
+    if (traded.length < 2) {
+      return { insufficient: 'Needs at least two different weekdays of sales.', buckets: buckets };
+    }
+    const ranked = traded.slice().sort((a, b) => b.average - a.average);
+    return {
+      buckets: buckets,
+      best:  { name: ranked[0].name, average: ranked[0].average },
+      worst: { name: ranked[ranked.length - 1].name, average: ranked[ranked.length - 1].average },
+      // How much better the best day is than the worst — the number that
+      // decides whether staffing the week evenly is a mistake.
+      spreadPct: pctChange_(ranked[0].average, ranked[ranked.length - 1].average),
+    };
+  }
+
+  function timeOfMonthInsight_(daily) {
+    const buckets = MONTH_BUCKETS.map(b => ({
+      key: b.key, label: b.label, total: 0, days: 0, average: 0,
+    }));
+    daily.forEach(d => {
+      if (!d.dateMs) return;
+      const dom = new Date(d.dateMs).getDate();
+      const idx = dom <= 10 ? 0 : (dom <= 20 ? 1 : 2);
+      buckets[idx].total = Util.roundMoney(buckets[idx].total + d.total);
+      buckets[idx].days++;
+    });
+    buckets.forEach(b => { b.average = b.days ? Util.roundMoney(b.total / b.days) : 0; });
+
+    // Under a month, at least one bucket is missing or barely sampled, and
+    // "days 1-10 are your best" off four days is a coin toss with a chart.
+    const covered = buckets.filter(b => b.days > 0).length;
+    if (daily.length < 28 || covered < 3) {
+      return {
+        insufficient: 'Needs a full month of sales to compare parts of the month — this range covers ' +
+                      daily.length + ' trading day' + (daily.length === 1 ? '' : 's') +
+                      ' across ' + covered + ' of 3 parts.',
+        buckets: buckets,
+      };
+    }
+    const ranked = buckets.slice().sort((a, b) => b.average - a.average);
+    const overall = Util.roundMoney(
+      buckets.reduce((s, b) => s + b.total, 0) / buckets.reduce((s, b) => s + b.days, 0)
+    );
+    buckets.forEach(b => { b.vsOverallPct = pctChange_(b.average, overall); });
+    return {
+      buckets: buckets,
+      overallAverage: overall,
+      strongest: { label: ranked[0].label, average: ranked[0].average },
+      weakest:   { label: ranked[2].label, average: ranked[2].average },
+    };
+  }
+
+  function tenderMixInsight_(daily, totals, prevRows) {
+    const share = (cash, total) => total ? Math.round((cash / total) * 1000) / 10 : null;
+    const prev = sumTotals_(prevRows);
+    const nowShare  = share(totals.cash, totals.total);
+    const prevShare = share(prev.cash, prev.total);
+    return {
+      cash: totals.cash,
+      total: totals.total,
+      cashSharePct: nowShare,
+      previousCashSharePct: prevShare,
+      // Percentage POINTS, not a percent change of a percent — the latter is
+      // the classic way this number gets reported as five times its size.
+      changePoints: (nowShare != null && prevShare != null)
+        ? Math.round((nowShare - prevShare) * 10) / 10 : null,
+      series: daily.map(d => ({
+        dateStr: d.dateStr,
+        sharePct: share(d.cash, d.total),
+      })),
+    };
+  }
+
+  /**
+   * Everything the sales dashboard shows above the raw rows. Built from the
+   * `daily` series the dashboard already computes, plus ONE extra read for
+   * the preceding equal-length window.
+   */
+  function buildInsights_(daily, totals, startDate, endDate, filters) {
+    // Step the baseline window in whole DAYS, not raw milliseconds. Callers
+    // pass an end of 23:59:59, so a millisecond span is a second short of the
+    // full range — enough to land `prevStart` just after midnight and drop a
+    // row stamped at exactly midnight, which is how every date in this sheet
+    // is stored. Constructing the dates by component also keeps it correct
+    // across a DST boundary, where 86400000ms is not a day.
+    const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    const endDay   = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+    const spanDays = Math.max(1, Math.round((endDay - startDay) / 86400000) + 1);
+    const prevStart = new Date(startDay.getFullYear(), startDay.getMonth(), startDay.getDate() - spanDays);
+    const prevEnd   = new Date(startDay.getTime() - 1);   // 23:59:59.999 the day before
+    let prevRows = [];
+    try {
+      prevRows = getForDateRange_(prevStart, prevEnd, filters) || [];
+    } catch (e) {
+      // A failed baseline should cost the comparison, not the dashboard.
+      prevRows = [];
+    }
+
+    return {
+      trend:       trendInsight_(daily, totals, prevRows, daily.length),
+      dayOfWeek:   dayOfWeekInsight_(daily),
+      timeOfMonth: timeOfMonthInsight_(daily),
+      tenderMix:   tenderMixInsight_(daily, totals, prevRows),
+      previousPeriod: {
+        startStr: Util.formatDate(prevStart),
+        endStr:   Util.formatDate(prevEnd),
+        sessionCount: prevRows.length,
+      },
+    };
+  }
+
   function getDashboard_(input) {
     const startDate = input.startDate
       ? (input.startDate instanceof Date ? input.startDate : Util.parseDate(input.startDate))
@@ -294,6 +502,9 @@ const Sales = (() => {
       pageCount: Math.max(1, Math.ceil(rows.length / pageSize)),
       totals,
       daily,
+      insights: buildInsights_(daily, totals, startDate, endDate, {
+        staffId: input.staffId, company: input.company,
+      }),
     };
   }
 

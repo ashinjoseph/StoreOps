@@ -282,3 +282,202 @@ This completes v1.0.0.
 - Vape close is unchanged, and lotto never reaches the `sales` sheet — a
   payout is not a sale, and mixing it in would corrupt commissions and the
   Clover reconciliation.
+
+### Cash handling — the other half of the drawer (Batch 8)
+- **Cash that leaves the drawer is now tracked to the person carrying it.**
+  Every close already computed `cash_removed_at_close` — the count, less the
+  float that stays for tomorrow, less anything moved into the lotto reserve —
+  and then forgot about it. That is real money in someone's pocket, and the
+  business had no answer to *how much of our cash is out with staff right now,
+  and with whom*. It accumulates against the cashier, shift by shift, until a
+  handover discharges it.
+- **A handover names who recorded it, and that line is never hidden.** There is
+  deliberately no confirm step: either the cashier or the cash manager records
+  the movement and it takes effect immediately. What makes it trustworthy is
+  attribution — *"recorded by Jaigy · 8:02 PM"* sits on every row in both views,
+  uncollapsed, because with no handshake that line **is** the acknowledgment.
+  When one person says they handed cash over and the other says they didn't, the
+  tab is the record.
+- **Handovers settle specific shifts, oldest first.** A partial handover fills
+  each session before moving to the next, so "which shift's cash is still out"
+  has an answer rather than just a total. The split is previewed live in the
+  sheet as the amount is typed — visible *before* submitting, not discovered
+  afterwards. Same walk `payShifts` uses against unpaid attendance.
+- **Handing over less than the full balance requires a reason**, and the reason
+  field only appears once the amount is short — the show-on-need rule the lotto
+  reserve reason already follows. Handing over *more* than the balance is
+  refused with the real figure named, which is what keeps a balance from going
+  negative.
+- **A void keeps the row.** `Payments.undo` deletes; this doesn't. The status
+  flips to `voided`, the allocation reverses because voided rows stop counting,
+  and the mistake stays legible with who made it. A ledger that exists for
+  conflict review can't quietly delete its own evidence.
+- **The reserve was already accounted for, and still is.** The lotto top-up
+  comes off `cash_removed_at_close` and nothing else, so a refill day leaves the
+  cashier carrying $100 instead of $400 while `closing_variance` stays $0.00. A
+  payout made during the shift never enters the arithmetic at all — it came out
+  of the pot, and the POS cash figure is already net of it. **No close maths
+  changed in this batch.**
+- **A short drawer is not a credit.** If a count comes in under its own float,
+  `cash_removed_at_close` is negative; those sessions are skipped rather than
+  summed. Adding them would let a till shortfall quietly *reduce* what a cashier
+  owes, turning a loss into a discount — and `variance_status` already handles
+  shortfalls. Unlikely in practice, since the reserve exists for exactly that
+  case, but cheap to guard.
+- **"Banked" is now "in hand"**, on the close summary, in the reconcile message
+  and on the close notice. It was never banked — it is being carried until
+  someone hands it over. One word for one thing, in all three places it is read.
+- `shift.closed` notices name it too: *"closed cstore shift, $0.00 variance,
+  lotto reserve $500.00 (+$300.00 from till), $100.00 in hand"* — guarded like
+  the reserve clause, so a close that took nothing out stays silent about it.
+- **My Shift shows what you're carrying** with a tap through to the tab, so the
+  balance is discovered rather than hunted for in the More drawer.
+- The cash manager is **one named person in config** (`cash_manager_staff_id`),
+  not a role and not hardcoded. When he works a shift himself he holds that
+  shift's cash like anyone else and records a handover to himself — `from == to`
+  is an ordinary row, and his own balance sits above the roster so he can't scan
+  past it.
+- Cash still out after `cash_handover_stale_days` (default 7) is flagged in its
+  own block on the manager's view — a thing to act on, not a badge to scan for.
+- `Setup.gs` — new `cash_handovers` + `cash_handover_items` tables and a
+  **Add cash handling tables** migration. Until it runs, `sheetsExist_()` is
+  false, every RPC returns `{enabled:false}` instead of throwing, and the tab
+  hides itself — so this deploys safely ahead of the click.
+- Privilege is resolved server-side from the session, never from the client: an
+  employee gets their own balance and nothing else, and asking
+  `rpcGetCashHandoverHistory` for someone else's rows quietly returns their own.
+
+### Reconcile message rebuilt on 13 parameters (Batch 8)
+- **The nine-parameter template is replaced by `shift_close_v2`.** Parameter 5
+  had become a dumping ground — cash recorded/counted, the variance, the
+  destination split and the whole lotto reserve were crammed into one value,
+  because the approved template had no room for a tenth. That produced exactly
+  the line nobody could read. Thirteen parameters now carry one fact each and
+  the template owns the layout.
+- **Two facts the message never carried:** who worked the till (`{{4}}`), and
+  who is carrying the day's cash (`{{8}}`) — the latter naming both today's
+  takings per person and how much is still out across the business, with a
+  flag when anything has been held past `cash_handover_stale_days`. Today's
+  movement and the standing balance answer different questions, so both appear.
+- The cash variance now carries its own ✅/⚠️ mark rather than sitting bare, and
+  the Clover-unavailable status says what it cost you — *"cards not verified"* —
+  instead of just naming the outage.
+- Parameter 9 reads `not tracked on this till` for a vape-only day or a
+  pre-migration sheet. A fixed template can't drop a section the way the plain
+  text does, so it says so rather than sending a bare dash.
+- `docs/whatsapp-template-shift-close.md` — the body to paste into Meta, sample
+  values taken from real harness output, the good-day/bad-day shape of every
+  parameter, and the structural rules the layout satisfies (no leading or
+  trailing variable, no two variables adjacent — which is why `Result:` sits in
+  front of `{{13}}`).
+- Deploying before the new template is approved costs the message, not the
+  data: Meta rejects the send on a parameter-count mismatch, `dispatch_` mutes
+  it, and the reconciliation still runs and still writes its row.
+- **"All matched" now checks the cash too.** The status tested the card
+  difference *only*, so a drawer $40 short still reported ✅ All matched as long
+  as Clover and the cashier agreed on cards — the one line most people read,
+  saying the one thing it hadn't checked. It now fails on either and names
+  which: *"⚠️ cash short $40.00 · cards off $12.00"*. The `{{5}}` total-sales
+  difference is deliberately left out of the roll-up: it is a derived
+  cross-check that already contains the cash variance, and folding it in would
+  flag the same shortfall twice.
+- **Cash in hand names people.** *"$1240.00 still out with 2 people"* said there
+  was something to chase without saying who to chase. It lists holders by name
+  with their balances, and falls back to today's takings marked `(today)` where
+  the cash handling tables aren't set up yet.
+- The cards block is labelled `Clover / cashier` so the two figures in each row
+  are identified rather than inferred.
+- **One sign convention across the whole message.** Every line now reads
+  *claimed / measured (var = measured − claimed)*, so negative always means
+  less is there than was claimed. Total sales was subtracting the other way, so
+  a $40 short drawer read `+$40.00` on one line and `cash short $40.00` two
+  lines below — the same event with opposite signs, which reads as a
+  contradiction rather than a reconciliation. Cards had the same inversion
+  hidden differently: displayed `Clover / cashier` but differenced
+  `cashier − Clover`. Both are realigned; the stored `card_variance` column
+  keeps its original direction so the sheet doesn't change meaning halfway
+  through its history.
+
+### Sales and Reconcile split, plus a report anyone can open (Batch 9)
+- **Sales and Reconcile are two tabs now.** A reconciliation panel was pinned to
+  the top of the sales dashboard, so neither could grow: Sales couldn't gain the
+  trend work below, and Reconcile couldn't become the daily-control view it
+  wanted to be. They answer different questions on different cadences.
+- **The reconcile table stops mixing units.** It read `Cash Δ` beside absolute
+  `Card` and `Clover` — a delta and two levels in one row, with nothing to
+  compare across. Cash and cards now both read *claimed / measured (var ±$X)*,
+  the same convention the WhatsApp message uses, and a harness asserts the two
+  produce identical figures **including sign** so they can't drift apart again.
+- **Four insights on the Sales tab**, each answering something a corner store
+  actually acts on:
+  - **Trend** against the previous equal-length window, with a 7-day rolling
+    average so a noisy Tuesday doesn't read as a decline.
+  - **Part of month** — days 1-10 / 11-20 / 21-end, which is where the payday
+    and cheque cycles show up.
+  - **Day of week**, naming the busiest and quietest, so staffing can follow the
+    real week.
+  - **Cash share of takings**, and whether it's drifting — the number that
+    decides how much float is needed and how much ends up in someone's hands.
+- **Averages divide by days that traded, not calendar days.** A week the shop
+  was shut would otherwise read as a collapse in trade rather than an absence of
+  it, which is the same arithmetic mistake that makes seasonal businesses look
+  like failing ones.
+- **Short ranges say so instead of drawing a line.** The rolling average needs 7
+  days and the month split needs a full month; below that the block explains why
+  it's empty. A trend line through three points looks exactly as authoritative
+  as one through ninety.
+- **Percentage-point changes are labelled as points.** Cash share moving 50%→60%
+  reports `+10 pts`, not `+20%` — the classic way this number gets published at
+  twice its real size.
+- **A 7-day report anyone can open, no login.** `?v=recon` on the deployment URL
+  serves a read-only page: who is carrying cash and how much, how the lotto pot
+  moved day by day with the cashier's reasons, and whether each day reconciled.
+  The reconcile WhatsApp links to it, so checking a figure no longer means
+  finding a PIN.
+- The report's data is **inlined into the page at render time**, so serving it
+  creates no RPC reachable without a session — the only thing exposed is one URL
+  returning one document. Each section is wrapped: a sheet that hasn't run a
+  migration reports that section unavailable rather than failing the page, and a
+  failed build never puts a stack trace in front of an anonymous visitor.
+- The link is a **static URL button** on the template, not a 14th body
+  parameter — so it rides the same Meta submission instead of costing a second
+  approval, and `Notifier` needs no change to send it. Blank
+  `public_report_url` sends no link rather than a dead one.
+- `doGet` routes on `?v=`; an unknown value falls through to the app so a
+  mangled link lands somewhere useful. `?days=` is clamped 1-31, and coerced
+  before clamping — `Number('abc')` is `NaN`, which survives both `Math.max` and
+  `Math.min` and would have rendered an empty report.
+- Fixed: the insights baseline window stepped by milliseconds, and callers pass
+  an end of `23:59:59`. That put `prevStart` a second after midnight and dropped
+  any row stamped at exactly midnight — which is how every date in the sheet is
+  stored. It steps whole days by date component now, which is also correct
+  across a DST boundary where 86400000ms is not a day.
+- `Setup.gs` — new `public_report_url` config key. The report needs the
+  deployment set to *Execute as: Me* / *Anyone*; a console setting, not code.
+
+#### Fixed after the first test deployment
+
+Three defects that only a live deployment could surface — all of them in the
+wiring between layers, which is exactly where the module-level harnesses do not
+look.
+
+- **The public report showed nothing at all.** `Public.html` inlined its payload
+  with `<?= ?>`, the *escaping* scriptlet, so the JSON arrived contextually
+  escaped and `DATA` parsed as a string. Every property read came back
+  `undefined`, and the page rendered as three "unavailable" cards — a failure
+  that looks like a built page rather than a broken one. Now `<?!= ?>`, with
+  guards on each section so a genuinely missing one costs a card and not the
+  document.
+- **The sales insights never arrived.** `rpcGetSalesDashboard` re-shapes the
+  dashboard result by hand (`totalCount` → `rowCount`), and the hand-written
+  projection silently dropped `insights` — computed on every request for the
+  whole of the first deployment, then thrown away one line before the client.
+- **The default range hid an insight it was meant to show.** Time-of-month
+  suppresses below 28 trading days, so a fortnight default guaranteed that card
+  read "needs a full month" on every first load. The default is 30 days, chosen
+  so all four cards have enough behind them to say something.
+- A `wiring` suite now covers both seams: the dashboard RPC must forward every
+  field the UI reads — discovered from `Index.html` rather than hardcoded, so a
+  new `data.foo` fails until the RPC sends it — and `Public.html` must inline
+  its payload unescaped. Both assertions were confirmed to fail against the
+  original code before being kept.

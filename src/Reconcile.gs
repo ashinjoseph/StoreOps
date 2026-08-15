@@ -120,11 +120,18 @@ const Reconcile = (() => {
         cashierCredit: 0, cashierDebit: 0, cashSales: 0,
         cashCounted: 0, cashVariance: 0, openingFloat: 0,
         cashBanked: 0, floatLeft: 0, lottoTopup: 0,
+        tookCash: {}, staff: {},
         startMs: Infinity, endMs: 0,
       };
       const g = groups[key];
       g.companies[s.company] = true;
       g.sessionIds.push(s.sessionId);
+      g.staff[s.staffId] = true;
+      // Who walked out with what, today. The standing balance is a separate
+      // question (CashHandling answers it); this is just this day's movement.
+      if ((s.cashRemovedAtClose || 0) > 0.005) {
+        g.tookCash[s.staffId] = Util.roundMoney((g.tookCash[s.staffId] || 0) + s.cashRemovedAtClose);
+      }
       const sale = salesById[s.sessionId];
       if (sale) {
         g.cashierCredit += (sale.creditCardSales || 0) + (sale.miscCreditSales || 0);
@@ -161,6 +168,24 @@ const Reconcile = (() => {
       console.error('reconcile: lotto log failed: ' + e.message);
     }
 
+    // Standing cash-in-hand across the whole business, read once. Today's
+    // takings say what moved; this says how much is still out, which is the
+    // number that should worry someone if it keeps climbing.
+    let cashOut = null;
+    try {
+      if (CashHandling.sheetsExist()) cashOut = CashHandling.getAllOutstanding();
+    } catch (e) {
+      console.error('reconcile: cash outstanding failed: ' + e.message);
+    }
+
+    // staff_id → display name, for the "who worked" line.
+    const staffNames = {};
+    try {
+      Staff.getAll().forEach(st => { staffNames[st.staffId] = st.name; });
+    } catch (e) {
+      console.error('reconcile: staff names failed: ' + e.message);
+    }
+
     Object.keys(groups).forEach(key => {
       const g = groups[key];
       // Fall back to the day if a session is missing a timestamp.
@@ -179,8 +204,15 @@ const Reconcile = (() => {
       const cloverCard   = clover.ok ? clover.total  : 0;
       const cardDiff = Util.roundMoney(cashierCard - cloverCard);
 
+      // The roll-up must cover the CASH too. It used to test cardDiff alone,
+      // which meant a drawer $40 short still reported "All matched" as long as
+      // the card totals agreed — the one line most people read, saying the one
+      // thing it hadn't checked.
+      const cashThreshold = Number(configValue_('variance_ok_threshold', 1)) || 1;
+      const cashOff = Math.abs(Util.roundMoney(g.cashVariance)) > cashThreshold;
+      const cardsOff = Math.abs(cardDiff) > threshold;
       const status = !clover.ok ? 'clover_unavailable'
-        : (Math.abs(cardDiff) <= threshold ? 'OK' : 'investigate');
+        : (cashOff || cardsOff ? 'investigate' : 'OK');
 
       const rec = {
         merchant: g.merchant.merchantId || '(not configured)',
@@ -198,6 +230,18 @@ const Reconcile = (() => {
         cashBanked: Util.roundMoney(g.cashBanked),
         floatLeft: Util.roundMoney(g.floatLeft),
         lottoTopup: Util.roundMoney(g.lottoTopup),
+        staffNames: Object.keys(g.staff).map(id => staffNames[id] || id).sort(),
+        // [{ name, amount }] — who took today's cash out of this till.
+        tookCash: Object.keys(g.tookCash)
+          .map(id => ({ name: staffNames[id] || id, amount: g.tookCash[id] }))
+          .sort((a, b) => b.amount - a.amount),
+        // Business-wide, not per-merchant — but it belongs on the message that
+        // reports the day's cash, and only needs saying once. null (not [])
+        // means the tables aren't there, which reads differently from
+        // "nobody is holding anything".
+        cashOutTotal: cashOut ? cashOut.grandTotal : null,
+        cashOutHolders: cashOut ? cashOut.holders.map(h => ({ name: h.name, total: h.total })) : null,
+        cashOutStale: cashOut ? cashOut.stale.length : 0,
         // Only the group that actually holds cstore carries the pot.
         lotto: (lotto && g.companies[TillSessions.lottoCompany]) ? {
           balance:  lotto.lastCounted,
@@ -262,63 +306,155 @@ const Reconcile = (() => {
 
   // The 9 ordered params for the shift_close template. All single-line
   // scalars - the template owns the layout. Convention: source / local.
+  /** Who worked this till today. */
+  function staffParam_(m) {
+    const names = m.staffNames || [];
+    return names.length ? names.join(', ') : 'no staff recorded';
+  }
+
+  /**
+   * Who is carrying cash, by name. Always by name: "$1240 out with 2 people"
+   * tells you there is a problem without telling you whose problem it is,
+   * which is the half that would let you act on it.
+   *
+   * Prefers the standing balance (every unsettled shift, not just today's) —
+   * that is the number that should worry someone if it keeps climbing. Falls
+   * back to today's takings when the cash handling tables aren't there yet.
+   */
+  function inHandParam_(m) {
+    if (m.cashOutHolders && m.cashOutHolders.length) {
+      const parts = m.cashOutHolders.map(h => h.name + ' ' + Util.formatMoney(h.total));
+      if (m.cashOutStale) {
+        parts.push('⚠️ ' + m.cashOutStale +
+          (m.cashOutStale === 1 ? ' shift' : ' shifts') + ' held over the limit');
+      }
+      return parts.join(' · ');
+    }
+    if (m.cashOutHolders) return 'nobody is holding cash';
+
+    // Cash handling not set up — report what left the drawer today, which the
+    // sessions tell us regardless.
+    const took = m.tookCash || [];
+    return took.length
+      ? took.map(t => t.name + ' ' + Util.formatMoney(t.amount)).join(' · ') + ' (today)'
+      : 'nothing taken out today';
+  }
+
+  /** The pot, as one line. Fixed templates can't drop a section, so a till
+   *  without a reserve says so rather than sending an empty dash. */
+  function lottoParam_(m) {
+    if (!m.lotto) return 'not tracked on this till';
+    const short = Number(m.lotto.shortfall) || 0;
+    let s = (m.lotto.balance == null ? 'not counted yet' : Util.formatMoney(m.lotto.balance));
+    if ((m.lottoTopup || 0) > 0.01) s += ' (+' + Util.formatMoney(m.lottoTopup) + ' moved in)';
+    if (short > 0.01) {
+      s += ' - short ' + Util.formatMoney(short);
+      if (m.lotto.note) s += ' - ' + m.lotto.note;
+    }
+    return s;
+  }
+
+  /**
+   * Body parameters for `whatsapp_template_shift_close`, in template order.
+   *
+   * THIRTEEN parameters, one idea each. The previous nine crammed the
+   * destination, the reserve and the variance into a single cash parameter
+   * because the approved template had no room — which made the one line
+   * nobody could parse. The static template now owns the layout; every value
+   * here is a single fact on a single line.
+   *
+   * Rules these must satisfy or Meta rejects the send: no newlines, no tabs,
+   * no run of 4+ spaces inside a value. flattenForTemplate_ enforces it, but
+   * building them clean means it never has to.
+   */
+  /**
+   * The bottom line, naming what is wrong rather than only that something is.
+   * "⚠️ Review needed" sent the reader back through the whole message to find
+   * out what; this says it in the same breath.
+   */
+  function statusParam_(m) {
+    if (!m.cloverOk) return '⚠️ Clover unavailable - cards not verified';
+    const cashThreshold = Number(configValue_('variance_ok_threshold', 1)) || 1;
+    const cardThreshold = Number(configValue_('card_variance_threshold', 1)) || 1;
+    const problems = [];
+    const cashVar = Number(m.cashVariance) || 0;
+    if (Math.abs(cashVar) > cashThreshold) {
+      problems.push('cash ' + (cashVar < 0 ? 'short ' : 'over ') + Util.formatMoney(Math.abs(cashVar)));
+    }
+    const cardVar = Number(m.cardDiff) || 0;
+    if (Math.abs(cardVar) > cardThreshold) {
+      problems.push('cards off ' + Util.formatMoney(Math.abs(cardVar)));
+    }
+    return problems.length ? '⚠️ ' + problems.join(' · ') : '✅ All matched';
+  }
+
   function reconParams_(dateObj, m) {
     const friendly = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'EEE d MMM yyyy');
     const windowStr = hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd);
     const companies = m.companies.join(' + ');
     const recorded = Util.roundMoney(m.cashCounted - m.cashVariance);
-    // The reserve rides inside the cash parameter rather than taking a 10th:
-    // the template is approved at Meta with exactly 9, and adding one means
-    // re-submitting it before anything sends at all. Single line, no markdown
-    // — flattenForTemplate_ would strip both anyway.
-    const cashParts = [
-      Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) +
-        ' (var ' + signed_(m.cashVariance) + ')',
-      'banked ' + Util.formatMoney(m.cashBanked || 0),
-    ];
-    if (m.lotto) {
-      const short = Number(m.lotto.shortfall) || 0;
-      cashParts.push(
-        'lotto reserve ' +
-        (m.lotto.balance == null ? 'not counted yet' : Util.formatMoney(m.lotto.balance)) +
-        ((m.lottoTopup || 0) > 0.01 ? ' (+' + Util.formatMoney(m.lottoTopup) + ' moved in)' : '') +
-        (short > 0.01 ? ' - short ' + Util.formatMoney(short) : '')
-      );
-    }
-    const cashLine = cashParts.join(' · ');
     const reported = Util.roundMoney(m.cashSales + m.cashierCard);
+
+    const cashLine = Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) +
+      ' (var ' + signed_(m.cashVariance) + ') ' + mark_(m.cashVariance);
+
     let totalLine, credit, debit, total, status;
     if (m.cloverOk) {
-      const expected = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
-      const totalDiff = Util.roundMoney(reported - expected);
-      totalLine = 'reported ' + Util.formatMoney(reported) + ' / expected ' + Util.formatMoney(expected) + ' (' + signed_(totalDiff) + ') ' + mark_(totalDiff);
-      credit = Util.formatMoney(m.cloverCredit) + ' / ' + Util.formatMoney(m.cashierCredit) + ' (' + signed_(m.creditDiff) + ') ' + mark_(m.creditDiff);
-      debit  = Util.formatMoney(m.cloverDebit) + ' / ' + Util.formatMoney(m.cashierDebit) + ' (' + signed_(m.debitDiff) + ') ' + mark_(m.debitDiff);
-      total  = Util.formatMoney(m.cloverCard) + ' / ' + Util.formatMoney(m.cashierCard) + ' (' + signed_(m.cardDiff) + ') ' + mark_(m.cardDiff);
-      status = m.status === 'OK' ? '✅ All matched' : '⚠️ Review needed';
+      // Sign convention, shared with the cash line and the status: the
+      // measured figure MINUS the claimed one, so negative always means money
+      // missing. Subtracting the other way round made a short drawer read
+      // "+$40" here and "short $40.00" two lines below — the same event with
+      // opposite signs, which reads as a contradiction.
+      const counted = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
+      const totalDiff = Util.roundMoney(counted - reported);
+      totalLine = 'reported ' + Util.formatMoney(reported) + ' / counted ' + Util.formatMoney(counted) + ' (var ' + signed_(totalDiff) + ') ' + mark_(totalDiff);
+      // Cashier first, Clover second, variance = Clover − cashier. Same shape
+      // as the cash and total lines: what was claimed, then what is actually
+      // there, then measured minus claimed. The stored `creditDiff`/`cardDiff`
+      // keep their original direction so the sheet column doesn't change
+      // meaning mid-history — the display is computed from the two values.
+      credit = Util.formatMoney(m.cashierCredit) + ' / ' + Util.formatMoney(m.cloverCredit) + ' (var ' + signed_(m.cloverCredit - m.cashierCredit) + ') ' + mark_(m.creditDiff);
+      debit  = Util.formatMoney(m.cashierDebit) + ' / ' + Util.formatMoney(m.cloverDebit) + ' (var ' + signed_(m.cloverDebit - m.cashierDebit) + ') ' + mark_(m.debitDiff);
+      total  = Util.formatMoney(m.cashierCard) + ' / ' + Util.formatMoney(m.cloverCard) + ' (var ' + signed_(m.cloverCard - m.cashierCard) + ') ' + mark_(m.cardDiff);
     } else {
       totalLine = 'reported ' + Util.formatMoney(reported) + ' (no Clover)';
       credit = Util.formatMoney(m.cashierCredit) + ' (cashier, no Clover)';
       debit  = Util.formatMoney(m.cashierDebit) + ' (cashier, no Clover)';
       total  = Util.formatMoney(m.cashierCard) + ' (cashier, no Clover)';
-      status = '⚠️ Clover unavailable';
     }
+    status = statusParam_(m);
+
     return [
-      friendly, companies, windowStr,
-      totalLine, cashLine,
-      credit, debit, total, status,
+      friendly,            // {{1}}  Sat 15 Aug 2026
+      companies,           // {{2}}  cstore + vape
+      windowStr,           // {{3}}  09:00–17:20
+      staffParam_(m),      // {{4}}  Ashin, Meera
+      totalLine,           // {{5}}  reported / expected
+      cashLine,            // {{6}}  recorded / counted (var)
+      destination_(m),     // {{7}}  float back · reserve · in hand
+      inHandParam_(m),     // {{8}}  who carries it, what's still out
+      lottoParam_(m),      // {{9}}  pot balance, movement, reason
+      credit,              // {{10}}
+      debit,               // {{11}}
+      total,               // {{12}}
+      status,              // {{13}}
     ];
   }
 
   /**
    * Where the counted cash went, on one line: the float stays in the drawer,
-   * any reserve top-up leaves for the pot, the rest is banked. Without this
-   * the banked figure just drops by the transfer with nothing to explain it.
+   * any reserve top-up leaves for the pot, and the rest leaves with the
+   * cashier. Without this the last figure just drops by the transfer with
+   * nothing to explain it.
+   *
+   * Called "in hand", not "banked" — it isn't banked, it's being carried
+   * until it's handed to the cash manager, and CashHandling tracks it from
+   * there. Same word on the close sheet and the close notice.
    */
   function destination_(m) {
     const parts = ['float ' + Util.formatMoney(m.floatLeft || 0) + ' back'];
     if ((m.lottoTopup || 0) > 0.01) parts.push('reserve ' + Util.formatMoney(m.lottoTopup));
-    parts.push('banked ' + Util.formatMoney(m.cashBanked || 0));
+    parts.push(Util.formatMoney(m.cashBanked || 0) + ' in hand');
     return parts.join(' · ');
   }
 
@@ -350,12 +486,13 @@ const Reconcile = (() => {
     const lines = ['\u{1F9FE} *Shift Reconciliation*', '\u{1F4C5} ' + friendly, ''];
     merchants.forEach(m => {
       lines.push('\u{1F3EA} *' + m.companies.join(' + ') + '*   \u{23F0} ' + hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd));
+      lines.push('\u{1F464} ' + staffParam_(m));
       lines.push('');
       const reported = Util.roundMoney(m.cashSales + m.cashierCard);
       if (m.cloverOk) {
-        const expected = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
-        const totalDiff = Util.roundMoney(reported - expected);
-        lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + ' / expected ' + Util.formatMoney(expected) + '   ' + signed_(totalDiff) + ' ' + mark_(totalDiff));
+        const counted = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
+        const totalDiff = Util.roundMoney(counted - reported);
+        lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + ' / counted ' + Util.formatMoney(counted) + '   var ' + signed_(totalDiff) + ' ' + mark_(totalDiff));
       } else {
         lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + '   (no Clover)');
       }
@@ -365,22 +502,44 @@ const Reconcile = (() => {
       lines.push(Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) + '   var ' + signed_(m.cashVariance));
       lines.push('\u{21B3} ' + destination_(m));
       lines.push('');
+      lines.push('\u{1F91D} *Cash in hand*');
+      lines.push('\u{21B3} ' + inHandParam_(m));
+      lines.push('');
       const reserve = reserveLines_(m);
       if (reserve.length) { reserve.forEach(l => lines.push(l)); lines.push(''); }
       if (m.cloverOk) {
-        lines.push('\u{1F4B3} *Cards - Clover / cashier*');
-        lines.push('Credit  ' + Util.formatMoney(m.cloverCredit) + ' / ' + Util.formatMoney(m.cashierCredit) + '   ' + signed_(m.creditDiff) + ' ' + mark_(m.creditDiff));
-        lines.push('Debit   ' + Util.formatMoney(m.cloverDebit) + ' / ' + Util.formatMoney(m.cashierDebit) + '   ' + signed_(m.debitDiff) + ' ' + mark_(m.debitDiff));
-        lines.push('Total   ' + Util.formatMoney(m.cloverCard) + ' / ' + Util.formatMoney(m.cashierCard) + '   ' + signed_(m.cardDiff) + ' ' + mark_(m.cardDiff));
+        lines.push('\u{1F4B3} *Cards - cashier / Clover*');
+        lines.push('Credit  ' + Util.formatMoney(m.cashierCredit) + ' / ' + Util.formatMoney(m.cloverCredit) + '   var ' + signed_(m.cloverCredit - m.cashierCredit) + ' ' + mark_(m.creditDiff));
+        lines.push('Debit   ' + Util.formatMoney(m.cashierDebit) + ' / ' + Util.formatMoney(m.cloverDebit) + '   var ' + signed_(m.cloverDebit - m.cashierDebit) + ' ' + mark_(m.debitDiff));
+        lines.push('Total   ' + Util.formatMoney(m.cashierCard) + ' / ' + Util.formatMoney(m.cloverCard) + '   var ' + signed_(m.cloverCard - m.cashierCard) + ' ' + mark_(m.cardDiff));
         lines.push('');
-        lines.push(m.status === 'OK' ? '✅ *All matched*' : '⚠️ *Review needed*');
+        lines.push('*' + statusParam_(m) + '*');
       } else {
         lines.push('\u{1F4B3} *Cards*  cashier ' + Util.formatMoney(m.cashierCard) + '   ⚠️ Clover unavailable');
       }
       lines.push('');
     });
+    // The template carries this as a tappable button; plain text has no
+    // buttons, so it goes in as a line. Omitted entirely when unconfigured
+    // rather than sending a dead "?v=recon".
+    const reportUrl = reportUrl_();
+    if (reportUrl) {
+      lines.push('📈 Last 7 days: ' + reportUrl);
+      lines.push('');
+    }
     lines.push('_StoreOps · automated_');
     return lines.join('\n').trim();
+  }
+
+  /**
+   * The public report link, or '' when not configured. Appends the view
+   * parameter so the config holds the plain deployment URL and nobody has to
+   * remember the query string.
+   */
+  function reportUrl_() {
+    const base = (configValue_('public_report_url', '') || '').toString().trim();
+    if (!base) return '';
+    return base + (base.indexOf('?') === -1 ? '?v=recon' : '&v=recon');
   }
 
   /**

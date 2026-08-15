@@ -282,6 +282,192 @@
   .lotto-log > summary::after { content: '▾'; font-size: 10px; }
   .lotto-log[open] > summary::after { content: '▴'; }
 
+  /* ── Sales insights ────────────────────────────────── */
+  .ins-wrap {
+    display: grid; gap: 12px; margin-bottom: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+  .ins-card {
+    background: #fff; border: 1px solid #e6e8ee; border-radius: 12px;
+    padding: 14px 16px; min-width: 0;
+  }
+  .ins-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 8px;
+  }
+  .ins-title {
+    font-size: 11px; letter-spacing: .11em; text-transform: uppercase;
+    color: #6b7280; font-weight: 700;
+  }
+  .ins-badge {
+    font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 20px;
+    white-space: nowrap;
+  }
+  .ins-badge.up   { background: #e6f4ee; color: #0e6b4d; }
+  .ins-badge.down { background: #fdecea; color: #b91c1c; }
+  .ins-badge.flat { background: #f1f3f7; color: #6b7280; }
+  .ins-big {
+    font-size: 26px; font-weight: 700; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .ins-sub { font-size: 12px; color: #6b7280; margin-top: 4px; }
+  .ins-sub b { color: #1a1d23; }
+  .ins-note {
+    font-size: 12px; color: #8a6d3b; background: #fff7ed;
+    border-radius: 8px; padding: 8px 10px; margin-top: 8px;
+  }
+  .ins-spark-wrap { margin-top: 10px; color: #3949ab; }
+  .ins-spark { width: 100%; height: 40px; display: block; }
+
+  .ins-bars { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+  .ins-bar-row {
+    display: grid; grid-template-columns: 62px 1fr 72px;
+    align-items: center; gap: 8px; font-size: 12px;
+  }
+  .ins-bar-row.dim { opacity: .4; }
+  .ins-bar-label { color: #6b7280; }
+  .ins-bar-track { background: #f1f3f7; border-radius: 4px; height: 14px; overflow: hidden; }
+  .ins-bar-fill { background: #3949ab; height: 100%; border-radius: 4px; }
+  .ins-bar-value {
+    text-align: right; font-variant-numeric: tabular-nums; font-weight: 600;
+  }
+
+  /* ── Cash handling ─────────────────────────────────── */
+  /* Landing-tab strip: what you're still carrying, tap through to the tab. */
+  .cash-inhand-strip {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: #e6f4ee; border: 1px solid #bfe3d2; border-radius: 12px;
+    padding: 13px 15px; margin-top: 14px; cursor: pointer;
+  }
+  .cash-inhand-strip:active { transform: scale(0.995); }
+  .cash-inhand-cap {
+    font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    color: #0e6b4d; font-weight: 700;
+  }
+  .cash-inhand-sub { font-size: 12.5px; color: #4a5570; margin-top: 3px; }
+  .cash-inhand-right { text-align: right; }
+  .cash-inhand-amt { display: block; font-size: 20px; font-weight: 700; color: #0e6b4d; }
+  .cash-inhand-go { font-size: 12px; color: #1a237e; font-weight: 600; }
+
+  .cash-hero {
+    background: #fff; border: 1px solid #e6e8ee; border-radius: 14px;
+    padding: 20px 18px; text-align: center; margin-bottom: 16px;
+  }
+  .cash-hero-cap {
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: #6b7280; font-weight: 700; margin-bottom: 8px;
+  }
+  .cash-hero-amt {
+    font-size: 36px; font-weight: 700; letter-spacing: -.02em;
+    color: #0e6b4d; line-height: 1.05;
+  }
+  .cash-hero-amt.zero { color: #8a8e98; }
+  .cash-hero-sub { font-size: 13px; color: #6b7280; margin-top: 6px; }
+  .cash-hero-btn {
+    width: 100%; min-height: 46px; margin-top: 15px;
+    border: 0; border-radius: 10px; cursor: pointer;
+    background: #1a237e; color: #fff; font-size: 15px; font-weight: 600;
+  }
+  .cash-hero-btn:active { transform: scale(0.99); }
+  .cash-hero-btn:disabled { background: #c7cad4; cursor: default; }
+
+  .cash-sec {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; margin: 20px 2px 8px;
+  }
+  .cash-sec-l {
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: #6b7280; font-weight: 700;
+  }
+  .cash-sec-r { font-size: 12px; color: #8a8e98; }
+  .cash-sec-r.total { font-weight: 700; color: #1a1d23; font-size: 13px; }
+
+  .cash-list {
+    background: #fff; border: 1px solid #e6e8ee; border-radius: 12px;
+    overflow: hidden;
+  }
+  .cash-row {
+    padding: 12px 14px; border-bottom: 1px solid #eef0f4;
+    display: flex; gap: 12px; align-items: baseline; justify-content: space-between;
+  }
+  .cash-row:last-child { border-bottom: 0; }
+  .cash-row-who { font-size: 14px; font-weight: 600; }
+  .cash-row-meta { font-size: 12px; color: #6b7280; margin-top: 2px; }
+  .cash-row-amt { font-size: 15px; font-weight: 650; white-space: nowrap; }
+  .cash-row-amt.cash { color: #0e6b4d; }
+  .cash-row-right { display: flex; gap: 9px; align-items: center; }
+  .cash-row.stack { flex-direction: column; align-items: stretch; gap: 9px; }
+  .cash-row-top {
+    display: flex; gap: 12px; align-items: baseline; justify-content: space-between;
+  }
+  /* Attribution. With no confirmation step this line IS the acknowledgment,
+     so it stays on screen rather than hiding behind a tap. */
+  .cash-rec {
+    font-size: 12px; color: #4a5570; margin: 0;
+    padding: 6px 9px; background: #f4f6fa;
+    border-left: 2px solid #3949ab; border-radius: 0 5px 5px 0;
+  }
+  .cash-rec b { color: #1a1d23; font-weight: 650; }
+  .cash-rec.voided { border-left-color: #b91c1c; color: #b91c1c; background: #fef2f2; }
+  .cash-covers { font-size: 11.5px; color: #8a8e98; margin-top: 2px; }
+  .cash-mini {
+    font-size: 12px; font-weight: 650; background: #eceffb; color: #1a237e;
+    border: 0; border-radius: 7px; padding: 7px 13px; min-height: 34px; cursor: pointer;
+  }
+  .cash-mini.ghost { background: transparent; color: #8a8e98; }
+  .cash-flag {
+    background: #fff7ed; border: 1px solid #f6d9ae; border-radius: 12px;
+    padding: 12px 14px; margin-top: 8px;
+  }
+  .cash-flag-t {
+    font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    font-weight: 700; color: #92400e; margin-bottom: 6px;
+  }
+  .cash-flag-b { font-size: 12.5px; color: #1a1d23; }
+  .cash-note {
+    background: #f4f6fa; border-radius: 8px; padding: 10px 12px;
+    font-size: 12.5px; color: #4a5570; margin-bottom: 12px;
+  }
+  .cash-note.warn { background: #fff7ed; color: #92400e; }
+
+  /* Handover sheet */
+  .cash-holding {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px; padding: 11px 13px; background: #e6f4ee; border-radius: 9px;
+    margin-bottom: 14px;
+  }
+  .cash-holding-k { font-size: 13px; color: #0e6b4d; font-weight: 600; }
+  .cash-holding-v { font-size: 17px; font-weight: 700; color: #0e6b4d; }
+  .cash-all-btn {
+    font-size: 12.5px; font-weight: 650; background: #eceffb; color: #1a237e;
+    border: 0; border-radius: 7px; padding: 8px 13px; min-height: 36px;
+    cursor: pointer; margin-top: 8px;
+  }
+  .cash-settles {
+    background: #fff; border: 1px solid #e6e8ee; border-radius: 10px;
+    overflow: hidden; margin-top: 14px;
+  }
+  .cash-settles-h {
+    font-size: 11px; letter-spacing: .11em; text-transform: uppercase;
+    font-weight: 700; color: #6b7280; padding: 9px 13px;
+    border-bottom: 1px solid #eef0f4; background: #f7f8fa;
+  }
+  .cash-srow {
+    display: grid; grid-template-columns: 1fr auto auto; gap: 11px;
+    align-items: baseline; padding: 9px 13px; border-bottom: 1px solid #eef0f4;
+    font-size: 12.5px;
+  }
+  .cash-srow:last-child { border-bottom: 0; }
+  .cash-srow-d { color: #6b7280; }
+  .cash-srow-a { font-weight: 650; text-align: right; }
+  .cash-srow.none { display: block; color: #8a8e98; font-style: italic; }
+  .cash-tag {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; padding: 2px 7px; border-radius: 20px;
+  }
+  .cash-tag.full { background: #e6f4ee; color: #0e6b4d; }
+  .cash-tag.part { background: #fff7ed; color: #92400e; }
+
   /* ── Empty state ───────────────────────────────────── */
   .empty {
     padding: 60px 24px;
@@ -646,9 +832,16 @@
   .recon-diff { color: #b91c1c !important; }
   .recon-hist-title { font-size: 11px; font-weight: 700; color: #6a6e79; text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px; }
   .recon-table { border-top: 1px solid #f0f1f5; }
-  .recon-trow { display: grid; grid-template-columns: 1.1fr 1.1fr 0.8fr 0.9fr 0.9fr 0.9fr; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f5f6f8; align-items: center; }
+  .recon-trow { display: grid; grid-template-columns: 1.1fr 0.9fr 1.5fr 1.5fr 0.9fr; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f5f6f8; align-items: center; }
   .recon-trow.head { font-size: 10px; font-weight: 700; color: #6a6e79; text-transform: uppercase; letter-spacing: 0.4px; }
   .recon-trow .r { text-align: right; font-variant-numeric: tabular-nums; }
+  /* claimed / measured on one line, the variance under it — so the pair reads
+     as one figure and the delta stays the thing your eye lands on. */
+  .pv { display: inline-block; text-align: right; }
+  .pv-pair { display: block; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pv-var  { display: block; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pv-var.ok  { color: #15803d; }
+  .pv-var.bad { color: #b91c1c; }
 
   /* ── Sales / reconciliation tables → stacked cards on small screens ── */
   @media (max-width: 560px) {
@@ -990,6 +1183,8 @@
     <div class="view" id="view-suppliers"></div>
     <div class="view" id="view-products"></div>
     <div class="view" id="view-history"></div>
+    <div class="view" id="view-recon"></div>
+    <div class="view" id="view-cash"></div>
     <div class="view" id="view-more"></div>
   </main>
 
@@ -1130,6 +1325,13 @@
     return h + 'h ' + (m < 10 ? '0' : '') + m + 'm';
   }
   function haptic() { if (navigator.vibrate) navigator.vibrate(10); }
+  // Today as yyyy-MM-dd in LOCAL time. toISOString() would hand back UTC,
+  // which lands on yesterday for anyone west of Greenwich after 7pm.
+  function todayISO() {
+    const d = new Date();
+    const p = n => (n < 10 ? '0' : '') + n;
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
 
   // ── Money inputs ────────────────────────────────────────
   // Plain text, never type="number". A number input shows a spinner and —
@@ -1407,7 +1609,7 @@
 
   // Tabs accessed only via the "More" drawer (no direct bottom-bar button).
   // Every role gets the More drawer; History/Shopping/Suppliers live there for all.
-  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules'];
+  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon'];
 
   // Items shown in the "More" drawer, with role visibility.
   const ALL_ROLES = ['admin', 'manager', 'payroll_admin', 'employee'];
@@ -1415,8 +1617,10 @@
     { tab: 'shopping',    icon: '🛒', label: 'Shopping List',    meta: 'Add items to order',              roles: ALL_ROLES },
     { tab: 'suppliers',   icon: '🚚', label: 'Suppliers',        meta: 'Where to buy what (reference)',    roles: ALL_ROLES },
     { tab: 'products',    icon: '📦', label: 'Product Master',   meta: 'Cost, sell, margin per product',   roles: ALL_ROLES },
+    { tab: 'cash',        icon: '💵', label: 'Cash Handling',    meta: 'Shift takings you\'re holding',    roles: ALL_ROLES },
     { tab: 'history',     icon: '📋', label: 'History',          meta: 'Payment records',                 roles: ALL_ROLES },
-    { tab: 'sales',       icon: '📊', label: 'Sales',            meta: 'Sales dashboard & filters',       roles: ['admin', 'manager', 'payroll_admin'] },
+    { tab: 'sales',       icon: '📊', label: 'Sales',            meta: 'Trends, patterns & daily takings', roles: ['admin', 'manager', 'payroll_admin'] },
+    { tab: 'recon',       icon: '⚖️', label: 'Reconcile',        meta: 'Cash & card vs Clover, daily',    roles: ['admin', 'manager', 'payroll_admin'] },
     { tab: 'payroll',     icon: '💰', label: 'Payroll',          meta: 'Pay owed shifts & bonuses',       roles: ['admin', 'payroll_admin'] },
     { tab: 'commissions', icon: '🎯', label: 'Commissions',      meta: 'Run engine, approve runs',        roles: ['admin', 'manager', 'payroll_admin'] },
     { tab: 'rules',       icon: '⚙️', label: 'Commission Rules', meta: 'Create & manage commission rules', roles: ['admin', 'payroll_admin'] },
@@ -1445,7 +1649,7 @@
       payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
       commissions: loadCommissionsTab, rules: loadRulesTab, more: loadMoreTab,
       shopping: loadShoppingTab, suppliers: loadSuppliersTab,
-      products: loadProductsTab,
+      products: loadProductsTab, cash: loadCashTab, recon: loadReconTab,
     };
   }
 
@@ -1463,7 +1667,7 @@
       payroll: 'Payroll', sales: 'Sales', history: 'History',
       commissions: 'Commissions', rules: 'Commission Rules', more: 'More',
       shopping: 'Shopping List', suppliers: 'Suppliers',
-      products: 'Product Master',
+      products: 'Product Master', cash: 'Cash Handling', recon: 'Reconcile',
     };
     $('headerTitle').textContent = titles[tab] || 'StoreOps';
     // Clear running timers from previous tab
@@ -1517,6 +1721,24 @@
       html += renderShiftCard(card, data.lotto);
     });
     html += '</div>';
+
+    // Cash still in this person's hands from closed shifts. Only when there
+    // is some — an empty "$0.00 in hand" strip is noise on every other day.
+    const cih = data.cashInHand;
+    if (cih && cih.total > 0.005) {
+      html += '<div class="cash-inhand-strip" id="cashInHandStrip">' +
+        '<div>' +
+          '<div class="cash-inhand-cap">Cash in your hands</div>' +
+          '<div class="cash-inhand-sub">' + cih.shifts + ' shift' +
+            (cih.shifts === 1 ? '' : 's') +
+            (cih.oldest ? ' since ' + esc(cih.oldest) : '') + '</div>' +
+        '</div>' +
+        '<div class="cash-inhand-right">' +
+          '<span class="cash-inhand-amt">' + money(cih.total) + '</span>' +
+          '<span class="cash-inhand-go">Hand over ›</span>' +
+        '</div>' +
+      '</div>';
+    }
 
     // TODAY summary (only when both closed OR a session is open)
     if (data.todaySummary && data.todaySummary.status === 'worked') {
@@ -1577,6 +1799,9 @@
     }
 
     view.innerHTML = html;
+
+    const cihStrip = $('cashInHandStrip');
+    if (cihStrip) cihStrip.onclick = () => { haptic(); switchTab('cash'); };
 
     // Wire up card buttons
     view.querySelectorAll('[data-action]').forEach(btn => {
@@ -1908,7 +2133,9 @@
       const banked = Math.round((counted - floatValue - moved) * 100) / 100;
       const parts = [money(floatValue) + ' float'];
       if (moved > 0.01) parts.push(money(moved) + ' reserve');
-      parts.push(money(banked) + ' banked');
+      // "in hand", not "banked" — it leaves with the cashier and stays their
+      // responsibility until the Cash Handling tab records a handover.
+      parts.push(money(banked) + ' in hand');
 
       const el = $('sumDest');
       el.textContent = parts.join(' · ');
@@ -4280,7 +4507,10 @@
     const f = state.salesFilters;
     if (!f.startDate) {
       const today = todayMidnight();
-      f.startDate = isoDate(addDays(today, -6));
+      // 30 days, not a fortnight: the time-of-month insight needs a full month
+      // of trading before it will say anything, so a shorter default would
+      // greet every user with a card explaining why it is empty.
+      f.startDate = isoDate(addDays(today, -29));
       f.endDate = isoDate(today);
     }
     f.page = 1;
@@ -4290,7 +4520,6 @@
       view.innerHTML = renderSalesScaffold();
       wireSalesFilters();
     }
-    loadReconPanel(force);
     const args = [state.token, f];
     if (force || !cacheFresh('rpcGetSalesDashboard', args, TTL_SEMI)) {
       $('salesResults').innerHTML = '<div class="loading"><div class="spinner"></div>Loading sales…</div>';
@@ -4301,6 +4530,23 @@
     } catch (e) {
       handleRpcError(e, $('salesResults'));
     }
+  }
+
+  // ============================================================
+  //  ░░  TAB: RECONCILE  ░░
+  // ============================================================
+  //  Split out of the Sales tab. Sales answers "how is trade going";
+  //  this answers "does today's money add up" — different questions, on
+  //  different cadences, that were sharing a screen and constraining
+  //  each other.
+  // ============================================================
+  function loadReconTab(force) {
+    const view = $('view-recon');
+    if (!view.querySelector('#reconPanel')) {
+      view.innerHTML = moreBack() + '<div id="reconPanel">' +
+        '<div class="loading"><div class="spinner"></div>Loading reconciliation…</div></div>';
+    }
+    loadReconPanel(force);
   }
 
   // ── Daily reconciliation panel (cash variance + cards vs Clover) ──
@@ -4360,15 +4606,14 @@
       if (open) {
         html += '<div class="recon-table">' +
           '<div class="recon-trow head"><div>When</div><div>Store</div>' +
-            '<div class="r">Cash Δ</div><div class="r">Card</div><div class="r">Clover</div><div class="r">Status</div></div>';
+            '<div class="r">Cash</div><div class="r">Cards</div><div class="r">Status</div></div>';
         pastRows.forEach(r => {
           const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
           html += '<div class="recon-trow">' +
             '<div>' + esc(r.businessDate) + '<br><small style="color:#9aa0ac">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></div>' +
             '<div data-label="Store">' + esc(r.companies) + '</div>' +
-            '<div class="r" data-label="Cash Δ">' + signedMoney_(r.cashVariance) + '</div>' +
-            '<div class="r" data-label="Card">' + money(r.cashierCard) + '</div>' +
-            '<div class="r" data-label="Clover">' + money(r.cloverCard) + '</div>' +
+            '<div class="r" data-label="Cash">' + pairVar_(r.cashCounted - r.cashVariance, r.cashCounted) + '</div>' +
+            '<div class="r" data-label="Cards">' + pairVar_(r.cashierCard, r.cloverCard) + '</div>' +
             '<div class="r" data-label="Status"><span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
           '</div>';
         });
@@ -4450,6 +4695,29 @@
       ' <small class="' + (ok ? 'recon-ok' : 'recon-diff') + '">(' + signedMoney_(diff) + ')</small></span></div>';
   }
 
+  /**
+   * One presentation for every figure on this screen: what was CLAIMED,
+   * then what was MEASURED, then measured minus claimed.
+   *
+   * The table used to read "Cash Δ" beside absolute "Card" and "Clover" — a
+   * delta and two levels in the same row, so the eye had nothing to compare
+   * across. This is also exactly the convention `Reconcile.reconParams_`
+   * sends to WhatsApp, so the dashboard and the message can't drift: negative
+   * always means less is there than was claimed.
+   */
+  function pairVar_(claimed, measured) {
+    const c = Number(claimed) || 0;
+    const m = Number(measured) || 0;
+    const v = Math.round((m - c) * 100) / 100;
+    const cls = Math.abs(v) <= 1 ? 'ok' : 'bad';
+    // One wrapper, so the mobile card layout treats pair+variance as a single
+    // right-hand value rather than two competing flex items beside the label.
+    return '<span class="pv">' +
+             '<span class="pv-pair">' + money(c) + ' / ' + money(m) + '</span>' +
+             '<span class="pv-var ' + cls + '">' + signedMoney_(v) + '</span>' +
+           '</span>';
+  }
+
   function signedMoney_(n) {
     n = Number(n) || 0;
     return (n < 0 ? '-' : '+') + '$' + Math.abs(n).toFixed(2);
@@ -4457,7 +4725,7 @@
 
   function renderSalesScaffold() {
     const f = state.salesFilters;
-    return moreBack() + '<div id="reconPanel"></div>' + '<div class="filter-card" id="salesFilterCard">' +
+    return moreBack() + '<div id="salesInsights"></div>' + '<div class="filter-card" id="salesFilterCard">' +
       '<div class="filter-row">' +
         '<div class="filter-field"><label>Start date</label><input type="date" id="fStart" value="' + esc(f.startDate || '') + '"></div>' +
         '<div class="filter-field"><label>End date</label><input type="date" id="fEnd" value="' + esc(f.endDate || '') + '"></div>' +
@@ -4512,7 +4780,154 @@
     state.salesExpandedDays = {};
     const daily = data.daily || [];
     if (daily.length) state.salesExpandedDays[daily[daily.length - 1].dateStr] = true;
+    renderSalesInsights(data.insights, daily);
     renderSalesBody();
+  }
+
+  // ── Insights ────────────────────────────────────────────
+  //  Four questions a corner store actually asks: is trade up or down,
+  //  which days carry the week, which part of the month pays, and how
+  //  much still arrives as cash. Drawn with CSS and inline SVG — the
+  //  shapes are simple and a chart library would be a CDN fetch the
+  //  page can't make.
+  //
+  //  Where the server says a range is too short to support a claim, the
+  //  reason is printed instead of a chart. A trend line through three
+  //  points looks exactly as authoritative as one through ninety.
+  // ── ────────────────────────────────────────────────────
+
+  function pctBadge_(v, suffix, invert) {
+    if (v == null) return '<span class="ins-badge flat">no baseline</span>';
+    const good = invert ? v < 0 : v > 0;
+    const cls = Math.abs(v) < 0.05 ? 'flat' : (good ? 'up' : 'down');
+    const sign = v > 0 ? '+' : '';
+    return '<span class="ins-badge ' + cls + '">' + sign + v + (suffix || '%') + '</span>';
+  }
+
+  function insNote_(msg) {
+    return '<div class="ins-note">' + esc(msg) + '</div>';
+  }
+
+  // Bar row used by both the weekday and month-part charts.
+  function barChart_(items, fmtLabel) {
+    const max = items.reduce((m, i) => Math.max(m, i.value), 0) || 1;
+    let h = '<div class="ins-bars">';
+    items.forEach(i => {
+      const pct = Math.round((i.value / max) * 100);
+      h += '<div class="ins-bar-row' + (i.dim ? ' dim' : '') + '">' +
+        '<div class="ins-bar-label">' + esc(fmtLabel ? fmtLabel(i) : i.label) + '</div>' +
+        '<div class="ins-bar-track"><div class="ins-bar-fill" style="width:' + pct + '%"></div></div>' +
+        '<div class="ins-bar-value">' + (i.value ? money(i.value) : '—') + '</div>' +
+      '</div>';
+    });
+    return h + '</div>';
+  }
+
+  // Sparkline over a numeric series; nulls break the line rather than
+  // being drawn as zero, which would show a cliff that isn't there.
+  function sparkline_(values, w, hgt) {
+    const nums = values.filter(v => v != null);
+    if (nums.length < 2) return '';
+    const min = Math.min.apply(null, nums), max = Math.max.apply(null, nums);
+    const span = (max - min) || 1;
+    const step = w / Math.max(1, values.length - 1);
+    let d = '', pen = false;
+    values.forEach((v, i) => {
+      if (v == null) { pen = false; return; }
+      const x = (i * step).toFixed(1);
+      const y = (hgt - ((v - min) / span) * (hgt - 4) - 2).toFixed(1);
+      d += (pen ? 'L' : 'M') + x + ',' + y + ' ';
+      pen = true;
+    });
+    return '<svg class="ins-spark" viewBox="0 0 ' + w + ' ' + hgt + '" preserveAspectRatio="none" ' +
+           'role="img" aria-hidden="true"><path d="' + d.trim() + '" fill="none" ' +
+           'stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+  }
+
+  function renderSalesInsights(ins, daily) {
+    const el = $('salesInsights');
+    if (!el) return;
+    if (!ins) { el.innerHTML = ''; return; }
+
+    try {
+      const tr = ins.trend || {};
+      let html = '<div class="ins-wrap">';
+
+      // 1. Trend — the headline, with the rolling average behind it.
+    html += '<div class="ins-card ins-trend">' +
+      '<div class="ins-head"><span class="ins-title">Trend</span>' +
+        pctBadge_(tr.changePct) + '</div>' +
+      '<div class="ins-big">' + money(tr.total || 0) + '</div>' +
+      '<div class="ins-sub">' + money(tr.perTradingDay || 0) + ' per trading day · ' +
+        (tr.tradingDays || 0) + ' day' + (tr.tradingDays === 1 ? '' : 's') + '</div>' +
+      '<div class="ins-sub">vs ' + money(tr.previousTotal || 0) + ' in the ' +
+        esc((ins.previousPeriod || {}).startStr || '') + ' → ' +
+        esc((ins.previousPeriod || {}).endStr || '') + ' window</div>' +
+      (tr.rolling7
+        ? '<div class="ins-spark-wrap">' + sparkline_(tr.rolling7, 300, 40) +
+          '<div class="ins-sub">7-day rolling average</div></div>'
+        : insNote_(tr.rollingInsufficient || '')) +
+      (tr.best ? '<div class="ins-sub">Best ' + esc(tr.best.dateStr) + ' ' + money(tr.best.total) +
+                 ' · quietest ' + esc(tr.worst.dateStr) + ' ' + money(tr.worst.total) + '</div>' : '') +
+    '</div>';
+
+    // 2. Day of week.
+    const dw = ins.dayOfWeek || {};
+    html += '<div class="ins-card">' +
+      '<div class="ins-head"><span class="ins-title">By day of week</span>' +
+        (dw.spreadPct != null ? '<span class="ins-badge flat">' + dw.spreadPct + '% spread</span>' : '') +
+      '</div>';
+    if (dw.insufficient) {
+      html += insNote_(dw.insufficient);
+    } else {
+      html += barChart_((dw.buckets || []).map(b => ({
+        label: b.short, value: b.average, dim: !b.days,
+      })));
+      html += '<div class="ins-sub">Busiest <b>' + esc(dw.best.name) + '</b> at ' +
+        money(dw.best.average) + ' · quietest <b>' + esc(dw.worst.name) + '</b> at ' +
+        money(dw.worst.average) + '</div>';
+    }
+    html += '</div>';
+
+    // 3. Time of month — the payday question.
+    const tm = ins.timeOfMonth || {};
+    html += '<div class="ins-card">' +
+      '<div class="ins-head"><span class="ins-title">By part of month</span></div>';
+    if (tm.insufficient) {
+      html += insNote_(tm.insufficient);
+    } else {
+      html += barChart_((tm.buckets || []).map(b => ({
+        label: b.label, value: b.average, dim: !b.days,
+      })));
+      html += '<div class="ins-sub">Strongest <b>' + esc(tm.strongest.label) + '</b> at ' +
+        money(tm.strongest.average) + ' a day, against ' + money(tm.overallAverage) +
+        ' overall</div>';
+      html += '<div class="ins-sub">' + (tm.buckets || []).map(b =>
+        esc(b.label) + ' ' + (b.vsOverallPct == null ? '—' :
+          (b.vsOverallPct > 0 ? '+' : '') + b.vsOverallPct + '%')).join(' · ') + '</div>';
+    }
+    html += '</div>';
+
+    // 4. Tender mix — ties straight into how much cash ends up in hands.
+    const tx = ins.tenderMix || {};
+    html += '<div class="ins-card">' +
+      '<div class="ins-head"><span class="ins-title">Paid in cash</span>' +
+        pctBadge_(tx.changePoints, ' pts') + '</div>' +
+      '<div class="ins-big">' + (tx.cashSharePct == null ? '—' : tx.cashSharePct + '%') + '</div>' +
+      '<div class="ins-sub">' + money(tx.cash || 0) + ' of ' + money(tx.total || 0) +
+        (tx.previousCashSharePct != null
+          ? ' · was ' + tx.previousCashSharePct + '% last period' : '') + '</div>' +
+      ((tx.series || []).length > 2
+        ? '<div class="ins-spark-wrap">' +
+          sparkline_(tx.series.map(s => s.sharePct), 300, 34) + '</div>'
+        : '') +
+    '</div>';
+
+      el.innerHTML = html + '</div>';
+    } catch (e) {
+      console.error('renderSalesInsights error:', e.message);
+      el.innerHTML = '<div class="ins-wrap" style="color:red">Error rendering insights: ' + esc(e.message) + '</div>';
+    }
   }
 
   // Re-render the results body (chart + day accordion) from cached data +
@@ -4615,6 +5030,324 @@
         state.salesExpandedDays[day] = !state.salesExpandedDays[day];
         renderSalesBody();
       };
+    });
+  }
+
+  // ============================================================
+  //  ░░  TAB: CASH HANDLING  ░░
+  // ============================================================
+  //  Cash the cashier carried out of the drawer at close, held against
+  //  them until a handover moves it to the cash manager. Everyone sees
+  //  their own balance; the cash manager and admins also get the roster.
+  //  No confirmation step — either party records it and it takes effect,
+  //  so "recorded by X" is shown on every row and never collapsed.
+  // ============================================================
+  async function loadCashTab(force) {
+    const view = $('view-cash');
+    if (force || !cacheFresh('rpcGetCashPosition', [state.token], TTL_LIVE)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading cash…</div>';
+    }
+    try {
+      const data = await cachedCall('rpcGetCashPosition', [state.token], TTL_LIVE, { force });
+      renderCashTab(data);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function cashHandoverRow(h, canVoid) {
+    const voided = h.status === 'voided';
+    const covers = (h.items || []).length;
+    return '<div class="cash-row stack">' +
+      '<div class="cash-row-top">' +
+        '<div>' +
+          '<div class="cash-row-who">' + esc(h.handedOnStr || '—') + ' · ' +
+            esc(h.fromName) + ' → ' + esc(h.toName) + '</div>' +
+          (covers ? '<div class="cash-covers">settles ' + covers + ' shift' + (covers === 1 ? '' : 's') + '</div>' : '') +
+          (h.notes ? '<div class="cash-covers">' + esc(h.notes) + '</div>' : '') +
+        '</div>' +
+        '<div class="cash-row-amt' + (voided ? '' : ' cash') + '"' +
+          (voided ? ' style="text-decoration:line-through;color:#8a8e98"' : '') + '>' +
+          money(h.amount) + '</div>' +
+      '</div>' +
+      '<div class="cash-rec' + (voided ? ' voided' : '') + '">' +
+        (voided
+          ? 'Voided by <b>' + esc(h.voidedByName || h.voidedBy) + '</b> · originally recorded by ' + esc(h.recordedByName)
+          : 'recorded by <b>' + esc(h.recordedByName) + '</b>' +
+            (h.recordedAt ? ' · ' + esc(fmtTime(h.recordedAt)) : '')) +
+      '</div>' +
+      (canVoid && !voided
+        ? '<button class="cash-mini ghost" data-void="' + esc(h.handoverId) + '" style="align-self:flex-start">Void</button>'
+        : '') +
+    '</div>';
+  }
+
+  function renderCashTab(data) {
+    const view = $('view-cash');
+
+    if (!data || data.enabled === false) {
+      view.innerHTML = moreBack() +
+        '<div class="empty"><div class="empty-icon">💵</div>' +
+        'Cash handling isn\'t set up yet.<br><span style="font-size:13px">' +
+        'Run <b>StoreOps → Add cash handling tables</b> in the spreadsheet menu.</span></div>';
+      return;
+    }
+
+    const mine = data.mine || { totalOutstanding: 0, unsettledSessions: [] };
+    const held = Number(mine.totalOutstanding) || 0;
+    const sessions = mine.unsettledSessions || [];
+    const mgr = data.cashManager;
+
+    let html = moreBack();
+
+    // ── What I'm carrying ──────────────────────────────
+    html += '<div class="cash-hero">' +
+      '<div class="cash-hero-cap">Cash in your hands</div>' +
+      '<div class="cash-hero-amt' + (held > 0.005 ? '' : ' zero') + '">' + money(held) + '</div>' +
+      '<div class="cash-hero-sub">' +
+        (held > 0.005
+          ? 'from ' + sessions.length + ' shift' + (sessions.length === 1 ? '' : 's') +
+            (sessions.length ? ' since ' + esc(sessions[0].dateStr) : '')
+          : 'nothing outstanding') +
+      '</div>' +
+      (held > 0.005
+        ? '<button class="cash-hero-btn" id="cashHandBtn"' + (mgr ? '' : ' disabled') + '>' +
+            (mgr
+              ? (data.isCashManager ? 'Record to business cash →' : 'Hand over to ' + esc(mgr.name) + ' →')
+              : 'No cash manager set') +
+          '</button>'
+        : '') +
+    '</div>';
+
+    if (held > 0.005 && !mgr) {
+      html += '<div class="cash-note warn">No cash manager is configured, so a handover ' +
+        'can\'t be recorded yet. Set <b>cash_manager_staff_id</b> in the config tab.</div>';
+    }
+
+    // ── Which shifts it came from ──────────────────────
+    if (sessions.length) {
+      html += '<div class="cash-sec"><span class="cash-sec-l">Unsettled shifts</span>' +
+        '<span class="cash-sec-r">oldest first</span></div><div class="cash-list">';
+      sessions.forEach(s => {
+        html += '<div class="cash-row">' +
+          '<div><div class="cash-row-who">' + esc(s.dateStr) + '</div>' +
+          '<div class="cash-row-meta">' + esc(s.company) +
+            (s.settled > 0.005 ? ' · ' + money(s.settled) + ' already handed over' : '') +
+            (s.ageDays >= (data.staleDays || 7) ? ' · ' + s.ageDays + ' days' : '') +
+          '</div></div>' +
+          '<div class="cash-row-amt">' + money(s.remaining) + '</div>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    // ── Roster (cash manager / admin only) ─────────────
+    if (data.holders) {
+      const others = data.holders.filter(h => h.staffId !== state.me.staffId);
+      html += '<div class="cash-sec"><span class="cash-sec-l">Out with staff</span>' +
+        '<span class="cash-sec-r total">' + money(data.grandTotal || 0) + '</span></div>';
+      if (others.length === 0) {
+        html += '<div class="cash-note">Nobody else is holding cash right now.</div>';
+      } else {
+        html += '<div class="cash-list">';
+        others.forEach(h => {
+          html += '<div class="cash-row">' +
+            '<div><div class="cash-row-who">' + esc(h.name) + '</div>' +
+            '<div class="cash-row-meta">' + h.shifts + ' shift' + (h.shifts === 1 ? '' : 's') +
+              (h.oldest ? ' · oldest ' + esc(h.oldest) : '') + '</div></div>' +
+            '<div class="cash-row-right">' +
+              '<span class="cash-row-amt">' + money(h.total) + '</span>' +
+              '<button class="cash-mini" data-receive="' + esc(h.staffId) + '">Receive</button>' +
+            '</div>' +
+          '</div>';
+        });
+        html += '</div>';
+      }
+
+      if ((data.stale || []).length) {
+        html += '<div class="cash-flag"><div class="cash-flag-t">⚠ Held more than ' +
+          (data.staleDays || 7) + ' days</div>';
+        data.stale.forEach(s => {
+          html += '<div class="cash-flag-b">' + esc(s.name) + ' · ' + esc(s.dateStr) + ' ' +
+            esc(s.company) + ' · ' + money(s.remaining) + ' · ' + s.ageDays + ' days</div>';
+        });
+        html += '</div>';
+      }
+    }
+
+    // ── The ledger ─────────────────────────────────────
+    const ledger = data.allRecent || data.recent || [];
+    html += '<div class="cash-sec"><span class="cash-sec-l">' +
+      (data.allRecent ? 'All handovers' : 'Recent handovers') + '</span>' +
+      '<span class="cash-sec-r">last ' + ledger.length + '</span></div>';
+    if (ledger.length === 0) {
+      html += '<div class="cash-note">No handovers recorded yet.</div>';
+    } else {
+      html += '<div class="cash-list">';
+      ledger.forEach(h => { html += cashHandoverRow(h, !!data.holders); });
+      html += '</div>';
+    }
+
+    view.innerHTML = html;
+
+    const handBtn = $('cashHandBtn');
+    if (handBtn) handBtn.onclick = () => { haptic(); openHandoverSheet(state.me.staffId, mine, mgr); };
+
+    view.querySelectorAll('[data-receive]').forEach(btn => {
+      btn.onclick = async () => {
+        haptic();
+        btn.disabled = true;
+        try {
+          // The roster carries totals, not the per-shift breakdown the sheet
+          // needs to preview the split — fetch that cashier's position.
+          const pos = await call('rpcGetCashOutstandingFor', state.token, btn.dataset.receive);
+          const holder = (data.holders || []).find(h => h.staffId === btn.dataset.receive);
+          openHandoverSheet(btn.dataset.receive, pos, mgr, holder);
+        } catch (e) {
+          toast(e.message, 'error');
+        } finally { btn.disabled = false; }
+      };
+    });
+
+    view.querySelectorAll('[data-void]').forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm('Void this handover? The row stays on the record, marked voided, and the cash goes back onto the cashier\'s balance.')) return;
+        haptic();
+        btn.disabled = true;
+        try {
+          await call('rpcVoidCashHandover', state.token, btn.dataset.void);
+          toast('Handover voided', 'warning');
+          loadCashTab(true);
+        } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+      };
+    });
+  }
+
+  /**
+   * The handover sheet. `position` may be null when opened from the roster
+   * (the manager pressing Receive) — we fetch the cashier's breakdown so the
+   * allocation preview is real rather than guessed.
+   */
+  async function openHandoverSheet(fromStaffId, position, mgr, holderRow) {
+    if (!mgr) { toast('No cash manager configured', 'error'); return; }
+
+    const pos = position || { totalOutstanding: holderRow ? holderRow.total : 0, unsettledSessions: [] };
+    const total = Number(pos.totalOutstanding) || 0;
+    const fromName = holderRow ? holderRow.name
+                   : (fromStaffId === state.me.staffId ? 'You' : fromStaffId);
+    const sessions = pos.unsettledSessions || [];
+
+    openSheet({
+      title: 'Hand over cash',
+      subtitle: fromName + ' → ' + mgr.name,
+      bodyHTML:
+        '<div class="cash-holding">' +
+          '<span class="cash-holding-k">' +
+            (fromStaffId === state.me.staffId ? 'You are holding' : fromName + ' is holding') +
+          '</span>' +
+          '<span class="cash-holding-v">' + money(total) + '</span>' +
+        '</div>' +
+        '<div class="sheet-field"><label>Amount handed over</label>' +
+          moneyInput('hoAmount', total.toFixed(2)) + '</div>' +
+        '<button type="button" class="cash-all-btn" id="hoAllBtn">All ' + money(total) + '</button>' +
+        '<div class="sheet-field"><label>Date handed over</label>' +
+          '<input type="date" id="hoDate" value="' + esc(todayISO()) + '"></div>' +
+        '<div id="hoWarn"></div>' +
+        (sessions.length
+          ? '<div class="cash-settles"><div class="cash-settles-h">This settles</div>' +
+            '<div id="hoSettles"></div></div>'
+          : '') +
+        '<div class="cash-note" style="margin-top:14px">Recorded as handed over by ' +
+          '<b>' + esc(state.me.name) + '</b>. This takes effect immediately — there\'s no ' +
+          'confirmation step, so the record names who entered it.</div>',
+      actionsHTML: '<button class="btn btn-primary" id="hoSubmit">Record handover</button>',
+      onShown: () => {
+        wireMoneyInputs([{ id: 'hoAmount', rest: total.toFixed(2) }]);
+
+        const recalc = () => {
+          const amt = parseFloat($('hoAmount').value) || 0;
+          const over = amt > total + 0.005;
+          const short = amt > 0.005 && amt < total - 0.005;
+
+          // Reason only when something is being left behind — same show-on-need
+          // rule as the lotto reserve reason.
+          const warn = $('hoWarn');
+          if (over) {
+            warn.innerHTML = '<div class="cash-note warn" style="margin-top:12px">' +
+              fromName + ' is only holding ' + money(total) + '.</div>';
+          } else if (short) {
+            warn.innerHTML = '<div class="cash-note warn" style="margin-top:12px">' +
+              money(total - amt) + ' stays in ' +
+              (fromStaffId === state.me.staffId ? 'your' : fromName + '’s') + ' hands.</div>' +
+              '<div class="sheet-field"><label>Reason (required)</label>' +
+              '<input type="text" id="hoNotes" ' +
+              'placeholder="kept for tomorrow’s supplier run" autocomplete="off"></div>';
+          } else {
+            warn.innerHTML = '';
+          }
+
+          const box = $('hoSettles');
+          if (box) {
+            if (amt <= 0.005 || over) {
+              box.innerHTML = '<div class="cash-srow none">' +
+                (over ? 'Nothing — the amount is more than the balance.'
+                      : 'Enter an amount to see which shifts it clears.') + '</div>';
+            } else {
+              let left = amt, rows = '';
+              for (let i = 0; i < sessions.length && left > 0.005; i++) {
+                const take = Math.min(left, sessions[i].remaining);
+                const partial = take < sessions[i].remaining - 0.005;
+                rows += '<div class="cash-srow">' +
+                  '<span class="cash-srow-d">' + esc(sessions[i].dateStr) + ' · ' +
+                    esc(sessions[i].company) + '</span>' +
+                  '<span class="cash-srow-a">' + money(take) + '</span>' +
+                  '<span class="cash-tag ' + (partial ? 'part' : 'full') + '">' +
+                    (partial ? 'partial' : 'full') + '</span></div>';
+                left -= take;
+              }
+              box.innerHTML = rows;
+            }
+          }
+
+          $('hoSubmit').disabled = over || amt <= 0.005;
+        };
+
+        $('hoAmount').addEventListener('input', recalc);
+        $('hoAllBtn').onclick = () => { $('hoAmount').value = total.toFixed(2); recalc(); };
+        recalc();
+
+        $('hoSubmit').onclick = async () => {
+          const amt = parseFloat($('hoAmount').value) || 0;
+          const notesEl = $('hoNotes');
+          const notes = notesEl ? notesEl.value.trim() : '';
+          if (amt <= 0.005) return toast('Enter an amount', 'error');
+          if (amt > total + 0.005) return toast('More than the balance', 'error');
+          if (amt < total - 0.005 && !notes) return toast('A reason is required', 'error');
+
+          const btn = $('hoSubmit');
+          btn.disabled = true;
+          btn.textContent = 'Recording…';
+          try {
+            const res = await call('rpcRecordCashHandover', state.token, {
+              fromStaffId: fromStaffId,
+              amount: amt,
+              handedOn: $('hoDate').value,
+              notes: notes,
+            });
+            closeSheet();
+            toast('Recorded ' + money(res.amount) +
+              (res.outstandingAfter > 0.005 ? ' · ' + money(res.outstandingAfter) + ' still out' : ''),
+              'success');
+            loadCashTab(true);
+            // The My Shift card carries the same figure.
+            rpcCache.delete(_ckey('rpcGetMyShiftState', [state.token]));
+          } catch (e) {
+            toast(e.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Record handover';
+          }
+        };
+      },
     });
   }
 
