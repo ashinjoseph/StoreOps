@@ -4507,7 +4507,7 @@
     const f = state.salesFilters;
     if (!f.startDate) {
       const today = todayMidnight();
-      f.startDate = isoDate(addDays(today, -6));
+      f.startDate = isoDate(addDays(today, -13));
       f.endDate = isoDate(today);
     }
     f.page = 1;
@@ -4842,14 +4842,16 @@
   }
 
   function renderSalesInsights(ins, daily) {
+    console.log('renderSalesInsights called with:', {ins: !!ins, daily: daily.length});
     const el = $('salesInsights');
-    if (!el) return;
-    if (!ins) { el.innerHTML = ''; return; }
+    if (!el) { console.log('salesInsights element not found'); return; }
+    if (!ins) { console.log('insights data is null/undefined'); el.innerHTML = ''; return; }
 
-    const tr = ins.trend || {};
-    let html = '<div class="ins-wrap">';
+    try {
+      const tr = ins.trend || {};
+      let html = '<div class="ins-wrap">';
 
-    // 1. Trend — the headline, with the rolling average behind it.
+      // 1. Trend — the headline, with the rolling average behind it.
     html += '<div class="ins-card ins-trend">' +
       '<div class="ins-head"><span class="ins-title">Trend</span>' +
         pctBadge_(tr.changePct) + '</div>' +
@@ -4919,7 +4921,11 @@
         : '') +
     '</div>';
 
-    el.innerHTML = html + '</div>';
+      el.innerHTML = html + '</div>';
+    } catch (e) {
+      console.error('renderSalesInsights error:', e.message);
+      el.innerHTML = '<div class="ins-wrap" style="color:red">Error rendering insights: ' + esc(e.message) + '</div>';
+    }
   }
 
   // Re-render the results body (chart + day accordion) from cached data +

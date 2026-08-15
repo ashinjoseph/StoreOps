@@ -164,6 +164,7 @@ function unavailable(sec) {
 }
 
 function reserveHtml(s) {
+  if (!s) return '<div class="card"><div class="note">Data unavailable</div></div>';
   if (s.unavailable) return unavailable(s);
   var rows = s.rows || [];
   var max = rows.reduce(function (m, r) { return Math.max(m, r.counted || 0); }, 0) || 1;
@@ -209,6 +210,7 @@ function reserveHtml(s) {
 }
 
 function cashHtml(s) {
+  if (!s) return '<div class="card"><div class="note">Data unavailable</div></div>';
   if (s.unavailable) return unavailable(s);
   var h = '<div class="card">' +
     '<div class="hero">' +
@@ -259,6 +261,7 @@ function cashHtml(s) {
 }
 
 function reconcileHtml(s) {
+  if (!s) return '<div class="card"><div class="note">Data unavailable</div></div>';
   if (s.unavailable) return unavailable(s);
   if (!s.rows.length) return '<div class="card"><div class="empty">' + esc(s.note || 'Nothing yet.') + '</div></div>';
 
