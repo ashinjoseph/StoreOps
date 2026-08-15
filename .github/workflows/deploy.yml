@@ -10,26 +10,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      
+
       - name: Install clasp
         run: npm install -g @google/clasp
-      
+
+      # Script ID is inline rather than read from secrets.CLASP_JSON, which
+      # still points at the old prod project. A secret would silently win over
+      # whatever this file says, and the whole point of the cutover is that the
+      # target changed.
       - name: Setup clasp credentials
         run: |
           echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
-          echo '${{ secrets.CLASP_JSON }}' > .clasp.json
-      
+          echo '{"scriptId":"1yENop610-Uqgqq8S4K4XlTQdT822S79wFS2GdH10kzn0nVbAf-A5eacK","rootDir":"src"}' > .clasp.json
+
       - name: Push to Apps Script
         run: clasp push --force
-      
+
+      # A deployment ID belongs to one script project, so the old prod ID could
+      # never have worked here. Set the PROD_DEPLOYMENT_ID repo variable to the
+      # new project's web app deployment and versioned deploys switch on; until
+      # then the push above still updates the head deployment, so the web app
+      # serves this code either way.
       - name: Deploy new Apps Script version
+        if: vars.PROD_DEPLOYMENT_ID != ''
         run: |
           clasp deploy \
-            --deploymentId AKfycbyncTiTAQYlOUsVQomapFbpjkh1WiTOA9Ag7JpkWeN0Lhx6Z9bODf1isCbhoT-0pl9D \
-            --description "Auto-deploy $(git rev-parse --short HEAD)"      
-      
+            --deploymentId "${{ vars.PROD_DEPLOYMENT_ID }}" \
+            --description "Auto-deploy $(git rev-parse --short HEAD)"
+
+      - name: Note when versioned deploy is skipped
+        if: vars.PROD_DEPLOYMENT_ID == ''
+        run: |
+          echo "PROD_DEPLOYMENT_ID is not set — pushed code only."
+          echo "The web app serves the pushed code, but no new version was pinned."
+          echo "Set it under Settings -> Secrets and variables -> Actions -> Variables."
