@@ -386,7 +386,7 @@ function configDefaults_() {
     ['whatsapp_template_name',       '',               'Generic fallback template (body as {{1}}, flattened). Blank = plain text'],
     ['whatsapp_template_lang',       'en',             'Template language code (applies to all whatsapp_template_* names)'],
     ['whatsapp_template_shift_open', '',               'Approved template for shift-open notice: {{1}} name, {{2}} company, {{3}} time'],
-    ['whatsapp_template_shift_close','',               'Approved template for shift close/reconcile: {{1}} date {{2}} company {{3}} window {{4}} cash counted {{5}} cash variance {{6}} credit {{7}} debit {{8}} total {{9}} status'],
+    ['whatsapp_template_shift_close','',               'Approved template for shift close/reconcile, 13 params: {{1}} date {{2}} company {{3}} window {{4}} staff {{5}} total sales {{6}} cash recorded/counted {{7}} where the cash went {{8}} cash in hand {{9}} lotto reserve {{10}} credit {{11}} debit {{12}} card total {{13}} status'],
     ['whatsapp_template_shopping_list','',             'Approved template for shopping list: {{1}} date·by, {{2}} item lines, {{3}} summary'],
     ['clover_enabled',               'false',          'Toggle Clover card reconciliation at end of day'],
     ['clover_base_url',              'https://api.clover.com', 'Clover REST API base (sandbox: https://sandbox.dev.clover.com)'],

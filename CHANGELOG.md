@@ -346,3 +346,30 @@ This completes v1.0.0.
 - Privilege is resolved server-side from the session, never from the client: an
   employee gets their own balance and nothing else, and asking
   `rpcGetCashHandoverHistory` for someone else's rows quietly returns their own.
+
+### Reconcile message rebuilt on 13 parameters (Batch 8)
+- **The nine-parameter template is replaced by `shift_close_v2`.** Parameter 5
+  had become a dumping ground — cash recorded/counted, the variance, the
+  destination split and the whole lotto reserve were crammed into one value,
+  because the approved template had no room for a tenth. That produced exactly
+  the line nobody could read. Thirteen parameters now carry one fact each and
+  the template owns the layout.
+- **Two facts the message never carried:** who worked the till (`{{4}}`), and
+  who is carrying the day's cash (`{{8}}`) — the latter naming both today's
+  takings per person and how much is still out across the business, with a
+  flag when anything has been held past `cash_handover_stale_days`. Today's
+  movement and the standing balance answer different questions, so both appear.
+- The cash variance now carries its own ✅/⚠️ mark rather than sitting bare, and
+  the Clover-unavailable status says what it cost you — *"cards not verified"* —
+  instead of just naming the outage.
+- Parameter 9 reads `not tracked on this till` for a vape-only day or a
+  pre-migration sheet. A fixed template can't drop a section the way the plain
+  text does, so it says so rather than sending a bare dash.
+- `docs/whatsapp-template-shift-close.md` — the body to paste into Meta, sample
+  values taken from real harness output, the good-day/bad-day shape of every
+  parameter, and the structural rules the layout satisfies (no leading or
+  trailing variable, no two variables adjacent — which is why `Result:` sits in
+  front of `{{13}}`).
+- Deploying before the new template is approved costs the message, not the
+  data: Meta rejects the send on a parameter-count mismatch, `dispatch_` mutes
+  it, and the reconciliation still runs and still writes its row.

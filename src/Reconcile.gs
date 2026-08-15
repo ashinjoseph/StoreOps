@@ -120,11 +120,18 @@ const Reconcile = (() => {
         cashierCredit: 0, cashierDebit: 0, cashSales: 0,
         cashCounted: 0, cashVariance: 0, openingFloat: 0,
         cashBanked: 0, floatLeft: 0, lottoTopup: 0,
+        tookCash: {}, staff: {},
         startMs: Infinity, endMs: 0,
       };
       const g = groups[key];
       g.companies[s.company] = true;
       g.sessionIds.push(s.sessionId);
+      g.staff[s.staffId] = true;
+      // Who walked out with what, today. The standing balance is a separate
+      // question (CashHandling answers it); this is just this day's movement.
+      if ((s.cashRemovedAtClose || 0) > 0.005) {
+        g.tookCash[s.staffId] = Util.roundMoney((g.tookCash[s.staffId] || 0) + s.cashRemovedAtClose);
+      }
       const sale = salesById[s.sessionId];
       if (sale) {
         g.cashierCredit += (sale.creditCardSales || 0) + (sale.miscCreditSales || 0);
@@ -159,6 +166,24 @@ const Reconcile = (() => {
       if (log && log.enabled) lotto = log;
     } catch (e) {
       console.error('reconcile: lotto log failed: ' + e.message);
+    }
+
+    // Standing cash-in-hand across the whole business, read once. Today's
+    // takings say what moved; this says how much is still out, which is the
+    // number that should worry someone if it keeps climbing.
+    let cashOut = null;
+    try {
+      if (CashHandling.sheetsExist()) cashOut = CashHandling.getAllOutstanding();
+    } catch (e) {
+      console.error('reconcile: cash outstanding failed: ' + e.message);
+    }
+
+    // staff_id → display name, for the "who worked" line.
+    const staffNames = {};
+    try {
+      Staff.getAll().forEach(st => { staffNames[st.staffId] = st.name; });
+    } catch (e) {
+      console.error('reconcile: staff names failed: ' + e.message);
     }
 
     Object.keys(groups).forEach(key => {
@@ -198,6 +223,16 @@ const Reconcile = (() => {
         cashBanked: Util.roundMoney(g.cashBanked),
         floatLeft: Util.roundMoney(g.floatLeft),
         lottoTopup: Util.roundMoney(g.lottoTopup),
+        staffNames: Object.keys(g.staff).map(id => staffNames[id] || id).sort(),
+        // [{ name, amount }] — who took today's cash out of this till.
+        tookCash: Object.keys(g.tookCash)
+          .map(id => ({ name: staffNames[id] || id, amount: g.tookCash[id] }))
+          .sort((a, b) => b.amount - a.amount),
+        // Business-wide, not per-merchant — but it belongs on the message that
+        // reports the day's cash, and only needs saying once.
+        cashOutTotal: cashOut ? cashOut.grandTotal : null,
+        cashOutHolders: cashOut ? cashOut.holders.length : 0,
+        cashOutStale: cashOut ? cashOut.stale.length : 0,
         // Only the group that actually holds cstore carries the pot.
         lotto: (lotto && g.companies[TillSessions.lottoCompany]) ? {
           balance:  lotto.lastCounted,
@@ -262,31 +297,68 @@ const Reconcile = (() => {
 
   // The 9 ordered params for the shift_close template. All single-line
   // scalars - the template owns the layout. Convention: source / local.
+  /** Who worked this till today. */
+  function staffParam_(m) {
+    const names = m.staffNames || [];
+    return names.length ? names.join(', ') : 'no staff recorded';
+  }
+
+  /**
+   * Who is carrying today's takings, and how much is still out overall.
+   * Today's movement and the standing balance answer different questions —
+   * "did the cash leave" versus "has it ever come back" — so both are here.
+   */
+  function inHandParam_(m) {
+    const took = m.tookCash || [];
+    const parts = took.length
+      ? took.map(t => t.name + ' ' + Util.formatMoney(t.amount))
+      : ['nothing taken out today'];
+    if (m.cashOutTotal != null) {
+      parts.push(Util.formatMoney(m.cashOutTotal) + ' still out' +
+        (m.cashOutHolders ? ' with ' + m.cashOutHolders +
+          (m.cashOutHolders === 1 ? ' person' : ' people') : ''));
+      if (m.cashOutStale) parts.push('⚠️ ' + m.cashOutStale + ' held over the limit');
+    }
+    return parts.join(' · ');
+  }
+
+  /** The pot, as one line. Fixed templates can't drop a section, so a till
+   *  without a reserve says so rather than sending an empty dash. */
+  function lottoParam_(m) {
+    if (!m.lotto) return 'not tracked on this till';
+    const short = Number(m.lotto.shortfall) || 0;
+    let s = (m.lotto.balance == null ? 'not counted yet' : Util.formatMoney(m.lotto.balance));
+    if ((m.lottoTopup || 0) > 0.01) s += ' (+' + Util.formatMoney(m.lottoTopup) + ' moved in)';
+    if (short > 0.01) {
+      s += ' - short ' + Util.formatMoney(short);
+      if (m.lotto.note) s += ' - ' + m.lotto.note;
+    }
+    return s;
+  }
+
+  /**
+   * Body parameters for `whatsapp_template_shift_close`, in template order.
+   *
+   * THIRTEEN parameters, one idea each. The previous nine crammed the
+   * destination, the reserve and the variance into a single cash parameter
+   * because the approved template had no room — which made the one line
+   * nobody could parse. The static template now owns the layout; every value
+   * here is a single fact on a single line.
+   *
+   * Rules these must satisfy or Meta rejects the send: no newlines, no tabs,
+   * no run of 4+ spaces inside a value. flattenForTemplate_ enforces it, but
+   * building them clean means it never has to.
+   */
   function reconParams_(dateObj, m) {
     const friendly = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'EEE d MMM yyyy');
     const windowStr = hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd);
     const companies = m.companies.join(' + ');
     const recorded = Util.roundMoney(m.cashCounted - m.cashVariance);
-    // The reserve rides inside the cash parameter rather than taking a 10th:
-    // the template is approved at Meta with exactly 9, and adding one means
-    // re-submitting it before anything sends at all. Single line, no markdown
-    // — flattenForTemplate_ would strip both anyway.
-    const cashParts = [
-      Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) +
-        ' (var ' + signed_(m.cashVariance) + ')',
-      Util.formatMoney(m.cashBanked || 0) + ' in hand',
-    ];
-    if (m.lotto) {
-      const short = Number(m.lotto.shortfall) || 0;
-      cashParts.push(
-        'lotto reserve ' +
-        (m.lotto.balance == null ? 'not counted yet' : Util.formatMoney(m.lotto.balance)) +
-        ((m.lottoTopup || 0) > 0.01 ? ' (+' + Util.formatMoney(m.lottoTopup) + ' moved in)' : '') +
-        (short > 0.01 ? ' - short ' + Util.formatMoney(short) : '')
-      );
-    }
-    const cashLine = cashParts.join(' · ');
     const reported = Util.roundMoney(m.cashSales + m.cashierCard);
+
+    const cashLine = Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) +
+      ' (var ' + signed_(m.cashVariance) + ') ' + mark_(m.cashVariance);
+
     let totalLine, credit, debit, total, status;
     if (m.cloverOk) {
       const expected = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
@@ -301,12 +373,23 @@ const Reconcile = (() => {
       credit = Util.formatMoney(m.cashierCredit) + ' (cashier, no Clover)';
       debit  = Util.formatMoney(m.cashierDebit) + ' (cashier, no Clover)';
       total  = Util.formatMoney(m.cashierCard) + ' (cashier, no Clover)';
-      status = '⚠️ Clover unavailable';
+      status = '⚠️ Clover unavailable - cards not verified';
     }
+
     return [
-      friendly, companies, windowStr,
-      totalLine, cashLine,
-      credit, debit, total, status,
+      friendly,            // {{1}}  Sat 15 Aug 2026
+      companies,           // {{2}}  cstore + vape
+      windowStr,           // {{3}}  09:00–17:20
+      staffParam_(m),      // {{4}}  Ashin, Meera
+      totalLine,           // {{5}}  reported / expected
+      cashLine,            // {{6}}  recorded / counted (var)
+      destination_(m),     // {{7}}  float back · reserve · in hand
+      inHandParam_(m),     // {{8}}  who carries it, what's still out
+      lottoParam_(m),      // {{9}}  pot balance, movement, reason
+      credit,              // {{10}}
+      debit,               // {{11}}
+      total,               // {{12}}
+      status,              // {{13}}
     ];
   }
 
@@ -355,6 +438,7 @@ const Reconcile = (() => {
     const lines = ['\u{1F9FE} *Shift Reconciliation*', '\u{1F4C5} ' + friendly, ''];
     merchants.forEach(m => {
       lines.push('\u{1F3EA} *' + m.companies.join(' + ') + '*   \u{23F0} ' + hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd));
+      lines.push('\u{1F464} ' + staffParam_(m));
       lines.push('');
       const reported = Util.roundMoney(m.cashSales + m.cashierCard);
       if (m.cloverOk) {
@@ -369,6 +453,9 @@ const Reconcile = (() => {
       const recorded = Util.roundMoney(m.cashCounted - m.cashVariance);
       lines.push(Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) + '   var ' + signed_(m.cashVariance));
       lines.push('\u{21B3} ' + destination_(m));
+      lines.push('');
+      lines.push('\u{1F91D} *Cash in hand*');
+      lines.push('\u{21B3} ' + inHandParam_(m));
       lines.push('');
       const reserve = reserveLines_(m);
       if (reserve.length) { reserve.forEach(l => lines.push(l)); lines.push(''); }
