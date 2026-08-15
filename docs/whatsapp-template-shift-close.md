@@ -152,6 +152,35 @@ Note what is deliberately **not** in `{{13}}`: the `{{5}}` total-sales
 difference. It is a derived cross-check that double-counts the cash variance
 already reported, so folding it in would flag the same shortfall twice.
 
+### Why {{5}} and {{13}} carry opposite signs
+
+They describe the same event from the two ends, and both are correct:
+
+```
+Drawer $40 short, cards agree
+  {{5}}  reported $451.00 / expected $411.00 (+$40.00) ⚠️
+  {{6}}  $650.00 / $610.00 (var -$40.00) ⚠️
+  {{13}} ⚠️ cash short $40.00
+```
+
+`{{5}}` is **+$40** because the cashier reported $40 more in sales than the
+drawer and Clover between them can account for. `{{13}}` is **short $40**
+because that is the same gap seen from the till. One says "you claimed more
+than is here", the other says "there is less here than you claimed".
+
+Each cause shows up in a distinguishable place, which is the point of keeping
+them separate:
+
+| What happened | {{5}} | {{6}} | {{13}} |
+|---|---|---|---|
+| Drawer $40 short | `+$40.00` ⚠️ | `var -$40.00` ⚠️ | `cash short $40.00` |
+| Cards off $12 | `+$12.00` ⚠️ | `var +$0.00` ✅ | `cards off $12.00` |
+| Both | `+$52.00` ⚠️ | `var -$40.00` ⚠️ | `cash short $40.00 · cards off $12.00` |
+
+`{{5}}` alone can't tell you *which* — it just sums the gap. `{{6}}` isolates
+the cash and `{{13}}` names the causes, so the three together localise the
+problem without anyone opening the sheet.
+
 ## Structural rules this satisfies
 
 Meta rejects a template body that breaks any of these. Worth re-checking if
