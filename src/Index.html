@@ -1555,8 +1555,10 @@
     const pay = has(['admin', 'payroll_admin']);
 
     if (!state.weekStart) state.weekStart = mondayOf(new Date());
-    const f = state.salesFilters;
-    if (!f.startDate) { const t = todayMidnight(); f.startDate = isoDate(addDays(t, -6)); f.endDate = isoDate(t); }
+    // Same seeder the tab uses, so the prefetched cache key matches the one
+    // loadSalesTab will ask for — and so neither can quietly redefine the
+    // window out from under the other.
+    const f = seedSalesFilters_();
 
     const jobs = [
       ['rpcGetWeekSchedule',   [state.token, isoDate(state.weekStart)], TTL_SEMI],
@@ -4503,16 +4505,25 @@
   // ============================================================
   const SALES_FETCH_CAP = 1000;   // pull the whole range so days group client-side
 
-  async function loadSalesTab(force) {
+  // 60 days back, and ONE definition of it. prefetchTabs and loadSalesTab both
+  // seed state.salesFilters — the same object — so two different defaults meant
+  // whichever fired first silently won, and prefetch (1.2s after login) usually
+  // did. The window has to clear the insight floors to be useful: the
+  // time-of-month split needs 28 trading days and the rolling average needs 7,
+  // so a shorter default guarantees those cards render an excuse instead of a
+  // chart.
+  const SALES_DEFAULT_DAYS = 60;
+  function seedSalesFilters_() {
     const f = state.salesFilters;
-    if (!f.startDate) {
-      const today = todayMidnight();
-      // 30 days, not a fortnight: the time-of-month insight needs a full month
-      // of trading before it will say anything, so a shorter default would
-      // greet every user with a card explaining why it is empty.
-      f.startDate = isoDate(addDays(today, -29));
-      f.endDate = isoDate(today);
-    }
+    if (f.startDate) return f;
+    const today = todayMidnight();
+    f.startDate = isoDate(addDays(today, -(SALES_DEFAULT_DAYS - 1)));
+    f.endDate = isoDate(today);
+    return f;
+  }
+
+  async function loadSalesTab(force) {
+    const f = seedSalesFilters_();
     f.page = 1;
     f.pageSize = SALES_FETCH_CAP;
     const view = $('view-sales');
