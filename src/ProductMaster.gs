@@ -346,7 +346,16 @@ const ProductMaster = (() => {
    * Dedup: beer by sku+unit, else sku, else brand+name. On a dedup match
    * (active OR inactive) returns the existing record and audits — no append.
    */
-  function create_(input) {
+  /**
+   * @param opts.bulk  Caller owns dedup and cache lifetime. Skips the leading
+   *   dedup read and the trailing re-read, returning a light record instead of
+   *   a round-tripped one. Only importFromStaging_ sets this: on its own, each
+   *   create busts the cache and re-reads the whole sheet twice — once to
+   *   dedup, once to return — which is two full reads per row against a
+   *   catalog that grows as the import runs.
+   */
+  function create_(input, opts) {
+    opts = opts || {};
     if (!input.productName || !input.productName.toString().trim()) {
       throw new Error('productName is required');
     }
@@ -360,8 +369,13 @@ const ProductMaster = (() => {
     if (unitFrom && detail[unitFrom]) unit = detail[unitFrom].toString().trim();
     if (!unit) unit = 'each';
 
-    bustCache_();   // ensure dedup read is fresh
-    const existing = findDuplicate_(Object.assign({}, input, { category, unit }), true);
+    // In bulk mode the caller already deduped against an index it maintains,
+    // so neither the cache bust nor the read it forces is needed here.
+    let existing = null;
+    if (!opts.bulk) {
+      bustCache_();   // ensure dedup read is fresh
+      existing = findDuplicate_(Object.assign({}, input, { category, unit }), true);
+    }
     if (existing) {
       AuditLog.write({
         actorId: input.actorId,
@@ -428,6 +442,16 @@ const ProductMaster = (() => {
         sourceFile: input.sourceFile || 'manual',
       },
     });
+
+    if (opts.bulk) {
+      // Enough for the caller to keep its dedup index current. It busts the
+      // cache once when the whole batch is done.
+      return {
+        productId, sku, category, unit,
+        brand: (input.brand || '').toString().trim(),
+        productName: input.productName.toString().trim(),
+      };
+    }
 
     bustCache_();
     return getById_(productId);
@@ -697,10 +721,18 @@ const ProductMaster = (() => {
     const isBeer = type === 'beer';
     const colOf = (name) => headers.indexOf(name);
 
-    // Build the dedup index once (beer keys on sku|unit).
+    // Build BOTH dedup indexes once, and keep them current as rows are created
+    // below. The name index is what makes this a single pass: SKU-less rows —
+    // every row of a barcode-only inventory — used to fall through to
+    // findDuplicate_, which re-reads the entire sheet per row.
     bustCache_();
-    const index = {};
+    const index = {};        // sku (or sku|unit for beer) → product
+    const nameIndex = {};    // brand|name → product, the SKU-less fallback key
+    const nameKey = (brand, name) =>
+      (brand || '').toString().trim().toLowerCase() + '|' +
+      (name || '').toString().trim().toLowerCase();
     getAll_(true).forEach(p => {
+      nameIndex[nameKey(p.brand, p.productName)] = p;
       if (!p.sku) return;
       const k = isBeer ? (p.sku.toLowerCase() + '|' + (p.unit || '').toLowerCase()) : p.sku.toLowerCase();
       index[k] = p;
@@ -749,16 +781,28 @@ const ProductMaster = (() => {
           return;
         }
 
-        const dup = findDuplicate_(input, true);
-        if (dup) { skipped++; return; }
+        const nk = nameKey(input.brand, input.productName);
+        if (nameIndex[nk]) { skipped++; return; }
 
-        create_(input);
+        const created = create_(input, { bulk: true });
         imported++;
+        // Register immediately, so two rows sharing a name inside one paste
+        // collapse the same way they would across two runs.
+        nameIndex[nk] = created;
+        if (created && created.sku) {
+          const ck = isBeer
+            ? (created.sku.toLowerCase() + '|' + (created.unit || '').toLowerCase())
+            : created.sku.toLowerCase();
+          index[ck] = created;
+        }
       } catch (e) {
         errorCount++;
         if (errors.length < ERROR_CAP) errors.push({ rowIndex: rowIndex, message: e.message });
       }
     });
+
+    // One bust for the whole batch — bulk creates deliberately left it stale.
+    bustCache_();
 
     AuditLog.write({
       actorId,

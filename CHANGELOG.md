@@ -481,3 +481,35 @@ look.
   new `data.foo` fails until the RPC sends it — and `Public.html` must inline
   its payload unescaped. Both assertions were confirmed to fail against the
   original code before being kept.
+
+#### Read-path performance, once real data was in (Batch 10)
+
+The app felt slow after the catalog went from 152 to 374 products. The rendering
+was not the problem — the picker caps at 40 rows and the Products tab at 200.
+Every cost was a sheet read.
+
+- **`Sales` had no row cache.** `getAll_` re-read the entire sheet on every call,
+  and one dashboard load calls it twice: once for the visible range, once inside
+  `buildInsights_` for the baseline window. Every other module already solved
+  this — `TillSessions._tillCache`, `CashHandling._handoversCache` — so Sales now
+  carries the same per-execution cache. Measured: 2 full reads per dashboard load
+  down to 1.
+- **Adding that cache created a trap, so it is tested.** `write_` ends by
+  re-reading through `getForSession_` to return the saved row; against a warm
+  cache that returns the *pre-write* record, or nothing at all for a new row. The
+  write busts the cache, and three assertions fail if that bust is ever removed.
+- **The import re-read `product_master` twice per created row** — once to dedup,
+  once to return the created record — against a catalog growing as it ran.
+  Measured on 222 rows: **667 full reads**. It now keeps its own name index,
+  updates it as rows are created, and busts the cache once at the end: **1 read**,
+  with identical insert/skip results and in-paste duplicate handling unchanged.
+- **The sales default window was decided by a race.** `prefetchTabs` and
+  `loadSalesTab` both seeded `state.salesFilters` — the same object — with
+  different windows, so whichever fired first won, and prefetch (1.2s after
+  login) usually did. That quietly capped the range at 7 days and kept the
+  time-of-month card permanently below its 28-trading-day floor. One
+  `seedSalesFilters_` now serves both, at 60 days, which clears every insight
+  threshold with margin.
+- `perf` and `import-perf` suites assert the shape of the cost — reads staying
+  constant as the batch grows — rather than a wall-clock number, so they stay
+  meaningful anywhere. Both were confirmed to fail against the previous code.

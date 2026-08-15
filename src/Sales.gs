@@ -48,14 +48,24 @@ const Sales = (() => {
     };
   }
 
+  // Per-execution row cache, same shape as TillSessions._tillCache. The
+  // dashboard reads this sheet at least twice per request — once for the
+  // visible range and again for the insight baseline — and every read was
+  // pulling the whole sheet. Scope is one execution, so a write in another
+  // request can never be served a stale list.
+  let _salesCache = null;
+  function bustCache_() { _salesCache = null; }
+
   function getAll_() {
+    if (_salesCache) return _salesCache;
     const sh = sheet_();
     const last = sh.getLastRow();
     if (last < DATA_START_ROW) return [];
     const data = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, NUM_COLS).getValues();
-    return data
+    _salesCache = data
       .map((row, i) => rowToRecord_(row, i + DATA_START_ROW))
       .filter(r => r.salesId);
+    return _salesCache;
   }
 
   function getForSession_(sessionId) {
@@ -131,6 +141,10 @@ const Sales = (() => {
       const row = sh.getLastRow() + 1;
       sh.getRange(row, 1, 1, NUM_COLS).setValues([values]);
     }
+    // The row list is now stale. This matters immediately: the return below
+    // re-reads through getForSession_, which would otherwise hand back the
+    // pre-write record — or nothing at all for a freshly created row.
+    bustCache_();
 
     AuditLog.write({
       actorId: actorId || 'SYSTEM',
