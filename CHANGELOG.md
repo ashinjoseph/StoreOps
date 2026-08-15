@@ -454,3 +454,30 @@ This completes v1.0.0.
   across a DST boundary where 86400000ms is not a day.
 - `Setup.gs` — new `public_report_url` config key. The report needs the
   deployment set to *Execute as: Me* / *Anyone*; a console setting, not code.
+
+#### Fixed after the first test deployment
+
+Three defects that only a live deployment could surface — all of them in the
+wiring between layers, which is exactly where the module-level harnesses do not
+look.
+
+- **The public report showed nothing at all.** `Public.html` inlined its payload
+  with `<?= ?>`, the *escaping* scriptlet, so the JSON arrived contextually
+  escaped and `DATA` parsed as a string. Every property read came back
+  `undefined`, and the page rendered as three "unavailable" cards — a failure
+  that looks like a built page rather than a broken one. Now `<?!= ?>`, with
+  guards on each section so a genuinely missing one costs a card and not the
+  document.
+- **The sales insights never arrived.** `rpcGetSalesDashboard` re-shapes the
+  dashboard result by hand (`totalCount` → `rowCount`), and the hand-written
+  projection silently dropped `insights` — computed on every request for the
+  whole of the first deployment, then thrown away one line before the client.
+- **The default range hid an insight it was meant to show.** Time-of-month
+  suppresses below 28 trading days, so a fortnight default guaranteed that card
+  read "needs a full month" on every first load. The default is 30 days, chosen
+  so all four cards have enough behind them to say something.
+- A `wiring` suite now covers both seams: the dashboard RPC must forward every
+  field the UI reads — discovered from `Index.html` rather than hardcoded, so a
+  new `data.foo` fails until the RPC sends it — and `Public.html` must inline
+  its payload unescaped. Both assertions were confirmed to fail against the
+  original code before being kept.

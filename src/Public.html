@@ -138,7 +138,10 @@
 <script>
 // Payload is inlined server-side at render time — the page makes no calls,
 // so nothing here is reachable except this one document.
-var DATA = <?= payload ?>;
+// Force-print (<?!=), not the escaping <?= — the latter contextually escapes
+// the JSON, leaving DATA a string whose every property reads undefined. That
+// failure is silent: the page renders, each section just looks unavailable.
+var DATA = <?!= payload ?>;
 
 function esc(s) {
   return String(s == null ? '' : s)

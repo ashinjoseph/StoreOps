@@ -4507,7 +4507,10 @@
     const f = state.salesFilters;
     if (!f.startDate) {
       const today = todayMidnight();
-      f.startDate = isoDate(addDays(today, -13));
+      // 30 days, not a fortnight: the time-of-month insight needs a full month
+      // of trading before it will say anything, so a shorter default would
+      // greet every user with a card explaining why it is empty.
+      f.startDate = isoDate(addDays(today, -29));
       f.endDate = isoDate(today);
     }
     f.page = 1;
@@ -4842,10 +4845,9 @@
   }
 
   function renderSalesInsights(ins, daily) {
-    console.log('renderSalesInsights called with:', {ins: !!ins, daily: daily.length});
     const el = $('salesInsights');
-    if (!el) { console.log('salesInsights element not found'); return; }
-    if (!ins) { console.log('insights data is null/undefined'); el.innerHTML = ''; return; }
+    if (!el) return;
+    if (!ins) { el.innerHTML = ''; return; }
 
     try {
       const tr = ins.trend || {};
