@@ -721,6 +721,7 @@ function rpcGetSalesDashboard(token, filters) {
     rowCount: result.totalCount,
     totals: result.totals,
     daily: result.daily,
+    insights: result.insights,
   };
 }
 
