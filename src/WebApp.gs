@@ -251,11 +251,31 @@ function _rpcGetMyShiftState(token) {
     console.error('lotto log failed: ' + e.message);
   }
 
+  // Cash this person is still carrying from closed shifts. Surfaced on the
+  // landing tab so it's discovered rather than hunted for in the drawer.
+  // Degrades to null on a sheet that hasn't run the cash handling migration.
+  let cashInHand = null;
+  try {
+    if (CashHandling.sheetsExist()) {
+      const o = CashHandling.getOutstandingForStaff(session.staffId);
+      const mgr = CashHandling.cashManager();
+      cashInHand = {
+        total:   o.totalOutstanding,
+        shifts:  o.unsettledSessions.length,
+        oldest:  o.unsettledSessions.length ? o.unsettledSessions[0].dateStr : '',
+        managerName: mgr ? mgr.name : null,
+      };
+    }
+  } catch (e) {
+    console.error('cash in hand failed: ' + e.message);
+  }
+
   return {
     today: Util.formatDate(today),
     cards: cards,
     todaySummary: todaySummary,
     lotto: lotto,
+    cashInHand: cashInHand,
     recentTill: recentTill.map(s => ({
       sessionId: s.sessionId,
       company: s.company,
@@ -687,6 +707,76 @@ function rpcGetReconciliation(token, limit) {
   const session = _session(token);
   Auth.require(session, ['admin', 'manager', 'payroll_admin']);
   return Reconcile.getRecent(Number(limit) || 60);
+}
+
+// ── Cash handling ─────────────────────────────────────────
+//  Who is carrying shift takings, and the ledger of handovers to the cash
+//  manager. Everyone sees their own balance; only the cash manager and
+//  admins see the roster. That decision is made HERE from the session —
+//  never from anything the client claims about itself.
+
+function _isCashPrivileged(session) {
+  if (session.role === 'admin') return true;
+  const mgr = CashHandling.cashManager();
+  return !!(mgr && mgr.staffId === session.staffId);
+}
+
+function rpcGetCashPosition(token) {
+  const session = _session(token);
+  if (!CashHandling.sheetsExist()) return { enabled: false };
+  return CashHandling.getPosition(session.staffId, _isCashPrivileged(session));
+}
+
+function rpcRecordCashHandover(token, input) {
+  const session = _session(token);
+  input = input || {};
+  // record_ re-checks this against the resolved recipient; the point of
+  // repeating it here is to fail before touching the sheet.
+  const fromStaffId = (input.fromStaffId || session.staffId).toString();
+  if (fromStaffId !== session.staffId && !_isCashPrivileged(session)) {
+    throw new Error('FORBIDDEN: only the cashier, the cash manager, or an admin can record this handover');
+  }
+  return CashHandling.record({
+    fromStaffId: fromStaffId,
+    amount:      Number(input.amount),
+    handedOn:    input.handedOn || null,
+    toStaffId:   input.toStaffId || null,
+    method:      input.method || 'cash',
+    notes:       input.notes || '',
+    actorId:     session.staffId,
+  });
+}
+
+function rpcVoidCashHandover(token, handoverId) {
+  const session = _session(token);
+  if (!_isCashPrivileged(session)) {
+    throw new Error('FORBIDDEN: only the cash manager or an admin can void a handover');
+  }
+  return CashHandling.voidHandover(handoverId, session.staffId);
+}
+
+/**
+ * One cashier's balance and per-shift breakdown. The roster carries totals
+ * only, and the handover sheet needs the breakdown to preview the split, so
+ * the cash manager fetches it when they press Receive.
+ */
+function rpcGetCashOutstandingFor(token, staffId) {
+  const session = _session(token);
+  if (!CashHandling.sheetsExist()) return { enabled: false };
+  if (staffId !== session.staffId && !_isCashPrivileged(session)) {
+    throw new Error('FORBIDDEN: only the cash manager or an admin can view another cashier\'s balance');
+  }
+  const o = CashHandling.getOutstandingForStaff(staffId);
+  o.enabled = true;
+  return o;
+}
+
+function rpcGetCashHandoverHistory(token, limit, staffId) {
+  const session = _session(token);
+  if (!CashHandling.sheetsExist()) return { enabled: false, handovers: [] };
+  // A non-privileged caller is pinned to their own rows whatever they pass.
+  const scope = _isCashPrivileged(session) ? (staffId || null) : session.staffId;
+  return { enabled: true, handovers: CashHandling.getHistory(Number(limit) || 25, scope) };
 }
 
 // ── History tab ───────────────────────────────────────────

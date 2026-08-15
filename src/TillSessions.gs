@@ -455,6 +455,10 @@ const TillSessions = (() => {
       // one, so the summary line stays silent about lotto.
       lottoReserveCounted: lottoOn ? Util.roundMoney(lottoCounted) : null,
       lottoTopupFromTill:  lottoOn ? Util.roundMoney(lottoTopup) : 0,
+      // The cash actually leaving with the cashier — already net of the float
+      // and of anything moved into the reserve. Tracked from here on by
+      // CashHandling, so the close notice names it.
+      cashInHand:          cashRemoved,
     });
 
     // If this was the LAST open session for the attendance, complete it

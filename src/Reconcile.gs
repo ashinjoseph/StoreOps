@@ -274,7 +274,7 @@ const Reconcile = (() => {
     const cashParts = [
       Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) +
         ' (var ' + signed_(m.cashVariance) + ')',
-      'banked ' + Util.formatMoney(m.cashBanked || 0),
+      Util.formatMoney(m.cashBanked || 0) + ' in hand',
     ];
     if (m.lotto) {
       const short = Number(m.lotto.shortfall) || 0;
@@ -312,13 +312,18 @@ const Reconcile = (() => {
 
   /**
    * Where the counted cash went, on one line: the float stays in the drawer,
-   * any reserve top-up leaves for the pot, the rest is banked. Without this
-   * the banked figure just drops by the transfer with nothing to explain it.
+   * any reserve top-up leaves for the pot, and the rest leaves with the
+   * cashier. Without this the last figure just drops by the transfer with
+   * nothing to explain it.
+   *
+   * Called "in hand", not "banked" — it isn't banked, it's being carried
+   * until it's handed to the cash manager, and CashHandling tracks it from
+   * there. Same word on the close sheet and the close notice.
    */
   function destination_(m) {
     const parts = ['float ' + Util.formatMoney(m.floatLeft || 0) + ' back'];
     if ((m.lottoTopup || 0) > 0.01) parts.push('reserve ' + Util.formatMoney(m.lottoTopup));
-    parts.push('banked ' + Util.formatMoney(m.cashBanked || 0));
+    parts.push(Util.formatMoney(m.cashBanked || 0) + ' in hand');
     return parts.join(' · ');
   }
 

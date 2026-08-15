@@ -56,7 +56,14 @@ const Notifier = (() => {
           const moved = Number(payload.lottoTopupFromTill) || 0;
           if (moved > 0.01) lottoStr += ` (+$${moved.toFixed(2)} from till)`;
         }
-        return `🔴 ${payload.staffName || payload.staffId} closed ${payload.company} shift, ${vstr}${lottoStr}`;
+        // The takings the cashier is now carrying. Guarded like the reserve:
+        // a close that took nothing out says nothing, rather than "$0 in hand".
+        let handStr = '';
+        const inHand = Number(payload.cashInHand) || 0;
+        if (payload.cashInHand != null && inHand > 0.01) {
+          handStr = `, $${inHand.toFixed(2)} in hand`;
+        }
+        return `🔴 ${payload.staffName || payload.staffId} closed ${payload.company} shift, ${vstr}${lottoStr}${handStr}`;
       case 'payment.recorded':
         return `💰 Paid $${(payload.amount || 0).toFixed(2)} to ${payload.staffName || payload.staffId}`;
       case 'commission.computed':

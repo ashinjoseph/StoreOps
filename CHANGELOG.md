@@ -282,3 +282,67 @@ This completes v1.0.0.
 - Vape close is unchanged, and lotto never reaches the `sales` sheet — a
   payout is not a sale, and mixing it in would corrupt commissions and the
   Clover reconciliation.
+
+### Cash handling — the other half of the drawer (Batch 8)
+- **Cash that leaves the drawer is now tracked to the person carrying it.**
+  Every close already computed `cash_removed_at_close` — the count, less the
+  float that stays for tomorrow, less anything moved into the lotto reserve —
+  and then forgot about it. That is real money in someone's pocket, and the
+  business had no answer to *how much of our cash is out with staff right now,
+  and with whom*. It accumulates against the cashier, shift by shift, until a
+  handover discharges it.
+- **A handover names who recorded it, and that line is never hidden.** There is
+  deliberately no confirm step: either the cashier or the cash manager records
+  the movement and it takes effect immediately. What makes it trustworthy is
+  attribution — *"recorded by Jaigy · 8:02 PM"* sits on every row in both views,
+  uncollapsed, because with no handshake that line **is** the acknowledgment.
+  When one person says they handed cash over and the other says they didn't, the
+  tab is the record.
+- **Handovers settle specific shifts, oldest first.** A partial handover fills
+  each session before moving to the next, so "which shift's cash is still out"
+  has an answer rather than just a total. The split is previewed live in the
+  sheet as the amount is typed — visible *before* submitting, not discovered
+  afterwards. Same walk `payShifts` uses against unpaid attendance.
+- **Handing over less than the full balance requires a reason**, and the reason
+  field only appears once the amount is short — the show-on-need rule the lotto
+  reserve reason already follows. Handing over *more* than the balance is
+  refused with the real figure named, which is what keeps a balance from going
+  negative.
+- **A void keeps the row.** `Payments.undo` deletes; this doesn't. The status
+  flips to `voided`, the allocation reverses because voided rows stop counting,
+  and the mistake stays legible with who made it. A ledger that exists for
+  conflict review can't quietly delete its own evidence.
+- **The reserve was already accounted for, and still is.** The lotto top-up
+  comes off `cash_removed_at_close` and nothing else, so a refill day leaves the
+  cashier carrying $100 instead of $400 while `closing_variance` stays $0.00. A
+  payout made during the shift never enters the arithmetic at all — it came out
+  of the pot, and the POS cash figure is already net of it. **No close maths
+  changed in this batch.**
+- **A short drawer is not a credit.** If a count comes in under its own float,
+  `cash_removed_at_close` is negative; those sessions are skipped rather than
+  summed. Adding them would let a till shortfall quietly *reduce* what a cashier
+  owes, turning a loss into a discount — and `variance_status` already handles
+  shortfalls. Unlikely in practice, since the reserve exists for exactly that
+  case, but cheap to guard.
+- **"Banked" is now "in hand"**, on the close summary, in the reconcile message
+  and on the close notice. It was never banked — it is being carried until
+  someone hands it over. One word for one thing, in all three places it is read.
+- `shift.closed` notices name it too: *"closed cstore shift, $0.00 variance,
+  lotto reserve $500.00 (+$300.00 from till), $100.00 in hand"* — guarded like
+  the reserve clause, so a close that took nothing out stays silent about it.
+- **My Shift shows what you're carrying** with a tap through to the tab, so the
+  balance is discovered rather than hunted for in the More drawer.
+- The cash manager is **one named person in config** (`cash_manager_staff_id`),
+  not a role and not hardcoded. When he works a shift himself he holds that
+  shift's cash like anyone else and records a handover to himself — `from == to`
+  is an ordinary row, and his own balance sits above the roster so he can't scan
+  past it.
+- Cash still out after `cash_handover_stale_days` (default 7) is flagged in its
+  own block on the manager's view — a thing to act on, not a badge to scan for.
+- `Setup.gs` — new `cash_handovers` + `cash_handover_items` tables and a
+  **Add cash handling tables** migration. Until it runs, `sheetsExist_()` is
+  false, every RPC returns `{enabled:false}` instead of throwing, and the tab
+  hides itself — so this deploys safely ahead of the click.
+- Privilege is resolved server-side from the session, never from the client: an
+  employee gets their own balance and nothing else, and asking
+  `rpcGetCashHandoverHistory` for someone else's rows quietly returns their own.

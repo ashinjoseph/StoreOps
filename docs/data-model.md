@@ -93,7 +93,7 @@ One row per (date, staff, company). Lifecycle: open → closed → validated.
 | K | opening_note | string | no | Required if mismatch |
 | L | closing_cash_counted | number | no | Full till count at close |
 | M | cash_left_in_till | number | no | Standard float (e.g. $250) |
-| N | cash_removed_at_close | number | no | counted − float − lotto_topup = takings banked |
+| N | cash_removed_at_close | number | no | counted − float − lotto_topup = cash the cashier carries out (see `cash_handovers`) |
 | O | expected_cash | number | no | opening + cash_sales + misc_cash − cashback |
 | P | closing_variance | number | no | counted − expected |
 | Q | variance_status | enum | no | `OK` / `minor` / `investigate` / `pending_validation` |
@@ -111,7 +111,7 @@ out lottery wins larger than the drawer holds.
 The reserve never affects `closing_variance`. Payouts come out of the pot, not
 the drawer, and the POS cash figure is already net of them. A refill happens
 *after* the drawer has been counted and reconciled, so `lotto_topup_from_till`
-comes off `cash_removed_at_close` — the takings banked — and leaves
+comes off `cash_removed_at_close` — the cash carried out — and leaves
 `expected_cash` alone.
 
 So the counted drawer splits three ways, and every close reports it:
@@ -299,8 +299,63 @@ overwritten. First-time Setup and the lotto migration both run it.
 - `notifier_enabled` = `false`
 - `whatsapp_target_number` = empty
 - `whatsapp_api_url` = empty
+- `cash_manager_staff_id` = empty (staff_id of whoever holds the business
+  cash; blank means cash handling can read balances but not record a handover)
+- `cash_handover_stale_days` = `7`
 
-### 12–14. Phase 2 placeholder tabs
+### 12. `cash_handovers` — cash moving from a cashier to the cash manager
+
+| col | field | notes |
+|-----|-------|-------|
+| 1 | `handover_id` | `H_<stamp>_<rand>` |
+| 2 | `from_staff_id` | the cashier who was carrying it |
+| 3 | `to_staff_id` | the cash manager **at the time** — stored, not looked up, so history survives a config change |
+| 4 | `amount` | what actually moved |
+| 5 | `handed_on` | date the cash changed hands |
+| 6 | `recorded_by` | who entered it — the field that settles a dispute |
+| 7 | `recorded_at` | timestamp |
+| 8 | `method` | `cash` / `bank` / `etransfer` / `other` |
+| 9 | `status` | `recorded` / `voided` |
+| 10 | `notes` | required when the amount is short of the balance |
+| 11 | `voided_by` | |
+| 12 | `voided_at` | |
+
+There is **no pending state and no confirmation step**. Either party records
+the movement and it takes effect at once; `recorded_by` is what makes it
+reviewable. Rows are never deleted — `voided` reverses the allocation (voided
+handovers stop counting) while leaving the evidence in place.
+
+### 13. `cash_handover_items` — which shifts a handover settles
+
+| col | field | notes |
+|-----|-------|-------|
+| 1 | `item_id` | `CI_<stamp>_<rand>` |
+| 2 | `handover_id` | parent |
+| 3 | `session_id` | the till session being settled |
+| 4 | `amount` | portion applied to that session |
+| 5 | `notes` | |
+
+Allocation is **oldest first**, filling each session before moving on, with a
+partial allowed on the last — the same walk `payShifts` uses against unpaid
+attendance.
+
+**The balance is derived, never stored:**
+
+```
+outstanding(staff) = Σ cash_removed_at_close        -- closed sessions, that staff
+                   − Σ cash_handover_items.amount   -- non-voided handovers only
+```
+
+Sessions with `cash_removed_at_close <= 0` are excluded. A negative value means
+the drawer came up short of its own float, which is a variance matter that
+`variance_status` already covers; counting it here would let a shortfall reduce
+what the cashier owes.
+
+Note what is **not** in this balance: the lotto reserve. A top-up is already
+subtracted inside `cash_removed_at_close`, and the pot's balance belongs to the
+store, not to any cashier.
+
+### 14–16. Phase 2 placeholder tabs
 
 `pos_extracted`, `clover_batches`, `validation_results` — created with
 correct columns but no code reads/writes them yet. Schema is documented
