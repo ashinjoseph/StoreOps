@@ -14,6 +14,12 @@
 
 // ── Web app entry point ────────────────────────────────────
 function doGet(e) {
+  // ?v=recon → the public read-only report, no session required. Anything
+  // else — including an unknown v — falls through to the app, so a mangled
+  // link lands somewhere useful rather than on an error.
+  const view = (e && e.parameter && e.parameter.v) || '';
+  if (view === 'recon') return publicReconPage_(e);
+
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('StoreOps')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
@@ -21,6 +27,41 @@ function doGet(e) {
       'viewport',
       'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover'
     );
+}
+
+/**
+ * The 7-day report. Data is inlined into the page at render time rather than
+ * fetched — so serving this creates no RPC reachable without a session; the
+ * only thing exposed is this one document.
+ *
+ * Requires the deployment to be "Execute as: Me" with access "Anyone", which
+ * is a console setting, not code.
+ */
+function publicReconPage_(e) {
+  // NaN survives both Math.max and Math.min, so a junk ?days= would otherwise
+  // reach the window builder and render an empty report. Coerce first, clamp
+  // second.
+  const raw = Number((e && e.parameter && e.parameter.days) || 7);
+  const days = isNaN(raw) ? 7 : Math.min(31, Math.max(1, Math.round(raw)));
+  let payload;
+  try {
+    payload = PublicReport.build(days);
+  } catch (err) {
+    // Never leak a stack trace to an unauthenticated page.
+    console.error('public report failed: ' + err.message);
+    payload = {
+      days: days, fromStr: '', toStr: '', generatedAt: '',
+      reserve:   { unavailable: 'Report temporarily unavailable.' },
+      cash:      { unavailable: 'Report temporarily unavailable.' },
+      reconcile: { unavailable: 'Report temporarily unavailable.' },
+    };
+  }
+  const t = HtmlService.createTemplateFromFile('Public');
+  t.payload = JSON.stringify(payload);
+  return t.evaluate()
+    .setTitle('StoreOps · ' + days + '-day report')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
 }
 
 // ── Pre-auth RPCs ──────────────────────────────────────────

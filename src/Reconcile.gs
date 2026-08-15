@@ -519,8 +519,27 @@ const Reconcile = (() => {
       }
       lines.push('');
     });
+    // The template carries this as a tappable button; plain text has no
+    // buttons, so it goes in as a line. Omitted entirely when unconfigured
+    // rather than sending a dead "?v=recon".
+    const reportUrl = reportUrl_();
+    if (reportUrl) {
+      lines.push('📈 Last 7 days: ' + reportUrl);
+      lines.push('');
+    }
     lines.push('_StoreOps · automated_');
     return lines.join('\n').trim();
+  }
+
+  /**
+   * The public report link, or '' when not configured. Appends the view
+   * parameter so the config holds the plain deployment URL and nobody has to
+   * remember the query string.
+   */
+  function reportUrl_() {
+    const base = (configValue_('public_report_url', '') || '').toString().trim();
+    if (!base) return '';
+    return base + (base.indexOf('?') === -1 ? '?v=recon' : '&v=recon');
   }
 
   /**

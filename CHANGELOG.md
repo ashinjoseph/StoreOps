@@ -397,3 +397,60 @@ This completes v1.0.0.
   `cashier − Clover`. Both are realigned; the stored `card_variance` column
   keeps its original direction so the sheet doesn't change meaning halfway
   through its history.
+
+### Sales and Reconcile split, plus a report anyone can open (Batch 9)
+- **Sales and Reconcile are two tabs now.** A reconciliation panel was pinned to
+  the top of the sales dashboard, so neither could grow: Sales couldn't gain the
+  trend work below, and Reconcile couldn't become the daily-control view it
+  wanted to be. They answer different questions on different cadences.
+- **The reconcile table stops mixing units.** It read `Cash Δ` beside absolute
+  `Card` and `Clover` — a delta and two levels in one row, with nothing to
+  compare across. Cash and cards now both read *claimed / measured (var ±$X)*,
+  the same convention the WhatsApp message uses, and a harness asserts the two
+  produce identical figures **including sign** so they can't drift apart again.
+- **Four insights on the Sales tab**, each answering something a corner store
+  actually acts on:
+  - **Trend** against the previous equal-length window, with a 7-day rolling
+    average so a noisy Tuesday doesn't read as a decline.
+  - **Part of month** — days 1-10 / 11-20 / 21-end, which is where the payday
+    and cheque cycles show up.
+  - **Day of week**, naming the busiest and quietest, so staffing can follow the
+    real week.
+  - **Cash share of takings**, and whether it's drifting — the number that
+    decides how much float is needed and how much ends up in someone's hands.
+- **Averages divide by days that traded, not calendar days.** A week the shop
+  was shut would otherwise read as a collapse in trade rather than an absence of
+  it, which is the same arithmetic mistake that makes seasonal businesses look
+  like failing ones.
+- **Short ranges say so instead of drawing a line.** The rolling average needs 7
+  days and the month split needs a full month; below that the block explains why
+  it's empty. A trend line through three points looks exactly as authoritative
+  as one through ninety.
+- **Percentage-point changes are labelled as points.** Cash share moving 50%→60%
+  reports `+10 pts`, not `+20%` — the classic way this number gets published at
+  twice its real size.
+- **A 7-day report anyone can open, no login.** `?v=recon` on the deployment URL
+  serves a read-only page: who is carrying cash and how much, how the lotto pot
+  moved day by day with the cashier's reasons, and whether each day reconciled.
+  The reconcile WhatsApp links to it, so checking a figure no longer means
+  finding a PIN.
+- The report's data is **inlined into the page at render time**, so serving it
+  creates no RPC reachable without a session — the only thing exposed is one URL
+  returning one document. Each section is wrapped: a sheet that hasn't run a
+  migration reports that section unavailable rather than failing the page, and a
+  failed build never puts a stack trace in front of an anonymous visitor.
+- The link is a **static URL button** on the template, not a 14th body
+  parameter — so it rides the same Meta submission instead of costing a second
+  approval, and `Notifier` needs no change to send it. Blank
+  `public_report_url` sends no link rather than a dead one.
+- `doGet` routes on `?v=`; an unknown value falls through to the app so a
+  mangled link lands somewhere useful. `?days=` is clamped 1-31, and coerced
+  before clamping — `Number('abc')` is `NaN`, which survives both `Math.max` and
+  `Math.min` and would have rendered an empty report.
+- Fixed: the insights baseline window stepped by milliseconds, and callers pass
+  an end of `23:59:59`. That put `prevStart` a second after midnight and dropped
+  any row stamped at exactly midnight — which is how every date in the sheet is
+  stored. It steps whole days by date component now, which is also correct
+  across a DST boundary where 86400000ms is not a day.
+- `Setup.gs` — new `public_report_url` config key. The report needs the
+  deployment set to *Execute as: Me* / *Anyone*; a console setting, not code.

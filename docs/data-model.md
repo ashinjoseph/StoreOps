@@ -302,6 +302,10 @@ overwritten. First-time Setup and the lotto migration both run it.
 - `cash_manager_staff_id` = empty (staff_id of whoever holds the business
   cash; blank means cash handling can read balances but not record a handover)
 - `cash_handover_stale_days` = `7`
+- `public_report_url` = empty (deployed `/exec` URL; the reconcile message
+  links to `<url>?v=recon`, a read-only 7-day report needing no login. Blank
+  means no link is sent. Requires the deployment set to *Execute as: Me* with
+  access *Anyone*.)
 
 ### 12. `cash_handovers` — cash moving from a cashier to the cash manager
 

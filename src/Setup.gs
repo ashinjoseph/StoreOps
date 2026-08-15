@@ -397,6 +397,7 @@ function configDefaults_() {
     ['card_variance_threshold',      '1',              'Card credit/debit/total mismatch under this = OK (dollars)'],
     ['cash_manager_staff_id',        '',               'Staff who holds the business cash; shift takings are handed over to them. Blank = cash handling not configured'],
     ['cash_handover_stale_days',     '7',              'Flag cash still out with a cashier after this many days'],
+    ['public_report_url',            '',               'Deployed web app /exec URL. The reconcile message links to <url>?v=recon (7-day read-only report, no login). Blank = no link sent'],
     ['timezone',                     Session.getScriptTimeZone(), 'Default timezone (script setting overrides)'],
   ];
 }

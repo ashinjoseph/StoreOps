@@ -282,6 +282,56 @@
   .lotto-log > summary::after { content: '▾'; font-size: 10px; }
   .lotto-log[open] > summary::after { content: '▴'; }
 
+  /* ── Sales insights ────────────────────────────────── */
+  .ins-wrap {
+    display: grid; gap: 12px; margin-bottom: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+  .ins-card {
+    background: #fff; border: 1px solid #e6e8ee; border-radius: 12px;
+    padding: 14px 16px; min-width: 0;
+  }
+  .ins-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 8px;
+  }
+  .ins-title {
+    font-size: 11px; letter-spacing: .11em; text-transform: uppercase;
+    color: #6b7280; font-weight: 700;
+  }
+  .ins-badge {
+    font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 20px;
+    white-space: nowrap;
+  }
+  .ins-badge.up   { background: #e6f4ee; color: #0e6b4d; }
+  .ins-badge.down { background: #fdecea; color: #b91c1c; }
+  .ins-badge.flat { background: #f1f3f7; color: #6b7280; }
+  .ins-big {
+    font-size: 26px; font-weight: 700; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .ins-sub { font-size: 12px; color: #6b7280; margin-top: 4px; }
+  .ins-sub b { color: #1a1d23; }
+  .ins-note {
+    font-size: 12px; color: #8a6d3b; background: #fff7ed;
+    border-radius: 8px; padding: 8px 10px; margin-top: 8px;
+  }
+  .ins-spark-wrap { margin-top: 10px; color: #3949ab; }
+  .ins-spark { width: 100%; height: 40px; display: block; }
+
+  .ins-bars { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+  .ins-bar-row {
+    display: grid; grid-template-columns: 62px 1fr 72px;
+    align-items: center; gap: 8px; font-size: 12px;
+  }
+  .ins-bar-row.dim { opacity: .4; }
+  .ins-bar-label { color: #6b7280; }
+  .ins-bar-track { background: #f1f3f7; border-radius: 4px; height: 14px; overflow: hidden; }
+  .ins-bar-fill { background: #3949ab; height: 100%; border-radius: 4px; }
+  .ins-bar-value {
+    text-align: right; font-variant-numeric: tabular-nums; font-weight: 600;
+  }
+
   /* ── Cash handling ─────────────────────────────────── */
   /* Landing-tab strip: what you're still carrying, tap through to the tab. */
   .cash-inhand-strip {
@@ -782,9 +832,16 @@
   .recon-diff { color: #b91c1c !important; }
   .recon-hist-title { font-size: 11px; font-weight: 700; color: #6a6e79; text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px; }
   .recon-table { border-top: 1px solid #f0f1f5; }
-  .recon-trow { display: grid; grid-template-columns: 1.1fr 1.1fr 0.8fr 0.9fr 0.9fr 0.9fr; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f5f6f8; align-items: center; }
+  .recon-trow { display: grid; grid-template-columns: 1.1fr 0.9fr 1.5fr 1.5fr 0.9fr; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f5f6f8; align-items: center; }
   .recon-trow.head { font-size: 10px; font-weight: 700; color: #6a6e79; text-transform: uppercase; letter-spacing: 0.4px; }
   .recon-trow .r { text-align: right; font-variant-numeric: tabular-nums; }
+  /* claimed / measured on one line, the variance under it — so the pair reads
+     as one figure and the delta stays the thing your eye lands on. */
+  .pv { display: inline-block; text-align: right; }
+  .pv-pair { display: block; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pv-var  { display: block; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pv-var.ok  { color: #15803d; }
+  .pv-var.bad { color: #b91c1c; }
 
   /* ── Sales / reconciliation tables → stacked cards on small screens ── */
   @media (max-width: 560px) {
@@ -1126,6 +1183,7 @@
     <div class="view" id="view-suppliers"></div>
     <div class="view" id="view-products"></div>
     <div class="view" id="view-history"></div>
+    <div class="view" id="view-recon"></div>
     <div class="view" id="view-cash"></div>
     <div class="view" id="view-more"></div>
   </main>
@@ -1551,7 +1609,7 @@
 
   // Tabs accessed only via the "More" drawer (no direct bottom-bar button).
   // Every role gets the More drawer; History/Shopping/Suppliers live there for all.
-  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash'];
+  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon'];
 
   // Items shown in the "More" drawer, with role visibility.
   const ALL_ROLES = ['admin', 'manager', 'payroll_admin', 'employee'];
@@ -1561,7 +1619,8 @@
     { tab: 'products',    icon: '📦', label: 'Product Master',   meta: 'Cost, sell, margin per product',   roles: ALL_ROLES },
     { tab: 'cash',        icon: '💵', label: 'Cash Handling',    meta: 'Shift takings you\'re holding',    roles: ALL_ROLES },
     { tab: 'history',     icon: '📋', label: 'History',          meta: 'Payment records',                 roles: ALL_ROLES },
-    { tab: 'sales',       icon: '📊', label: 'Sales',            meta: 'Sales dashboard & filters',       roles: ['admin', 'manager', 'payroll_admin'] },
+    { tab: 'sales',       icon: '📊', label: 'Sales',            meta: 'Trends, patterns & daily takings', roles: ['admin', 'manager', 'payroll_admin'] },
+    { tab: 'recon',       icon: '⚖️', label: 'Reconcile',        meta: 'Cash & card vs Clover, daily',    roles: ['admin', 'manager', 'payroll_admin'] },
     { tab: 'payroll',     icon: '💰', label: 'Payroll',          meta: 'Pay owed shifts & bonuses',       roles: ['admin', 'payroll_admin'] },
     { tab: 'commissions', icon: '🎯', label: 'Commissions',      meta: 'Run engine, approve runs',        roles: ['admin', 'manager', 'payroll_admin'] },
     { tab: 'rules',       icon: '⚙️', label: 'Commission Rules', meta: 'Create & manage commission rules', roles: ['admin', 'payroll_admin'] },
@@ -1590,7 +1649,7 @@
       payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
       commissions: loadCommissionsTab, rules: loadRulesTab, more: loadMoreTab,
       shopping: loadShoppingTab, suppliers: loadSuppliersTab,
-      products: loadProductsTab, cash: loadCashTab,
+      products: loadProductsTab, cash: loadCashTab, recon: loadReconTab,
     };
   }
 
@@ -1608,7 +1667,7 @@
       payroll: 'Payroll', sales: 'Sales', history: 'History',
       commissions: 'Commissions', rules: 'Commission Rules', more: 'More',
       shopping: 'Shopping List', suppliers: 'Suppliers',
-      products: 'Product Master', cash: 'Cash Handling',
+      products: 'Product Master', cash: 'Cash Handling', recon: 'Reconcile',
     };
     $('headerTitle').textContent = titles[tab] || 'StoreOps';
     // Clear running timers from previous tab
@@ -4458,7 +4517,6 @@
       view.innerHTML = renderSalesScaffold();
       wireSalesFilters();
     }
-    loadReconPanel(force);
     const args = [state.token, f];
     if (force || !cacheFresh('rpcGetSalesDashboard', args, TTL_SEMI)) {
       $('salesResults').innerHTML = '<div class="loading"><div class="spinner"></div>Loading sales…</div>';
@@ -4469,6 +4527,23 @@
     } catch (e) {
       handleRpcError(e, $('salesResults'));
     }
+  }
+
+  // ============================================================
+  //  ░░  TAB: RECONCILE  ░░
+  // ============================================================
+  //  Split out of the Sales tab. Sales answers "how is trade going";
+  //  this answers "does today's money add up" — different questions, on
+  //  different cadences, that were sharing a screen and constraining
+  //  each other.
+  // ============================================================
+  function loadReconTab(force) {
+    const view = $('view-recon');
+    if (!view.querySelector('#reconPanel')) {
+      view.innerHTML = moreBack() + '<div id="reconPanel">' +
+        '<div class="loading"><div class="spinner"></div>Loading reconciliation…</div></div>';
+    }
+    loadReconPanel(force);
   }
 
   // ── Daily reconciliation panel (cash variance + cards vs Clover) ──
@@ -4528,15 +4603,14 @@
       if (open) {
         html += '<div class="recon-table">' +
           '<div class="recon-trow head"><div>When</div><div>Store</div>' +
-            '<div class="r">Cash Δ</div><div class="r">Card</div><div class="r">Clover</div><div class="r">Status</div></div>';
+            '<div class="r">Cash</div><div class="r">Cards</div><div class="r">Status</div></div>';
         pastRows.forEach(r => {
           const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
           html += '<div class="recon-trow">' +
             '<div>' + esc(r.businessDate) + '<br><small style="color:#9aa0ac">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></div>' +
             '<div data-label="Store">' + esc(r.companies) + '</div>' +
-            '<div class="r" data-label="Cash Δ">' + signedMoney_(r.cashVariance) + '</div>' +
-            '<div class="r" data-label="Card">' + money(r.cashierCard) + '</div>' +
-            '<div class="r" data-label="Clover">' + money(r.cloverCard) + '</div>' +
+            '<div class="r" data-label="Cash">' + pairVar_(r.cashCounted - r.cashVariance, r.cashCounted) + '</div>' +
+            '<div class="r" data-label="Cards">' + pairVar_(r.cashierCard, r.cloverCard) + '</div>' +
             '<div class="r" data-label="Status"><span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
           '</div>';
         });
@@ -4618,6 +4692,29 @@
       ' <small class="' + (ok ? 'recon-ok' : 'recon-diff') + '">(' + signedMoney_(diff) + ')</small></span></div>';
   }
 
+  /**
+   * One presentation for every figure on this screen: what was CLAIMED,
+   * then what was MEASURED, then measured minus claimed.
+   *
+   * The table used to read "Cash Δ" beside absolute "Card" and "Clover" — a
+   * delta and two levels in the same row, so the eye had nothing to compare
+   * across. This is also exactly the convention `Reconcile.reconParams_`
+   * sends to WhatsApp, so the dashboard and the message can't drift: negative
+   * always means less is there than was claimed.
+   */
+  function pairVar_(claimed, measured) {
+    const c = Number(claimed) || 0;
+    const m = Number(measured) || 0;
+    const v = Math.round((m - c) * 100) / 100;
+    const cls = Math.abs(v) <= 1 ? 'ok' : 'bad';
+    // One wrapper, so the mobile card layout treats pair+variance as a single
+    // right-hand value rather than two competing flex items beside the label.
+    return '<span class="pv">' +
+             '<span class="pv-pair">' + money(c) + ' / ' + money(m) + '</span>' +
+             '<span class="pv-var ' + cls + '">' + signedMoney_(v) + '</span>' +
+           '</span>';
+  }
+
   function signedMoney_(n) {
     n = Number(n) || 0;
     return (n < 0 ? '-' : '+') + '$' + Math.abs(n).toFixed(2);
@@ -4625,7 +4722,7 @@
 
   function renderSalesScaffold() {
     const f = state.salesFilters;
-    return moreBack() + '<div id="reconPanel"></div>' + '<div class="filter-card" id="salesFilterCard">' +
+    return moreBack() + '<div id="salesInsights"></div>' + '<div class="filter-card" id="salesFilterCard">' +
       '<div class="filter-row">' +
         '<div class="filter-field"><label>Start date</label><input type="date" id="fStart" value="' + esc(f.startDate || '') + '"></div>' +
         '<div class="filter-field"><label>End date</label><input type="date" id="fEnd" value="' + esc(f.endDate || '') + '"></div>' +
@@ -4680,7 +4777,149 @@
     state.salesExpandedDays = {};
     const daily = data.daily || [];
     if (daily.length) state.salesExpandedDays[daily[daily.length - 1].dateStr] = true;
+    renderSalesInsights(data.insights, daily);
     renderSalesBody();
+  }
+
+  // ── Insights ────────────────────────────────────────────
+  //  Four questions a corner store actually asks: is trade up or down,
+  //  which days carry the week, which part of the month pays, and how
+  //  much still arrives as cash. Drawn with CSS and inline SVG — the
+  //  shapes are simple and a chart library would be a CDN fetch the
+  //  page can't make.
+  //
+  //  Where the server says a range is too short to support a claim, the
+  //  reason is printed instead of a chart. A trend line through three
+  //  points looks exactly as authoritative as one through ninety.
+  // ── ────────────────────────────────────────────────────
+
+  function pctBadge_(v, suffix, invert) {
+    if (v == null) return '<span class="ins-badge flat">no baseline</span>';
+    const good = invert ? v < 0 : v > 0;
+    const cls = Math.abs(v) < 0.05 ? 'flat' : (good ? 'up' : 'down');
+    const sign = v > 0 ? '+' : '';
+    return '<span class="ins-badge ' + cls + '">' + sign + v + (suffix || '%') + '</span>';
+  }
+
+  function insNote_(msg) {
+    return '<div class="ins-note">' + esc(msg) + '</div>';
+  }
+
+  // Bar row used by both the weekday and month-part charts.
+  function barChart_(items, fmtLabel) {
+    const max = items.reduce((m, i) => Math.max(m, i.value), 0) || 1;
+    let h = '<div class="ins-bars">';
+    items.forEach(i => {
+      const pct = Math.round((i.value / max) * 100);
+      h += '<div class="ins-bar-row' + (i.dim ? ' dim' : '') + '">' +
+        '<div class="ins-bar-label">' + esc(fmtLabel ? fmtLabel(i) : i.label) + '</div>' +
+        '<div class="ins-bar-track"><div class="ins-bar-fill" style="width:' + pct + '%"></div></div>' +
+        '<div class="ins-bar-value">' + (i.value ? money(i.value) : '—') + '</div>' +
+      '</div>';
+    });
+    return h + '</div>';
+  }
+
+  // Sparkline over a numeric series; nulls break the line rather than
+  // being drawn as zero, which would show a cliff that isn't there.
+  function sparkline_(values, w, hgt) {
+    const nums = values.filter(v => v != null);
+    if (nums.length < 2) return '';
+    const min = Math.min.apply(null, nums), max = Math.max.apply(null, nums);
+    const span = (max - min) || 1;
+    const step = w / Math.max(1, values.length - 1);
+    let d = '', pen = false;
+    values.forEach((v, i) => {
+      if (v == null) { pen = false; return; }
+      const x = (i * step).toFixed(1);
+      const y = (hgt - ((v - min) / span) * (hgt - 4) - 2).toFixed(1);
+      d += (pen ? 'L' : 'M') + x + ',' + y + ' ';
+      pen = true;
+    });
+    return '<svg class="ins-spark" viewBox="0 0 ' + w + ' ' + hgt + '" preserveAspectRatio="none" ' +
+           'role="img" aria-hidden="true"><path d="' + d.trim() + '" fill="none" ' +
+           'stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+  }
+
+  function renderSalesInsights(ins, daily) {
+    const el = $('salesInsights');
+    if (!el) return;
+    if (!ins) { el.innerHTML = ''; return; }
+
+    const tr = ins.trend || {};
+    let html = '<div class="ins-wrap">';
+
+    // 1. Trend — the headline, with the rolling average behind it.
+    html += '<div class="ins-card ins-trend">' +
+      '<div class="ins-head"><span class="ins-title">Trend</span>' +
+        pctBadge_(tr.changePct) + '</div>' +
+      '<div class="ins-big">' + money(tr.total || 0) + '</div>' +
+      '<div class="ins-sub">' + money(tr.perTradingDay || 0) + ' per trading day · ' +
+        (tr.tradingDays || 0) + ' day' + (tr.tradingDays === 1 ? '' : 's') + '</div>' +
+      '<div class="ins-sub">vs ' + money(tr.previousTotal || 0) + ' in the ' +
+        esc((ins.previousPeriod || {}).startStr || '') + ' → ' +
+        esc((ins.previousPeriod || {}).endStr || '') + ' window</div>' +
+      (tr.rolling7
+        ? '<div class="ins-spark-wrap">' + sparkline_(tr.rolling7, 300, 40) +
+          '<div class="ins-sub">7-day rolling average</div></div>'
+        : insNote_(tr.rollingInsufficient || '')) +
+      (tr.best ? '<div class="ins-sub">Best ' + esc(tr.best.dateStr) + ' ' + money(tr.best.total) +
+                 ' · quietest ' + esc(tr.worst.dateStr) + ' ' + money(tr.worst.total) + '</div>' : '') +
+    '</div>';
+
+    // 2. Day of week.
+    const dw = ins.dayOfWeek || {};
+    html += '<div class="ins-card">' +
+      '<div class="ins-head"><span class="ins-title">By day of week</span>' +
+        (dw.spreadPct != null ? '<span class="ins-badge flat">' + dw.spreadPct + '% spread</span>' : '') +
+      '</div>';
+    if (dw.insufficient) {
+      html += insNote_(dw.insufficient);
+    } else {
+      html += barChart_((dw.buckets || []).map(b => ({
+        label: b.short, value: b.average, dim: !b.days,
+      })));
+      html += '<div class="ins-sub">Busiest <b>' + esc(dw.best.name) + '</b> at ' +
+        money(dw.best.average) + ' · quietest <b>' + esc(dw.worst.name) + '</b> at ' +
+        money(dw.worst.average) + '</div>';
+    }
+    html += '</div>';
+
+    // 3. Time of month — the payday question.
+    const tm = ins.timeOfMonth || {};
+    html += '<div class="ins-card">' +
+      '<div class="ins-head"><span class="ins-title">By part of month</span></div>';
+    if (tm.insufficient) {
+      html += insNote_(tm.insufficient);
+    } else {
+      html += barChart_((tm.buckets || []).map(b => ({
+        label: b.label, value: b.average, dim: !b.days,
+      })));
+      html += '<div class="ins-sub">Strongest <b>' + esc(tm.strongest.label) + '</b> at ' +
+        money(tm.strongest.average) + ' a day, against ' + money(tm.overallAverage) +
+        ' overall</div>';
+      html += '<div class="ins-sub">' + (tm.buckets || []).map(b =>
+        esc(b.label) + ' ' + (b.vsOverallPct == null ? '—' :
+          (b.vsOverallPct > 0 ? '+' : '') + b.vsOverallPct + '%')).join(' · ') + '</div>';
+    }
+    html += '</div>';
+
+    // 4. Tender mix — ties straight into how much cash ends up in hands.
+    const tx = ins.tenderMix || {};
+    html += '<div class="ins-card">' +
+      '<div class="ins-head"><span class="ins-title">Paid in cash</span>' +
+        pctBadge_(tx.changePoints, ' pts') + '</div>' +
+      '<div class="ins-big">' + (tx.cashSharePct == null ? '—' : tx.cashSharePct + '%') + '</div>' +
+      '<div class="ins-sub">' + money(tx.cash || 0) + ' of ' + money(tx.total || 0) +
+        (tx.previousCashSharePct != null
+          ? ' · was ' + tx.previousCashSharePct + '% last period' : '') + '</div>' +
+      ((tx.series || []).length > 2
+        ? '<div class="ins-spark-wrap">' +
+          sparkline_(tx.series.map(s => s.sharePct), 300, 34) + '</div>'
+        : '') +
+    '</div>';
+
+    el.innerHTML = html + '</div>';
   }
 
   // Re-render the results body (chart + day accordion) from cached data +

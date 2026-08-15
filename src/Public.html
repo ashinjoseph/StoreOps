@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Not a secret, but no reason for it to be searchable either. -->
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>StoreOps · 7-day report</title>
+<style>
+  :root {
+    --ink: #1a1d23;
+    --ink-2: #5c6270;
+    --ink-3: #8a8e98;
+    --line: #e6e8ee;
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --brand: #1a237e;
+    --cash: #0e6b4d;
+    --cash-bg: #e6f4ee;
+    --warn: #92400e;
+    --warn-bg: #fff7ed;
+    --bad: #b91c1c;
+    --bad-bg: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 14px 48px;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+
+  header {
+    padding: 22px 0 16px; border-bottom: 1px solid var(--line); margin-bottom: 18px;
+  }
+  h1 { font-size: 19px; margin: 0 0 4px; letter-spacing: -.01em; }
+  .sub { font-size: 13px; color: var(--ink-2); }
+
+  section { margin-bottom: 22px; }
+  .sec-title {
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-2); font-weight: 700; margin: 0 2px 8px;
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  }
+  .sec-title .r { font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; overflow: hidden;
+  }
+  .hero { padding: 18px 16px; text-align: center; }
+  .hero .cap {
+    font-size: 11px; letter-spacing: .11em; text-transform: uppercase;
+    color: var(--ink-2); font-weight: 700;
+  }
+  .hero .amt {
+    font-size: 32px; font-weight: 700; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums; line-height: 1.1; margin-top: 6px;
+  }
+  .hero .amt.cash { color: var(--cash); }
+  .hero .note { font-size: 12.5px; color: var(--ink-2); margin-top: 5px; }
+
+  .row {
+    padding: 11px 14px; border-bottom: 1px solid var(--line);
+    display: flex; gap: 12px; align-items: baseline; justify-content: space-between;
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .who { font-size: 14px; font-weight: 600; }
+  .row .meta { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+  .row .amt {
+    font-size: 14.5px; font-weight: 650; white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .row .amt.cash { color: var(--cash); }
+
+  /* Reconcile rows: claimed / measured / variance — same convention as the
+     app and the WhatsApp message. Stacks into a card on a phone. */
+  .rec { padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  .rec:last-child { border-bottom: 0; }
+  .rec-top {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 10px; margin-bottom: 6px;
+  }
+  .rec-date { font-size: 13.5px; font-weight: 650; }
+  .rec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .rec-cell { background: var(--bg); border-radius: 8px; padding: 7px 9px; }
+  .rec-k {
+    font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 700;
+  }
+  .rec-v { font-size: 12.5px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .rec-var { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .rec-var.ok { color: var(--cash); }
+  .rec-var.bad { color: var(--bad); }
+
+  .pill {
+    font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
+    text-transform: uppercase; letter-spacing: .04em; white-space: nowrap;
+  }
+  .pill.ok { background: var(--cash-bg); color: var(--cash); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+
+  /* Reserve strip: one column per day. Scrolls rather than squeezing. */
+  .strip { display: flex; gap: 6px; padding: 12px 14px; overflow-x: auto; }
+  .strip-day { flex: 0 0 60px; text-align: center; }
+  .strip-bar {
+    height: 54px; display: flex; align-items: flex-end;
+    justify-content: center; margin-bottom: 5px;
+  }
+  .strip-fill {
+    width: 26px; background: var(--brand); border-radius: 4px 4px 0 0; min-height: 3px;
+  }
+  .strip-fill.short { background: var(--warn); }
+  .strip-fill.none { background: var(--line); }
+  .strip-lbl { font-size: 10px; color: var(--ink-3); }
+  .strip-val { font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+  .note {
+    background: var(--warn-bg); color: var(--warn);
+    border-radius: 8px; padding: 10px 12px; font-size: 12.5px;
+  }
+  .empty { padding: 18px 14px; color: var(--ink-3); font-size: 13px; text-align: center; }
+  footer {
+    border-top: 1px solid var(--line); padding-top: 14px; margin-top: 26px;
+    font-size: 11.5px; color: var(--ink-3);
+  }
+  @media (max-width: 420px) {
+    .rec-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+// Payload is inlined server-side at render time — the page makes no calls,
+// so nothing here is reachable except this one document.
+var DATA = <?= payload ?>;
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function money(n) {
+  var v = Number(n) || 0;
+  return (v < 0 ? '-' : '') + '$' + Math.abs(v).toFixed(2);
+}
+function signed(n) {
+  var v = Math.round((Number(n) || 0) * 100) / 100;
+  return (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2);
+}
+function shortDay(iso) {
+  var p = String(iso || '').split('-');
+  if (p.length !== 3) return iso || '';
+  var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()] + ' ' + Number(p[2]);
+}
+function unavailable(sec) {
+  return '<div class="card"><div class="note">' + esc(sec.unavailable) + '</div></div>';
+}
+
+function reserveHtml(s) {
+  if (s.unavailable) return unavailable(s);
+  var rows = s.rows || [];
+  var max = rows.reduce(function (m, r) { return Math.max(m, r.counted || 0); }, 0) || 1;
+  var short = s.shortfall != null && s.shortfall > 0.01;
+
+  var h = '<div class="card">' +
+    '<div class="hero">' +
+      '<div class="cap">Lotto reserve now</div>' +
+      '<div class="amt">' + (s.current == null ? 'not counted' : money(s.current)) + '</div>' +
+      '<div class="note">' +
+        (short ? 'short ' + money(s.shortfall) + ' of ' + money(s.expected)
+               : 'at its expected ' + money(s.expected)) +
+        (s.currentDate ? ' · counted ' + esc(s.currentDate) : '') +
+        (s.movedIn > 0.01 ? ' · ' + money(s.movedIn) + ' moved in this week' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="strip">';
+
+  rows.forEach(function (r) {
+    var pct = r.counted ? Math.max(6, Math.round((r.counted / max) * 100)) : 0;
+    var cls = !r.traded ? 'none' : (r.shortfall > 0.01 ? 'short' : '');
+    h += '<div class="strip-day">' +
+      '<div class="strip-bar"><div class="strip-fill ' + cls + '" style="height:' + pct + '%"></div></div>' +
+      '<div class="strip-val">' + (r.counted == null ? '—' : money(r.counted)) + '</div>' +
+      '<div class="strip-lbl">' + esc(shortDay(r.dateStr)) + '</div>' +
+    '</div>';
+  });
+  h += '</div>';
+
+  var reasons = rows.filter(function (r) { return r.note; });
+  if (reasons.length) {
+    h += '<div style="padding:0 14px 12px">';
+    reasons.forEach(function (r) {
+      h += '<div class="row" style="padding:8px 0;border:0">' +
+        '<div><div class="meta">' + esc(r.dateStr) + '</div>' +
+        '<div class="who" style="font-weight:500;font-size:13px">' + esc(r.note) + '</div></div>' +
+        (r.shortfall > 0.01 ? '<span class="pill warn">short ' + money(r.shortfall) + '</span>' : '') +
+      '</div>';
+    });
+    h += '</div>';
+  }
+  return h + '</div>';
+}
+
+function cashHtml(s) {
+  if (s.unavailable) return unavailable(s);
+  var h = '<div class="card">' +
+    '<div class="hero">' +
+      '<div class="cap">Cash out with staff</div>' +
+      '<div class="amt cash">' + money(s.total) + '</div>' +
+      '<div class="note">' +
+        (s.holders.length
+          ? 'with ' + s.holders.length + (s.holders.length === 1 ? ' person' : ' people')
+          : 'nobody is holding cash') +
+        (s.cashManager ? ' · handed to ' + esc(s.cashManager) : '') +
+      '</div>' +
+    '</div>';
+
+  s.holders.forEach(function (hd) {
+    h += '<div class="row">' +
+      '<div><div class="who">' + esc(hd.name) + '</div>' +
+        '<div class="meta">' + hd.shifts + ' shift' + (hd.shifts === 1 ? '' : 's') +
+          (hd.oldest ? ' · oldest ' + esc(hd.oldest) : '') + '</div></div>' +
+      '<div class="amt cash">' + money(hd.total) + '</div>' +
+    '</div>';
+  });
+  h += '</div>';
+
+  if ((s.stale || []).length) {
+    h += '<div class="card" style="margin-top:10px"><div class="note">' +
+      '<b>Held more than ' + s.staleDays + ' days</b><br>' +
+      s.stale.map(function (x) {
+        return esc(x.name) + ' · ' + esc(x.dateStr) + ' · ' + money(x.remaining) +
+               ' · ' + x.ageDays + ' days';
+      }).join('<br>') +
+    '</div></div>';
+  }
+
+  if ((s.moves || []).length) {
+    h += '<div class="sec-title" style="margin-top:16px">Handovers this week' +
+      '<span class="r">' + money(s.movedTotal) + '</span></div><div class="card">';
+    s.moves.forEach(function (m) {
+      h += '<div class="row">' +
+        '<div><div class="who">' + esc(m.from) + ' → ' + esc(m.to) + '</div>' +
+          '<div class="meta">' + esc(m.dateStr) + ' · recorded by ' + esc(m.recordedBy) +
+          (m.notes ? ' · ' + esc(m.notes) : '') + '</div></div>' +
+        '<div class="amt">' + money(m.amount) + '</div>' +
+      '</div>';
+    });
+    h += '</div>';
+  }
+  return h;
+}
+
+function reconcileHtml(s) {
+  if (s.unavailable) return unavailable(s);
+  if (!s.rows.length) return '<div class="card"><div class="empty">' + esc(s.note || 'Nothing yet.') + '</div></div>';
+
+  function cell(k, claimed, measured, v) {
+    return '<div class="rec-cell">' +
+      '<div class="rec-k">' + k + '</div>' +
+      '<div class="rec-v">' + money(claimed) + ' / ' + money(measured) + '</div>' +
+      '<div class="rec-var ' + (Math.abs(v) <= 1 ? 'ok' : 'bad') + '">' + signed(v) + '</div>' +
+    '</div>';
+  }
+
+  var h = '<div class="card">';
+  s.rows.forEach(function (r) {
+    var cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
+    h += '<div class="rec">' +
+      '<div class="rec-top">' +
+        '<div><span class="rec-date">' + esc(r.dateStr) + '</span> ' +
+          '<span class="meta">' + esc(r.companies) + '</span></div>' +
+        '<span class="pill ' + cls + '">' + esc(r.status) + '</span>' +
+      '</div>' +
+      '<div class="rec-grid">' +
+        cell('Cash', r.cashClaimed, r.cashMeasured, r.cashVar) +
+        cell('Cards', r.cardClaimed, r.cardMeasured, r.cardVar) +
+      '</div>' +
+    '</div>';
+  });
+  return h + '</div>';
+}
+
+(function render() {
+  var d = DATA;
+  var flagged = (d.reconcile && d.reconcile.flagged) || 0;
+  var html =
+    '<header>' +
+      '<h1>Last ' + d.days + ' days</h1>' +
+      '<div class="sub">' + esc(d.fromStr) + ' → ' + esc(d.toStr) +
+        ' · generated ' + esc(d.generatedAt) + '</div>' +
+    '</header>' +
+
+    '<section><div class="sec-title">Cash in hands</div>' + cashHtml(d.cash) + '</section>' +
+    '<section><div class="sec-title">Lotto reserve</div>' + reserveHtml(d.reserve) + '</section>' +
+    '<section><div class="sec-title">Daily reconciliation' +
+      (flagged ? '<span class="r">' + flagged + ' to review</span>'
+               : '<span class="r">all matched</span>') +
+      '</div>' + reconcileHtml(d.reconcile) + '</section>' +
+
+    '<footer>StoreOps · read-only · figures shown as claimed / measured, ' +
+      'with the variance underneath. Negative means less is there than was claimed.</footer>';
+
+  document.getElementById('app').innerHTML = html;
+})();
+</script>
+</body>
+</html>

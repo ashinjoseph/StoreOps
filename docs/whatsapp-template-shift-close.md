@@ -20,7 +20,7 @@ Thirteen parameters now carry one fact each, and the template owns the layout.
 | **Language** | English (`en`) |
 | **Header** | none |
 | **Footer** | none |
-| **Buttons** | none |
+| **Buttons** | one **URL** button — see below |
 
 Create it as a **new template** rather than editing the live nine-parameter
 one. A new name means the old template keeps sending until the new one is
@@ -58,6 +58,37 @@ Result: {{13}}
 
 StoreOps · automated
 ```
+
+## Button
+
+Add a single **Visit website** button:
+
+| Field | Value |
+|---|---|
+| Type | URL (static) |
+| Button text | `View 7-day report` |
+| URL | your deployed web app URL + `?v=recon` |
+
+e.g. `https://script.google.com/macros/s/AKfycb.../exec?v=recon`
+
+It opens the read-only report: who is holding cash, how the lotto pot moved,
+and whether each day added up — no login.
+
+**Static, not dynamic — this matters.** A static URL is baked into the approved
+template, so the send carries no button component and the body stays at 13
+parameters. Had the link gone in as text it would have needed a 14th parameter
+and a second approval round. Nothing in `Notifier.sendTemplate_` changes.
+
+The plain-text fallback (when no template is configured) appends the same URL
+as a line instead, since plain messages have no buttons.
+
+Set `public_report_url` in the `config` tab to the `/exec` URL — the code adds
+`?v=recon` itself. Leave it blank and no link is sent at all, rather than a dead
+one.
+
+> The report needs the deployment set to **Execute as: Me** and **Who has
+> access: Anyone**. That is a console setting, not code, and the link 404s
+> until it is set.
 
 ## Sample values
 
