@@ -387,3 +387,13 @@ This completes v1.0.0.
   the cash handling tables aren't set up yet.
 - The cards block is labelled `Clover / cashier` so the two figures in each row
   are identified rather than inferred.
+- **One sign convention across the whole message.** Every line now reads
+  *claimed / measured (var = measured − claimed)*, so negative always means
+  less is there than was claimed. Total sales was subtracting the other way, so
+  a $40 short drawer read `+$40.00` on one line and `cash short $40.00` two
+  lines below — the same event with opposite signs, which reads as a
+  contradiction rather than a reconciliation. Cards had the same inversion
+  hidden differently: displayed `Clover / cashier` but differenced
+  `cashier − Clover`. Both are realigned; the stored `card_variance` column
+  keeps its original direction so the sheet doesn't change meaning halfway
+  through its history.

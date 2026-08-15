@@ -400,12 +400,22 @@ const Reconcile = (() => {
 
     let totalLine, credit, debit, total, status;
     if (m.cloverOk) {
-      const expected = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
-      const totalDiff = Util.roundMoney(reported - expected);
-      totalLine = 'reported ' + Util.formatMoney(reported) + ' / expected ' + Util.formatMoney(expected) + ' (' + signed_(totalDiff) + ') ' + mark_(totalDiff);
-      credit = Util.formatMoney(m.cloverCredit) + ' / ' + Util.formatMoney(m.cashierCredit) + ' (' + signed_(m.creditDiff) + ') ' + mark_(m.creditDiff);
-      debit  = Util.formatMoney(m.cloverDebit) + ' / ' + Util.formatMoney(m.cashierDebit) + ' (' + signed_(m.debitDiff) + ') ' + mark_(m.debitDiff);
-      total  = Util.formatMoney(m.cloverCard) + ' / ' + Util.formatMoney(m.cashierCard) + ' (' + signed_(m.cardDiff) + ') ' + mark_(m.cardDiff);
+      // Sign convention, shared with the cash line and the status: the
+      // measured figure MINUS the claimed one, so negative always means money
+      // missing. Subtracting the other way round made a short drawer read
+      // "+$40" here and "short $40.00" two lines below — the same event with
+      // opposite signs, which reads as a contradiction.
+      const counted = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
+      const totalDiff = Util.roundMoney(counted - reported);
+      totalLine = 'reported ' + Util.formatMoney(reported) + ' / counted ' + Util.formatMoney(counted) + ' (var ' + signed_(totalDiff) + ') ' + mark_(totalDiff);
+      // Cashier first, Clover second, variance = Clover − cashier. Same shape
+      // as the cash and total lines: what was claimed, then what is actually
+      // there, then measured minus claimed. The stored `creditDiff`/`cardDiff`
+      // keep their original direction so the sheet column doesn't change
+      // meaning mid-history — the display is computed from the two values.
+      credit = Util.formatMoney(m.cashierCredit) + ' / ' + Util.formatMoney(m.cloverCredit) + ' (var ' + signed_(m.cloverCredit - m.cashierCredit) + ') ' + mark_(m.creditDiff);
+      debit  = Util.formatMoney(m.cashierDebit) + ' / ' + Util.formatMoney(m.cloverDebit) + ' (var ' + signed_(m.cloverDebit - m.cashierDebit) + ') ' + mark_(m.debitDiff);
+      total  = Util.formatMoney(m.cashierCard) + ' / ' + Util.formatMoney(m.cloverCard) + ' (var ' + signed_(m.cloverCard - m.cashierCard) + ') ' + mark_(m.cardDiff);
     } else {
       totalLine = 'reported ' + Util.formatMoney(reported) + ' (no Clover)';
       credit = Util.formatMoney(m.cashierCredit) + ' (cashier, no Clover)';
@@ -480,9 +490,9 @@ const Reconcile = (() => {
       lines.push('');
       const reported = Util.roundMoney(m.cashSales + m.cashierCard);
       if (m.cloverOk) {
-        const expected = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
-        const totalDiff = Util.roundMoney(reported - expected);
-        lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + ' / expected ' + Util.formatMoney(expected) + '   ' + signed_(totalDiff) + ' ' + mark_(totalDiff));
+        const counted = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
+        const totalDiff = Util.roundMoney(counted - reported);
+        lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + ' / counted ' + Util.formatMoney(counted) + '   var ' + signed_(totalDiff) + ' ' + mark_(totalDiff));
       } else {
         lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + '   (no Clover)');
       }
@@ -498,10 +508,10 @@ const Reconcile = (() => {
       const reserve = reserveLines_(m);
       if (reserve.length) { reserve.forEach(l => lines.push(l)); lines.push(''); }
       if (m.cloverOk) {
-        lines.push('\u{1F4B3} *Cards - Clover / cashier*');
-        lines.push('Credit  ' + Util.formatMoney(m.cloverCredit) + ' / ' + Util.formatMoney(m.cashierCredit) + '   ' + signed_(m.creditDiff) + ' ' + mark_(m.creditDiff));
-        lines.push('Debit   ' + Util.formatMoney(m.cloverDebit) + ' / ' + Util.formatMoney(m.cashierDebit) + '   ' + signed_(m.debitDiff) + ' ' + mark_(m.debitDiff));
-        lines.push('Total   ' + Util.formatMoney(m.cloverCard) + ' / ' + Util.formatMoney(m.cashierCard) + '   ' + signed_(m.cardDiff) + ' ' + mark_(m.cardDiff));
+        lines.push('\u{1F4B3} *Cards - cashier / Clover*');
+        lines.push('Credit  ' + Util.formatMoney(m.cashierCredit) + ' / ' + Util.formatMoney(m.cloverCredit) + '   var ' + signed_(m.cloverCredit - m.cashierCredit) + ' ' + mark_(m.creditDiff));
+        lines.push('Debit   ' + Util.formatMoney(m.cashierDebit) + ' / ' + Util.formatMoney(m.cloverDebit) + '   var ' + signed_(m.cloverDebit - m.cashierDebit) + ' ' + mark_(m.debitDiff));
+        lines.push('Total   ' + Util.formatMoney(m.cashierCard) + ' / ' + Util.formatMoney(m.cloverCard) + '   var ' + signed_(m.cloverCard - m.cashierCard) + ' ' + mark_(m.cardDiff));
         lines.push('');
         lines.push('*' + statusParam_(m) + '*');
       } else {

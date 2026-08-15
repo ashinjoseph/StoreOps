@@ -49,7 +49,7 @@ approved, and the switch is one config edit with no window where neither works.
 🎟 Lotto reserve
 {{9}}
 
-💳 Cards · Clover / cashier
+💳 Cards · cashier / Clover
 Credit {{10}}
 Debit {{11}}
 Total {{12}}
@@ -71,14 +71,14 @@ what the message actually looks like.
 | 2 | `cstore + vape` | Tills in this Clover merchant group |
 | 3 | `09:00–21:20` | First open to last close |
 | 4 | `Ashin, Meera` | Who worked |
-| 5 | `reported $651.00 / expected $650.00 (+$1.00) ✅` | Total sales vs Clover |
+| 5 | `reported $651.00 / counted $651.00 (var +$0.00) ✅` | Sales claimed vs drawer + Clover |
 | 6 | `$950.00 / $950.00 (var +$0.00) ✅` | Cash recorded vs counted |
 | 7 | `float $350.00 back · reserve $300.00 · $300.00 in hand` | Where the counted cash went |
 | 8 | `Ashin $1240.00 · Meera $640.00` | Who is holding cash, by name |
 | 9 | `$500.00 (+$300.00 moved in)` | Lotto pot balance and movement |
-| 10 | `$1.00 / $1.00 (+$0.00) ✅` | Credit, Clover vs cashier |
-| 11 | `$50.00 / $50.00 (+$0.00) ✅` | Debit, Clover vs cashier |
-| 12 | `$51.00 / $51.00 (+$0.00) ✅` | Card total |
+| 10 | `$1.00 / $1.00 (var +$0.00) ✅` | Credit, cashier vs Clover |
+| 11 | `$50.00 / $50.00 (var +$0.00) ✅` | Debit, cashier vs Clover |
+| 12 | `$51.00 / $51.00 (var +$0.00) ✅` | Card total |
 | 13 | `✅ All matched` | Overall result |
 
 ## What each parameter says on a bad day
@@ -87,7 +87,7 @@ The values change shape with the situation — the template does not.
 
 | # | Good day | Something to look at |
 |---|---|---|
-| 5 | `reported $651.00 / expected $650.00 (+$1.00) ✅` | `reported $651.00 (no Clover)` |
+| 5 | `reported $651.00 / counted $651.00 (var +$0.00) ✅` | `reported $651.00 (no Clover)` |
 | 6 | `$950.00 / $950.00 (var +$0.00) ✅` | `$950.00 / $910.00 (var -$40.00) ⚠️` |
 | 7 | `float $250.00 back · $400.00 in hand` | `float $250.00 back · reserve $300.00 · $100.00 in hand` |
 | 8 | `nobody is holding cash` | `Ashin $1240.00 · Meera $640.00 · ⚠️ 1 shift held over the limit` |
@@ -112,23 +112,30 @@ aren't set up yet it falls back to today's takings, marked `(today)`.
 reported = cash sales + misc cash          (typed at close)
          + credit + debit + misc card      (typed at close)
 
-expected = (cash counted − opening float)  (the drawer, actually counted)
+counted  = (cash counted − opening float)  (the drawer, actually counted)
          + Clover card total               (the processor, not the cashier)
 
-difference = reported − expected
+variance = counted − reported
 ```
 
 Every term on the `reported` side is somebody's typing; every term on the
-`expected` side is measured. So this line catches a mistyped sales figure,
-not a theft — the drawer count is on the *expected* side.
+`counted` side is measured. So this line catches a mistyped sales figure as
+readily as a missing note — what it can't do is tell you which, because it
+sums both sides of the day into one number. That is what `{{6}}` and `{{13}}`
+are for.
 
 **{{12}} Card total** is simply the two card figures against each other:
 
 ```
-Clover total  = Clover credit + Clover debit
-cashier total = credit + misc credit + debit + misc debit
-difference    = cashier − Clover
+cashier total = credit + misc credit + debit + misc debit   (claimed)
+Clover total  = Clover credit + Clover debit                (measured)
+variance      = Clover − cashier
 ```
+
+Displayed cashier-first, like every other line: what was claimed, then what is
+actually there. The stored `card_variance` column keeps its original direction
+(`cashier − Clover`) so the sheet doesn't change meaning halfway through its
+history — only the message was realigned.
 
 **{{13}} Result** is a roll-up over **both** cash and cards:
 
@@ -152,52 +159,45 @@ Note what is deliberately **not** in `{{13}}`: the `{{5}}` total-sales
 difference. It is a derived cross-check that double-counts the cash variance
 already reported, so folding it in would flag the same shortfall twice.
 
-### Why {{5}} and {{13}} carry opposite signs
+### One sign convention, everywhere
 
-They describe the same event from the two ends, and both are correct:
+Every line reads **claimed / measured (var = measured − claimed)**, so the
+sign always means the same thing:
+
+- **negative → less is there than was claimed**
+- **positive → more is there than was claimed**
+
+| Line | claimed | measured |
+|---|---|---|
+| `{{5}}` total sales | what the cashier typed | drawer above float + Clover |
+| `{{6}}` cash | opening float + cash sales | the drawer, counted |
+| `{{10}}`–`{{12}}` cards | what the cashier typed | Clover |
 
 ```
 Drawer $40 short, cards agree
-  {{5}}  reported $451.00 / expected $411.00 (+$40.00) ⚠️
+  {{5}}  reported $451.00 / counted $411.00 (var -$40.00) ⚠️
   {{6}}  $650.00 / $610.00 (var -$40.00) ⚠️
   {{13}} ⚠️ cash short $40.00
+
+Drawer $25 over
+  {{5}}  reported $451.00 / counted $476.00 (var +$25.00) ⚠️
+  {{6}}  $650.00 / $675.00 (var +$25.00) ⚠️
+  {{13}} ⚠️ cash over $25.00
 ```
 
-`{{5}}` is **+$40** because the cashier reported $40 more in sales than the
-drawer and Clover between them can account for. `{{13}}` is **short $40**
-because that is the same gap seen from the till. One says "you claimed more
-than is here", the other says "there is less here than you claimed".
+Each cause lands somewhere distinguishable, which is why all three are worth
+carrying:
 
-Each cause shows up in a distinguishable place, which is the point of keeping
-them separate:
+| What happened | {{5}} | {{6}} | {{12}} | {{13}} |
+|---|---|---|---|---|
+| Drawer $40 short | `-$40.00` ⚠️ | `-$40.00` ⚠️ | `+$0.00` ✅ | `cash short $40.00` |
+| Cashier over-reported cards $12 | `-$12.00` ⚠️ | `+$0.00` ✅ | `-$12.00` ⚠️ | `cards off $12.00` |
+| Cashier under-reported cards $12 | `+$12.00` ⚠️ | `+$0.00` ✅ | `+$12.00` ⚠️ | `cards off $12.00` |
+| Both | `-$52.00` ⚠️ | `-$40.00` ⚠️ | `-$12.00` ⚠️ | `cash short $40.00 · cards off $12.00` |
 
-| What happened | {{5}} | {{6}} | {{13}} |
-|---|---|---|---|
-| Drawer $40 short | `+$40.00` ⚠️ | `var -$40.00` ⚠️ | `cash short $40.00` |
-| Cards off $12 | `+$12.00` ⚠️ | `var +$0.00` ✅ | `cards off $12.00` |
-| Both | `+$52.00` ⚠️ | `var -$40.00` ⚠️ | `cash short $40.00 · cards off $12.00` |
-
-`{{5}}` alone can't tell you *which* — it just sums the gap. `{{6}}` isolates
-the cash and `{{13}}` names the causes, so the three together localise the
-problem without anyone opening the sheet.
-
-## Structural rules this satisfies
-
-Meta rejects a template body that breaks any of these. Worth re-checking if
-you edit the layout:
-
-- Does not begin or end with a variable — it opens on `🧾 Shift Reconciliation`
-  and closes on `StoreOps · automated`.
-- No two variables are adjacent. Every pair has static text between them,
-  which is why `Result:` sits in front of `{{13}}` and `↳` in front of `{{7}}`
-  — a blank line alone would not count as separation.
-- Variables are numbered `1`–`13` with no gaps.
-- Body is ~300 characters, well inside the 1024 limit.
-
-The values themselves must contain no newline, no tab, and no run of four or
-more spaces, or the send is rejected at call time rather than at approval.
-`Notifier.flattenForTemplate_` strips all three as a backstop, and
-`Reconcile.reconParams_` builds them clean so it never has to.
+`{{5}}` alone only sums the gap — the third row shows why that matters, since
+a $12 under-report moves it *positive* while money is still misrecorded.
+`{{6}}` and `{{12}}` isolate the two sides and `{{13}}` names the causes.
 
 ## Switching over
 
