@@ -722,6 +722,7 @@ function rpcGetSalesDashboard(token, filters) {
     totals: result.totals,
     daily: result.daily,
     insights: result.insights,
+    companies: result.companies,
   };
 }
 

@@ -513,3 +513,54 @@ Every cost was a sheet read.
 - `perf` and `import-perf` suites assert the shape of the cost — reads staying
   constant as the batch grows — rather than a wall-clock number, so they stay
   meaningful anywhere. Both were confirmed to fail against the previous code.
+
+### Sales split by company, without losing the consolidated view (Batch 11)
+
+85 days of production data (262 sessions, 84 trading days, $182,383) showed the
+two tills barely move together — **daily correlation 0.36**. Vape's share of the
+day swings between 2.7% and 28.9% around a 12.0% median, so at 12.7% of revenue
+a 25% move in vape shifts the combined line about 3%: invisible on the only
+chart that existed.
+
+They differ structurally too, not just in size — cstore takes **50.4% of its
+revenue in cash against vape's 30.7%**, which is why 92% of the cash removed at
+close is cstore's.
+
+- **A segmented All / Cstore / Vape control** on the Sales tab, defaulting to
+  All so the consolidated view stays the landing page. It replaces the company
+  dropdown rather than joining it: two controls driving one filter disagree the
+  first time only one is set, and the toggle applies immediately while the
+  filter card waits for *Apply*.
+- **Insight cards carry a cstore/vape strip**, so the comparison is visible
+  without switching views. Suppressed when filtered to a single company — a
+  side-by-side of one is a fact with extra furniture.
+- **Per-day totals are rendered once.** The tab drew a bar chart of daily totals
+  and then an accordion repeating the same dates and totals underneath. The bars
+  are now the only place those numbers appear, and remain the day selector; the
+  session drill-down opens beneath the chart for the selected day.
+- **Bars are stacked by company**, cstore base and vape on top, so the
+  consolidated chart answers "how did we do" and "which side of the business did
+  it" at once. Each day's segments are asserted to sum to its bar.
+- **The same toggle on Cash Handling**, splitting what each person holds. It is
+  a *view* filter and never a settlement one: recording a handover still walks
+  that person's shifts oldest-first across both tills, and a test asserts the
+  allocation crosses companies (`cstore → vape → cstore`) rather than draining
+  one. Filtering the view while settling only that company would age cash
+  silently in the till nobody was looking at.
+- All of it is computed from rows already loaded, so `getDashboard` still costs
+  the single sheet read the previous batch got it down to.
+
+#### Corrected while building this
+
+An earlier pass reported Saturday as the best weekday with a 77% spread. That
+was averaged **per session** — "which shift is busiest" — not per trading day,
+which is what the dashboard computes and what the business question actually
+is. Per trading day, **cstore peaks Friday ($2,191) and vape peaks Tuesday
+($333)**, both troughing Sunday, a 42% spread. Saturday has the largest
+individual sessions but runs only 1.17 of them a day against Friday's 1.69.
+
+The `realdata` suite caught it: it runs the dashboard over the real production
+rows and pins figures computed independently from the workbook, so a plausible
+answer is not enough — it has to be the same answer. The corrected reading is
+the more useful one anyway: Saturday carries the most money per shift on the
+fewest shifts, which is a staffing observation the per-session average hid.
