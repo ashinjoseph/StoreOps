@@ -190,5 +190,50 @@ const PublicReport = (() => {
     };
   }
 
-  return { build: build_ };
+  // ── Sales ───────────────────────────────────────────────
+  /**
+   * The sales dashboard, for people who do not have a login: owners and
+   * whoever else needs to know how trade is going. Aggregates only.
+   *
+   * Session rows are deliberately NOT carried across. In the app the day
+   * detail names the cashier who worked it, and putting names against takings
+   * on a no-login URL is the exact exposure switching away from the reconcile
+   * report was meant to remove. A stakeholder needs the shape of trade, not
+   * who was on the till.
+   */
+  function salesSection_(days) {
+    const end = Util.todayMidnight();
+    const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - (days - 1));
+    const endOfDay = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59);
+
+    const d = Sales.getDashboard({
+      startDate: start, endDate: endOfDay,
+      page: 1, pageSize: 1,          // rows are dropped; ask for as few as possible
+    });
+
+    return {
+      fromStr: Util.formatDate(start),
+      toStr:   Util.formatDate(end),
+      totals:  d.totals,
+      companies: d.companies || [],
+      sessionCount: d.totalCount || 0,
+      // Day totals and their company split — enough for the stacked chart,
+      // with no per-session detail behind it.
+      daily: (d.daily || []).map(x => ({
+        dateStr: x.dateStr, total: x.total, sessionCount: x.sessionCount,
+        byCompany: x.byCompany || {},
+      })),
+      insights: d.insights || null,
+    };
+  }
+
+  function buildSales_(days) {
+    days = Number(days) || 60;
+    return Object.assign(
+      { days: days, generatedAt: Util.formatDateTime(new Date()) },
+      section_(() => salesSection_(days))
+    );
+  }
+
+  return { build: build_, buildSales: buildSales_ };
 })();

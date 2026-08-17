@@ -66,23 +66,36 @@ Add a single **Visit website** button:
 | Field | Value |
 |---|---|
 | Type | URL (static) |
-| Button text | `View 7-day report` |
-| URL | the deployed web app URL + `?v=recon` |
+| Button text | `View sales dashboard` |
+| URL | the deployed web app URL + `?v=sales` |
 
 For the current primary deployment (`AKfycbyaRT5Gi…`), paste this verbatim:
 
 ```
-https://script.google.com/macros/s/AKfycbyaRT5Gi2aepnsrafOwn-bErrmDawFXvhsB-pSkgb5E2PPfoOLyNQIRL9zx8lgP1wIe/exec?v=recon
+https://script.google.com/macros/s/AKfycbyaRT5Gi2aepnsrafOwn-bErrmDawFXvhsB-pSkgb5E2PPfoOLyNQIRL9zx8lgP1wIe/exec?v=sales
 ```
+
+**The link points at sales, not the reconciliation.** The people on this thread
+are owners and managers, and the message already carries the reconciliation
+itself — a second copy behind a tap adds nothing, while how trade is going is
+the thing they cannot see anywhere else. The reconcile report still exists at
+`?v=recon` for whoever wants it; only the link changed.
+
+The sales view publishes **aggregates only** — totals, the daily chart split by
+till, and the four insight cards. No session rows, no cashier names. That is
+deliberate: the reconcile report names staff against cash amounts, which is a
+reasonable thing to send to five known numbers and an unreasonable thing to
+leave on a URL that can be forwarded onward and cannot be rotated.
+
+It opens the read-only sales dashboard: revenue for the last 60 days, the daily
+chart stacked by till, and the trend, weekday, part-of-month and cash-share
+cards — no login.
 
 **Check this is still the live deployment before submitting.** The URL is baked
 into the approved template, and a web app deployed to a different script project
 gets a different URL — which is exactly what happened at the cutover, when the
 primary moved to a copy of the original prod workbook. Submitting a stale URL
 costs a second approval round.
-
-It opens the read-only report: who is holding cash, how the lotto pot moved,
-and whether each day added up — no login.
 
 **Static, not dynamic — this matters.** A static URL is baked into the approved
 template, so the send carries no button component and the body stays at 13
@@ -93,7 +106,7 @@ The plain-text fallback (when no template is configured) appends the same URL
 as a line instead, since plain messages have no buttons.
 
 Set `public_report_url` in the `config` tab to the `/exec` URL — the code adds
-`?v=recon` itself. Leave it blank and no link is sent at all, rather than a dead
+`?v=sales` itself. Leave it blank and no link is sent at all, rather than a dead
 one.
 
 > The report needs the deployment set to **Execute as: Me** and **Who has

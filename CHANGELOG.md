@@ -593,3 +593,40 @@ than the code's:** three sessions closed with every tender field at zero while
 their tills removed $435 and $215 in cash — **$650 that provably crossed the
 counter is missing from recorded revenue**, so every figure here is low by about
 0.36%. And 2026-08-02 carries 14 paid labour hours with no till session at all.
+
+### The public link becomes the sales dashboard (Batch 12)
+
+`?v=recon` answered "does the money add up" — an operational question, for
+people who chase variances and already have logins. The public link is better
+spent on "how is trade going", which is what owners and stakeholders want and
+the one thing they cannot see anywhere else.
+
+- **New `?v=sales`, alongside `?v=recon` rather than replacing it.** `doGet`
+  already branched on `?v=`, so both views exist under one URL scheme and the
+  operational report stays reachable for anyone who wants it.
+- **The WhatsApp link now points at sales.** The shift-close message already
+  carries the reconciliation itself, so a second copy behind a tap added
+  nothing. `shift_close_v2` has not gone to Meta yet, so relabelling the button
+  from "View 7-day report" to "View sales dashboard" costs nothing.
+- **60-day window**, because the insights have floors — the time-of-month split
+  needs 28 trading days — and a shorter default would greet every reader with
+  cards explaining why they are empty. `?days=` clamps 1–365.
+- Same no-login contract as the reconcile report: **the payload is inlined at
+  render time**, so serving the page opens no RPC and the only thing reachable
+  is the one document.
+
+**Aggregates only, and that is the point.** The page carries totals, the daily
+chart stacked by till, and all four insight cards with their per-company splits.
+It does **not** carry session rows, cashier names, staff or session IDs, or the
+free-text notes a cashier typed. The reconcile report names staff against cash
+amounts — reasonable to send to five known numbers, unreasonable to leave on a
+URL that can be forwarded onward and cannot be rotated without redeploying. Nine
+assertions in the `public-sales` suite check the absence of each of those fields
+against the real production payload, because on a public page the things that
+are *not* published matter more than the things that are.
+
+One consequence worth stating plainly: the page shows revenue and cash share,
+which together indicate roughly how much cash a corner store handles and when.
+That was already true of the report it replaces — which additionally said who
+was carrying it, by name — so this is a net reduction in exposure, but it is a
+deliberate choice rather than an accident.

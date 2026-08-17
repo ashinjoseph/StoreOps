@@ -521,10 +521,10 @@ const Reconcile = (() => {
     });
     // The template carries this as a tappable button; plain text has no
     // buttons, so it goes in as a line. Omitted entirely when unconfigured
-    // rather than sending a dead "?v=recon".
+    // rather than sending a dead link.
     const reportUrl = reportUrl_();
     if (reportUrl) {
-      lines.push('📈 Last 7 days: ' + reportUrl);
+      lines.push('\u{1F4C8} Sales dashboard: ' + reportUrl);
       lines.push('');
     }
     lines.push('_StoreOps · automated_');
@@ -536,10 +536,15 @@ const Reconcile = (() => {
    * parameter so the config holds the plain deployment URL and nobody has to
    * remember the query string.
    */
+  // Points at the SALES view: the people on this thread are owners and
+  // managers, and what they want from a shift-close message is how trade is
+  // going, not a second copy of the reconciliation the message already
+  // carries. The reconcile report still exists at ?v=recon for anyone who
+  // wants it — this only chooses which one the link offers.
   function reportUrl_() {
     const base = (configValue_('public_report_url', '') || '').toString().trim();
     if (!base) return '';
-    return base + (base.indexOf('?') === -1 ? '?v=recon' : '&v=recon');
+    return base + (base.indexOf('?') === -1 ? '?v=sales' : '&v=sales');
   }
 
   /**

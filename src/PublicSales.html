@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Revenue figures on a no-login URL. Not a secret, but no reason for it to
+     be searchable either. -->
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>StoreOps · sales</title>
+<style>
+  :root {
+    --ink: #1a1d23; --ink-2: #5c6270; --ink-3: #8a8e98;
+    --line: #e6e8ee; --bg: #f5f6f8; --card: #ffffff;
+    --brand: #1a237e; --up: #0e6b4d; --up-bg: #e6f4ee;
+    --down: #b91c1c; --down-bg: #fdecea; --flat-bg: #eef0f4;
+    --c0: #c7d2f7; --c0-dark: #1a4ca1; --c1: #f2b705; --c2: #6fbf73;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 14px 48px; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  header { padding: 22px 0 16px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+  h1 { font-size: 19px; margin: 0 0 4px; letter-spacing: -.01em; }
+  .sub { font-size: 13px; color: var(--ink-2); }
+  section { margin-bottom: 22px; }
+  .sec-title {
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-2); font-weight: 700; margin: 0 2px 8px;
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  }
+  .sec-title .r { font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .pad { padding: 16px 14px; }
+
+  .hero { padding: 18px 16px; text-align: center; }
+  .hero .cap { font-size: 11px; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-2); font-weight: 700; }
+  .hero .amt { font-size: 32px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.1; margin-top: 6px; }
+  .hero .note { font-size: 12.5px; color: var(--ink-2); margin-top: 5px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 8px; text-align: center; }
+  .tile .k { font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; }
+  .tile .v { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 3px; }
+  @media (max-width: 480px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+
+  .badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+  .badge.up { background: var(--up-bg); color: var(--up); }
+  .badge.down { background: var(--down-bg); color: var(--down); }
+  .badge.flat { background: var(--flat-bg); color: var(--ink-2); }
+
+  /* Daily chart — stacked by company, horizontally scrollable rather than squeezed. */
+  .chart { display: flex; align-items: flex-end; gap: 5px; padding: 14px 14px 10px; overflow-x: auto; }
+  .col { flex: 0 0 30px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .bar { width: 22px; display: flex; flex-direction: column-reverse; border-radius: 4px 4px 0 0; overflow: hidden; min-height: 3px; }
+  .seg { display: block; width: 100%; }
+  .seg.c0 { background: var(--c0); } .seg.c1 { background: var(--c1); } .seg.c2 { background: var(--c2); }
+  .col .lbl { font-size: 9px; color: var(--ink-3); text-align: center; line-height: 1.25; }
+  .legend { display: flex; gap: 12px; padding: 12px 14px 0; font-size: 11.5px; color: var(--ink-2); }
+  .key { display: inline-flex; align-items: center; gap: 5px; text-transform: capitalize; }
+  .sw { width: 10px; height: 10px; border-radius: 2px; }
+  .sw.c0 { background: var(--c0); } .sw.c1 { background: var(--c1); } .sw.c2 { background: var(--c2); }
+
+  /* Horizontal bars for weekday / part-of-month. */
+  .rows { padding: 12px 14px; }
+  .row { display: grid; grid-template-columns: 42px 1fr auto; gap: 9px; align-items: center; margin-bottom: 6px; }
+  .row .rl { font-size: 11.5px; color: var(--ink-2); }
+  .row .rt { background: var(--flat-bg); border-radius: 4px; height: 9px; overflow: hidden; }
+  .row .rf { height: 100%; background: var(--c0-dark); border-radius: 4px; }
+  .row .rv { font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .row.dim { opacity: .45; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border-top: 1px solid var(--line); margin: 10px 14px 0; padding: 10px 0 14px; }
+  .split .n { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; }
+  .split .v { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .dim2 { color: var(--ink-3); }
+  @media (max-width: 480px) {
+    .split { grid-template-columns: 1fr; gap: 4px; }
+    .split > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  }
+
+  .note { background: #fff7ed; color: #92400e; border-radius: 8px; padding: 10px 12px; font-size: 12.5px; margin: 12px 14px; }
+  .empty { padding: 18px 14px; color: var(--ink-3); font-size: 13px; text-align: center; }
+  footer { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 26px; font-size: 11.5px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+// Force-print (<?!=), not the escaping <?= — the latter contextually escapes
+// the JSON, leaving DATA a string whose every property reads undefined.
+var DATA = <?!= payload ?>;
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function money(n) {
+  var v = Number(n) || 0;
+  return (v < 0 ? '-' : '') + '$' + Math.abs(v).toFixed(2);
+}
+function compact(n) {
+  var v = Math.abs(Number(n) || 0);
+  if (v >= 1000) return '$' + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k';
+  return '$' + Math.round(v);
+}
+function shortDay(iso) {
+  var p = String(iso || '').split('-');
+  if (p.length !== 3) return { wd: '', d: iso || '' };
+  var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  return { wd: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()], d: Number(p[2]) };
+}
+function pct(v) {
+  if (v == null) return '<span class="badge flat">no baseline</span>';
+  var cls = Math.abs(v) < 0.05 ? 'flat' : (v > 0 ? 'up' : 'down');
+  return '<span class="badge ' + cls + '">' + (v > 0 ? '+' : '') + v + '%</span>';
+}
+
+// Horizontal bar list, used for both weekday and part-of-month.
+function bars(items) {
+  var max = items.reduce(function (m, i) { return Math.max(m, i.value); }, 0) || 1;
+  return '<div class="rows">' + items.map(function (i) {
+    return '<div class="row' + (i.dim ? ' dim' : '') + '">' +
+      '<div class="rl">' + esc(i.label) + '</div>' +
+      '<div class="rt"><div class="rf" style="width:' + Math.round((i.value / max) * 100) + '%"></div></div>' +
+      '<div class="rv">' + (i.value ? money(i.value) : '—') + '</div>' +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+// cstore | vape strip under a card. Absent when there is nothing to compare.
+function split(ins, cell) {
+  var bc = ins && ins.byCompany;
+  if (!bc) return '';
+  var names = Object.keys(bc);
+  if (names.length < 2) return '';
+  return '<div class="split">' + names.map(function (n) {
+    return '<div><div class="n">' + esc(n) + '</div><div class="v">' + cell(bc[n]) + '</div></div>';
+  }).join('') + '</div>';
+}
+
+function chart(daily, companies) {
+  if (!daily.length) return '<div class="empty">No sales in this window.</div>';
+  var max = daily.reduce(function (m, d) { return Math.max(m, d.total); }, 0) || 1;
+  var multi = companies.length > 1;
+  var legend = multi
+    ? '<div class="legend">' + companies.map(function (c, n) {
+        return '<span class="key"><i class="sw c' + n + '"></i>' + esc(c) + '</span>';
+      }).join('') + '</div>'
+    : '';
+  var h = legend + '<div class="chart">';
+  daily.forEach(function (d) {
+    var px = Math.max(3, Math.round((d.total / max) * 96));
+    var bc = d.byCompany || {};
+    var stack = '';
+    if (multi && d.total > 0) {
+      companies.forEach(function (c, n) {
+        var v = bc[c] || 0;
+        if (v <= 0) return;
+        stack += '<span class="seg c' + n + '" style="height:' +
+          Math.max(1, Math.round((v / d.total) * px)) + 'px"></span>';
+      });
+    }
+    var p = shortDay(d.dateStr);
+    var tip = p.wd + ' ' + p.d + ' · ' + money(d.total) +
+      (multi ? ' (' + companies.map(function (c) { return c + ' ' + money(bc[c] || 0); }).join(' · ') + ')' : '');
+    h += '<div class="col" title="' + esc(tip) + '">' +
+      '<div class="bar' + (multi ? '' : ' seg c0') + '" style="height:' + px + 'px">' +
+        (stack || (multi ? '' : '')) +
+      '</div>' +
+      '<div class="lbl">' + esc(p.wd) + '<br>' + esc(String(p.d)) + '</div>' +
+    '</div>';
+  });
+  return h + '</div>';
+}
+
+(function render() {
+  var d = DATA || {};
+  if (d.unavailable) {
+    document.getElementById('app').innerHTML =
+      '<header><h1>Sales</h1></header><div class="card"><div class="note">' +
+      esc(d.unavailable) + '</div></div>';
+    return;
+  }
+  var t = d.totals || {};
+  var ins = d.insights || {};
+  var tr = ins.trend || {};
+  var companies = (d.companies || []).slice();
+  var daily = d.daily || [];
+
+  var html =
+    '<header><h1>Sales · last ' + (d.days || 0) + ' days</h1>' +
+      '<div class="sub">' + esc(d.fromStr || '') + ' → ' + esc(d.toStr || '') +
+        ' · generated ' + esc(d.generatedAt || '') + '</div></header>';
+
+  // Headline
+  html += '<section><div class="card">' +
+    '<div class="hero">' +
+      '<div class="cap">Total sales</div>' +
+      '<div class="amt">' + money(t.total) + '</div>' +
+      '<div class="note" style="background:none;color:inherit;padding:0;margin:5px 0 0;font-size:12.5px">' +
+        money(tr.perTradingDay || 0) + ' per trading day · ' +
+        (tr.tradingDays || daily.length) + ' days · ' + (d.sessionCount || 0) + ' shifts ' +
+        pct(tr.changePct) +
+      '</div>' +
+    '</div>' +
+    split(ins, function (c) {
+      return money(c.total) + '<span class="dim2"> · ' + c.sharePct + '% · ' +
+        money(c.perTradingDay) + '/day</span>';
+    }) +
+  '</div></section>';
+
+  // Tender mix
+  html += '<section><div class="sec-title">By tender</div><div class="tiles">' +
+    [['Cash', t.cash], ['Credit', t.credit], ['Debit', t.debit], ['Misc', t.misc]]
+      .map(function (x) {
+        return '<div class="tile"><div class="k">' + x[0] + '</div>' +
+          '<div class="v">' + money(x[1]) + '</div></div>';
+      }).join('') +
+  '</div></section>';
+
+  // Daily
+  html += '<section><div class="sec-title">Day by day' +
+    '<span class="r">' + daily.length + ' trading days</span></div>' +
+    '<div class="card">' + chart(daily, companies) + '</div></section>';
+
+  // Weekday
+  var dw = ins.dayOfWeek || {};
+  html += '<section><div class="sec-title">By day of week' +
+    (dw.spreadPct != null ? '<span class="r">' + dw.spreadPct + '% spread</span>' : '') +
+    '</div><div class="card">';
+  if (dw.insufficient) {
+    html += '<div class="note">' + esc(dw.insufficient) + '</div>';
+  } else {
+    html += bars((dw.buckets || []).map(function (b) {
+      return { label: b.short, value: b.average, dim: !b.days };
+    }));
+    html += '<div class="pad" style="padding-top:0;font-size:12.5px;color:var(--ink-2)">Busiest <b>' +
+      esc(dw.best.name) + '</b> at ' + money(dw.best.average) + ' · quietest <b>' +
+      esc(dw.worst.name) + '</b> at ' + money(dw.worst.average) + '</div>';
+  }
+  html += split(ins, function (c) {
+    return c.dayOfWeek && !c.dayOfWeek.insufficient
+      ? '<b>' + esc(c.dayOfWeek.best.name) + '</b> ' + money(c.dayOfWeek.best.average) +
+        '<span class="dim2"> · low ' + esc(c.dayOfWeek.worst.name) + '</span>'
+      : '<span class="dim2">not enough days</span>';
+  });
+  html += '</div></section>';
+
+  // Part of month
+  var tm = ins.timeOfMonth || {};
+  html += '<section><div class="sec-title">By part of month</div><div class="card">';
+  if (tm.insufficient) {
+    html += '<div class="note">' + esc(tm.insufficient) + '</div>';
+  } else {
+    html += bars((tm.buckets || []).map(function (b) {
+      return { label: b.label, value: b.average, dim: !b.days };
+    }));
+    if (tm.strongest) {
+      html += '<div class="pad" style="padding-top:0;font-size:12.5px;color:var(--ink-2)">Strongest <b>' +
+        esc(tm.strongest.label) + '</b> at ' + money(tm.strongest.average) + ' per day' +
+        (tm.weakest ? ' · weakest <b>' + esc(tm.weakest.label) + '</b> at ' +
+          money(tm.weakest.average) : '') + '</div>';
+    }
+  }
+  html += '</div></section>';
+
+  // Tender drift
+  var tx = ins.tenderMix || {};
+  if (tx.cashSharePct != null) {
+    html += '<section><div class="sec-title">Cash share</div><div class="card">' +
+      '<div class="hero"><div class="cap">Taken as cash</div>' +
+        '<div class="amt">' + tx.cashSharePct + '%</div>' +
+        '<div class="note" style="background:none;color:var(--ink-2);padding:0;margin:5px 0 0">' +
+          (tx.changePoints == null ? 'no earlier window to compare'
+            : (tx.changePoints > 0 ? '+' : '') + tx.changePoints + ' points vs the previous window') +
+        '</div>' +
+      '</div></div></section>';
+  }
+
+  html += '<footer>StoreOps · read-only · figures are aggregates across all tills. ' +
+    'No individual shift or staff detail is published here.</footer>';
+
+  document.getElementById('app').innerHTML = html;
+})();
+</script>
+</body>
+</html>
