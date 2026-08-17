@@ -517,14 +517,18 @@ Every cost was a sheet read.
 ### Sales split by company, without losing the consolidated view (Batch 11)
 
 85 days of production data (262 sessions, 84 trading days, $182,383) showed the
-two tills barely move together — **daily correlation 0.36**. Vape's share of the
-day swings between 2.7% and 28.9% around a 12.0% median, so at 12.7% of revenue
-a 25% move in vape shifts the combined line about 3%: invisible on the only
-chart that existed.
+two tills barely move together — **daily correlation 0.36**, and only **0.26**
+once the shared Mon–Sun rhythm is removed from both series, so a quarter of even
+that was the weekly cycle rather than the two tills responding to the same
+customers. Vape's share of the day swings between 2.7% and 26.7% around a 12.0%
+median, so at 12.7% of revenue a 25% move in vape shifts the combined line about
+3%: invisible on the only chart that existed.
 
 They differ structurally too, not just in size — cstore takes **50.4% of its
-revenue in cash against vape's 30.7%**, which is why 92% of the cash removed at
-close is cstore's.
+revenue in cash against vape's 30.7%**. That is a real difference in cash
+exposure, though it is not what makes cstore 92% of the cash removed at close:
+cstore is 87.3% of revenue, and the mix difference accounts for only about
+4.6 points of the gap.
 
 - **A segmented All / Cstore / Vape control** on the Sales tab, defaulting to
   All so the consolidated view stays the landing page. It replaces the company
@@ -556,11 +560,36 @@ An earlier pass reported Saturday as the best weekday with a 77% spread. That
 was averaged **per session** — "which shift is busiest" — not per trading day,
 which is what the dashboard computes and what the business question actually
 is. Per trading day, **cstore peaks Friday ($2,191) and vape peaks Tuesday
-($333)**, both troughing Sunday, a 42% spread. Saturday has the largest
-individual sessions but runs only 1.17 of them a day against Friday's 1.69.
+($333)**, both troughing Sunday. Peak against trough that is a **42% spread for
+cstore and 92% for vape** — the earlier text attached the 42% to a clause about
+both companies, which badly undersold vape. Saturday has the largest individual
+sessions but runs only 1.17 of them a day against Friday's 1.69.
 
 The `realdata` suite caught it: it runs the dashboard over the real production
 rows and pins figures computed independently from the workbook, so a plausible
 answer is not enough — it has to be the same answer. The corrected reading is
 the more useful one anyway: Saturday carries the most money per shift on the
 fewest shifts, which is a staffing observation the per-session average hid.
+
+#### Corrected again, after an independent audit
+
+A second pass recomputed every published figure from the workbook. The code was
+right; some of the prose was not.
+
+- **The time-of-month comparison mixed two formulas.** "9% versus 42%" put
+  `(max−min)/max` against `peak/trough−1`. Like for like it is **10.0% vs 41.8%**
+  (peak/trough) or **9.1% vs 29.5%** ((max−min)/max). The contrast is real; the
+  published pairing was the most flattering non-comparable one.
+- **Vape's per-day share maximum was an artefact.** The 28.9% peak came from a
+  day where a cstore session was recorded with all six tender fields at zero, so
+  vape's share was high because cstore's sales were missing. The honest range is
+  2.7%–26.7%.
+- Sales per labour hour: median $155.72 and 1,162.2 hours hold; the p10/p90
+  quoted ($110.17 / $203.49) are nearest-rank — linear interpolation gives
+  $110.55 / $202.95.
+
+**Three data-quality problems the audit surfaced, which are the sheet's rather
+than the code's:** three sessions closed with every tender field at zero while
+their tills removed $435 and $215 in cash — **$650 that provably crossed the
+counter is missing from recorded revenue**, so every figure here is low by about
+0.36%. And 2026-08-02 carries 14 paid labour hours with no till session at all.

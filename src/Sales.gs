@@ -403,6 +403,10 @@ const Sales = (() => {
    * `byCompany` on each day is what lets the chart stack cstore under vape
    * without a second pass over the sheet.
    */
+  // Bucket label for rows whose company cell is empty. Named rather than blank
+  // so it is obvious in the UI that something needs fixing in the sheet.
+  const UNASSIGNED = 'unassigned';
+
   function buildDaily_(rows) {
     const map = {};
     rows.forEach(r => {
@@ -421,7 +425,12 @@ const Sales = (() => {
       d.debit  += r.debitCardSales || 0;
       d.misc   += (r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0);
       d.sessionCount++;
-      if (r.company) d.byCompany[r.company] = (d.byCompany[r.company] || 0) + rowTotal;
+      // A blank company still belongs to the day's total, so it needs a bucket
+      // — otherwise the stacked segments quietly sum to less than their bar and
+      // the shares add to under 100%. Unreachable through the app (write_
+      // rejects a missing company) but one manual sheet edit away.
+      d.byCompany[r.company || UNASSIGNED] =
+        (d.byCompany[r.company || UNASSIGNED] || 0) + rowTotal;
     });
     return Object.keys(map).map(k => {
       const d = map[k];
@@ -437,14 +446,21 @@ const Sales = (() => {
    * weekday profile, and its share of the whole. Built from rows already in
    * memory, so the split costs no extra sheet read.
    */
-  function companySlice_(companyRows, grandTotal) {
+  function companySlice_(companyRows, grandTotal, rangeTradingDays) {
     const cDaily = buildDaily_(companyRows);
     const total = Util.roundMoney(cDaily.reduce((s, d) => s + d.total, 0));
     const tradingDays = cDaily.length;
+    // Divide by the days the RANGE traded, not the days this company traded,
+    // so the per-day figures are additive against the headline. Dividing each
+    // company by its own day count gives two different meanings to one "/day"
+    // label, and the parts stop summing to the whole the moment one till is
+    // shut while the other trades. `tradingDays` is still reported so a till
+    // that only opens some days is visible rather than hidden.
+    const days = rangeTradingDays || tradingDays;
     return {
       total: total,
       tradingDays: tradingDays,
-      perTradingDay: tradingDays ? Util.roundMoney(total / tradingDays) : 0,
+      perTradingDay: days ? Util.roundMoney(total / days) : 0,
       sharePct: grandTotal ? Math.round((total / grandTotal) * 1000) / 10 : 0,
       sessionCount: companyRows.length,
       dayOfWeek: dayOfWeekInsight_(cDaily),
@@ -528,7 +544,8 @@ const Sales = (() => {
     // through without a code change.
     const companies = [];
     rows.forEach(r => {
-      if (r.company && companies.indexOf(r.company) === -1) companies.push(r.company);
+      const c = r.company || UNASSIGNED;
+      if (companies.indexOf(c) === -1) companies.push(c);
     });
     companies.sort();
 
@@ -573,7 +590,9 @@ const Sales = (() => {
         // render a side-by-side of one.
         (!input.company && companies.length > 1)
           ? { byCompany: companies.reduce((acc, c) => {
-                acc[c] = companySlice_(rows.filter(r => r.company === c), totals.total);
+                acc[c] = companySlice_(
+                  rows.filter(r => (r.company || UNASSIGNED) === c),
+                  totals.total, daily.length);
                 return acc;
               }, {}) }
           : {}

@@ -4777,19 +4777,62 @@
     return (n < 0 ? '-' : '+') + '$' + Math.abs(n).toFixed(2);
   }
 
+  /**
+   * Company buttons, derived from the data rather than a hardcoded pair —
+   * `Sales.gs` builds its company list the same way, so a third till flows
+   * through both ends without a code change. Falls back to the known two
+   * before the first payload lands, and always keeps the active filter
+   * selectable so the view can be cleared even if that company has no rows in
+   * the current range.
+   */
+  function salesSegButtons_() {
+    const cur = state.salesFilters.company || '';
+    const known = ((state.salesData || {}).companies || []).slice();
+    if (cur && known.indexOf(cur) === -1) known.push(cur);
+    if (!known.length) { known.push('cstore'); known.push('vape'); }
+    known.sort();
+    const seg = (val, label) =>
+      '<button class="seg-btn' + (cur === val ? ' on' : '') + '" data-company="' + esc(val) + '">' +
+        esc(label) + '</button>';
+    return seg('', 'All') + known.map(c => seg(c, c)).join('');
+  }
+
+  // The scaffold is built once, so the buttons have to be refreshed when a
+  // payload arrives carrying a company the first render could not know about.
+  function syncSalesSeg_() {
+    const el = $('salesCompanySeg');
+    if (!el) return;
+    const next = salesSegButtons_();
+    if (el.innerHTML === next) return;
+    el.innerHTML = next;
+    wireSalesSeg_();
+  }
+
+  function wireSalesSeg_() {
+    const el = $('salesCompanySeg');
+    if (!el) return;
+    el.querySelectorAll('.seg-btn').forEach(b => {
+      b.onclick = () => {
+        const v = b.getAttribute('data-company') || '';
+        if ((state.salesFilters.company || '') === v) return;
+        haptic();
+        state.salesFilters.company = v;
+        state.salesFilters.page = 1;
+        el.querySelectorAll('.seg-btn').forEach(x => x.classList.remove('on'));
+        b.classList.add('on');
+        loadSalesTab();
+      };
+    });
+  }
+
   function renderSalesScaffold() {
     const f = state.salesFilters;
     // One control for company, not two. A dropdown in the filter card and a
     // toggle above it would disagree the first time one was set and the other
     // was not, and the filter only applies on "Apply" while the toggle is
     // immediate — so they would disagree visibly.
-    const seg = (val, label) =>
-      '<button class="seg-btn' + ((f.company || '') === val ? ' on' : '') + '" data-company="' + val + '">' +
-        esc(label) + '</button>';
     return moreBack() +
-      '<div class="seg" id="salesCompanySeg">' +
-        seg('', 'All') + seg('cstore', 'Cstore') + seg('vape', 'Vape') +
-      '</div>' +
+      '<div class="seg" id="salesCompanySeg">' + salesSegButtons_() + '</div>' +
       '<div id="salesInsights"></div>' + '<div class="filter-card" id="salesFilterCard">' +
       '<div class="filter-row">' +
         '<div class="filter-field"><label>Start date</label><input type="date" id="fStart" value="' + esc(f.startDate || '') + '"></div>' +
@@ -4829,20 +4872,7 @@
     } catch (e) { /* leave "All staff" if lookup fails */ }
     // Company applies immediately — it is a view switch, not a query to build
     // up, and making it wait behind "Apply" would make the toggle look broken.
-    const segEl = $('salesCompanySeg');
-    if (segEl) {
-      segEl.querySelectorAll('.seg-btn').forEach(b => {
-        b.onclick = () => {
-          const v = b.getAttribute('data-company') || '';
-          if ((state.salesFilters.company || '') === v) return;
-          state.salesFilters.company = v;
-          state.salesFilters.page = 1;
-          segEl.querySelectorAll('.seg-btn').forEach(x => x.classList.remove('on'));
-          b.classList.add('on');
-          loadSalesTab();
-        };
-      });
-    }
+    wireSalesSeg_();
 
     $('applyFilters').onclick = () => {
       state.salesFilters.startDate = $('fStart').value;
@@ -4859,6 +4889,7 @@
     state.salesExpandedDays = {};
     const daily = data.daily || [];
     if (daily.length) state.salesExpandedDays[daily[daily.length - 1].dateStr] = true;
+    syncSalesSeg_();
     renderSalesInsights(data.insights, daily);
     renderSalesBody();
   }
@@ -5237,6 +5268,17 @@
       if (allCompanies.indexOf(c) === -1) allCompanies.push(c);
     }));
     allCompanies.sort();
+
+    // Clamp the stored filter to what actually exists in THIS payload, and
+    // write the reset back. Without this the filter outlives the toggle: settle
+    // the last of one company's cash and `allCompanies` drops to one, the
+    // toggle stops rendering, and a still-applied filter hides the other
+    // company's outstanding cash with no control left to clear it. That is the
+    // normal workflow — filter to cstore precisely in order to settle cstore —
+    // and recovery needed a full page reload.
+    if (state.cashCompany && allCompanies.indexOf(state.cashCompany) === -1) {
+      state.cashCompany = '';
+    }
     const cf = state.cashCompany || '';
     const inView = s => !cf || s.company === cf;
 
@@ -5255,25 +5297,36 @@
     }
 
     // ── What I'm carrying ──────────────────────────────
+    // The button below settles the FULL balance oldest-first across both tills,
+    // so while filtered the hero has to name both numbers. Showing only the
+    // filtered figure above a sheet pre-filled with the total is how someone
+    // types the wrong amount.
+    const heldAll = Number(mine.totalOutstanding) || 0;
+    const filteredView = !!cf && Math.abs(heldAll - held) > 0.005;
     html += '<div class="cash-hero">' +
-      '<div class="cash-hero-cap">Cash in your hands</div>' +
+      '<div class="cash-hero-cap">Cash in your hands' + (cf ? ' · ' + esc(cf) : '') + '</div>' +
       '<div class="cash-hero-amt' + (held > 0.005 ? '' : ' zero') + '">' + money(held) + '</div>' +
       '<div class="cash-hero-sub">' +
         (held > 0.005
           ? 'from ' + sessions.length + ' shift' + (sessions.length === 1 ? '' : 's') +
             (sessions.length ? ' since ' + esc(sessions[0].dateStr) : '')
           : 'nothing outstanding') +
+        (filteredView ? '<br>' + money(heldAll) + ' in total across both tills' : '') +
       '</div>' +
-      (held > 0.005
+      // Gate on the FULL balance: a filter that hides the button would leave a
+      // cashier unable to hand over cash they are actually holding.
+      (heldAll > 0.005
         ? '<button class="cash-hero-btn" id="cashHandBtn"' + (mgr ? '' : ' disabled') + '>' +
             (mgr
-              ? (data.isCashManager ? 'Record to business cash →' : 'Hand over to ' + esc(mgr.name) + ' →')
+              ? (data.isCashManager
+                  ? 'Record ' + money(heldAll) + ' to business cash →'
+                  : 'Hand ' + money(heldAll) + ' to ' + esc(mgr.name) + ' →')
               : 'No cash manager set') +
           '</button>'
         : '') +
     '</div>';
 
-    if (held > 0.005 && !mgr) {
+    if (heldAll > 0.005 && !mgr) {
       html += '<div class="cash-note warn">No cash manager is configured, so a handover ' +
         'can\'t be recorded yet. Set <b>cash_manager_staff_id</b> in the config tab.</div>';
     }
@@ -5327,7 +5380,12 @@
               (h.oldest ? ' · oldest ' + esc(h.oldest) : '') +
               (split ? '<br>' + split : '') + '</div></div>' +
             '<div class="cash-row-right">' +
-              '<span class="cash-row-amt">' + money(amtOf(h)) + '</span>' +
+              '<span class="cash-row-amt">' + money(amtOf(h)) +
+                // Receive always opens at this person's full balance; while
+                // filtered, name it here so the button and the sheet agree.
+                (cf && Math.abs((h.total || 0) - amtOf(h)) > 0.005
+                  ? '<span class="cash-row-sub">of ' + money(h.total) + '</span>' : '') +
+              '</span>' +
               '<button class="cash-mini" data-receive="' + esc(h.staffId) + '">Receive</button>' +
             '</div>' +
           '</div>';
