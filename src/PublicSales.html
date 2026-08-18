@@ -291,6 +291,12 @@ function chart(daily, companies) {
     'No individual shift or staff detail is published here.</footer>';
 
   document.getElementById('app').innerHTML = html;
+
+  // The chart is built oldest-first and scrolls, so it would open on the start
+  // of the window. A reader opening this from a shift-close message wants the
+  // days just gone, so land on the newest and let them scroll back.
+  var track = document.querySelector('.chart');
+  if (track) track.scrollLeft = Math.max(0, track.scrollWidth - track.clientWidth);
 })();
 </script>
 </body>

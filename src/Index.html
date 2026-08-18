@@ -5178,7 +5178,16 @@
         ' of ' + data.rowCount + ' sessions — narrow the range for full day detail.</div>';
     }
 
+    // The track scrolls, and it is built oldest-first, so it opens hard left on
+    // the oldest day while the selected day is the newest — off-screen to the
+    // right. Capture where the reader had it before the innerHTML swap wipes
+    // the scroll position.
+    const prevTrack = $('salesResults').querySelector('.sc-track');
+    const prevScroll = prevTrack ? prevTrack.scrollLeft : null;
+
     $('salesResults').innerHTML = html;
+
+    focusSalesChart_(prevScroll);
 
     // bar → show that day below. Selection REPLACES rather than accumulates:
     // one day is rendered, so leaving old keys set would make which one wins
@@ -5191,6 +5200,38 @@
         renderSalesBody();
       };
     });
+  }
+
+  /**
+   * Where the day chart should be scrolled to. Pure arithmetic, no DOM, so the
+   * behaviour is testable rather than eyeballed.
+   *
+   *  - nothing selected  → the far right, because the newest day is what a
+   *    reader wants first and the track is built oldest-first;
+   *  - selection already fully visible → leave it exactly where the reader put
+   *    it, so tapping a bar does not yank the chart sideways;
+   *  - otherwise → centre the selected bar.
+   */
+  function chartScrollTarget_(selLeft, selWidth, viewWidth, scrollWidth, prev) {
+    const maxScroll = Math.max(0, scrollWidth - viewWidth);
+    if (selLeft == null) return maxScroll;
+    if (prev != null && selLeft >= prev && (selLeft + selWidth) <= (prev + viewWidth)) {
+      return Math.max(0, Math.min(maxScroll, prev));
+    }
+    return Math.max(0, Math.min(maxScroll, selLeft - (viewWidth - selWidth) / 2));
+  }
+
+  function focusSalesChart_(prevScroll) {
+    const track = $('salesResults') && $('salesResults').querySelector('.sc-track');
+    if (!track) return;
+    const sel = track.querySelector('.sc-col.sel');
+    track.scrollLeft = chartScrollTarget_(
+      sel ? sel.offsetLeft : null,
+      sel ? sel.offsetWidth : 0,
+      track.clientWidth,
+      track.scrollWidth,
+      prevScroll
+    );
   }
 
   // ============================================================

@@ -658,3 +658,26 @@ one scriptlet opener and one closer, that it is the force-print payload form,
 and that nothing appears before it. It builds the delimiters at runtime so the
 test cannot trip its own rule, and it fails 4 assertions against the broken
 commit.
+
+#### The day chart opens on the newest days
+
+The track is built oldest-first and scrolls, so over a 60-day window it opened
+hard left on the oldest day — while the day selected by default, and rendered
+in detail underneath, was the newest. The selected bar was simply off-screen.
+
+- **Nothing selected → the far right.** The newest days are what a reader wants
+  first; older ones are a scroll back.
+- **A selection off-screen → centred**, so tapping a bar always brings it into
+  view.
+- **A selection already fully visible → left exactly where the reader put it.**
+  Re-rendering replaces the chart's markup and wipes its scroll position, so the
+  position is captured before the swap and restored after; without that, every
+  tap would yank the chart sideways even when nothing needed to move.
+
+The arithmetic lives in `chartScrollTarget_`, which takes plain numbers and
+touches no DOM, so the behaviour is asserted rather than eyeballed — including
+that a bar ending one pixel inside the viewport is left alone while the next one
+along is re-centred.
+
+The public sales page gets the same treatment, minus the selection logic: it
+opens on the newest days and lets the reader scroll back.
