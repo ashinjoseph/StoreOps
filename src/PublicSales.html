@@ -91,8 +91,12 @@
 <div class="wrap" id="app"></div>
 
 <script>
-// Force-print (<?!=), not the escaping <?= — the latter contextually escapes
-// the JSON, leaving DATA a string whose every property reads undefined.
+// The scriptlet below is the FORCE-PRINT form; the escaping form would leave
+// DATA a string whose every property reads undefined.
+//
+// Do not spell either scriptlet out in a comment — the template parser runs
+// over this file as raw text before it is JavaScript, so an opening sequence
+// inside a comment starts a scriptlet that swallows the real one.
 var DATA = <?!= payload ?>;
 
 function esc(s) {

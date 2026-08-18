@@ -630,3 +630,31 @@ which together indicate roughly how much cash a corner store handles and when.
 That was already true of the report it replaces — which additionally said who
 was carrying it, by name — so this is a net reduction in exposure, but it is a
 deliberate choice rather than an accident.
+
+#### Fixed: a comment about the scriptlet broke the scriptlet
+
+Both public pages died with `SyntaxError: Unexpected token ')'` blamed on
+`WebApp.gs` at the line calling `.evaluate()` — a file that is entirely valid,
+and which `node --check` passes.
+
+Apps Script templating is a **text preprocessor**. It scans the whole file for
+scriptlet delimiters before any of it is HTML or JavaScript, so it cannot see
+JS comments. The comment written to explain the force-print scriptlet contained
+the delimiter itself, which opened a scriptlet that swallowed everything up to
+the real closing tag — taking the actual payload expression with it. Three
+openers in a file that must contain exactly one.
+
+The error is attributed to `WebApp.gs` because that is where `.evaluate()`
+compiles the template, which is what makes it hard to find: the reported file
+and line are both innocent.
+
+`Public.html` carried the same defect from the moment the comment was written,
+so **the reconcile report has been broken since PR #4 reached production**. It
+went unnoticed only because the WhatsApp button that links to it has not been
+submitted to Meta yet, so nothing has actually opened the URL.
+
+A `template-guard` suite now asserts that each templated page contains exactly
+one scriptlet opener and one closer, that it is the force-print payload form,
+and that nothing appears before it. It builds the delimiters at runtime so the
+test cannot trip its own rule, and it fails 4 assertions against the broken
+commit.
