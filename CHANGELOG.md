@@ -681,3 +681,28 @@ along is re-centred.
 
 The public sales page gets the same treatment, minus the selection logic: it
 opens on the newest days and lets the reader scroll back.
+
+#### The public chart shows its amounts
+
+The in-app chart prints each day's total above its bar; the public one didn't.
+Not by design — `compact()` was written into `PublicSales.html` and then never
+called, so the page shipped with a formatter it had no use for. Without a label
+the bars are shape only, and the page has no accordion underneath to read the
+figures off: the tooltip was the only way to get a number out of it, which on a
+phone means no way at all.
+
+Each column now carries `$2.0k` / `$960` above the bar, the same abbreviation
+`compactMoney` uses in the app, so the two charts read identically. The column
+widens 30px → 34px to fit four characters, and gets `justify-content: flex-end`
+so the label sits on top of its own bar rather than floating at chart height —
+without it a short day's label hangs in space well above the bar it belongs to.
+
+A `public-chart` suite now runs the page's real `chart()` in a sandbox, lifted
+out of the HTML rather than copied, and asserts the label on every column, in
+the single-company view, and on a zero day. It also re-checks that the stacked
+segments still sum to the bar height, since the label changed the column's
+layout. It fails 6 assertions against the commit before this one — including
+"chart body calls compact", which is the assertion that would have caught the
+dead formatter in the first place.
+
+386 assertions across 20 suites.
