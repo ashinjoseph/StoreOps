@@ -662,6 +662,49 @@
   .sc-col:hover .sc-bar { background: #9db4f0; }
   .sc-col.sel .sc-bar { background: #1a4ca1; }
   .sc-col.sel .sc-amt { color: #1a4ca1; }
+
+  /* Stacked bar: segments are laid out bottom-up so the first company in the
+     list sits at the base and the stack reads in a stable order every day. */
+  .sc-bar.stacked { display: flex; flex-direction: column-reverse; background: none; overflow: hidden; }
+  .sc-seg { display: block; width: 100%; }
+  .sc-seg.c0 { background: #c7d2f7; }
+  .sc-seg.c1 { background: #f2b705; }
+  .sc-seg.c2 { background: #6fbf73; }
+  .sc-col.sel .sc-seg.c0 { background: #1a4ca1; }
+  .sc-col.sel .sc-seg.c1 { background: #c98f00; }
+  .sc-col.sel .sc-seg.c2 { background: #3d8c42; }
+  .sc-legend { display: flex; gap: 12px; padding: 0 2px 8px; font-size: 11px; color: #6a6e79; }
+  .sc-key { display: inline-flex; align-items: center; gap: 5px; text-transform: capitalize; }
+  .sc-sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .sc-sw.c0 { background: #c7d2f7; } .sc-sw.c1 { background: #f2b705; } .sc-sw.c2 { background: #6fbf73; }
+
+  /* Company segmented control — immediate view switch, not a filter to apply. */
+  .seg { display: flex; gap: 4px; background: #eceef3; border-radius: 10px; padding: 4px; margin-bottom: 12px; }
+  .seg-btn {
+    flex: 1; padding: 9px 6px; border: 0; border-radius: 7px; background: none;
+    font-size: 13px; font-weight: 600; color: #5c6270; cursor: pointer;
+    min-height: 40px; text-transform: capitalize;
+  }
+  .seg-btn.on { background: #fff; color: #1a237e; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .seg-note { font-size: 11.5px; color: #8a8e98; padding-top: 9px; }
+
+  /* cstore | vape strip at the foot of an insight card. */
+  .cs-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;
+              border-top: 1px solid #eceef3; padding-top: 9px; }
+  .cs-col { min-width: 0; }
+  .cs-name { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+             color: #8a8e98; font-weight: 700; margin-bottom: 2px; }
+  .cs-val { font-size: 12.5px; color: #1a2540; font-variant-numeric: tabular-nums; }
+  .cs-dim { color: #8a8e98; }
+  @media (max-width: 560px) {
+    /* One per row, each prefixed by the company it belongs to — the same
+       pattern the recon table uses to stay readable on a phone. */
+    .cs-split { grid-template-columns: 1fr; gap: 4px; }
+    .cs-col { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+    .cs-col .cs-name { margin-bottom: 0; }
+    .cs-col .cs-val { text-align: right; }
+  }
+  .day-head.static { cursor: default; }
   .sc-lbl { font-size: 10px; line-height: 1.15; color: #6a6e79; text-align: center; font-weight: 600; }
 
   /* ── Day accordion ─────────────────────────────────── */
@@ -4734,9 +4777,63 @@
     return (n < 0 ? '-' : '+') + '$' + Math.abs(n).toFixed(2);
   }
 
+  /**
+   * Company buttons, derived from the data rather than a hardcoded pair —
+   * `Sales.gs` builds its company list the same way, so a third till flows
+   * through both ends without a code change. Falls back to the known two
+   * before the first payload lands, and always keeps the active filter
+   * selectable so the view can be cleared even if that company has no rows in
+   * the current range.
+   */
+  function salesSegButtons_() {
+    const cur = state.salesFilters.company || '';
+    const known = ((state.salesData || {}).companies || []).slice();
+    if (cur && known.indexOf(cur) === -1) known.push(cur);
+    if (!known.length) { known.push('cstore'); known.push('vape'); }
+    known.sort();
+    const seg = (val, label) =>
+      '<button class="seg-btn' + (cur === val ? ' on' : '') + '" data-company="' + esc(val) + '">' +
+        esc(label) + '</button>';
+    return seg('', 'All') + known.map(c => seg(c, c)).join('');
+  }
+
+  // The scaffold is built once, so the buttons have to be refreshed when a
+  // payload arrives carrying a company the first render could not know about.
+  function syncSalesSeg_() {
+    const el = $('salesCompanySeg');
+    if (!el) return;
+    const next = salesSegButtons_();
+    if (el.innerHTML === next) return;
+    el.innerHTML = next;
+    wireSalesSeg_();
+  }
+
+  function wireSalesSeg_() {
+    const el = $('salesCompanySeg');
+    if (!el) return;
+    el.querySelectorAll('.seg-btn').forEach(b => {
+      b.onclick = () => {
+        const v = b.getAttribute('data-company') || '';
+        if ((state.salesFilters.company || '') === v) return;
+        haptic();
+        state.salesFilters.company = v;
+        state.salesFilters.page = 1;
+        el.querySelectorAll('.seg-btn').forEach(x => x.classList.remove('on'));
+        b.classList.add('on');
+        loadSalesTab();
+      };
+    });
+  }
+
   function renderSalesScaffold() {
     const f = state.salesFilters;
-    return moreBack() + '<div id="salesInsights"></div>' + '<div class="filter-card" id="salesFilterCard">' +
+    // One control for company, not two. A dropdown in the filter card and a
+    // toggle above it would disagree the first time one was set and the other
+    // was not, and the filter only applies on "Apply" while the toggle is
+    // immediate — so they would disagree visibly.
+    return moreBack() +
+      '<div class="seg" id="salesCompanySeg">' + salesSegButtons_() + '</div>' +
+      '<div id="salesInsights"></div>' + '<div class="filter-card" id="salesFilterCard">' +
       '<div class="filter-row">' +
         '<div class="filter-field"><label>Start date</label><input type="date" id="fStart" value="' + esc(f.startDate || '') + '"></div>' +
         '<div class="filter-field"><label>End date</label><input type="date" id="fEnd" value="' + esc(f.endDate || '') + '"></div>' +
@@ -4745,8 +4842,8 @@
         '<div class="filter-field"><label>Staff</label>' +
           '<select id="fStaff"><option value="">All staff</option></select>' +
         '</div>' +
-        '<div class="filter-field"><label>Company</label>' +
-          '<select id="fCompany"><option value="">Both</option><option value="cstore">Cstore</option><option value="vape">Vape</option></select>' +
+        '<div class="filter-field"><label>&nbsp;</label>' +
+          '<div class="seg-note">Company is set by the toggle above</div>' +
         '</div>' +
       '</div>' +
       '<div class="filter-row">' +
@@ -4773,13 +4870,14 @@
       });
       sel.value = state.salesFilters.staffId || '';
     } catch (e) { /* leave "All staff" if lookup fails */ }
-    $('fCompany').value = state.salesFilters.company || '';
+    // Company applies immediately — it is a view switch, not a query to build
+    // up, and making it wait behind "Apply" would make the toggle look broken.
+    wireSalesSeg_();
 
     $('applyFilters').onclick = () => {
       state.salesFilters.startDate = $('fStart').value;
       state.salesFilters.endDate = $('fEnd').value;
       state.salesFilters.staffId = $('fStaff').value;
-      state.salesFilters.company = $('fCompany').value;
       state.salesFilters.page = 1;
       loadSalesTab();
     };
@@ -4791,6 +4889,7 @@
     state.salesExpandedDays = {};
     const daily = data.daily || [];
     if (daily.length) state.salesExpandedDays[daily[daily.length - 1].dateStr] = true;
+    syncSalesSeg_();
     renderSalesInsights(data.insights, daily);
     renderSalesBody();
   }
@@ -4855,6 +4954,25 @@
            'stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>';
   }
 
+  /**
+   * A two-column cstore/vape strip for the foot of an insight card. Renders
+   * nothing at all when the view is filtered to one company — a side-by-side
+   * comparison of one is just a fact with extra furniture.
+   * `data-label` on every cell, so the ≤560px rule stacks these into rows
+   * rather than leaving bare unlabelled numbers.
+   */
+  function companySplit_(ins, cellFn) {
+    const bc = ins && ins.byCompany;
+    if (!bc) return '';
+    const names = Object.keys(bc);
+    if (names.length < 2) return '';
+    return '<div class="cs-split">' + names.map(n =>
+      '<div class="cs-col" data-label="' + esc(n) + '">' +
+        '<div class="cs-name">' + esc(n) + '</div>' +
+        '<div class="cs-val">' + cellFn(bc[n]) + '</div>' +
+      '</div>').join('') + '</div>';
+  }
+
   function renderSalesInsights(ins, daily) {
     const el = $('salesInsights');
     if (!el) return;
@@ -4880,6 +4998,9 @@
         : insNote_(tr.rollingInsufficient || '')) +
       (tr.best ? '<div class="ins-sub">Best ' + esc(tr.best.dateStr) + ' ' + money(tr.best.total) +
                  ' · quietest ' + esc(tr.worst.dateStr) + ' ' + money(tr.worst.total) + '</div>' : '') +
+      companySplit_(ins, c =>
+        money(c.total) + '<span class="cs-dim"> · ' + c.sharePct + '% · ' +
+        money(c.perTradingDay) + '/day</span>') +
     '</div>';
 
     // 2. Day of week.
@@ -4898,6 +5019,13 @@
         money(dw.best.average) + ' · quietest <b>' + esc(dw.worst.name) + '</b> at ' +
         money(dw.worst.average) + '</div>';
     }
+    // Per-company weekday, side by side. The two businesses peak on different
+    // days, which is invisible in the blended bars above.
+    html += companySplit_(ins, c =>
+      c.dayOfWeek && !c.dayOfWeek.insufficient
+        ? '<b>' + esc(c.dayOfWeek.best.name) + '</b> ' + money(c.dayOfWeek.best.average) +
+          '<span class="cs-dim"> · low ' + esc(c.dayOfWeek.worst.name) + '</span>'
+        : '<span class="cs-dim">not enough days</span>');
     html += '</div>';
 
     // 3. Time of month — the payday question.
@@ -4962,57 +5090,86 @@
       card('Total', t.total) + card('Cash', t.cash) + card('Credit', t.credit) +
       card('Debit', t.debit) + card('Misc', t.misc) + '</div>';
 
-    // 2. bar chart — total sales per day (tap a bar to open that day)
+    // 2. bar chart — the ONLY per-day totals view, and the day selector.
+    //    Each bar is stacked by company so the consolidated view still answers
+    //    "which side of the business did it", not just "how much".
+    //    Segments are drawn tallest-first from the bottom, and the heights are
+    //    derived from the same rounded numbers shown in the tooltip so the
+    //    parts visibly add up to the whole.
+    const segCompanies = (data.companies || []).slice();
     if (daily.length) {
       const max = Math.max.apply(null, daily.map(d => d.total).concat([1]));
-      html += '<div class="sales-chart"><div class="sc-track">';
+      const legend = segCompanies.length > 1
+        ? '<div class="sc-legend">' + segCompanies.map((c, n) =>
+            '<span class="sc-key"><i class="sc-sw c' + n + '"></i>' + esc(c) + '</span>').join('') + '</div>'
+        : '';
+      html += '<div class="sales-chart">' + legend + '<div class="sc-track">';
       daily.forEach(d => {
         const p = dayParts(d.dateStr);
         const h = Math.max(3, Math.round((d.total / max) * 92));
+        const bc = d.byCompany || {};
+        let stack = '';
+        if (segCompanies.length > 1 && d.total > 0) {
+          segCompanies.forEach((c, n) => {
+            const v = bc[c] || 0;
+            if (v <= 0) return;
+            stack += '<span class="sc-seg c' + n + '" style="height:' +
+              Math.max(1, Math.round((v / d.total) * h)) + 'px" ' +
+              'title="' + esc(c + ' ' + money(v)) + '"></span>';
+          });
+        }
+        const detail = segCompanies.length > 1
+          ? segCompanies.map(c => c + ' ' + money(bc[c] || 0)).join(' · ') : '';
         html += '<button class="sc-col' + (expanded[d.dateStr] ? ' sel' : '') + '" data-day="' + esc(d.dateStr) + '" ' +
-          'title="' + esc(p.weekday + ' ' + p.label + ' · ' + money(d.total)) + '">' +
+          'title="' + esc(p.weekday + ' ' + p.label + ' · ' + money(d.total) + (detail ? ' (' + detail + ')' : '')) + '">' +
           '<span class="sc-amt">' + esc(compactMoney(d.total)) + '</span>' +
-          '<span class="sc-bar" style="height:' + h + 'px"></span>' +
+          (stack
+            ? '<span class="sc-bar stacked" style="height:' + h + 'px">' + stack + '</span>'
+            : '<span class="sc-bar" style="height:' + h + 'px"></span>') +
           '<span class="sc-lbl">' + esc(p.weekday) + '<br>' + esc(p.dayNum) + '</span>' +
         '</button>';
       });
       html += '</div></div>';
     }
 
-    // 3. day accordion — newest first; tap a day to fold/unfold its sessions
+    // 3. detail for the SELECTED day only. The old accordion repeated every
+    //    day's date and total under a chart that had just shown them — the
+    //    same numbers twice, in two shapes. The bars are now the only place
+    //    per-day totals appear; this is the drill-down they open.
     html += '<div class="day-acc">';
     if (!daily.length) {
       html += '<div class="recon-empty">No sales in this range.</div>';
     } else {
-      daily.slice().reverse().forEach(d => {
-        const p = dayParts(d.dateStr);
-        const open = !!expanded[d.dateStr];
-        html += '<div class="day-item' + (open ? ' open' : '') + '" id="day-' + esc(d.dateStr) + '">' +
-          '<button class="day-head" data-day="' + esc(d.dateStr) + '">' +
-            '<span class="day-when"><span class="day-caret">' + (open ? '▾' : '▸') + '</span> ' +
-              '<strong>' + esc(p.weekday) + '</strong> ' + esc(p.label) + '</span>' +
-            '<span class="day-meta">' + d.sessionCount + ' sess · <strong>' + money(d.total) + '</strong></span>' +
-          '</button>';
-        if (open) {
-          const sessions = byDay[d.dateStr] || [];
-          html += '<div class="day-body">';
-          if (!sessions.length) {
-            html += '<div class="day-note">Detail not loaded — narrow the date range.</div>';
-          } else {
-            sessions.forEach(r => {
-              const miscTitle = r.miscNotes ? ' title="' + esc(r.miscNotes) + '"' : '';
-              html += '<div class="day-sess">' +
-                '<div class="ds-top"><span>' + esc((r.company || '').toUpperCase()) + ' · ' + esc(r.staffName || '—') +
-                  '</span><strong>' + money(r.total) + '</strong></div>' +
-                '<div class="ds-sub"' + miscTitle + '>cash ' + money(r.cash) + ' · cr ' + money(r.credit) +
-                  ' · db ' + money(r.debit) + (r.misc ? ' · misc ' + money(r.misc) : '') + '</div>' +
-              '</div>';
-            });
-          }
-          html += '</div>';
-        }
-        html += '</div>';
-      });
+      const selStr = Object.keys(expanded).filter(k => expanded[k]).pop()
+        || daily[daily.length - 1].dateStr;
+      const sel = daily.filter(d => d.dateStr === selStr)[0] || daily[daily.length - 1];
+      const p = dayParts(sel.dateStr);
+      const bc = sel.byCompany || {};
+      const split = (data.companies || []).length > 1
+        ? ' · ' + (data.companies || []).map(c => esc(c) + ' ' + money(bc[c] || 0)).join(' · ') : '';
+      html += '<div class="day-item open" id="day-' + esc(sel.dateStr) + '">' +
+        '<div class="day-head static">' +
+          '<span class="day-when"><strong>' + esc(p.weekday) + '</strong> ' + esc(p.label) + '</span>' +
+          '<span class="day-meta">' + sel.sessionCount + ' sess · <strong>' + money(sel.total) + '</strong></span>' +
+        '</div>' +
+        (split ? '<div class="day-note">' + split.slice(3) + '</div>' : '') +
+        '<div class="day-body">';
+      const sessions = byDay[sel.dateStr] || [];
+      if (!sessions.length) {
+        html += '<div class="day-note">Detail not loaded — narrow the date range.</div>';
+      } else {
+        sessions.forEach(r => {
+          const miscTitle = r.miscNotes ? ' title="' + esc(r.miscNotes) + '"' : '';
+          html += '<div class="day-sess">' +
+            '<div class="ds-top"><span>' + esc((r.company || '').toUpperCase()) + ' · ' + esc(r.staffName || '—') +
+              '</span><strong>' + money(r.total) + '</strong></div>' +
+            '<div class="ds-sub"' + miscTitle + '>cash ' + money(r.cash) + ' · cr ' + money(r.credit) +
+              ' · db ' + money(r.debit) + (r.misc ? ' · misc ' + money(r.misc) : '') + '</div>' +
+          '</div>';
+        });
+      }
+      html += '</div></div>' +
+        '<div class="day-note" style="margin-top:6px">Tap a bar to see that day.</div>';
     }
     html += '</div>';
 
@@ -5023,22 +5180,14 @@
 
     $('salesResults').innerHTML = html;
 
-    // bar → expand that day + scroll to it
+    // bar → show that day below. Selection REPLACES rather than accumulates:
+    // one day is rendered, so leaving old keys set would make which one wins
+    // depend on object key order.
     $('salesResults').querySelectorAll('.sc-col').forEach(b => {
       b.onclick = () => {
-        const day = b.dataset.day;
-        state.salesExpandedDays[day] = true;
-        renderSalesBody();
-        const el = $('day-' + day);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      };
-    });
-    // day header → fold/unfold
-    $('salesResults').querySelectorAll('.day-head').forEach(b => {
-      b.onclick = () => {
         haptic();
-        const day = b.dataset.day;
-        state.salesExpandedDays[day] = !state.salesExpandedDays[day];
+        state.salesExpandedDays = {};
+        state.salesExpandedDays[b.dataset.day] = true;
         renderSalesBody();
       };
     });
@@ -5105,32 +5254,79 @@
     }
 
     const mine = data.mine || { totalOutstanding: 0, unsettledSessions: [] };
-    const held = Number(mine.totalOutstanding) || 0;
-    const sessions = mine.unsettledSessions || [];
     const mgr = data.cashManager;
+
+    // Company filter — a VIEW filter. Settlement still walks every company's
+    // sessions oldest-first, so what is shown here narrows but what a handover
+    // settles never does. Derived from the sessions in hand, so a till with
+    // nothing outstanding does not get a tab nobody can use.
+    const allCompanies = [];
+    (mine.unsettledSessions || []).forEach(s => {
+      if (s.company && allCompanies.indexOf(s.company) === -1) allCompanies.push(s.company);
+    });
+    (data.holders || []).forEach(h => Object.keys(h.byCompany || {}).forEach(c => {
+      if (allCompanies.indexOf(c) === -1) allCompanies.push(c);
+    }));
+    allCompanies.sort();
+
+    // Clamp the stored filter to what actually exists in THIS payload, and
+    // write the reset back. Without this the filter outlives the toggle: settle
+    // the last of one company's cash and `allCompanies` drops to one, the
+    // toggle stops rendering, and a still-applied filter hides the other
+    // company's outstanding cash with no control left to clear it. That is the
+    // normal workflow — filter to cstore precisely in order to settle cstore —
+    // and recovery needed a full page reload.
+    if (state.cashCompany && allCompanies.indexOf(state.cashCompany) === -1) {
+      state.cashCompany = '';
+    }
+    const cf = state.cashCompany || '';
+    const inView = s => !cf || s.company === cf;
+
+    const sessions = (mine.unsettledSessions || []).filter(inView);
+    const held = cf
+      ? sessions.reduce((t, s) => t + (Number(s.remaining) || 0), 0)
+      : (Number(mine.totalOutstanding) || 0);
 
     let html = moreBack();
 
+    if (allCompanies.length > 1) {
+      const seg = (v, l) => '<button class="seg-btn' + (cf === v ? ' on' : '') +
+        '" data-cashco="' + esc(v) + '">' + esc(l) + '</button>';
+      html += '<div class="seg" id="cashCompanySeg">' + seg('', 'All') +
+        allCompanies.map(c => seg(c, c)).join('') + '</div>';
+    }
+
     // ── What I'm carrying ──────────────────────────────
+    // The button below settles the FULL balance oldest-first across both tills,
+    // so while filtered the hero has to name both numbers. Showing only the
+    // filtered figure above a sheet pre-filled with the total is how someone
+    // types the wrong amount.
+    const heldAll = Number(mine.totalOutstanding) || 0;
+    const filteredView = !!cf && Math.abs(heldAll - held) > 0.005;
     html += '<div class="cash-hero">' +
-      '<div class="cash-hero-cap">Cash in your hands</div>' +
+      '<div class="cash-hero-cap">Cash in your hands' + (cf ? ' · ' + esc(cf) : '') + '</div>' +
       '<div class="cash-hero-amt' + (held > 0.005 ? '' : ' zero') + '">' + money(held) + '</div>' +
       '<div class="cash-hero-sub">' +
         (held > 0.005
           ? 'from ' + sessions.length + ' shift' + (sessions.length === 1 ? '' : 's') +
             (sessions.length ? ' since ' + esc(sessions[0].dateStr) : '')
           : 'nothing outstanding') +
+        (filteredView ? '<br>' + money(heldAll) + ' in total across both tills' : '') +
       '</div>' +
-      (held > 0.005
+      // Gate on the FULL balance: a filter that hides the button would leave a
+      // cashier unable to hand over cash they are actually holding.
+      (heldAll > 0.005
         ? '<button class="cash-hero-btn" id="cashHandBtn"' + (mgr ? '' : ' disabled') + '>' +
             (mgr
-              ? (data.isCashManager ? 'Record to business cash →' : 'Hand over to ' + esc(mgr.name) + ' →')
+              ? (data.isCashManager
+                  ? 'Record ' + money(heldAll) + ' to business cash →'
+                  : 'Hand ' + money(heldAll) + ' to ' + esc(mgr.name) + ' →')
               : 'No cash manager set') +
           '</button>'
         : '') +
     '</div>';
 
-    if (held > 0.005 && !mgr) {
+    if (heldAll > 0.005 && !mgr) {
       html += '<div class="cash-note warn">No cash manager is configured, so a handover ' +
         'can\'t be recorded yet. Set <b>cash_manager_staff_id</b> in the config tab.</div>';
     }
@@ -5154,31 +5350,58 @@
 
     // ── Roster (cash manager / admin only) ─────────────
     if (data.holders) {
-      const others = data.holders.filter(h => h.staffId !== state.me.staffId);
-      html += '<div class="cash-sec"><span class="cash-sec-l">Out with staff</span>' +
-        '<span class="cash-sec-r total">' + money(data.grandTotal || 0) + '</span></div>';
+      const amtOf = h => cf ? ((h.byCompany || {})[cf] || 0) : (h.total || 0);
+      const shiftsOf = h => cf ? ((h.shiftsByCompany || {})[cf] || 0) : (h.shifts || 0);
+      const others = data.holders
+        .filter(h => h.staffId !== state.me.staffId)
+        .filter(h => amtOf(h) > 0.005);
+      const grand = cf
+        ? ((data.grandByCompany || {})[cf] || 0)
+        : (data.grandTotal || 0);
+      html += '<div class="cash-sec"><span class="cash-sec-l">Out with staff' +
+        (cf ? ' · ' + esc(cf) : '') + '</span>' +
+        '<span class="cash-sec-r total">' + money(grand) + '</span></div>';
       if (others.length === 0) {
-        html += '<div class="cash-note">Nobody else is holding cash right now.</div>';
+        html += '<div class="cash-note">Nobody else is holding ' +
+          (cf ? esc(cf) + ' ' : '') + 'cash right now.</div>';
       } else {
         html += '<div class="cash-list">';
         others.forEach(h => {
+          // The split is shown, but "Receive" always settles this person's
+          // whole balance oldest-first across every company — filtering the
+          // view must not quietly become filtering the settlement.
+          const bc = h.byCompany || {};
+          const split = (!cf && Object.keys(bc).length > 1)
+            ? Object.keys(bc).sort().map(c => esc(c) + ' ' + money(bc[c])).join(' · ')
+            : '';
           html += '<div class="cash-row">' +
             '<div><div class="cash-row-who">' + esc(h.name) + '</div>' +
-            '<div class="cash-row-meta">' + h.shifts + ' shift' + (h.shifts === 1 ? '' : 's') +
-              (h.oldest ? ' · oldest ' + esc(h.oldest) : '') + '</div></div>' +
+            '<div class="cash-row-meta">' + shiftsOf(h) + ' shift' + (shiftsOf(h) === 1 ? '' : 's') +
+              (h.oldest ? ' · oldest ' + esc(h.oldest) : '') +
+              (split ? '<br>' + split : '') + '</div></div>' +
             '<div class="cash-row-right">' +
-              '<span class="cash-row-amt">' + money(h.total) + '</span>' +
+              '<span class="cash-row-amt">' + money(amtOf(h)) +
+                // Receive always opens at this person's full balance; while
+                // filtered, name it here so the button and the sheet agree.
+                (cf && Math.abs((h.total || 0) - amtOf(h)) > 0.005
+                  ? '<span class="cash-row-sub">of ' + money(h.total) + '</span>' : '') +
+              '</span>' +
               '<button class="cash-mini" data-receive="' + esc(h.staffId) + '">Receive</button>' +
             '</div>' +
           '</div>';
         });
         html += '</div>';
+        if (cf) {
+          html += '<div class="cash-note">Showing ' + esc(cf) + ' only. Recording a handover ' +
+            'still settles that person\'s oldest shifts across both tills.</div>';
+        }
       }
 
-      if ((data.stale || []).length) {
+      const staleView = (data.stale || []).filter(inView);
+      if (staleView.length) {
         html += '<div class="cash-flag"><div class="cash-flag-t">⚠ Held more than ' +
           (data.staleDays || 7) + ' days</div>';
-        data.stale.forEach(s => {
+        staleView.forEach(s => {
           html += '<div class="cash-flag-b">' + esc(s.name) + ' · ' + esc(s.dateStr) + ' ' +
             esc(s.company) + ' · ' + money(s.remaining) + ' · ' + s.ageDays + ' days</div>';
         });
@@ -5201,6 +5424,24 @@
 
     view.innerHTML = html;
 
+    // Company toggle — re-renders from data already in hand, no refetch.
+    const cashSeg = $('cashCompanySeg');
+    if (cashSeg) {
+      cashSeg.querySelectorAll('.seg-btn').forEach(b => {
+        b.onclick = () => {
+          const v = b.getAttribute('data-cashco') || '';
+          if ((state.cashCompany || '') === v) return;
+          haptic();
+          state.cashCompany = v;
+          renderCashTab(data);
+        };
+      });
+    }
+
+    // Handover always works from the FULL position (`mine`), never the
+    // filtered view — the sheet previews an oldest-first split across every
+    // company, and passing a narrowed set here would silently change what
+    // gets settled.
     const handBtn = $('cashHandBtn');
     if (handBtn) handBtn.onclick = () => { haptic(); openHandoverSheet(state.me.staffId, mine, mgr); };
 

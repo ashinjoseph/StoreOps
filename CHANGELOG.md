@@ -513,3 +513,148 @@ Every cost was a sheet read.
 - `perf` and `import-perf` suites assert the shape of the cost — reads staying
   constant as the batch grows — rather than a wall-clock number, so they stay
   meaningful anywhere. Both were confirmed to fail against the previous code.
+
+### Sales split by company, without losing the consolidated view (Batch 11)
+
+85 days of production data (262 sessions, 84 trading days, $182,383) showed the
+two tills barely move together — **daily correlation 0.36**, and only **0.26**
+once the shared Mon–Sun rhythm is removed from both series, so a quarter of even
+that was the weekly cycle rather than the two tills responding to the same
+customers. Vape's share of the day swings between 2.7% and 26.7% around a 12.0%
+median, so at 12.7% of revenue a 25% move in vape shifts the combined line about
+3%: invisible on the only chart that existed.
+
+They differ structurally too, not just in size — cstore takes **50.4% of its
+revenue in cash against vape's 30.7%**. That is a real difference in cash
+exposure, though it is not what makes cstore 92% of the cash removed at close:
+cstore is 87.3% of revenue, and the mix difference accounts for only about
+4.6 points of the gap.
+
+- **A segmented All / Cstore / Vape control** on the Sales tab, defaulting to
+  All so the consolidated view stays the landing page. It replaces the company
+  dropdown rather than joining it: two controls driving one filter disagree the
+  first time only one is set, and the toggle applies immediately while the
+  filter card waits for *Apply*.
+- **Insight cards carry a cstore/vape strip**, so the comparison is visible
+  without switching views. Suppressed when filtered to a single company — a
+  side-by-side of one is a fact with extra furniture.
+- **Per-day totals are rendered once.** The tab drew a bar chart of daily totals
+  and then an accordion repeating the same dates and totals underneath. The bars
+  are now the only place those numbers appear, and remain the day selector; the
+  session drill-down opens beneath the chart for the selected day.
+- **Bars are stacked by company**, cstore base and vape on top, so the
+  consolidated chart answers "how did we do" and "which side of the business did
+  it" at once. Each day's segments are asserted to sum to its bar.
+- **The same toggle on Cash Handling**, splitting what each person holds. It is
+  a *view* filter and never a settlement one: recording a handover still walks
+  that person's shifts oldest-first across both tills, and a test asserts the
+  allocation crosses companies (`cstore → vape → cstore`) rather than draining
+  one. Filtering the view while settling only that company would age cash
+  silently in the till nobody was looking at.
+- All of it is computed from rows already loaded, so `getDashboard` still costs
+  the single sheet read the previous batch got it down to.
+
+#### Corrected while building this
+
+An earlier pass reported Saturday as the best weekday with a 77% spread. That
+was averaged **per session** — "which shift is busiest" — not per trading day,
+which is what the dashboard computes and what the business question actually
+is. Per trading day, **cstore peaks Friday ($2,191) and vape peaks Tuesday
+($333)**, both troughing Sunday. Peak against trough that is a **42% spread for
+cstore and 92% for vape** — the earlier text attached the 42% to a clause about
+both companies, which badly undersold vape. Saturday has the largest individual
+sessions but runs only 1.17 of them a day against Friday's 1.69.
+
+The `realdata` suite caught it: it runs the dashboard over the real production
+rows and pins figures computed independently from the workbook, so a plausible
+answer is not enough — it has to be the same answer. The corrected reading is
+the more useful one anyway: Saturday carries the most money per shift on the
+fewest shifts, which is a staffing observation the per-session average hid.
+
+#### Corrected again, after an independent audit
+
+A second pass recomputed every published figure from the workbook. The code was
+right; some of the prose was not.
+
+- **The time-of-month comparison mixed two formulas.** "9% versus 42%" put
+  `(max−min)/max` against `peak/trough−1`. Like for like it is **10.0% vs 41.8%**
+  (peak/trough) or **9.1% vs 29.5%** ((max−min)/max). The contrast is real; the
+  published pairing was the most flattering non-comparable one.
+- **Vape's per-day share maximum was an artefact.** The 28.9% peak came from a
+  day where a cstore session was recorded with all six tender fields at zero, so
+  vape's share was high because cstore's sales were missing. The honest range is
+  2.7%–26.7%.
+- Sales per labour hour: median $155.72 and 1,162.2 hours hold; the p10/p90
+  quoted ($110.17 / $203.49) are nearest-rank — linear interpolation gives
+  $110.55 / $202.95.
+
+**Three data-quality problems the audit surfaced, which are the sheet's rather
+than the code's:** three sessions closed with every tender field at zero while
+their tills removed $435 and $215 in cash — **$650 that provably crossed the
+counter is missing from recorded revenue**, so every figure here is low by about
+0.36%. And 2026-08-02 carries 14 paid labour hours with no till session at all.
+
+### The public link becomes the sales dashboard (Batch 12)
+
+`?v=recon` answered "does the money add up" — an operational question, for
+people who chase variances and already have logins. The public link is better
+spent on "how is trade going", which is what owners and stakeholders want and
+the one thing they cannot see anywhere else.
+
+- **New `?v=sales`, alongside `?v=recon` rather than replacing it.** `doGet`
+  already branched on `?v=`, so both views exist under one URL scheme and the
+  operational report stays reachable for anyone who wants it.
+- **The WhatsApp link now points at sales.** The shift-close message already
+  carries the reconciliation itself, so a second copy behind a tap added
+  nothing. `shift_close_v2` has not gone to Meta yet, so relabelling the button
+  from "View 7-day report" to "View sales dashboard" costs nothing.
+- **60-day window**, because the insights have floors — the time-of-month split
+  needs 28 trading days — and a shorter default would greet every reader with
+  cards explaining why they are empty. `?days=` clamps 1–365.
+- Same no-login contract as the reconcile report: **the payload is inlined at
+  render time**, so serving the page opens no RPC and the only thing reachable
+  is the one document.
+
+**Aggregates only, and that is the point.** The page carries totals, the daily
+chart stacked by till, and all four insight cards with their per-company splits.
+It does **not** carry session rows, cashier names, staff or session IDs, or the
+free-text notes a cashier typed. The reconcile report names staff against cash
+amounts — reasonable to send to five known numbers, unreasonable to leave on a
+URL that can be forwarded onward and cannot be rotated without redeploying. Nine
+assertions in the `public-sales` suite check the absence of each of those fields
+against the real production payload, because on a public page the things that
+are *not* published matter more than the things that are.
+
+One consequence worth stating plainly: the page shows revenue and cash share,
+which together indicate roughly how much cash a corner store handles and when.
+That was already true of the report it replaces — which additionally said who
+was carrying it, by name — so this is a net reduction in exposure, but it is a
+deliberate choice rather than an accident.
+
+#### Fixed: a comment about the scriptlet broke the scriptlet
+
+Both public pages died with `SyntaxError: Unexpected token ')'` blamed on
+`WebApp.gs` at the line calling `.evaluate()` — a file that is entirely valid,
+and which `node --check` passes.
+
+Apps Script templating is a **text preprocessor**. It scans the whole file for
+scriptlet delimiters before any of it is HTML or JavaScript, so it cannot see
+JS comments. The comment written to explain the force-print scriptlet contained
+the delimiter itself, which opened a scriptlet that swallowed everything up to
+the real closing tag — taking the actual payload expression with it. Three
+openers in a file that must contain exactly one.
+
+The error is attributed to `WebApp.gs` because that is where `.evaluate()`
+compiles the template, which is what makes it hard to find: the reported file
+and line are both innocent.
+
+`Public.html` carried the same defect from the moment the comment was written,
+so **the reconcile report has been broken since PR #4 reached production**. It
+went unnoticed only because the WhatsApp button that links to it has not been
+submitted to Meta yet, so nothing has actually opened the URL.
+
+A `template-guard` suite now asserts that each templated page contains exactly
+one scriptlet opener and one closer, that it is the force-print payload form,
+and that nothing appears before it. It builds the delimiters at runtime so the
+test cannot trip its own rule, and it fails 4 assertions against the broken
+commit.

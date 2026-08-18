@@ -138,9 +138,17 @@
 <script>
 // Payload is inlined server-side at render time — the page makes no calls,
 // so nothing here is reachable except this one document.
-// Force-print (<?!=), not the escaping <?= — the latter contextually escapes
-// the JSON, leaving DATA a string whose every property reads undefined. That
-// failure is silent: the page renders, each section just looks unavailable.
+//
+// The scriptlet below is the FORCE-PRINT form. The escaping form contextually
+// escapes the JSON, leaving DATA a string whose every property reads
+// undefined — a silent failure where the page still renders and every section
+// merely looks unavailable.
+//
+// Do not spell either scriptlet out in a comment. The template parser is a
+// text preprocessor that runs over this whole file before any of it is
+// JavaScript, so it cannot see comments: an opening sequence written here
+// starts a scriptlet that swallows everything up to the real closing tag
+// below, and the page dies with a SyntaxError blamed on WebApp.gs.
 var DATA = <?!= payload ?>;
 
 function esc(s) {

@@ -395,6 +395,79 @@ const Sales = (() => {
    * `daily` series the dashboard already computes, plus ONE extra read for
    * the preceding equal-length window.
    */
+  /**
+   * Rows → one entry per calendar day, oldest first. Extracted so the
+   * consolidated view and each per-company view are built by the SAME reducer:
+   * the moment they diverge, a split can disagree with the whole it came from.
+   *
+   * `byCompany` on each day is what lets the chart stack cstore under vape
+   * without a second pass over the sheet.
+   */
+  // Bucket label for rows whose company cell is empty. Named rather than blank
+  // so it is obvious in the UI that something needs fixing in the sheet.
+  const UNASSIGNED = 'unassigned';
+
+  function buildDaily_(rows) {
+    const map = {};
+    rows.forEach(r => {
+      const key = r.date ? Util.formatDate(r.date) : '—';
+      let d = map[key];
+      if (!d) {
+        d = map[key] = {
+          dateStr: key, dateMs: r.date ? r.date.getTime() : 0,
+          cash: 0, credit: 0, debit: 0, misc: 0, total: 0, sessionCount: 0,
+          byCompany: {},
+        };
+      }
+      const rowTotal = totalForRow_(r);
+      d.cash   += r.cashSales || 0;
+      d.credit += r.creditCardSales || 0;
+      d.debit  += r.debitCardSales || 0;
+      d.misc   += (r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0);
+      d.sessionCount++;
+      // A blank company still belongs to the day's total, so it needs a bucket
+      // — otherwise the stacked segments quietly sum to less than their bar and
+      // the shares add to under 100%. Unreachable through the app (write_
+      // rejects a missing company) but one manual sheet edit away.
+      d.byCompany[r.company || UNASSIGNED] =
+        (d.byCompany[r.company || UNASSIGNED] || 0) + rowTotal;
+    });
+    return Object.keys(map).map(k => {
+      const d = map[k];
+      d.total = Util.roundMoney(d.cash + d.credit + d.debit + d.misc);
+      ['cash', 'credit', 'debit', 'misc'].forEach(x => { d[x] = Util.roundMoney(d[x]); });
+      Object.keys(d.byCompany).forEach(c => { d.byCompany[c] = Util.roundMoney(d.byCompany[c]); });
+      return d;
+    }).sort((a, b) => a.dateMs - b.dateMs);
+  }
+
+  /**
+   * One company's slice of the same range: its own daily series, its own
+   * weekday profile, and its share of the whole. Built from rows already in
+   * memory, so the split costs no extra sheet read.
+   */
+  function companySlice_(companyRows, grandTotal, rangeTradingDays) {
+    const cDaily = buildDaily_(companyRows);
+    const total = Util.roundMoney(cDaily.reduce((s, d) => s + d.total, 0));
+    const tradingDays = cDaily.length;
+    // Divide by the days the RANGE traded, not the days this company traded,
+    // so the per-day figures are additive against the headline. Dividing each
+    // company by its own day count gives two different meanings to one "/day"
+    // label, and the parts stop summing to the whole the moment one till is
+    // shut while the other trades. `tradingDays` is still reported so a till
+    // that only opens some days is visible rather than hidden.
+    const days = rangeTradingDays || tradingDays;
+    return {
+      total: total,
+      tradingDays: tradingDays,
+      perTradingDay: days ? Util.roundMoney(total / days) : 0,
+      sharePct: grandTotal ? Math.round((total / grandTotal) * 1000) / 10 : 0,
+      sessionCount: companyRows.length,
+      dayOfWeek: dayOfWeekInsight_(cDaily),
+      daily: cDaily,
+    };
+  }
+
   function buildInsights_(daily, totals, startDate, endDate, filters) {
     // Step the baseline window in whole DAYS, not raw milliseconds. Callers
     // pass an end of 23:59:59, so a millisecond span is a second short of the
@@ -461,29 +534,20 @@ const Sales = (() => {
     });
 
     // Per-day aggregation over the FULL filtered set (independent of paging).
-    // Powers the dashboard's daily bar chart + day accordion. Sorted oldest→newest.
-    const dailyMap = {};
+    // Powers the dashboard's daily bar chart. Sorted oldest→newest, and each
+    // day carries its per-company split so the chart can stack cstore and vape
+    // without a second query.
+    const daily = buildDaily_(rows);
+
+    // Company list comes from the data, not from Setup.gs's COMPANIES — this
+    // module has no load-order dependency on Setup and a third till would flow
+    // through without a code change.
+    const companies = [];
     rows.forEach(r => {
-      const key = r.date ? Util.formatDate(r.date) : '—';
-      let d = dailyMap[key];
-      if (!d) {
-        d = dailyMap[key] = {
-          dateStr: key, dateMs: r.date ? r.date.getTime() : 0,
-          cash: 0, credit: 0, debit: 0, misc: 0, total: 0, sessionCount: 0,
-        };
-      }
-      d.cash   += r.cashSales || 0;
-      d.credit += r.creditCardSales || 0;
-      d.debit  += r.debitCardSales || 0;
-      d.misc   += (r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0);
-      d.sessionCount++;
+      const c = r.company || UNASSIGNED;
+      if (companies.indexOf(c) === -1) companies.push(c);
     });
-    const daily = Object.keys(dailyMap).map(k => {
-      const d = dailyMap[k];
-      d.total = Util.roundMoney(d.cash + d.credit + d.debit + d.misc);
-      ['cash', 'credit', 'debit', 'misc'].forEach(x => { d[x] = Util.roundMoney(d[x]); });
-      return d;
-    }).sort((a, b) => a.dateMs - b.dateMs);
+    companies.sort();
 
     const pageSize = input.pageSize || 50;
     const page = input.page || 1;
@@ -516,9 +580,23 @@ const Sales = (() => {
       pageCount: Math.max(1, Math.ceil(rows.length / pageSize)),
       totals,
       daily,
-      insights: buildInsights_(daily, totals, startDate, endDate, {
-        staffId: input.staffId, company: input.company,
-      }),
+      companies: companies,
+      insights: Object.assign(
+        buildInsights_(daily, totals, startDate, endDate, {
+          staffId: input.staffId, company: input.company,
+        }),
+        // Only when nothing is filtered out. Narrowed to one company there is
+        // no comparison to draw, and a single-key object invites the UI to
+        // render a side-by-side of one.
+        (!input.company && companies.length > 1)
+          ? { byCompany: companies.reduce((acc, c) => {
+                acc[c] = companySlice_(
+                  rows.filter(r => (r.company || UNASSIGNED) === c),
+                  totals.total, daily.length);
+                return acc;
+              }, {}) }
+          : {}
+      ),
     };
   }
 

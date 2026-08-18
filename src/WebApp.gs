@@ -19,6 +19,7 @@ function doGet(e) {
   // link lands somewhere useful rather than on an error.
   const view = (e && e.parameter && e.parameter.v) || '';
   if (view === 'recon') return publicReconPage_(e);
+  if (view === 'sales') return publicSalesPage_(e);
 
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('StoreOps')
@@ -60,6 +61,33 @@ function publicReconPage_(e) {
   t.payload = JSON.stringify(payload);
   return t.evaluate()
     .setTitle('StoreOps · ' + days + '-day report')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+}
+
+/**
+ * The public sales view. Same no-login contract as the reconcile report: the
+ * payload is inlined at render time, so serving it opens no RPC and the only
+ * thing reachable is this one document.
+ *
+ * Defaults to 60 days because the insights have floors — the time-of-month
+ * split needs 28 trading days — and a shorter window would greet every reader
+ * with cards explaining why they are empty.
+ */
+function publicSalesPage_(e) {
+  const raw = Number((e && e.parameter && e.parameter.days) || 60);
+  const days = isNaN(raw) ? 60 : Math.min(365, Math.max(1, Math.round(raw)));
+  let payload;
+  try {
+    payload = PublicReport.buildSales(days);
+  } catch (err) {
+    console.error('public sales report failed: ' + err.message);
+    payload = { days: days, unavailable: 'Report temporarily unavailable.' };
+  }
+  const t = HtmlService.createTemplateFromFile('PublicSales');
+  t.payload = JSON.stringify(payload);
+  return t.evaluate()
+    .setTitle('StoreOps · sales')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
 }
@@ -722,6 +750,7 @@ function rpcGetSalesDashboard(token, filters) {
     totals: result.totals,
     daily: result.daily,
     insights: result.insights,
+    companies: result.companies,
   };
 }
 

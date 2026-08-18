@@ -258,14 +258,32 @@ const CashHandling = (() => {
     const stale = [];
     let grandTotal = 0;
 
+    const grandByCompany = {};
+
     Staff.getAll().forEach(st => {
       const o = getOutstandingForStaff_(st.staffId);
       if (o.totalOutstanding <= 0.005) return;
+      // Each unsettled session already knows its company, so the split is a
+      // grouping of what is in hand — not a second pass over the sheets. It is
+      // a reporting breakdown only: settlement still walks every company's
+      // sessions oldest-first, which is what keeps the preview and the write
+      // agreeing.
+      const byCompany = {};
+      o.unsettledSessions.forEach(s => {
+        if (!s.company) return;
+        byCompany[s.company] = Util.roundMoney((byCompany[s.company] || 0) + s.remaining);
+        grandByCompany[s.company] = Util.roundMoney((grandByCompany[s.company] || 0) + s.remaining);
+      });
       holders.push({
         staffId:  st.staffId,
         name:     st.name,
         total:    o.totalOutstanding,
+        byCompany: byCompany,
         shifts:   o.unsettledSessions.length,
+        shiftsByCompany: o.unsettledSessions.reduce((acc, s) => {
+          if (s.company) acc[s.company] = (acc[s.company] || 0) + 1;
+          return acc;
+        }, {}),
         oldest:   o.unsettledSessions.length ? o.unsettledSessions[0].dateStr : '',
         oldestAge: o.unsettledSessions.length ? o.unsettledSessions[0].ageDays : 0,
       });
@@ -283,7 +301,10 @@ const CashHandling = (() => {
 
     holders.sort((a, b) => b.total - a.total);
     stale.sort((a, b) => b.ageDays - a.ageDays);
-    return { holders: holders, grandTotal: grandTotal, stale: stale, staleDays: limit };
+    return {
+      holders: holders, grandTotal: grandTotal, grandByCompany: grandByCompany,
+      stale: stale, staleDays: limit,
+    };
   }
 
   // ── Handover history ────────────────────────────────────
@@ -511,6 +532,7 @@ const CashHandling = (() => {
       const all = getAllOutstanding_();
       out.holders   = all.holders;
       out.grandTotal = all.grandTotal;
+      out.grandByCompany = all.grandByCompany;
       out.stale     = all.stale;
       out.staleDays = all.staleDays;
       out.allRecent = getHistory_(25, null);
