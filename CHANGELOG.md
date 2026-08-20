@@ -823,3 +823,32 @@ lotto, runs a median variance of **−$4.65** across 131 sessions with 73 negati
 vape, which does not, sits at **$0.00** with 48 sessions exactly zero. The till
 that pays out is the one that drifts. Not proof, but the first hypothesis to
 test now that payouts have somewhere to go.
+
+#### A sign button, because no phone keypad has a minus
+
+Negative cash sales worked on a desktop and were unreachable on a phone. The
+close-sheet money fields are `inputmode="decimal"`, and neither that nor
+`type="number"` puts a minus key on the iOS keypad — so the one figure allowed
+to go below zero could not be entered on the device every cashier actually uses.
+
+Cash sales now sits beside a **sign toggle**, rendered only on the lotto till.
+The field keeps its numeric keypad; the sign becomes a control rather than a
+keystroke. The button mirrors the field instead of holding state of its own, so
+typing a `-` on a desktop keyboard lights it up exactly the same way, and it
+turns solid when negative — a minus one character wide is easy to miss on the
+figure that decides the whole reconciliation.
+
+Tapping it on an empty or zero field arms the sign rather than leaving `-0`
+behind, so the next keystrokes land negative. Every other money field keeps the
+minus guard it has always had.
+
+The instruction about entering payouts in Cash sales is gone from the close
+sheet. It explained a rule the arithmetic already enforces, on a screen where
+the reserve section is long enough already.
+
+A `sign-toggle` suite pins the control to the lotto till, asserts the keypad was
+not swapped for a text keyboard to get the minus, and runs the flip arithmetic
+over the cases that bite — `-0`, a bare armed `-`, and flip-twice being the
+identity. It fails 12 assertions against the previous commit.
+
+459 assertions across 22 suites.
