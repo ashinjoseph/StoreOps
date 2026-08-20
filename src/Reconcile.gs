@@ -452,9 +452,19 @@ const Reconcile = (() => {
    * there. Same word on the close sheet and the close notice.
    */
   function destination_(m) {
+    // A lotto payout larger than the day's cash takings can leave the drawer
+    // below its float, and then the float did not go back — the standard line
+    // would state the opposite of what happened. cash_removed_at_close is the
+    // negative that says so, and CashHandling already ignores it, so nothing
+    // is "in hand" either.
+    const banked = m.cashBanked || 0;
+    if (banked < -0.01) {
+      return 'drawer closed ' + Util.formatMoney(-banked) + ' below the ' +
+             Util.formatMoney(m.floatLeft || 0) + ' float · nothing in hand';
+    }
     const parts = ['float ' + Util.formatMoney(m.floatLeft || 0) + ' back'];
     if ((m.lottoTopup || 0) > 0.01) parts.push('reserve ' + Util.formatMoney(m.lottoTopup));
-    parts.push(Util.formatMoney(m.cashBanked || 0) + ' in hand');
+    parts.push(Util.formatMoney(banked) + ' in hand');
     return parts.join(' · ');
   }
 

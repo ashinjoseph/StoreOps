@@ -706,3 +706,120 @@ layout. It fails 6 assertions against the commit before this one — including
 dead formatter in the first place.
 
 386 assertions across 20 suites.
+
+### Lotto payouts bigger than the day's takings (Batch 13)
+
+A large win paid at the counter is cash leaving the drawer, and the close sheet
+had nowhere to put it. `cash_sales` refused a negative, so a shift that sold
+$200 and paid out $500 could not be recorded at all — and the reserve, counted
+separately, reported a shortfall for the same money. One movement, wrong in two
+places, with no way to reconcile either.
+
+#### Payouts are netted into cash sales
+
+The decision — taken deliberately, with the cost understood — is to net the
+payout: that shift enters **−$300**. Sales figures take the hit on payout days.
+Heavy payouts are occasional, and the alternative was a reconciliation that
+never closes.
+
+`cash_sales` may now go negative, but **only on cstore**, and only in that one
+field. The close sheet's money inputs strip a minus from everything else, which
+is the guard that caught a real bug once; it stays on the other six. A vape
+till has no payout mechanism and no pot to fund one, so the server rejects a
+negative there rather than accepting a typo.
+
+#### The reserve reconciles it, and it is derived rather than typed
+
+```
+reserve_at_start = previous.lotto_reserve_counted + previous.lotto_topup_from_till
+reserve_fed      = reserve_at_start − this.lotto_reserve_counted
+
+expected_cash    = float + cash_sales + misc_cash + reserve_fed
+```
+
+No new column and no new input. The cashier already counts the pot, so what it
+fed the drawer is **measured**, not declared — one less number to get wrong, and
+it cross-checks itself against a physical count.
+
+The `+ topup` term is load-bearing: the pot is counted *before* any till-to-
+reserve move, so a topped-up pot holds counted + topup. Reading `lastCounted`
+alone understated it by exactly the top-up — a pre-existing defect that also
+made the close sheet pre-fill the wrong starting balance. `getLottoLog` now
+publishes `lastOpening` and both sides use it.
+
+#### Which pot paid the customer does not matter
+
+The first design required that the reserve never pay a customer directly. That
+restriction turned out to be unnecessary — the arithmetic is source-agnostic:
+
+```
+drawer  = float + gross_sales + transfer − paid_from_drawer
+fed     = transfer + paid_from_reserve
+entered = gross_sales − paid_from_reserve − paid_from_drawer
+
+float + entered + fed  ==  drawer         (paid_from_reserve cancels)
+```
+
+Verified over 200,000 randomised shifts: zero mismatches. So the rule at the
+counter is one line with no exceptions — **net every payout into cash sales,
+whichever pot it came out of** — and it is printed next to the field that needs
+it. A cashier holding a $500 winner does not have to reason about which pot
+they are allowed to open.
+
+Both conventions reconcile from the same code path: draw $50 and close the
+drawer at zero, or draw $300 and restore the float. The code derives the
+transfer from the counts and does not need to know which you use.
+
+#### Two guards, both before the write
+
+- **Negative `cash_sales` off the lotto till** is rejected outright.
+- **A negative `expected_cash`** is rejected: no drawer holds less than nothing,
+  so with `reserve_fed` in the formula it can only mean a movement went
+  unrecorded — almost always a pot count not updated after cash was drawn from
+  it. The message says so.
+
+Both run *before* `Sales.write`, which previously sat ahead of the variance
+maths. A throw after it would have left a sales row against a session still
+open.
+
+#### What a person reads
+
+- `compactMoney` and its public twin took `Math.abs` and would have printed a
+  −$300 day as **$300** — the day rendered as its own opposite. Both keep the
+  sign now. The bar geometry was already safe: heights are floored by
+  `Math.max(3, …)` and stacks are guarded on `total > 0`.
+- Insight bar widths clamp at 0 rather than emitting `width:-12%`, which is not
+  a valid length.
+- The close summary shows *"$50 drawn from reserve"* when the term is non-zero,
+  so the expected figure doesn't look like it disagrees with float + sales.
+- **The cash-destination line no longer claims a float went back when it
+  didn't.** A drawer closing below its float now reads *"$250 below the $250
+  float · nothing in hand"* on both the close sheet and WhatsApp `{{7}}` —
+  previously it said "$250.00 float · -$250.00 in hand". `CashHandling` already
+  skipped negative `cash_removed_at_close`, so the handover ledger was never
+  affected; only the sentence was wrong.
+
+#### Verification
+
+Two new suites. `lotto-payout` drives real opens and closes through the module:
+the scenario both ways, the payout made entirely from the pot, a 400/100 split,
+two untouched-day regressions, a genuine $50 loss that must still surface as
+variance rather than be absorbed, the top-up term, an empty reserve history, and
+both guards including that no sales row is written when one fires. `lotto-ui`
+covers the label sign, the per-field minus rule, the counter text, and the
+destination line. They fail 24 and 22 assertions respectively against the
+commit before this one.
+
+455 assertions across 22 suites.
+
+#### Still open, and only the sheet can close it
+
+A payout **nobody records** is undetectable — `expected_cash` exceeds the drawer
+by exactly the unrecorded amount and looks like a plain shortfall. No formula
+finds an event that was never written down.
+
+Worth noting against the standing cash-variance question: cstore, which sells
+lotto, runs a median variance of **−$4.65** across 131 sessions with 73 negative;
+vape, which does not, sits at **$0.00** with 48 sessions exactly zero. The till
+that pays out is the one that drifts. Not proof, but the first hypothesis to
+test now that payouts have somewhere to go.

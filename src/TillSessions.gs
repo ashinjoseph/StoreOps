@@ -357,11 +357,12 @@ const TillSessions = (() => {
     const floatAmount = getExpectedFloat_(session.company);
 
     // ── Lotto reserve (cstore only) ─────────────────────────
-    // The reserve is a separate pot of store cash, and it never affects the
-    // till's variance. Payouts came out of the pot, not the drawer. A top-up
-    // happens AFTER the drawer has been counted and reconciled, so it comes
-    // off the cash that gets banked (cash_removed_at_close), not off the
-    // expected total the count is measured against.
+    // A top-up happens AFTER the drawer has been counted and reconciled, so it
+    // comes off the cash that gets banked (cash_removed_at_close), not off the
+    // expected total the count is measured against. Cash the pot fed INTO the
+    // drawer during the shift is the opposite: it is in the drawer when the
+    // drawer is counted, so it belongs in expected cash. Same pot, opposite
+    // direction, opposite side of the count — see reserveFed below.
     const lottoOn = session.company === LOTTO_COMPANY && hasLottoColumns_();
     const lottoExpected = getLottoExpected_();
     const lottoCounted = lottoOn
@@ -371,13 +372,37 @@ const TillSessions = (() => {
     const lottoNote = lottoOn ? (input.lottoNote || '').toString().trim() : '';
 
     // A reserve that isn't at its expected balance needs a reason on the
-    // record — same rule the opening float uses for a mismatched count.
+    // record — same rule the opening float uses for a mismatched count. On a
+    // payout day this is the ONLY surviving record of what was paid out:
+    // cash_sales is netted, and -300 cannot be decomposed back into $200 sold
+    // and $500 paid.
     if (lottoOn && Math.abs(lottoCounted - lottoExpected) > 0.01 && !lottoNote) {
       throw new Error(
         'Lotto reserve counted ' + lottoCounted + ', expected ' + lottoExpected +
         '. Please provide a reason.'
       );
     }
+
+    // How much the pot fed into the drawer this shift. DERIVED from the two
+    // physical counts, never typed — the cashier already counts the pot, so
+    // the transfer is measured rather than declared.
+    //
+    // It is also source-agnostic. Whether the customer was paid from the
+    // drawer or straight out of the pot, the payout is netted into cash_sales
+    // on one side and reappears in this figure on the other, and the two
+    // cancel exactly:
+    //
+    //   drawer  = float + gross_sales + transfer - paid_from_drawer
+    //   fed     = transfer + paid_from_reserve
+    //   entered = gross_sales - paid_from_reserve - paid_from_drawer
+    //   float + entered + fed  ==  drawer          (identically)
+    //
+    // So the rule at the counter is one line with no exceptions: net every
+    // payout into cash sales, whichever pot it came out of.
+    const prevReserve = lottoOn ? lastReserveCount_() : null;
+    const reserveFed = prevReserve
+      ? Util.roundMoney((prevReserve.counted + prevReserve.topup) - lottoCounted)
+      : 0;
 
     // Build sales payload
     const salesInput = {
@@ -398,13 +423,39 @@ const TillSessions = (() => {
       miscNotes:        input.miscNotes || '',
     };
 
-    Sales.write(salesInput, input.actorId);
+    // A negative cash_sales figure means payouts exceeded takings for the
+    // shift — only meaningful where there is a lotto pot to explain it. On a
+    // till with no payout mechanism a minus sign is a typo, not a payout.
+    if (salesInput.cashSales < 0 && !lottoOn) {
+      throw new Error(
+        'Cash sales cannot be negative on ' + session.company +
+        ' — there is no lotto reserve on this till to fund a payout.'
+      );
+    }
 
     // Compute expected cash and variance
     const expectedCash = session.openingFloat
                        + salesInput.cashSales
                        + salesInput.miscCashSales
-                       - salesInput.cashbackPaid;
+                       - salesInput.cashbackPaid
+                       + reserveFed;
+
+    // The drawer cannot hold less than nothing. With reserveFed in the
+    // formula a coherent shift cannot produce this, so it means a movement
+    // went unrecorded — catch it at the counter, not at month end.
+    if (expectedCash < -0.005) {
+      throw new Error(
+        'Expected cash works out to ' + Util.formatMoney(expectedCash) +
+        ', which no drawer can hold. Cash paid out exceeds what was in the ' +
+        'till — check the lotto reserve count, since cash drawn from the pot ' +
+        'is what covers the difference.'
+      );
+    }
+
+    // Written only once both guards have passed: a throw after the write would
+    // leave a sales row against a session that is still open.
+    Sales.write(salesInput, input.actorId);
+
     const variance = Util.roundMoney(input.physicalCount - expectedCash);
     // Takings banked = counted − the float we leave behind − anything moved
     // into the lotto reserve.
@@ -439,6 +490,9 @@ const TillSessions = (() => {
         expectedCash: Util.roundMoney(expectedCash),
         variance,
         varianceStatus,
+        // What the pot fed the drawer. Derived, but recorded, because it is a
+        // term in expectedCash and an audit row that omits it can't be re-added.
+        reserveFedToTill: lottoOn ? reserveFed : null,
         lottoReserveCounted: lottoOn ? Util.roundMoney(lottoCounted) : null,
         lottoTopupFromTill:  lottoOn ? Util.roundMoney(lottoTopup) : null,
         lottoReserveNote:    lottoNote,
@@ -486,6 +540,9 @@ const TillSessions = (() => {
       lottoReserveCounted: lottoOn ? Util.roundMoney(lottoCounted) : null,
       lottoReserveShort:   lottoOn ? Util.roundMoney(lottoExpected - lottoCounted) : 0,
       lottoTopupFromTill:  lottoOn ? Util.roundMoney(lottoTopup) : 0,
+      // A term in expectedCash, so the close summary can show why the expected
+      // figure isn't just float + sales.
+      reserveFedToTill:    lottoOn ? reserveFed : 0,
     };
   }
 
@@ -580,7 +637,11 @@ const TillSessions = (() => {
    * Sessions that never recorded a count (closed before the migration) are
    * skipped rather than read as $0.
    *
-   * @return { counted, date } or null when nothing has ever been counted
+   * `topup` rides along because the count is taken BEFORE any till-to-reserve
+   * move: the pot the next shift opens with is counted + topup, not counted.
+   * Omit it and every shift following a top-up reads as a phantom shortfall.
+   *
+   * @return { counted, topup, date } or null when nothing has ever been counted
    */
   function lastReserveCount_() {
     const last = getAll_()
@@ -589,6 +650,7 @@ const TillSessions = (() => {
     if (!last) return null;
     return {
       counted: Util.roundMoney(last.lottoReserveCounted),
+      topup:   Util.roundMoney(last.lottoTopupFromTill || 0),
       date:    last.date ? Util.formatDate(last.date) : null,
     };
   }
@@ -610,7 +672,8 @@ const TillSessions = (() => {
     // anything the form collected — the UI hides the fields rather than
     // pretending to record them.
     if (!hasLottoColumns_()) {
-      return { enabled: false, expected, lastCounted: null, lastCountedDate: null, entries: [] };
+      return { enabled: false, expected, lastCounted: null, lastCountedDate: null,
+               lastOpening: null, entries: [] };
     }
 
     const today = Util.todayMidnight();
@@ -641,6 +704,11 @@ const TillSessions = (() => {
       expected,
       lastCounted:     last ? last.counted : null,
       lastCountedDate: last ? last.date : null,
+      // What the pot actually holds NOW: the count was taken before that
+      // shift moved cash in, so the balance the next close starts from is
+      // counted + topup. Using lastCounted alone understates a topped-up pot
+      // by exactly the top-up.
+      lastOpening:     last ? Util.roundMoney(last.counted + last.topup) : null,
       // Only when the lookup found nothing: say what was actually on the
       // sheet, so "no record" can be told apart from "the row is there but
       // something about it didn't read". A balance that goes missing with no

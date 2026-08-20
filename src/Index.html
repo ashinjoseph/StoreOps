@@ -1401,9 +1401,15 @@
         else el.select();
       });
       el.addEventListener('input', () => {
-        // Digits and a single dot. No minus: every amount here is
-        // non-negative, and a stray "-" is exactly what went wrong before.
-        let v = el.value.replace(/[^0-9.]/g, '');
+        // Digits and a single dot. A minus is allowed only where a field is
+        // explicitly opted in — on every other amount a stray "-" is exactly
+        // what went wrong before, so the six other money fields keep the guard.
+        let v = el.value.replace(spec.allowNegative ? /[^0-9.\-]/g : /[^0-9.]/g, '');
+        if (spec.allowNegative) {
+          // At most one, and only in front: "1-2" and "--5" are typos.
+          const neg = v.charAt(0) === '-';
+          v = (neg ? '-' : '') + v.replace(/-/g, '');
+        }
         const first = v.indexOf('.');
         if (first !== -1) v = v.slice(0, first + 1) + v.slice(first + 1).replace(/\./g, '');
         if (v !== el.value) el.value = v;
@@ -1421,9 +1427,13 @@
   }
   // Compact money for chart labels: 1361 → "$1.4k", 950 → "$950".
   function compactMoney(n) {
-    const v = Math.abs(Number(n) || 0);
-    if (v >= 1000) return '$' + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k';
-    return '$' + Math.round(v);
+    const raw = Number(n) || 0;
+    const v = Math.abs(raw);
+    // A day whose lotto payouts exceeded its cash takings nets out below zero.
+    // Dropping the sign would print that day as its own opposite.
+    const sign = raw < -0.005 ? '-' : '';
+    if (v >= 1000) return sign + '$' + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k';
+    return sign + '$' + Math.round(v);
   }
   // Split a server date string ("2026-06-23") into weekday + short label.
   function dayParts(dateStr) {
@@ -1993,8 +2003,15 @@
 
     // Where the pot stood when this shift started — what the last close left
     // behind. Nothing on record means it was never short, so assume full.
+    // lastOpening, not lastCounted: the previous shift counted the pot BEFORE
+    // moving cash into it, so a topped-up pot holds counted + topup. Reading
+    // lastCounted alone understated it by exactly the top-up.
     const lottoKnown = !!(state.lotto && state.lotto.lastCounted != null);
-    const lottoStart = lottoKnown ? Number(state.lotto.lastCounted) : lottoExpected;
+    const lottoStart = lottoKnown
+      ? Number(state.lotto.lastOpening != null
+          ? state.lotto.lastOpening
+          : state.lotto.lastCounted)
+      : lottoExpected;
 
     // How much a PREVIOUS shift left missing. This — not today's pot count —
     // is what may be moved from the drawer, and it caps the offer.
@@ -2037,6 +2054,13 @@
       '<details class="misc-block" open>' +
         '<summary>Lotto reserve</summary>' +
         '<div class="lotto-hint">' + esc(lottoNote) + '</div>' +
+        // The one rule the arithmetic cannot enforce for itself. It holds
+        // whichever pot handed the customer the money — the payout is
+        // subtracted on the sales side and reappears in the reserve count on
+        // the other, and the two cancel — but only if every payout is entered.
+        '<div class="lotto-hint">Enter lotto payouts in <strong>Cash sales</strong>, ' +
+          'whichever pot they came out of — takings minus payouts, so the ' +
+          'figure may be negative. Count the pot here as it stands.</div>' +
         '<div class="sheet-field"><label>Reserve counted ($)</label>' +
           moneyInput('closeLotto', String(lottoStart)) + '</div>' +
         // Refilling the pot is an action, not a sum to work out. The button
@@ -2082,6 +2106,10 @@
           moneyInput('closeCount', '', ' placeholder="0.00"') + '</div>' +
         '<div class="compute-summary" id="closeSummary">' +
           '<div class="compute-row"><span>Expected cash:</span> <strong id="sumExpected">—</strong></div>' +
+          // Only rendered when non-zero: on an ordinary shift there is no
+          // reserve movement and the row would be a permanent "$0.00".
+          '<div class="compute-row" id="sumFedRow" style="display:none">' +
+            '<span>Includes:</span> <strong id="sumFed">—</strong></div>' +
           '<div class="compute-row"><span>Counted:</span> <strong id="sumCounted">—</strong></div>' +
           '<div class="compute-row"><span>Variance:</span> <strong id="sumVariance">—</strong></div>' +
           (hasLotto
@@ -2139,15 +2167,33 @@
       return Math.round((lottoBase() + lottoTopup()) * 100) / 100;
     }
 
+    // What the pot fed into the drawer during the shift: how far the count has
+    // fallen below where the pot started. Mirrors the server's derivation
+    // exactly — if these two ever disagree, the preview lies about the close.
+    //
+    // A top-up is the opposite direction and happens AFTER the drawer is
+    // counted, so it stays out of expected cash and reduces what gets banked.
+    function reserveFed() {
+      if (!hasLotto) return 0;
+      return Math.round((lottoStart - lottoBase()) * 100) / 100;
+    }
+
     function recalcClose() {
       const cash = parseFloat($('closeCash').value) || 0;
       const miscCash = parseFloat($('closeMiscCash').value) || 0;
       const counted = parseFloat($('closeCount').value);
-      // Lotto never moves this. Payouts come out of the reserve pot, and a
-      // top-up happens AFTER the drawer is counted — it reduces what gets
-      // banked, not what the till was supposed to hold.
-      const expected = openingFloat + cash + miscCash;
+      const fed = reserveFed();
+      const expected = openingFloat + cash + miscCash + fed;
       $('sumExpected').textContent = money(expected);
+
+      // Show the term, or the expected figure looks like it disagrees with
+      // float + sales and the cashier has no way to see why.
+      $('sumFedRow').style.display = Math.abs(fed) > 0.005 ? '' : 'none';
+      if (Math.abs(fed) > 0.005) {
+        $('sumFed').textContent = fed > 0
+          ? money(fed) + ' drawn from reserve'
+          : money(-fed) + ' added to reserve';
+      }
 
       if (hasLotto) updateLotto(counted);
 
@@ -2176,13 +2222,25 @@
     function updateDestination(counted) {
       const moved = hasLotto ? lottoTopup() : 0;
       const banked = Math.round((counted - floatValue - moved) * 100) / 100;
+      const el = $('sumDest');
+
+      // A big payout can leave the drawer below its float, and then the float
+      // did NOT stay behind — saying "$250 float · -$250 in hand" states the
+      // opposite of what happened. Report the shortfall instead.
+      if (counted < floatValue - 0.01) {
+        el.textContent = money(floatValue - counted) + ' below the ' +
+                         money(floatValue) + ' float · nothing in hand';
+        el.className = 'compute-variance-minor';
+        $('sumDestRow').style.display = '';
+        return;
+      }
+
       const parts = [money(floatValue) + ' float'];
       if (moved > 0.01) parts.push(money(moved) + ' reserve');
       // "in hand", not "banked" — it leaves with the cashier and stays their
       // responsibility until the Cash Handling tab records a handover.
       parts.push(money(banked) + ' in hand');
 
-      const el = $('sumDest');
       el.textContent = parts.join(' · ');
       // Negative banked means more was moved into the pot than the drawer held
       // above its float — worth catching here rather than in the sheet.
@@ -2267,7 +2325,12 @@
     // Sanitizing listeners are attached first so recalcClose always reads a
     // cleaned value.
     const moneyFields = [
-      { id: 'closeCash', rest: '0' }, { id: 'closeCredit', rest: '0' },
+      // Cash sales is the one field that may go negative: a lotto payout
+      // bigger than the shift's cash takings nets out below zero. Only where
+      // there is a pot to fund it — a vape till has no payout mechanism, and
+      // the server rejects a negative there.
+      { id: 'closeCash', rest: '0', allowNegative: hasLotto },
+      { id: 'closeCredit', rest: '0' },
       { id: 'closeDebit', rest: '0' },
       { id: 'closeMiscCash', rest: '0' }, { id: 'closeMiscCredit', rest: '0' },
       { id: 'closeMiscDebit', rest: '0' }, { id: 'closeCount', rest: '' },
@@ -2309,6 +2372,16 @@
         if (Math.abs(lottoClosing() - lottoExpected) > 0.01 && !$('closeLottoNote').value.trim()) {
           return toast('Lotto reserve isn’t ' + money(lottoExpected) + ' — add a reason', 'error');
         }
+      }
+      // Mirrors the server guard. No drawer can hold less than nothing, so a
+      // negative expectation means a movement went unrecorded — almost always
+      // a pot count that hasn't been updated after cash was drawn from it.
+      const expectedNow = openingFloat + (parseFloat($('closeCash').value) || 0) +
+                          (parseFloat($('closeMiscCash').value) || 0) + reserveFed();
+      if (expectedNow < -0.005) {
+        return toast('Expected cash is ' + money(expectedNow) + ' — check the ' +
+                     'lotto reserve count, since cash drawn from the pot covers ' +
+                     'the difference', 'error');
       }
       $('closeSubmit').disabled = true;
       $('closeSubmit').textContent = 'Closing…';
@@ -4923,7 +4996,9 @@
     const max = items.reduce((m, i) => Math.max(m, i.value), 0) || 1;
     let h = '<div class="ins-bars">';
     items.forEach(i => {
-      const pct = Math.round((i.value / max) * 100);
+      // Clamped: a negative value would emit width:-12%, which is not a
+      // valid length and leaves the fill at whatever the previous rule gave it.
+      const pct = Math.max(0, Math.round((i.value / max) * 100));
       h += '<div class="ins-bar-row' + (i.dim ? ' dim' : '') + '">' +
         '<div class="ins-bar-label">' + esc(fmtLabel ? fmtLabel(i) : i.label) + '</div>' +
         '<div class="ins-bar-track"><div class="ins-bar-fill" style="width:' + pct + '%"></div></div>' +
