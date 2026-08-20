@@ -1037,6 +1037,20 @@
     outline: none;
   }
   .sheet-field input:focus, .sheet-field select:focus, .sheet-field textarea:focus { border-color: #1a2540; }
+
+  /* Cash sales sits beside a sign toggle on the lotto till. The field keeps
+     the numeric keypad — no mobile keypad offers a minus — so the sign is a
+     button, and it lights up when negative because a minus one character wide
+     is easy to miss on the figure that decides the whole reconciliation. */
+  .money-row { display: flex; gap: 8px; align-items: stretch; }
+  .money-row .money-input { flex: 1; min-width: 0; }
+  .sign-btn {
+    flex: 0 0 56px; border: 1.5px solid #d8dae1; border-radius: 10px;
+    background: #f0f1f5; color: #1a2540;
+    font-size: 20px; font-weight: 700; line-height: 1;
+  }
+  .sign-btn.neg { background: #1a237e; color: #fff; border-color: #1a237e; }
+  .sign-btn:active { transform: scale(0.98); }
   .sheet-actions {
     display: flex; gap: 8px;
     padding: 14px 18px 20px;
@@ -2054,13 +2068,6 @@
       '<details class="misc-block" open>' +
         '<summary>Lotto reserve</summary>' +
         '<div class="lotto-hint">' + esc(lottoNote) + '</div>' +
-        // The one rule the arithmetic cannot enforce for itself. It holds
-        // whichever pot handed the customer the money — the payout is
-        // subtracted on the sales side and reappears in the reserve count on
-        // the other, and the two cancel — but only if every payout is entered.
-        '<div class="lotto-hint">Enter lotto payouts in <strong>Cash sales</strong>, ' +
-          'whichever pot they came out of — takings minus payouts, so the ' +
-          'figure may be negative. Count the pot here as it stands.</div>' +
         '<div class="sheet-field"><label>Reserve counted ($)</label>' +
           moneyInput('closeLotto', String(lottoStart)) + '</div>' +
         // Refilling the pot is an action, not a sum to work out. The button
@@ -2085,7 +2092,12 @@
       subtitle: 'Enter sales and count cash',
       bodyHTML:
         '<div class="sheet-field"><label>Cash sales ($)</label>' +
-          moneyInput('closeCash', '0') + '</div>' +
+          (hasLotto
+            ? '<div class="money-row">' + moneyInput('closeCash', '0') +
+                '<button type="button" class="sign-btn" id="closeCashSign" ' +
+                  'aria-label="Switch between takings and payout">+</button>' +
+              '</div>'
+            : moneyInput('closeCash', '0')) + '</div>' +
         '<div class="sheet-field"><label>Credit card sales ($)</label>' +
           moneyInput('closeCredit', '0') + '</div>' +
         '<div class="sheet-field"><label>Debit card sales ($)</label>' +
@@ -2342,6 +2354,30 @@
     wireMoneyInputs(moneyFields);
 
     if (hasLotto) {
+      // The sign button is the only way to enter a negative on a phone. It
+      // mirrors the field rather than holding state of its own, so typing a
+      // "-" on a desktop keyboard lights it up just the same.
+      const cashEl = $('closeCash'), signEl = $('closeCashSign');
+      const syncSign = () => {
+        const neg = cashEl.value.trim().charAt(0) === '-';
+        signEl.classList.toggle('neg', neg);
+        signEl.textContent = neg ? '\u2212' : '+';
+      };
+      signEl.onclick = () => {
+        haptic();
+        const n = parseFloat(cashEl.value);
+        // Nothing meaningful typed yet: arm the sign so the next keystrokes
+        // land negative, rather than leaving a "-0" behind.
+        cashEl.value = (isNaN(n) || n === 0)
+          ? (cashEl.value.trim().charAt(0) === '-' ? '' : '-')
+          : String(-n);
+        syncSign();
+        recalcClose();
+      };
+      cashEl.addEventListener('input', syncSign);
+      cashEl.addEventListener('blur', syncSign);
+      syncSign();
+
       // Only a real keystroke counts as "touched" — our own auto-fill writes
       // .value directly, which fires nothing.
       $('closeLottoTopup').addEventListener('input', () => { topupTouched = true; });
