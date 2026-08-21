@@ -1,91 +1,132 @@
-# RetailPOS_DB analysis
+# RetailPOS_DB — sales intelligence
 
-A read of the Scarbro Mart point-of-sale backup (`RetailPOS_DB 08-19-2026_23-04-36.bak`),
-covering 15 Apr – 19 Aug 2026.
+Analysis of `RetailPOS_DB`, the point-of-sale database behind Scarbro Mart
+(1744 Lawrence Ave E, Scarborough). Covers 15 Apr – 19 Aug 2026: 17,718
+transactions, $237,720 of sales.
 
-The dashboard is `scarbro-pos-review.html` — a standalone page with the aggregate data
-embedded, so it opens in any browser with no server or network access.
+The dashboard is **`dashboard.html`** — one self-contained file, no server
+needed. Open it in any browser.
 
-## What the backup actually is
-
-Despite the `.bak` extension being described as MySQL, the file is a **Microsoft SQL Server**
-full backup — MTF container, `TAPE` header, written by SQL Server 2008 (v10) at compatibility
-level 100. MySQL tooling cannot read it. It restores cleanly on SQL Server 2022, which still
-accepts compat level 100 (the oldest level it supports).
-
-| | |
-|---|---|
-| Database | `RetailPOS_DB` |
-| Source | `DESKTOP-VDRD582\SQLEXPRESS` |
-| Taken | 2026-08-19 23:04:36 |
-| Size | 251.8 MB (264,003,072 bytes on disk) |
-| Recovery / collation | SIMPLE / `SQL_Latin1_General_CP1_CI_AS` |
-| Data files | `RetailPOS_DB.mdf` 252.3 MB, `RetailPOS_DB_log.LDF` 109.8 MB |
+---
 
 ## Headline findings
 
-**Lottery is 40% of turnover and almost none of the income.** The POS books every lottery
-ticket at face value as a sale. That money belongs to OLG; the store earns a commission on it.
-Retail revenue is **$142,611**, not the **$237,720** the system reports — a 67% overstatement.
-Lottery net of payouts is $95,109 (gross ticket sales $151,681, payouts $56,572).
+**Sales are flat, and that flat line is hiding two real movements.** Total sales
+trend +1.1% across the window at p = 0.91 — no trend at all. But underneath,
+customer visits rose **+14.6%** (p = 0.015) while the average basket fell
+**−11.5%** (p = 0.045). Both clear significance; the total does not, because they
+almost exactly cancel. More people are coming in and each is spending less.
+Traffic is not the constraint — what happens at the counter is.
 
-**Three mis-keyed cash entries corrupt every payment report.** Invoices 13424, 6795 and 17
-have absurd *cash tendered* values ($804,906,004,014 against a $20.00 sale, and two others),
-pushing reported cash to $886.9 billion. The error is confined to the tender field —
-`GrandTotal` is correct on all three, so sales figures were never affected.
+**Lottery is 40% of the sales line and about 5% of what the business earns.**
+$151,681 of tickets, $56,572 paid out in prizes, $95,109 held — nearly all of
+which is remitted to OLG. At a 5% retailer commission that is roughly $7,584 of
+actual income, against $142,611 of retail. Lottery is reported inside sales here
+because that is how the store books it, and given its own section so the
+distinction never gets lost.
 
-**Cost price is missing on 94% of what is sold.** Only 102 of 842 sold products carry a
-`PurchaseCost`, covering 6.8% of revenue. The POS `Margin` column therefore sums to $213,508
-(~90% of sales), which is what the calculation returns when cost defaults to zero. No profit
-analysis is possible from this data until costs are backfilled.
+**Only 15.7% of lottery customers buy anything else.** 7,491 visits — 42% of every
+transaction in four months — bought a ticket and left. The ones who do add goods
+spend $16.11, *more* than the $13.60 of a customer who never touches lottery. So
+this is not a low-value crowd, it is an unserved one. Converting one in twenty
+would add roughly $5,100 over a comparable period.
 
-## Reproducing
+**Category momentum is real but partly seasonal.** Drinks +49.5%, ready-to-drink
++246%, grocery-no-tax +33.7% all clear significance. All three are also exactly
+what a mid-April-to-mid-August window inflates. Four months cannot separate trend
+from summer — treat them as seasonal until a full year says otherwise. Tobacco is
+flat in dollars and has given up 2.35 points of retail share, which is the more
+reliable signal.
 
-Requires Docker. `restore.sh` starts SQL Server 2022, restores the backup, and `extract.sh`
-writes the aggregates in `data/`.
+**Profit cannot be calculated.** Purchase cost is present on 102 of 842 products
+sold, covering 6.8% of revenue. The POS margin column sums to ~90% of sales,
+which is what that calculation returns when cost defaults to zero. Nothing here
+uses it.
+
+---
+
+## Repairs applied to the database
+
+Three invoices carried mis-keyed *cash tendered* amounts — the worst being
+**$804,906,004,014.00 against a $20.00 sale** — which pushed reported cash to
+$886.9 billion and made every payment report meaningless.
+
+`fix_miskeyed_tender.sql` repairs them: tendered is set equal to the
+sale amount and change to zero. It selects rows **by rule, not by hardcoded ID**
+(tender above $10,000 *and* more than $500 over its own sale), runs in a
+transaction with a post-check that rolls back if a repaired invoice stops
+balancing, and is safe to re-run — once fixed, rows no longer match.
+
+`GrandTotal` was never affected by the mis-keying, so sales figures were correct
+throughout. Only cash/tender reporting was wrong.
+
+---
+
+## Rebuilding from the backup
+
+Requires Docker. The `.bak` is a **SQL Server 2008 full backup** (MTF container,
+compat level 100) — not MySQL, despite the extension. It restores on SQL Server
+2022, which still accepts that compatibility level.
 
 ```bash
-./restore.sh /path/to/RetailPOS_DB.bak
-./extract.sh
+./restore.sh /path/to/RetailPOS_DB.bak   # SQL Server 2022 in Docker, restore
+sqlcmd -S localhost -U sa -i fix_miskeyed_tender.sql   # repair tender rows
+./extract.sh                              # aggregate extracts -> analysis/data/*.psv
+python3 analyse.py                        # statistics      -> analysis/data/insights.json
+python3 build.py                          # embed data      -> dashboard.html
 ```
 
-`data/*.psv` are pipe-delimited aggregates; `data/dash.json` is the same data bundled for the
-dashboard. Re-embed it after regenerating:
+`analyse.py` needs `numpy`, `pandas` and `scipy`.
 
-```bash
-python3 embed.py
-```
+---
 
-## Schema notes
+## Method
 
-The tables that carry data:
+Trend figures are ordinary least squares on **whole Sun–Sat weeks only** — the
+extract starts on a Wednesday and ends on a Wednesday, and including those stubs
+would read as a collapse at both ends. 17 whole weeks qualify. Every trend is
+reported with R² and a two-sided p-value; "significant" means p < 0.05.
 
-| Table | Rows | What it is |
-|---|---:|---|
-| `InvoiceInfo` | 17,718 | Sale headers — `GrandTotal`, `InvoiceDate`, tender fields |
-| `Invoice_Product` | 26,451 | Line items — `Qty`, `TotalAmount`, `PurchaseRate`, `Margin` |
-| `Invoice_Payment` | 17,922 | Tender splits — `PaymentMode`, `Amount` |
-| `Product` | 23,567 | Product master — `Category` holds the category *name*, not an ID |
-| `LedgerBook` | 35,439 | Not used here |
-| `Logs` | 28,308 | Not used here |
+17 weeks is enough to detect a strong trend and not enough to detect a weak one,
+so **"not significant" here means *not proven*, not *proven flat*.**
 
-Gotchas worth knowing:
+Category momentum compares the first half of that window against the second.
+Product movers compare the first 42 days against the last 42.
 
-- `Invoice_Payment.Amount` is cash **tendered**, not applied. Revenue must come from
-  `InvoiceInfo.GrandTotal` or the line items — summing payments overstates by the change given.
-- `Product.Category` joins on name, not `Category.CAT_ID`.
+---
+
+## Layout
+
+| Path | What it is |
+|---|---|
+| `dashboard.html` | The dashboard — self-contained, data embedded |
+| `restore.sh` | Restores the `.bak` into SQL Server 2022 in Docker |
+| `fix_miskeyed_tender.sql` | Rule-based repair for the mis-keyed tender rows |
+| `extract.sh` | Aggregate extracts from the restored database |
+| `analyse.py` | Regressions, momentum, attach rates → `insights.json` |
+| `build.py` | Embeds `insights.json` into the dashboard |
+| `data/*.psv` | Pipe-delimited aggregate extracts |
+| `data/insights.json` | Everything the dashboard reads |
+
+### Schema notes
+
+- `Invoice_Payment.Amount` is cash **tendered**, not applied. Revenue must come
+  from `InvoiceInfo.GrandTotal` or the line items — summing payments overstates
+  by the change given.
+- `Product.Category` joins on category **name**, not `Category.CAT_ID`.
 - Lottery lives in category `LOTTERY`; payouts are negative rows
   (`LOTTO PAY OUT`, `INSTANT PAY OUT`) and must be netted, not filtered out.
-- 7,492 of 17,718 invoices are lottery-only and contain no retail goods.
+- 7,491 of 17,718 invoices are lottery-only and contain no retail goods.
 
-Three independent totals reconcile to within 0.1%: invoice headers $237,426, tender less
-change $237,457, line items $237,660. The spread is invoice-level discounts and round-off.
+---
 
 ## Privacy
 
-`InvoiceInfo` contains cardholder fields (`CardNo`, `CardHolder`, `ApprovalCode`, `CardType`).
-**None of it was extracted.** Everything in `data/` is aggregate: daily totals, hour/weekday
-totals, category and product revenue, tender counts, basket buckets. No customer, card or
-cardholder data leaves the database.
+`InvoiceInfo` carries cardholder fields (`CardNo`, `CardHolder`, `ApprovalCode`,
+`CardType`). **None were read.** Everything in `data/` is aggregate —
+daily and weekly totals, category and product revenue, tender counts, basket
+buckets. No customer or card data leaves the database.
 
-The backup itself is not in this repo and must not be committed — `.gitignore` excludes `*.bak`.
+The backup itself is **not in this repository** and must not be committed;
+`.gitignore` excludes `*.bak`. This repository is private and the dashboard is
+not published to GitHub Pages, because these are real trading figures.
