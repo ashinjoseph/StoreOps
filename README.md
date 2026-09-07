@@ -66,5 +66,7 @@ git tag vX.Y && git push --tags
 | `WebApp.gs` | RPC layer with auth + role guards |
 | `Index.html` | Single-page UI (login + cashier + admin + manager views) |
 
+See [`docs/bulk-upload-products.md`](docs/bulk-upload-products.md) for bulk
+product/category upload (templates in `scripts/templates/`).
 See [`docs/data-model.md`](docs/data-model.md) for the schema.
 See [`docs/auth-design.md`](docs/auth-design.md) for the auth model.

@@ -15,8 +15,16 @@ INPUTS those numbers are derived from (in code, on the server):
 Field definitions, pricing math and the per-type form schema all live in
 `ProductTypes.gs` (the single source of truth). Don't hand-maintain column lists.
 
+For the end-user walkthrough (per-type column reference, worked example
+rows, and how categories behave on import) see
+[`docs/bulk-upload-products.md`](../docs/bulk-upload-products.md).
+
 ## Files
 
+- **`templates/`** — blank fill-in CSVs, one per type, header only. Regenerate
+  with `python3 scripts/import_product_master.py --templates` (no openpyxl
+  needed). Generated from the same layouts the importer uses, so they cannot
+  drift from the staging tabs.
 - **`import_product_master.py`** — reads the master spreadsheets and writes one
   staging CSV per type:
   - `references/master_beer_sheet.xlsx` → `product_master_beer_staging.csv`

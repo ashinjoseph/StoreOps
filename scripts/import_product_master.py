@@ -35,14 +35,25 @@ import csv
 import sys
 from pathlib import Path
 
-try:
-    import openpyxl
-except ImportError:
-    sys.stderr.write(
-        "ERROR: openpyxl not installed.\n"
-        "Install it:  pip install openpyxl\n"
-    )
-    sys.exit(1)
+# openpyxl is imported lazily: --templates only needs the column layouts
+# below, so emitting blank templates must not require the xlsx reader.
+openpyxl = None
+
+
+def require_openpyxl():
+    """Import openpyxl on first use; exit with install hint if missing."""
+    global openpyxl
+    if openpyxl is None:
+        try:
+            import openpyxl as _openpyxl
+        except ImportError:
+            sys.stderr.write(
+                "ERROR: openpyxl not installed.\n"
+                "Install it:  pip install openpyxl\n"
+            )
+            sys.exit(1)
+        openpyxl = _openpyxl
+    return openpyxl
 
 # ────────────────────────────────────────────────────────────
 # Paths
@@ -125,7 +136,7 @@ def empty_row(headers):
 
 
 def open_first_sheet(path, prefer=None):
-    wb = openpyxl.load_workbook(path, data_only=True)
+    wb = require_openpyxl().load_workbook(path, data_only=True)
     if prefer and prefer in wb.sheetnames:
         return wb[prefer]
     return wb.worksheets[0]
@@ -223,7 +234,7 @@ def parse_vape(path):
     if not path.exists():
         sys.stderr.write(f"WARN: {path.name} not found — skipping vape parser.\n")
         return []
-    wb = openpyxl.load_workbook(path, data_only=True)
+    wb = require_openpyxl().load_workbook(path, data_only=True)
     if "Master Price List" not in wb.sheetnames:
         raise RuntimeError(
             f"{path.name}: 'Master Price List' tab not found (found: {wb.sheetnames})"
@@ -327,6 +338,31 @@ def write_csv(rows, headers, path):
 
 
 # ────────────────────────────────────────────────────────────
+# Blank fill-in templates (scripts/templates/)
+# Same column order as the staging tabs, header only — safe to paste at
+# A3 without importing anything until you add rows. Generated from the
+# layouts above so they can never drift from the staging tabs.
+# ────────────────────────────────────────────────────────────
+TEMPLATE_DIR = HERE / "templates"
+
+TEMPLATES = [
+    ("beer",       BEER_HEADERS,  "product_bulk_upload_beer.csv"),
+    ("cigarettes", CIG_HEADERS,   "product_bulk_upload_cigarettes.csv"),
+    ("vape",       VAPE_HEADERS,  "product_bulk_upload_vape.csv"),
+    ("other",      OTHER_HEADERS, "product_bulk_upload_grocery_other.csv"),
+]
+
+
+def write_templates():
+    TEMPLATE_DIR.mkdir(exist_ok=True)
+    for _type, headers, name in TEMPLATES:
+        write_csv([], headers, TEMPLATE_DIR / name)
+        print(f"  {_type:<11} {len(headers):>2} cols  \u2192 templates/{name}")
+    print("\n\u2705  Blank templates written. Fill rows in, then paste at A3 of")
+    print("    the matching _pm_<type>_staging tab and run the Import menu item.")
+
+
+# ────────────────────────────────────────────────────────────
 # Main
 # ────────────────────────────────────────────────────────────
 def main():
@@ -356,4 +392,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if "--templates" in sys.argv[1:]:
+        write_templates()
+    else:
+        main()
