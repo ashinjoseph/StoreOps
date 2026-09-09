@@ -26,7 +26,7 @@ below is **per company**, never global.
 |---|---|---|
 | cstore and vape already use **different Clover merchant IDs** (`G8NX2DSKT11X1` / `NVGHFSN32NK71`) | `config` tab | `reconcileDay_` groups by merchant ID (`Reconcile.gs:114`), so the two tills **already** produce two separate reconcile messages. Removing cstore's Clover does **not** change the message count. This was the main risk and it is not real. |
 | `card_variance_threshold` is **20**, not the documented default of 1 | `config` tab | Any doc or test asserting `$1` is wrong against production. |
-| `whatsapp_template_shift_close` = `storeops_shift_close` | `config` tab | **`shift_close_v2` was never submitted to Meta.** This is why §6 matters — the template can still be changed for free. |
+| `shift_close_v2` **is live and approved** | owner, 2026-09-09 | An earlier draft of this plan said it had never been submitted. That came from the **2026-08-15 backup**, which is three weeks stale and still showed `storeops_shift_close`. The layout can no longer be changed for free — see §6. **Read config from the live sheet, never from the backup.** |
 | `getCardTotals_` returns `{ok:false, error:'not_configured'}` distinctly from network failures | `Clover.gs:72` | Lets us tell "this till doesn't use Clover" apart from "Clover is down" without a new flag on the API. |
 | 262 historical sales rows carry real credit/debit values | prod backup | Nothing may destroy or reinterpret them. |
 
@@ -117,40 +117,56 @@ Introduce `cloverNA` on the merchant record: true when the *only* reason
 
 **This distinction is the single most important behavioural change in the batch.**
 
-### D5. Card validation for a no-split, no-Clover till reduces to nothing
+### D5. Card reconciliation is removed for cstore, not weakened
 
-For cstore there is no second source, so:
+Owner's instruction: *"reconcile logic should not run for cards in cstore anymore
+because it will always be correct and a single entity. Instead we are only
+focusing on cash variance for cstore now."*
 
-- no `creditDiff`, no `debitDiff`, no `cardDiff`
-- `cardsOff` is always false
-- `card_variance_threshold` is not consulted
+So for a no-split, no-Clover till there is no card check **at any level**:
 
-The card figure still counts toward revenue and toward `{{5}}` reported — it is
-simply unverified, and the message should **say so** rather than implying a check
-that didn't happen.
+- no `creditDiff`, no `debitDiff`, no `cardDiff` — not computed, not stored
+- `cardsOff` is not evaluated; `card_variance_threshold` is never read
+- `{{13}}`/status is derived from **cash variance alone**
+- the Reconcile tab shows no claimed-vs-measured card row for these days
 
-### D6. `{{5}}` loses its measured card side for cstore
+The card figure is still **revenue** — it belongs in the day's total and in the
+sales dashboard. It is reported as information, never as a check. Do not leave a
+disabled comparison behind "in case Clover comes back": if a till returns to
+Clover, `<company>_card_split` and the merchant config turn it back on.
 
-Today (`Reconcile.gs:408`):
+### D6. cstore's total-sales line stops being a variance line
 
-```
-counted = (cash counted − opening float) + Clover card total
-```
-
-With no Clover, `counted` can only be the drawer. Comparing a cash-only measured
-figure against a reported figure that includes cards would manufacture a variance
-equal to the day's card take — roughly **half of cstore revenue**.
-
-So for a `cloverNA` group, `{{5}}` must compare **cash against cash**:
+Today `{{5}}` is a cross-check (`Reconcile.gs:408`):
 
 ```
-reported(cash) = cash sales + misc cash
-counted(cash)  = cash counted − opening float
+reported = cash sales + misc cash + cashier card total
+counted  = (cash counted − opening float) + Clover card total
+variance = counted − reported
 ```
 
-and say plainly that cards are excluded. Getting this wrong produces a
-catastrophic-looking daily variance that is entirely fictional. **Write the test
-for this before the code.**
+Both sides carry a card term, and they cancel when the cards agree. **Remove
+Clover and only the reported side keeps its card term** — so a perfectly clean
+day reports a variance equal to the entire card take, roughly **half of cstore
+revenue**, on the line management reads first. This is the most expensive bug
+available in this batch.
+
+Per D5 the answer is not to rebuild the cross-check on cash alone — that would
+duplicate `{{6}}`, which already compares cash recorded against cash counted and
+is now the *only* check cstore has. Two lines reporting one variance is how the
+old nine-parameter message became unreadable.
+
+So for a `cloverNA` group, `{{5}}` becomes **descriptive, not comparative**:
+
+```
+$1,842.00 — cash $602.00 · card $1,240.00
+```
+
+Full revenue, split by tender, no variance and no ✅/⚠️ mark. The day's one
+verdict lives in `{{6}}` and is summarised in the status param. vape's `{{5}}`
+keeps the cross-check exactly as it is.
+
+**Write the test for this before the code.**
 
 ---
 
@@ -283,43 +299,86 @@ Run **after** the code is deployed, so the app is ready for the config:
 2. `config`: set `cstore_card_split` = `false`, `vape_card_split` = `true`.
 3. `config`: **blank** `clover_cstore_merchant_id` and `clover_cstore_token`.
    Leave `clover_enabled` = `true` — vape still needs it.
-4. Close one cstore shift and one vape shift and compare both messages.
+4. Submit `shift_close_cstore` to Meta (§6). Once approved, set
+   `whatsapp_template_shift_close_cstore` = `shift_close_cstore` and
+   `whatsapp_template_shift_close_vape` = `shift_close_v2`.
+   Until both keys are set, **both tills keep using `shift_close_v2`** — safe, and
+   identical to today.
+5. Close one cstore shift and one vape shift and compare both messages.
 
 Order matters: blanking Clover before the `cloverNA` handling ships gives a day
 of false "Clover unavailable" warnings.
 
 ---
 
-## 6. DECISION NEEDED — the WhatsApp template
+## 6. Two templates, one per till
 
-The reconcile message is a **fixed 13-parameter Meta template**. Parameters
-cannot be dropped without submitting and getting approval for a new template.
-`{{10}}` credit, `{{11}}` debit and `{{12}}` card total are now meaningless for
-cstore.
+**Decided by the owner:** cstore and vape get **separate close templates**. This
+is better than the single shared template an earlier draft proposed — each one
+says exactly what its till can support, with no dead parameters and no wording
+that has to hedge across both.
 
-**The opportunity: `shift_close_v2` has never been submitted.** Live config still
-points at `storeops_shift_close`. So the layout can still be changed for free —
-but only until it is submitted.
+### vape keeps `shift_close_v2` unchanged
 
-**Recommended — fold this into v2 before submitting, as 12 parameters:**
+It is live, approved, and already correct for vape: Clover is connected, the
+credit/debit split is real, and `{{9}}` already reads *"not tracked on this
+till"* where the lotto pot doesn't apply. **No resubmission for vape.** Leave its
+13 parameters and their order exactly as they are.
 
-| Param | cstore (ePOS) | vape (Clover) |
+### cstore gets a new template — `shift_close_cstore`
+
+Eleven parameters. The card figure appears as **information**, never as a check,
+and the status line speaks only to cash.
+
+| # | Content | Example |
 |---|---|---|
-| `{{10}}` Cards | `$1,240.00 (ePOS, not independently verified)` | `$51.00 / $51.00 (var +$0.00) ✅` |
-| `{{11}}` Breakdown | `single card total — no credit/debit split` | `Credit $1.00 · Debit $50.00` |
+| 1 | Date | `Wed 9 Sep 2026` |
+| 2 | Till | `cstore` |
+| 3 | Hours | `09:00–21:20` |
+| 4 | Staff | `Blesson, Abijith` |
+| 5 | Total sales (reported, no variance) | `$1,842.00 — cash $602.00 · card $1,240.00` |
+| 6 | **Cash · recorded / counted** — the only check | `$852.00 / $852.00 (var +$0.00) ✅` |
+| 7 | Cash destination | `float $250.00 back · reserve $300.00 · $302.00 in hand` |
+| 8 | Cash in hand, by name | `Blesson $1,240.00 · Abijith $640.00` |
+| 9 | Lotto reserve | `$500.00 (+$300.00 moved in)` |
+| 10 | Cards (ePOS, informational) | `$1,240.00 — single total, not independently verified` |
+| 11 | Result | `✅ Cash matched` / `⚠️ cash short $40.00` |
 
-`{{12}}` becomes the status (was `{{13}}`). One submission serves both tills and
-survives vape migrating later.
+`{{5}}` carries no variance for cstore — see **D6**. `{{11}}` must not say
+*"All matched"*, which would imply cards were checked; *"Cash matched"* is the
+honest wording.
 
-**Alternative — keep 13 params**, fill `{{10}}`/`{{11}}` with `n/a — single card
-total`. Zero design work, but bakes a dead parameter into an approved template
-for as long as it lives.
+### Config and routing
 
-`docs/whatsapp-template-shift-close.md` must be rewritten either way — it
-currently documents the 13-param body, the samples, and the `?v=sales` button
-URL. **Do not submit anything to Meta until this is decided.**
+`Notifier.sendOp_` (`Notifier.gs:230`) already reads
+`whatsapp_template_<opKey>`, and `sendNotifications_` (`Reconcile.gs:292`)
+**already loops per merchant group** — and each group knows its companies. So
+routing is small:
 
----
+- New config keys `whatsapp_template_shift_close_cstore` and
+  `whatsapp_template_shift_close_vape`.
+- In `sendNotifications_`, pick the op key per group: if the group is a single
+  company and `whatsapp_template_shift_close_<company>` is set, use
+  `shift_close_<company>`; otherwise fall back to `shift_close`.
+- **Resolve the fallback in `Reconcile`, not in `Notifier`.** `sendOp_` falls back
+  to plain text by design; teaching it a config-key chain would make a generic
+  helper carry one caller's policy.
+- `reconParams_` branches on the same condition and returns 11 params or 13.
+  Sending 13 params to an 11-parameter template is a Meta `http_400`, which
+  `dispatch_` swallows (`muteHttpExceptions`) — the reconciliation still runs and
+  still writes its row, but **the message silently vanishes**. Assert the param
+  count per template shape in tests; nothing at runtime will tell you.
+
+Migration is safe in either order: until the new keys are set, both groups keep
+using `shift_close_v2` exactly as today.
+
+### Docs
+
+`docs/whatsapp-template-shift-close.md` currently documents one 13-parameter
+template. Split it: keep the v2 body as the **vape** template (marking it live and
+unchanged), and add the cstore body, samples and the same `?v=sales` button. Both
+sections need the note that `card_variance_threshold` is **20** in production, not
+the `$1` the current doc claims — and that it now applies to vape only.
 
 ## 7. Tests
 
@@ -340,11 +399,23 @@ lands** — that is the house rule and it has caught wrong tests twice.
 5. `cloverNA` cstore group → status contains **no** "Clover unavailable".
 6. Real Clover failure on vape → status **does** contain it. (5 and 6 together are
    the point; either alone passes a broken implementation.)
-7. `cloverNA` group: `{{5}}` compares cash against cash. **Assert the variance is
-   $0 on a clean day** — the naive implementation yields a variance equal to the
-   whole card take.
-8. `cardsOff` never fires for a `cloverNA` group, at any threshold.
+7. `cloverNA` group: `{{5}}` carries no variance and `{{6}}` compares cash against
+   cash. **Assert the cash variance is $0 on a clean day** — the naive
+   implementation yields a variance equal to the whole card take.
+8. `cardsOff` never fires for a `cloverNA` group, at any threshold — including
+   when `card_variance_threshold` is set to `0`.
 9. `validation_results` credit/debit cells are blank, not `0`.
+
+**Template routing (§6)**
+9a. cstore group → op key `shift_close_cstore`, **11** params, and `{{11}}` reads
+    "Cash matched" — never "All matched".
+9b. vape group → op key `shift_close_vape` (or `shift_close` when unset), **13**
+    params, byte-identical to today's output for the same fixture.
+9c. With the new config keys unset, **both** groups fall back to `shift_close` and
+    send 13 params — the safe pre-migration state.
+9d. Param count matches the template shape. A mismatch is an `http_400` that
+    `dispatch_` swallows, so this assertion is the only thing standing between a
+    wrong count and a message that silently never arrives.
 
 **Guards**
 10. A close sending both split and total for one company throws, naming it.
@@ -375,8 +446,11 @@ together and will catch a one-sided change.
    with the tests already written.**
 5. Index.html close sheet, then the read-side renderers. Tests 13–15.
 6. PublicSales + PublicReport. Test 16.
-7. §6 template decision → rewrite `docs/whatsapp-template-shift-close.md`.
-8. Full suite, syntax gate over every file in `src/`, CHANGELOG, push to the
+7. Template routing per group + `reconParams_` branching. Tests 9a–9d.
+8. Split `docs/whatsapp-template-shift-close.md` into vape (live, unchanged) and
+   cstore (new). Owner submits `shift_close_cstore` to Meta and sets
+   `whatsapp_template_shift_close_cstore` once approved.
+9. Full suite, syntax gate over every file in `src/`, CHANGELOG, push to the
    working branch for test-script verification before any merge.
 
 ---
@@ -394,3 +468,9 @@ together and will catch a one-sided change.
 - **Two migrations exist in this area** (lotto columns, cash handling). Follow
   their guard-on-header pattern; a migration that runs twice must be harmless.
 - **Don't blank cstore's Clover config before the code ships** (§5 order).
+- **A wrong template param count fails silently.** `dispatch_` uses
+  `muteHttpExceptions`, so Meta's 400 returns `{sent:false}` and nothing throws:
+  the day reconciles, the row is written, and no message arrives. Only a test
+  catches it.
+- **Don't verify config against the 2026-08-15 backup.** It is stale — it is what
+  produced the wrong "v2 was never submitted" claim in the first draft.
