@@ -400,9 +400,17 @@ const TillSessions = (() => {
     //
     // So the rule at the counter is one line with no exceptions: net every
     // payout into cash sales, whichever pot it came out of.
+    // lotto_reserve_counted stores the pot's CLOSING balance — the client
+    // submits counted + topup as one figure (see Index.html, lottoClosing) —
+    // so the previous close's figure is already where this shift starts.
+    //
+    // An earlier version added the top-up on top of that, double counting it:
+    // a $160 top-up onto a $265 pot stored $425 correctly and then opened the
+    // next shift at $585. That inflated expected cash by the same $160, so the
+    // drawer read short by exactly the top-up on the following shift.
     const prevReserve = lottoOn ? lastReserveCount_() : null;
     const reserveFed = prevReserve
-      ? Util.roundMoney((prevReserve.counted + prevReserve.topup) - lottoCounted)
+      ? Util.roundMoney(prevReserve.counted - lottoCounted)
       : 0;
 
     // A till either splits its cards or reports one total — never both. Getting
@@ -675,7 +683,6 @@ const TillSessions = (() => {
     if (!last) return null;
     return {
       counted: Util.roundMoney(last.lottoReserveCounted),
-      topup:   Util.roundMoney(last.lottoTopupFromTill || 0),
       date:    last.date ? Util.formatDate(last.date) : null,
     };
   }
@@ -698,7 +705,7 @@ const TillSessions = (() => {
     // pretending to record them.
     if (!hasLottoColumns_()) {
       return { enabled: false, expected, lastCounted: null, lastCountedDate: null,
-               lastOpening: null, entries: [] };
+               entries: [] };
     }
 
     const today = Util.todayMidnight();
@@ -727,13 +734,10 @@ const TillSessions = (() => {
     return {
       enabled: true,
       expected,
+      // The stored count is the pot's closing balance, top-up included, so it
+      // IS what the next shift opens with. There is nothing to add to it.
       lastCounted:     last ? last.counted : null,
       lastCountedDate: last ? last.date : null,
-      // What the pot actually holds NOW: the count was taken before that
-      // shift moved cash in, so the balance the next close starts from is
-      // counted + topup. Using lastCounted alone understates a topped-up pot
-      // by exactly the top-up.
-      lastOpening:     last ? Util.roundMoney(last.counted + last.topup) : null,
       // Only when the lookup found nothing: say what was actually on the
       // sheet, so "no record" can be told apart from "the row is there but
       // something about it didn't read". A balance that goes missing with no
