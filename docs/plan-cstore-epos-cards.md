@@ -311,24 +311,27 @@ of false "Clover unavailable" warnings.
 
 ---
 
-## 6. Two templates, one per till
+## 6. Two purpose-built templates
 
-**Decided by the owner:** cstore and vape get **separate close templates**. This
-is better than the single shared template an earlier draft proposed — each one
-says exactly what its till can support, with no dead parameters and no wording
-that has to hedge across both.
+**Decided by the owner:** cstore and vape get **separate close templates**, and
+**vape drops the lotto parameter** — only cstore sells lotto, so `{{9}}` has
+always been dead weight there, printing *"not tracked on this till"* every single
+day.
 
-### vape keeps `shift_close_v2` unchanged
+### Cost, stated plainly
 
-It is live, approved, and already correct for vape: Clover is connected, the
-credit/debit split is real, and `{{9}}` already reads *"not tracked on this
-till"* where the lotto pot doesn't apply. **No resubmission for vape.** Leave its
-13 parameters and their order exactly as they are.
+`shift_close_v2` is live and approved. Dropping a parameter from vape means vape
+needs a **new template too**, so this is **two Meta submissions, not one**. The
+owner has asked for it knowing that; the upside is that `shift_close_v2` retires
+entirely and neither surviving template carries a parameter that never says
+anything.
 
-### cstore gets a new template — `shift_close_cstore`
+Until both new templates are approved and configured, **both tills keep using
+`shift_close_v2` unchanged** — so there is no window where anything breaks.
 
-Eleven parameters. The card figure appears as **information**, never as a check,
-and the status line speaks only to cash.
+### `shift_close_cstore` — 11 parameters
+
+Cards are **information**, never a check. The status speaks only to cash.
 
 | # | Content | Example |
 |---|---|---|
@@ -336,7 +339,7 @@ and the status line speaks only to cash.
 | 2 | Till | `cstore` |
 | 3 | Hours | `09:00–21:20` |
 | 4 | Staff | `Blesson, Abijith` |
-| 5 | Total sales (reported, no variance) | `$1,842.00 — cash $602.00 · card $1,240.00` |
+| 5 | Total sales — descriptive, **no variance** | `$1,842.00 — cash $602.00 · card $1,240.00` |
 | 6 | **Cash · recorded / counted** — the only check | `$852.00 / $852.00 (var +$0.00) ✅` |
 | 7 | Cash destination | `float $250.00 back · reserve $300.00 · $302.00 in hand` |
 | 8 | Cash in hand, by name | `Blesson $1,240.00 · Abijith $640.00` |
@@ -344,43 +347,173 @@ and the status line speaks only to cash.
 | 10 | Cards (ePOS, informational) | `$1,240.00 — single total, not independently verified` |
 | 11 | Result | `✅ Cash matched` / `⚠️ cash short $40.00` |
 
-`{{5}}` carries no variance for cstore — see **D6**. `{{11}}` must not say
-*"All matched"*, which would imply cards were checked; *"Cash matched"* is the
-honest wording.
+`{{11}}` must not say *"All matched"* — that would claim a card check that no
+longer runs. *"Cash matched"* is the honest wording.
+
+### `shift_close_vape` — 12 parameters
+
+`shift_close_v2` minus the lotto line. Everything else keeps its current
+behaviour and wording, including the genuine Clover cross-check.
+
+| # | Content |
+|---|---|
+| 1–4 | Date · Till · Hours · Staff |
+| 5 | Total sales — **keeps the cross-check**, Clover is still connected |
+| 6 | Cash · recorded / counted |
+| 7 | Cash destination |
+| 8 | Cash in hand |
+| 9 | Credit · cashier / Clover |
+| 10 | Debit · cashier / Clover |
+| 11 | Card total · cashier / Clover |
+| 12 | Result — cash **and** cards |
+
+`lottoParam_` stays in the codebase: `getLottoLog_`, the Cash Handling tab and
+the `shift.closed` push notification all still use it. Only vape's *template*
+loses the line. `Notifier.gs:51` already suppresses lotto on a vape close by
+checking for `null` rather than zero — **that is the right pattern, follow it.**
 
 ### Config and routing
 
-`Notifier.sendOp_` (`Notifier.gs:230`) already reads
-`whatsapp_template_<opKey>`, and `sendNotifications_` (`Reconcile.gs:292`)
-**already loops per merchant group** — and each group knows its companies. So
-routing is small:
+`Notifier.sendOp_` (`Notifier.gs:230`) reads `whatsapp_template_<opKey>`, and
+`sendNotifications_` (`Reconcile.gs:292`) **already loops per merchant group**,
+each of which knows its companies. So routing is small:
 
-- New config keys `whatsapp_template_shift_close_cstore` and
-  `whatsapp_template_shift_close_vape`.
-- In `sendNotifications_`, pick the op key per group: if the group is a single
-  company and `whatsapp_template_shift_close_<company>` is set, use
-  `shift_close_<company>`; otherwise fall back to `shift_close`.
-- **Resolve the fallback in `Reconcile`, not in `Notifier`.** `sendOp_` falls back
-  to plain text by design; teaching it a config-key chain would make a generic
-  helper carry one caller's policy.
-- `reconParams_` branches on the same condition and returns 11 params or 13.
-  Sending 13 params to an 11-parameter template is a Meta `http_400`, which
-  `dispatch_` swallows (`muteHttpExceptions`) — the reconciliation still runs and
-  still writes its row, but **the message silently vanishes**. Assert the param
-  count per template shape in tests; nothing at runtime will tell you.
-
-Migration is safe in either order: until the new keys are set, both groups keep
-using `shift_close_v2` exactly as today.
+- New keys `whatsapp_template_shift_close_cstore` / `..._vape`.
+- In `sendNotifications_`, pick the op key per group: a single-company group with
+  its key set uses `shift_close_<company>`; anything else falls back to
+  `shift_close`.
+- **Resolve the fallback in `Reconcile`, not `Notifier`.** `sendOp_` falls back to
+  plain text by design; teaching a generic helper one caller's key chain is the
+  wrong place for the policy.
+- `reconParams_` branches on the same condition and returns 11, 12 or 13 params.
+  **A wrong count is a Meta `http_400` that `dispatch_` swallows** — the day
+  reconciles, the row is written, and the message silently never arrives. Assert
+  the count per shape in tests; nothing at runtime will tell you.
+- `formatMessage_` (the plain-text fallback, `Reconcile.gs:497`) needs the same
+  two shapes. It is what sends when no template is configured, which is exactly
+  the state between deploy and approval.
 
 ### Docs
 
-`docs/whatsapp-template-shift-close.md` currently documents one 13-parameter
-template. Split it: keep the v2 body as the **vape** template (marking it live and
-unchanged), and add the cstore body, samples and the same `?v=sales` button. Both
-sections need the note that `card_variance_threshold` is **20** in production, not
-the `$1` the current doc claims — and that it now applies to vape only.
+Split `docs/whatsapp-template-shift-close.md` into a cstore section and a vape
+section, each with its own body, samples and the `?v=sales` button. Record that
+`card_variance_threshold` is **20** in production — the doc currently claims `$1`
+— and that it now applies to **vape only**.
 
-## 7. Tests
+## 7. Broader review — what this change exposes
+
+Findings from a full sweep beyond the immediate edit. Ordered by what they cost.
+
+### 7.1 CRITICAL — the public reconcile page will publish a fictional loss
+
+`Public.html:298` renders `cell('Cards', r.cardClaimed, r.cardMeasured, r.cardVar)`
+with **no unavailable branch at all** — unlike the in-app tab, which has one at
+`Index.html:4840`. With Clover gone, `PublicReport.gs:160` sends
+`cardMeasured: 0` and `cardVar: −cashierCard`, so every cstore day publishes:
+
+> **Cards** $1,240.00 / $0.00 · **−$1,240.00**
+
+flagged red, on the no-login URL that goes to owners and managers. `cell()` also
+hardcodes a `$1` tolerance, ignoring `card_variance_threshold` entirely.
+
+**Fix:** `PublicReport` omits `cardMeasured`/`cardVar` when cards were not
+verified, and `cell()` gains a one-sided form showing the claimed figure with a
+*"not verified"* note. **This must ship in the same batch** — it is worse than the
+problem being solved.
+
+### 7.2 HIGH — branch on blank, not on the status string
+
+`Index.html:4817` derives `cloverUnavailable` from `r.status === 'clover_unavailable'`.
+So the *stored status vocabulary* drives the UI. If a cards-not-applicable day
+reports `OK`, the else-branch runs and renders `reconRow_('Credit', 0, 1240)` →
+**"Credit $0.00 / $1,240.00 (+$1,240.00)"** in red. Fixing the message without
+fixing this just moves the wrong number.
+
+**Fix:** write **blank** into the four clover columns of `validation_results` for
+an unverified day (already required by D2/§3.5), and have all three renderers —
+in-app tab, public page, message — branch on `cloverCard == null` rather than on a
+status string. One rule, three consumers, and it composes with the
+genuinely-unavailable case instead of competing with it.
+
+### 7.3 HIGH — a real control disappears, and nothing replaces it
+
+`{{5}}`'s cross-check catches a **mistyped sales figure**, because it compares
+what the cashier typed against what was independently measured. After this change
+cstore has **no independent check on card revenue at all** — the ePOS total is
+typed by a person and verified by nothing. That is roughly **half of cstore
+revenue** moving from verified to asserted.
+
+This is a consequence of the migration, not a reason to stop it, but it should be
+a decision rather than a discovery. Options, cheapest first:
+
+1. **Plausibility check.** Flag when card share of the day's revenue departs from
+   its trailing median by more than a set margin. Catches a transposed digit
+   (`$1,240` → `$12,400`), which is the realistic error. Cheap, no integration.
+2. **Bank deposit reconciliation.** The card processor's settlement is the real
+   measured figure; a weekly comparison restores the control properly.
+3. **ePOS export.** See 7.4 — the workbook already has a sheet shaped for it.
+
+I would ship (1) with this batch and treat (3) as the real answer.
+
+### 7.4 MEDIUM — two dead sheets, one of them newly relevant
+
+`pos_extracted` and `clover_batches` are **created by `Setup.gs` and never read or
+written by any code** (`Setup.gs:296–297`, 796, 816 — the only references).
+
+- `clover_batches` is now doubly dead for cstore. Either wire it or stop creating
+  it; an empty tab in a workbook the owner reads is a standing question.
+- **`pos_extracted` is exactly the shape ePOS integration needs.** Somebody
+  already anticipated this. When 7.3(3) gets built, that is where it lands —
+  worth a comment in the sheet saying so rather than leaving it looking abandoned.
+
+### 7.5 MEDIUM — cash variance is now the whole of cstore's assurance
+
+With cards unverified, `{{6}}` is the only number checking cstore. That raises
+the stakes on two things already on record:
+
+- Net cash variance annualises to **−$7,540** (analysis earlier in this session,
+  over 85 days). Previously one control among several; now the only one.
+- The lotto-payout netting shipped in `0f89c0a` feeds directly into that same
+  figure. A payout entered wrong now has nothing else to catch it.
+
+Worth revisiting `variance_ok_threshold` (currently 10) and
+`variance_minor_threshold` (30) for cstore specifically, now that they gate the
+only check.
+
+### 7.6 MEDIUM — history gains a discontinuity, and analysis must span it
+
+Every range crossing the migration date holds rows of **both shapes**. This
+already bit the earlier weekday and correlation analysis, which read
+`credit_card_sales` / `debit_card_sales` directly.
+
+- Dashboard tiles must render the union (§3.6) — that part is planned.
+- **Any analysis script must sum `credit + debit + card_total`**, never assume one
+  shape. Worth a note in `docs/data-model.md`, which currently documents the
+  16-column sales sheet.
+- The migration date is worth recording in `config` (`cstore_epos_from`) so a
+  reader can explain the discontinuity without archaeology.
+
+### 7.7 LOW — the status vocabulary needs one review pass
+
+`status` is written to `validation_results`, read by the in-app tab, the public
+page (`Public.html:289` maps `OK` / `investigate` / everything-else to three
+pills) and the message. Adding a till whose cards are out of scope touches all
+four. Enumerate the values and confirm each consumer handles the new one — do not
+add a value and check only the message.
+
+### 7.8 What is correctly out of scope
+
+Verified during the sweep, no action needed:
+
+- **Commissions** key off `sales.total` (`Commissions.gs:157`), not the tender
+  split — so they are correct as long as `total()` gains the new columns (§3.2).
+- **CashHandling** touches only `cash_removed_at_close`. Untouched.
+- **`Notifier` `shift.closed`** already suppresses lotto on a null, not a zero
+  (`Notifier.gs:51`). Correct as written.
+- **`Clover.gs`** needs no change (§3.8).
+- **`cashback_paid`** is unrelated legacy; leave it.
+
+## 8. Tests
 
 New suite `epos-cards`, run against real module code via the existing harnesses.
 **Every assertion must be confirmed to fail against `ad165be` before the fix
@@ -407,15 +540,29 @@ lands** — that is the house rule and it has caught wrong tests twice.
 9. `validation_results` credit/debit cells are blank, not `0`.
 
 **Template routing (§6)**
-9a. cstore group → op key `shift_close_cstore`, **11** params, and `{{11}}` reads
+9a. cstore group → op key `shift_close_cstore`, **11** params, `{{11}}` reads
     "Cash matched" — never "All matched".
-9b. vape group → op key `shift_close_vape` (or `shift_close` when unset), **13**
-    params, byte-identical to today's output for the same fixture.
+9b. vape group → op key `shift_close_vape`, **12** params, **no lotto param**, and
+    params 1–8 byte-identical to today's v2 output for the same fixture.
 9c. With the new config keys unset, **both** groups fall back to `shift_close` and
-    send 13 params — the safe pre-migration state.
-9d. Param count matches the template shape. A mismatch is an `http_400` that
-    `dispatch_` swallows, so this assertion is the only thing standing between a
-    wrong count and a message that silently never arrives.
+    send **13** params — the safe pre-migration state, unchanged from today.
+9d. Param count matches the template shape in all three cases. A mismatch is an
+    `http_400` that `dispatch_` swallows, so this assertion is the only thing
+    between a wrong count and a message that silently never arrives.
+9e. `formatMessage_` plain-text fallback emits no Credit/Debit lines for cstore
+    and no lotto line for vape. This is what sends between deploy and approval.
+
+**Public and in-app rendering (§7.1, §7.2)**
+9f. `PublicReport` **omits** `cardMeasured`/`cardVar` on an unverified day rather
+    than sending `0`. Assert the keys are absent, not zero.
+9g. `Public.html` renders the one-sided card cell — claimed figure plus a "not
+    verified" note, **no red variance**. Assert the string `-$1,240` cannot
+    appear for a clean cstore day.
+9h. In-app reconcile tab: an unverified day shows no `reconRow_('Credit', 0, X)`.
+    Branch on `cloverCard == null`, not on the status string.
+9i. A genuine Clover failure on **vape** still renders the existing unavailable
+    treatment in all three surfaces. (9f–9i together are the point; each alone
+    passes a broken implementation.)
 
 **Guards**
 10. A close sending both split and total for one company throws, naming it.
@@ -430,6 +577,11 @@ lands** — that is the house rule and it has caught wrong tests twice.
     no Card tile; spanning range → all three.
 16. `PublicReport` omits `cardMeasured` on a `cloverNA` day rather than sending 0.
 
+**Plausibility check (§7.3, if shipped in this batch)**
+17. A card figure an order of magnitude off its trailing median is flagged; one
+    inside normal daily variation is not. Use the real 85-day distribution for the
+    fixture, not invented numbers.
+
 **Regression:** the full existing suite — **459 assertions across 22 suites** —
 must stay green. `lotto-payout`, `sign-toggle` and `parity` are the ones most
 likely to be disturbed; `parity` in particular pins the dashboard and the message
@@ -437,7 +589,7 @@ together and will catch a one-sided change.
 
 ---
 
-## 8. Suggested order
+## 9. Suggested order
 
 1. Setup.gs schema + migration + config defaults, with the migration tested.
 2. Sales.gs columns, null reader, totals, aggregate. Tests 1–4.
@@ -446,16 +598,20 @@ together and will catch a one-sided change.
    with the tests already written.**
 5. Index.html close sheet, then the read-side renderers. Tests 13–15.
 6. PublicSales + PublicReport. Test 16.
-7. Template routing per group + `reconParams_` branching. Tests 9a–9d.
-8. Split `docs/whatsapp-template-shift-close.md` into vape (live, unchanged) and
-   cstore (new). Owner submits `shift_close_cstore` to Meta and sets
-   `whatsapp_template_shift_close_cstore` once approved.
+7. Template routing per group + `reconParams_` branching for three shapes, and
+   the `formatMessage_` fallback. Tests 9a–9e.
+7b. **§7.1 and §7.2 — the public page and the null-branching rule. Do not defer
+   these past this batch:** publishing "Cards −$1,240.00" to stakeholders every
+   day is worse than the problem being fixed.
+8. Split `docs/whatsapp-template-shift-close.md` into cstore (11 params) and vape
+   (12, no lotto). Owner submits **both** to Meta and sets the two config keys as
+   each is approved — they can go live independently.
 9. Full suite, syntax gate over every file in `src/`, CHANGELOG, push to the
    working branch for test-script verification before any merge.
 
 ---
 
-## 9. Traps
+## 10. Traps
 
 - **`{{5}}` is the expensive one.** Leaving Clover's card total in the measured
   side for a till with no Clover produces a daily variance roughly half of cstore
@@ -472,5 +628,9 @@ together and will catch a one-sided change.
   `muteHttpExceptions`, so Meta's 400 returns `{sent:false}` and nothing throws:
   the day reconciles, the row is written, and no message arrives. Only a test
   catches it.
+- **The public page has no unavailable branch** (§7.1). The in-app tab does, which
+  makes it easy to check one, see a guard, and assume both are covered.
+- **`cloverUnavailable` keys off a status string** (§7.2), so fixing the message
+  without fixing the renderers just relocates the wrong number.
 - **Don't verify config against the 2026-08-15 backup.** It is stale — it is what
   produced the wrong "v2 was never submitted" claim in the first draft.
