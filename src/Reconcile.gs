@@ -117,7 +117,7 @@ const Reconcile = (() => {
       const key = m.merchantId || ('NOCONFIG:' + s.company);
       if (!groups[key]) groups[key] = {
         merchant: m, companies: {}, sessionIds: [],
-        cashierCredit: 0, cashierDebit: 0, cashSales: 0,
+        cashierCredit: 0, cashierDebit: 0, cashierCardOnly: 0, anyUnsplit: false, cashSales: 0,
         cashCounted: 0, cashVariance: 0, openingFloat: 0,
         cashBanked: 0, floatLeft: 0, lottoTopup: 0,
         tookCash: {}, staff: {},
@@ -136,6 +136,10 @@ const Reconcile = (() => {
       if (sale) {
         g.cashierCredit += (sale.creditCardSales || 0) + (sale.miscCreditSales || 0);
         g.cashierDebit  += (sale.debitCardSales || 0) + (sale.miscDebitSales || 0);
+        // A till that doesn't split reports one card figure. It still counts
+        // toward the card total; it just has no credit/debit halves.
+        g.cashierCardOnly += (sale.cardTotalSales || 0) + (sale.miscCardSales || 0);
+        if (sale.cardSplit === false) g.anyUnsplit = true;
         g.cashSales     += (sale.cashSales || 0) + (sale.miscCashSales || 0);
       }
       g.cashCounted  += s.closingCashCounted || 0;
@@ -194,15 +198,28 @@ const Reconcile = (() => {
 
       const cashierCredit = Util.roundMoney(g.cashierCredit);
       const cashierDebit  = Util.roundMoney(g.cashierDebit);
-      const cashierCard   = Util.roundMoney(cashierCredit + cashierDebit);
+      const cashierCard   = Util.roundMoney(cashierCredit + cashierDebit + g.cashierCardOnly);
+      const cardSplit     = !g.anyUnsplit;
 
       const clover = Clover.isEnabled()
         ? Clover.getCardTotals(g.merchant, startMs, endMs)
         : { ok: false, error: 'disabled' };
-      const cloverCredit = clover.ok ? clover.credit : 0;
-      const cloverDebit  = clover.ok ? clover.debit  : 0;
-      const cloverCard   = clover.ok ? clover.total  : 0;
-      const cardDiff = Util.roundMoney(cashierCard - cloverCard);
+
+      // "Not configured" is not "unavailable". A till that was never meant to
+      // have Clover — cstore since the ePOS migration — must not raise the
+      // warning that means "the check you rely on did not run", or the one line
+      // people read becomes noise they learn to ignore. A genuine outage
+      // (network, auth, 5xx) still does.
+      const cloverNA = !clover.ok && clover.error === 'not_configured';
+      const cardsVerified = clover.ok;
+
+      // Nothing to compare against: no diffs computed, none stored, and the
+      // threshold never consulted. Blank rather than 0, so a reader can tell
+      // "not checked" from "checked and matched" — see Sales.numOrNull_.
+      const cloverCredit = cardsVerified ? clover.credit : null;
+      const cloverDebit  = cardsVerified ? clover.debit  : null;
+      const cloverCard   = cardsVerified ? clover.total  : null;
+      const cardDiff = cardsVerified ? Util.roundMoney(cashierCard - cloverCard) : null;
 
       // The roll-up must cover the CASH too. It used to test cardDiff alone,
       // which meant a drawer $40 short still reported "All matched" as long as
@@ -210,9 +227,10 @@ const Reconcile = (() => {
       // thing it hadn't checked.
       const cashThreshold = Number(configValue_('variance_ok_threshold', 1)) || 1;
       const cashOff = Math.abs(Util.roundMoney(g.cashVariance)) > cashThreshold;
-      const cardsOff = Math.abs(cardDiff) > threshold;
-      const status = !clover.ok ? 'clover_unavailable'
-        : (cashOff || cardsOff ? 'investigate' : 'OK');
+      const cardsOff = cardsVerified && Math.abs(cardDiff) > threshold;
+      const status = cloverNA ? (cashOff ? 'investigate' : 'OK')
+        : (!clover.ok ? 'clover_unavailable'
+          : (cashOff || cardsOff ? 'investigate' : 'OK'));
 
       const rec = {
         merchant: g.merchant.merchantId || '(not configured)',
@@ -220,8 +238,15 @@ const Reconcile = (() => {
         windowStart: new Date(startMs),
         windowEnd: new Date(endMs),
         sessionIds: g.sessionIds.slice(),
-        cashierCredit: cashierCredit, cloverCredit: cloverCredit, creditDiff: Util.roundMoney(cashierCredit - cloverCredit),
-        cashierDebit: cashierDebit, cloverDebit: cloverDebit, debitDiff: Util.roundMoney(cashierDebit - cloverDebit),
+        cardSplit: cardSplit,
+        cloverNA: cloverNA,
+        cardsVerified: cardsVerified,
+        cashierCredit: cardSplit ? cashierCredit : null,
+        cloverCredit: cloverCredit,
+        creditDiff: cardsVerified && cardSplit ? Util.roundMoney(cashierCredit - cloverCredit) : null,
+        cashierDebit: cardSplit ? cashierDebit : null,
+        cloverDebit: cloverDebit,
+        debitDiff: cardsVerified && cardSplit ? Util.roundMoney(cashierDebit - cloverDebit) : null,
         cashierCard: cashierCard, cloverCard: cloverCard, cardDiff: cardDiff,
         cashSales: Util.roundMoney(g.cashSales),
         cashCounted: Util.roundMoney(g.cashCounted),
@@ -272,6 +297,9 @@ const Reconcile = (() => {
     return { ready: true, mode: mode, date: dateStr, merchants: merchants, whatsapp: whatsapp };
   }
 
+  /** null → an empty cell. Zero would claim a measurement that never happened. */
+  function blank_(v) { return (v === null || v === undefined) ? '' : v; }
+
   function writeRow_(dateObj, rec, mode, actorId, now) {
     const sh = sheet_();
     const row = sh.getLastRow() + 1;
@@ -279,8 +307,11 @@ const Reconcile = (() => {
       Util.newId('VR'),
       dateObj, rec.windowStart, rec.windowEnd,
       rec.merchant, rec.companies.join('+'),
-      rec.cashierCredit, rec.cloverCredit, rec.cashierDebit, rec.cloverDebit,
-      rec.cashierCard, rec.cloverCard, rec.cardDiff,
+      // Blank, not 0, wherever a figure was not measured — the column has to
+      // keep meaning the same thing across the whole file.
+      blank_(rec.cashierCredit), blank_(rec.cloverCredit),
+      blank_(rec.cashierDebit), blank_(rec.cloverDebit),
+      rec.cashierCard, blank_(rec.cloverCard), blank_(rec.cardDiff),
       rec.cashCounted, rec.cashVariance, rec.status, mode,
       rec.sessionIds.join(','), now, actorId || 'SYSTEM', rec.cashSales,
     ]]);
@@ -289,6 +320,26 @@ const Reconcile = (() => {
   // One templated message per merchant group (usually just one: cstore+vape
   // combined). Falls back to per-group plain text when no shift_close
   // template is configured. Aggregates the per-group send results.
+  /**
+   * Which close template this group should use.
+   *
+   * The two tills no longer take the same shape of message: cstore has no card
+   * verification and does have a lotto pot, vape is the reverse. So each gets
+   * its own approved template, and a group falls back to the shared one until
+   * its key is configured — which is what makes the rollout safe in any order.
+   *
+   * Resolved HERE rather than in Notifier.sendOp_, which falls back to plain
+   * text by design; teaching a generic helper one caller's key chain would put
+   * this policy in the wrong module.
+   */
+  function opKeyFor_(m) {
+    if (m.companies && m.companies.length === 1) {
+      const key = 'shift_close_' + m.companies[0];
+      if (configValue_('whatsapp_template_' + key, '')) return key;
+    }
+    return 'shift_close';
+  }
+
   function sendNotifications_(dateObj, merchants) {
     let anySent = false;
     const perGroup = [];
@@ -296,7 +347,7 @@ const Reconcile = (() => {
       const params = reconParams_(dateObj, m);
       const plain = formatMessage_(dateObj, [m]);
       let r;
-      try { r = Notifier.sendOp('shift_close', params, plain); }
+      try { r = Notifier.sendOp(opKeyFor_(m), params, plain); }
       catch (e) { r = { sent: false, reason: 'exception', detail: e.message }; }
       if (r && r.sent) anySent = true;
       perGroup.push(r);
@@ -373,7 +424,9 @@ const Reconcile = (() => {
    * out what; this says it in the same breath.
    */
   function statusParam_(m) {
-    if (!m.cloverOk) return '⚠️ Clover unavailable - cards not verified';
+    // A till with no card verification by design reports on cash alone. Only a
+    // genuine outage still says the check didn't run.
+    if (!m.cardsVerified && !m.cloverNA) return '⚠️ Clover unavailable - cards not verified';
     const cashThreshold = Number(configValue_('variance_ok_threshold', 1)) || 1;
     const cardThreshold = Number(configValue_('card_variance_threshold', 1)) || 1;
     const problems = [];
@@ -381,11 +434,14 @@ const Reconcile = (() => {
     if (Math.abs(cashVar) > cashThreshold) {
       problems.push('cash ' + (cashVar < 0 ? 'short ' : 'over ') + Util.formatMoney(Math.abs(cashVar)));
     }
-    const cardVar = Number(m.cardDiff) || 0;
-    if (Math.abs(cardVar) > cardThreshold) {
+    const cardVar = m.cardsVerified ? (Number(m.cardDiff) || 0) : 0;
+    if (m.cardsVerified && Math.abs(cardVar) > cardThreshold) {
       problems.push('cards off ' + Util.formatMoney(Math.abs(cardVar)));
     }
-    return problems.length ? '⚠️ ' + problems.join(' · ') : '✅ All matched';
+    // "All matched" would claim a card check that never ran. Say what was
+    // actually verified.
+    if (problems.length) return '⚠️ ' + problems.join(' · ');
+    return m.cardsVerified ? '✅ All matched' : '✅ Cash matched';
   }
 
   function reconParams_(dateObj, m) {
@@ -397,6 +453,31 @@ const Reconcile = (() => {
 
     const cashLine = Util.formatMoney(recorded) + ' / ' + Util.formatMoney(m.cashCounted) +
       ' (var ' + signed_(m.cashVariance) + ') ' + mark_(m.cashVariance);
+
+    // ── No card verification (cstore on ePOS) ───────────────────
+    // Eleven parameters. The card figure is INFORMATION, never a check, and
+    // {{5}} is descriptive rather than comparative: rebuilding it as a
+    // cash-only cross-check would just restate {{6}}, which is now this till's
+    // only verdict, and two lines reporting one variance is what made the old
+    // nine-parameter message unreadable.
+    if (m.cloverNA) {
+      const revenue = Util.roundMoney(m.cashSales + m.cashierCard);
+      return [
+        friendly,                                              // {{1}}
+        companies,                                             // {{2}}
+        windowStr,                                             // {{3}}
+        staffParam_(m),                                        // {{4}}
+        Util.formatMoney(revenue) + ' — cash ' + Util.formatMoney(m.cashSales) +
+          ' · card ' + Util.formatMoney(m.cashierCard),         // {{5}}
+        cashLine,                                              // {{6}}
+        destination_(m),                                       // {{7}}
+        inHandParam_(m),                                       // {{8}}
+        lottoParam_(m),                                        // {{9}}
+        Util.formatMoney(m.cashierCard) +
+          ' — single total, not independently verified',        // {{10}}
+        statusParam_(m),                                       // {{11}}
+      ];
+    }
 
     let totalLine, credit, debit, total, status;
     if (m.cloverOk) {
@@ -424,21 +505,22 @@ const Reconcile = (() => {
     }
     status = statusParam_(m);
 
-    return [
+    // A till with no lotto pot has no lotto line. vape has never sold lotto, so
+    // its {{9}} printed "not tracked on this till" every single day — a whole
+    // parameter saying nothing. Dropped from the vape shape; kept for any till
+    // that actually holds a pot.
+    const base = [
       friendly,            // {{1}}  Sat 15 Aug 2026
       companies,           // {{2}}  cstore + vape
       windowStr,           // {{3}}  09:00–17:20
       staffParam_(m),      // {{4}}  Ashin, Meera
-      totalLine,           // {{5}}  reported / expected
+      totalLine,           // {{5}}  reported / counted
       cashLine,            // {{6}}  recorded / counted (var)
       destination_(m),     // {{7}}  float back · reserve · in hand
       inHandParam_(m),     // {{8}}  who carries it, what's still out
-      lottoParam_(m),      // {{9}}  pot balance, movement, reason
-      credit,              // {{10}}
-      debit,               // {{11}}
-      total,               // {{12}}
-      status,              // {{13}}
     ];
+    if (m.lotto) base.push(lottoParam_(m));   // {{9}} only where a pot exists
+    return base.concat([credit, debit, total, status]);
   }
 
   /**
@@ -503,6 +585,10 @@ const Reconcile = (() => {
         const counted = Util.roundMoney((m.cashCounted - m.openingFloat) + m.cloverCard);
         const totalDiff = Util.roundMoney(counted - reported);
         lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + ' / counted ' + Util.formatMoney(counted) + '   var ' + signed_(totalDiff) + ' ' + mark_(totalDiff));
+      } else if (m.cloverNA) {
+        // Descriptive, not comparative — the cash line below carries the verdict.
+        lines.push('Σ *Total sales*  ' + Util.formatMoney(reported) +
+          '   cash ' + Util.formatMoney(m.cashSales) + ' · card ' + Util.formatMoney(m.cashierCard));
       } else {
         lines.push('Σ *Total sales*  reported ' + Util.formatMoney(reported) + '   (no Clover)');
       }
@@ -522,6 +608,11 @@ const Reconcile = (() => {
         lines.push('Credit  ' + Util.formatMoney(m.cashierCredit) + ' / ' + Util.formatMoney(m.cloverCredit) + '   var ' + signed_(m.cloverCredit - m.cashierCredit) + ' ' + mark_(m.creditDiff));
         lines.push('Debit   ' + Util.formatMoney(m.cashierDebit) + ' / ' + Util.formatMoney(m.cloverDebit) + '   var ' + signed_(m.cloverDebit - m.cashierDebit) + ' ' + mark_(m.debitDiff));
         lines.push('Total   ' + Util.formatMoney(m.cashierCard) + ' / ' + Util.formatMoney(m.cloverCard) + '   var ' + signed_(m.cloverCard - m.cashierCard) + ' ' + mark_(m.cardDiff));
+        lines.push('');
+        lines.push('*' + statusParam_(m) + '*');
+      } else if (m.cloverNA) {
+        // No Clover by design. Report the figure; claim no check.
+        lines.push('\u{1F4B3} *Cards*  ' + Util.formatMoney(m.cashierCard) + '   (single total, not verified)');
         lines.push('');
         lines.push('*' + statusParam_(m) + '*');
       } else {

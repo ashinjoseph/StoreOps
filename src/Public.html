@@ -277,6 +277,16 @@ function reconcileHtml(s) {
   if (!s.rows.length) return '<div class="card"><div class="empty">' + esc(s.note || 'Nothing yet.') + '</div></div>';
 
   function cell(k, claimed, measured, v) {
+    // A null measured figure means nothing independently checked this — not
+    // that it measured zero. Show the claim on its own rather than inventing a
+    // variance the size of the whole figure.
+    if (measured == null || v == null) {
+      return '<div class="rec-cell">' +
+        '<div class="rec-k">' + k + '</div>' +
+        '<div class="rec-v">' + money(claimed) + '</div>' +
+        '<div class="rec-var">not verified</div>' +
+      '</div>';
+    }
     return '<div class="rec-cell">' +
       '<div class="rec-k">' + k + '</div>' +
       '<div class="rec-v">' + money(claimed) + ' / ' + money(measured) + '</div>' +

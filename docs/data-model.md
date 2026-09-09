@@ -148,16 +148,49 @@ it stay in place so historical sessions still recompute correctly.
 | D | company | enum | yes | Denormalized |
 | E | date | date | yes | Denormalized |
 | F | cash_sales | number | no | From POS by tender |
-| G | credit_card_sales | number | no | |
-| H | debit_card_sales | number | no | |
+| G | credit_card_sales | number | no | **Blank** on a till that reports one card figure |
+| H | debit_card_sales | number | no | **Blank** on a till that reports one card figure |
 | I | cashback_paid | number | no | Cash given out via debit |
 | J | hst_collected | number | no | Tax field |
 | K | bottle_deposit | number | no | Regulatory field |
 | L | round_off | number | no | Round-off field |
 | M | misc_cash_sales | number | no | Service fees not in POS |
-| N | misc_credit_sales | number | no | |
-| O | misc_debit_sales | number | no | |
+| N | misc_credit_sales | number | no | **Blank** on a till that reports one card figure |
+| O | misc_debit_sales | number | no | **Blank** on a till that reports one card figure |
 | P | misc_notes | string | no | |
+| Q | card_total_sales | number | no | Single card figure. **Blank** on a till that splits |
+| R | misc_card_sales | number | no | Same, for the Misc block |
+
+### Two card shapes, and the one rule for reading them
+
+A till either splits credit from debit or reports a single card total —
+`<company>_card_split` in `config` decides which, and cstore moved to the second
+shape when it went to ePOS (`cstore_epos_from` records the date).
+
+**The two shapes are mutually exclusive on any given row**, so:
+
+```
+card revenue = credit_card_sales + debit_card_sales + card_total_sales
+             + misc_credit_sales + misc_debit_sales + misc_card_sales
+```
+
+is correct on **either side of a migration, with no date logic**. Every total in
+the app is continuous across the boundary for exactly this reason.
+
+> **Any query or analysis script must sum all three card columns.** Reading only
+> `credit_card_sales` and `debit_card_sales` silently undercounts every row a
+> single-figure till has written — and undercounts nothing before the migration,
+> so the error looks like a genuine decline rather than a bug.
+
+**Blank is not zero here.** A blank `credit_card_sales` means *"this till
+reported one card figure"*; a zero means *"it split its cards and took nothing on
+credit"*. `Sales.rowToRecord_` preserves the distinction with `numOrNull_` and
+exposes `cardSplit` per row. Sums may use `|| 0`; anything that **displays** the
+split must test for null, or history stops being readable.
+
+What this cannot recover: for a single-figure till, the credit-vs-debit **mix**
+does not exist in the data at all. *"Has debit's share grown?"* is answerable up
+to the migration date and no further.
 
 Denormalized columns (staff_id, company, date) make the sales dashboard
 queryable without joining 3 tables. Trade-off: edits to till_session

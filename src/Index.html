@@ -722,6 +722,9 @@
   .ds-top { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; align-items: baseline; }
   .ds-top strong { font-variant-numeric: tabular-nums; }
   .ds-sub { font-size: 11px; color: #6a6e79; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  /* Explains how much of the Card tile carries a credit/debit breakdown, on a
+     range that spans a till moving to a single card figure. */
+  .ds-note { font-size: 11.5px; color: #6a6e79; margin: -4px 0 12px; line-height: 1.45; }
   .day-note { font-size: 11px; color: #92611a; padding: 4px 0; }
 
   /* reconciliation history collapse toggle */
@@ -1781,8 +1784,12 @@
       { weekday: 'long', month: 'long', day: 'numeric' });
 
     // Stash for the close sheet — it needs the expected balance to pre-fill
-    // the reserve field and to decide whether a reason is required.
+    // the reserve field and to decide whether a reason is required, and the
+    // per-till card shape to decide whether to ask for credit and debit or for
+    // one card figure.
     state.lotto = data.lotto || null;
+    state.cardSplit = {};
+    (data.cards || []).forEach(c => { state.cardSplit[c.company] = c.cardSplit !== false; });
 
     let html = '<div class="date-label">' + esc(dateLabel) + '</div>';
     html += '<div class="company-cards">';
@@ -2013,6 +2020,11 @@
     // and only once the sheet has the columns to store it in, so we never
     // collect a count the server would silently drop.
     const hasLotto = company === 'cstore' && !!(state.lotto && state.lotto.enabled);
+    // Does this till split credit from debit, or report one card figure? The
+    // server decides (<company>_card_split) and sends it per card, so nothing
+    // here hardcodes a till name. Default true: an older payload that predates
+    // the field keeps the form it has always had.
+    const cardSplit = !state.cardSplit || state.cardSplit[company] !== false;
     const lottoExpected = state.lotto ? Number(state.lotto.expected) || 500 : 500;
 
     // Where the pot stood when this shift started — what the last close left
@@ -2098,19 +2110,25 @@
                   'aria-label="Switch between takings and payout">+</button>' +
               '</div>'
             : moneyInput('closeCash', '0')) + '</div>' +
-        '<div class="sheet-field"><label>Credit card sales ($)</label>' +
-          moneyInput('closeCredit', '0') + '</div>' +
-        '<div class="sheet-field"><label>Debit card sales ($)</label>' +
-          moneyInput('closeDebit', '0') + '</div>' +
+        (cardSplit
+          ? '<div class="sheet-field"><label>Credit card sales ($)</label>' +
+              moneyInput('closeCredit', '0') + '</div>' +
+            '<div class="sheet-field"><label>Debit card sales ($)</label>' +
+              moneyInput('closeDebit', '0') + '</div>'
+          : '<div class="sheet-field"><label>Card sales ($)</label>' +
+              moneyInput('closeCard', '0') + '</div>') +
         lottoHTML +
         '<details class="misc-block">' +
           '<summary>Misc sales</summary>' +
           '<div class="sheet-field"><label>Misc cash ($)</label>' +
             moneyInput('closeMiscCash', '0') + '</div>' +
-          '<div class="sheet-field"><label>Misc credit ($)</label>' +
-            moneyInput('closeMiscCredit', '0') + '</div>' +
-          '<div class="sheet-field"><label>Misc debit ($)</label>' +
-            moneyInput('closeMiscDebit', '0') + '</div>' +
+          (cardSplit
+            ? '<div class="sheet-field"><label>Misc credit ($)</label>' +
+                moneyInput('closeMiscCredit', '0') + '</div>' +
+              '<div class="sheet-field"><label>Misc debit ($)</label>' +
+                moneyInput('closeMiscDebit', '0') + '</div>'
+            : '<div class="sheet-field"><label>Misc card ($)</label>' +
+                moneyInput('closeMiscCard', '0') + '</div>') +
           '<div class="sheet-field"><label>Misc notes</label>' +
             '<input type="text" id="closeMiscNotes" placeholder="Optional"></div>' +
         '</details>' +
@@ -2342,11 +2360,15 @@
       // there is a pot to fund it — a vape till has no payout mechanism, and
       // the server rejects a negative there.
       { id: 'closeCash', rest: '0', allowNegative: hasLotto },
-      { id: 'closeCredit', rest: '0' },
-      { id: 'closeDebit', rest: '0' },
-      { id: 'closeMiscCash', rest: '0' }, { id: 'closeMiscCredit', rest: '0' },
-      { id: 'closeMiscDebit', rest: '0' }, { id: 'closeCount', rest: '' },
+      { id: 'closeMiscCash', rest: '0' }, { id: 'closeCount', rest: '' },
     ];
+    // Only the fields this till actually rendered.
+    if (cardSplit) {
+      moneyFields.push({ id: 'closeCredit', rest: '0' }, { id: 'closeDebit', rest: '0' },
+        { id: 'closeMiscCredit', rest: '0' }, { id: 'closeMiscDebit', rest: '0' });
+    } else {
+      moneyFields.push({ id: 'closeCard', rest: '0' }, { id: 'closeMiscCard', rest: '0' });
+    }
     if (hasLotto) {
       moneyFields.push({ id: 'closeLotto', rest: String(lottoStart) });
       moneyFields.push({ id: 'closeLottoTopup', rest: '0' });
@@ -2425,14 +2447,20 @@
         const result = await call('rpcCloseShift', state.token, {
           sessionId,
           cashSales: parseFloat($('closeCash').value) || 0,
-          creditCardSales: parseFloat($('closeCredit').value) || 0,
-          debitCardSales: parseFloat($('closeDebit').value) || 0,
+          // One shape only. The server rejects a close carrying both, so an
+          // absent field must be absent — not sent as 0.
+          ...(cardSplit
+            ? { creditCardSales: parseFloat($('closeCredit').value) || 0,
+                debitCardSales: parseFloat($('closeDebit').value) || 0 }
+            : { cardTotalSales: parseFloat($('closeCard').value) || 0 }),
           // Cashback is retired — the field is gone from the form, but the
           // sales column stays for the historical rows that still hold it.
           cashbackPaid: 0,
           miscCashSales: parseFloat($('closeMiscCash').value) || 0,
-          miscCreditSales: parseFloat($('closeMiscCredit').value) || 0,
-          miscDebitSales: parseFloat($('closeMiscDebit').value) || 0,
+          ...(cardSplit
+            ? { miscCreditSales: parseFloat($('closeMiscCredit').value) || 0,
+                miscDebitSales: parseFloat($('closeMiscDebit').value) || 0 }
+            : { miscCardSales: parseFloat($('closeMiscCard').value) || 0 }),
           miscNotes: $('closeMiscNotes').value.trim(),
           physicalCount: counted,
           // The closing balance = pot as counted + anything moved in.
@@ -4814,7 +4842,13 @@
 
   function reconGroupDetail_(r) {
     const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
-    const cloverUnavailable = r.status === 'clover_unavailable';
+    // Branch on whether a measured figure EXISTS, not on the status string. A
+    // till with no Clover by design reports status OK, so a status test would
+    // fall through and render "Credit $0.00 / $1,240.00" in red — the same
+    // wrong number, just relocated.
+    const cardsVerified = r.cloverCard != null;
+    const cloverUnavailable = !cardsVerified && r.status === 'clover_unavailable';
+    const cardSplit = r.cashierCredit != null || r.cashierDebit != null;
     const recorded = Math.round((r.cashCounted - r.cashVariance) * 100) / 100;   // till-recorded cash
     const reported = Math.round(((r.cashSales || 0) + r.cashierCard) * 100) / 100; // total sales (excl float)
 
@@ -4840,10 +4874,15 @@
     if (cloverUnavailable) {
       h += '<div class="recon-line"><span>Cards (cashier)</span><span>' + money(r.cashierCard) +
         ' <small>Clover unavailable</small></span></div>';
+    } else if (!cardsVerified) {
+      h += '<div class="recon-line"><span>Cards</span><span>' + money(r.cashierCard) +
+        ' <small>single total, not verified</small></span></div>';
     } else {
-      h += reconRow_('Credit', r.cloverCredit, r.cashierCredit) +
-           reconRow_('Debit',  r.cloverDebit,  r.cashierDebit) +
-           reconRow_('Total',  r.cloverCard,   r.cashierCard);
+      if (cardSplit) {
+        h += reconRow_('Credit', r.cloverCredit, r.cashierCredit) +
+             reconRow_('Debit',  r.cloverDebit,  r.cashierDebit);
+      }
+      h += reconRow_('Total',  r.cloverCard,   r.cashierCard);
     }
     h += '</div>';
     return h;
@@ -5192,14 +5231,32 @@
     const byDay = {};
     (data.rows || []).forEach(r => { const k = r.date || '—'; (byDay[k] = byDay[k] || []).push(r); });
 
+    // How much of the card total carries a credit/debit breakdown. Silent when
+    // every row has one (nothing to explain) and when none does.
+    const tenderSplitNote_ = (t) => {
+      const split = (t.credit || 0) + (t.debit || 0);
+      if (split <= 0.005) return '';
+      const all = t.cardAll != null ? t.cardAll : split;
+      const partial = split < all - 0.005;
+      return '<div class="ds-note">Of the card total, ' + money(split) +
+        ' is split by type — credit ' + money(t.credit) + ' · debit ' + money(t.debit) +
+        (partial ? '. The rest is reported as one card figure by the till.' : '.') +
+        '</div>';
+    };
     const card = (label, val) =>
       '<div class="sales-total-card"><div class="sales-total-label">' + label +
       '</div><div class="sales-total-amount">' + money(val) + '</div></div>';
 
     // 1. range summary cards
     let html = '<div class="sales-totals">' +
-      card('Total', t.total) + card('Cash', t.cash) + card('Credit', t.credit) +
-      card('Debit', t.debit) + card('Misc', t.misc) + '</div>';
+      card('Total', t.total) + card('Cash', t.cash) +
+      // Card is the tender; credit/debit is a breakdown of it that only some
+      // rows carry. The Card tile is always present and always the sum, so it
+      // never vanishes partway through a range that spans a till migration —
+      // a disappearing tile reads as a business that stopped taking cards.
+      card('Card', t.cardAll != null ? t.cardAll : (t.credit + t.debit)) +
+      card('Misc', t.misc) + '</div>' +
+      tenderSplitNote_(t);
 
     // 2. bar chart — the ONLY per-day totals view, and the day selector.
     //    Each bar is stacked by company so the consolidated view still answers
@@ -5274,8 +5331,13 @@
           html += '<div class="day-sess">' +
             '<div class="ds-top"><span>' + esc((r.company || '').toUpperCase()) + ' · ' + esc(r.staffName || '—') +
               '</span><strong>' + money(r.total) + '</strong></div>' +
-            '<div class="ds-sub"' + miscTitle + '>cash ' + money(r.cash) + ' · cr ' + money(r.credit) +
-              ' · db ' + money(r.debit) + (r.misc ? ' · misc ' + money(r.misc) : '') + '</div>' +
+            // A session is entirely one shape, so no coverage note is needed at
+            // row level — it either split its cards or it didn't.
+            '<div class="ds-sub"' + miscTitle + '>cash ' + money(r.cash) +
+              (r.card != null
+                ? ' · card ' + money(r.card)
+                : ' · cr ' + money(r.credit) + ' · db ' + money(r.debit)) +
+              (r.misc ? ' · misc ' + money(r.misc) : '') + '</div>' +
           '</div>';
         });
       }

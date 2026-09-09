@@ -157,8 +157,12 @@ const PublicReport = (() => {
         cashMeasured: Util.roundMoney(r.cashCounted),
         cashVar: Util.roundMoney(r.cashVariance),
         cardClaimed: Util.roundMoney(r.cashierCard),
-        cardMeasured: Util.roundMoney(r.cloverCard),
-        cardVar: Util.roundMoney(r.cloverCard - r.cashierCard),
+        // OMITTED, not zeroed, when nothing measured the cards. Sending 0 would
+        // publish "claimed $1,240 / measured $0.00 · -$1,240.00" in red on a
+        // link that goes to owners and managers — a total loss, every day,
+        // describing a till that simply isn't on Clover any more.
+        cardMeasured: r.cloverCard == null ? null : Util.roundMoney(r.cloverCard),
+        cardVar: r.cloverCard == null ? null : Util.roundMoney(r.cloverCard - r.cashierCard),
         status: r.status,
       }))
       .sort((a, b) => (a.dateStr < b.dateStr ? 1 : -1));
