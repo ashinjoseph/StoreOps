@@ -2029,15 +2029,12 @@
 
     // Where the pot stood when this shift started — what the last close left
     // behind. Nothing on record means it was never short, so assume full.
-    // lastOpening, not lastCounted: the previous shift counted the pot BEFORE
-    // moving cash into it, so a topped-up pot holds counted + topup. Reading
-    // lastCounted alone understated it by exactly the top-up.
+    //
+    // lastCounted is the pot's CLOSING balance, top-up included, because that
+    // is what the close submits. Adding the top-up to it again would open this
+    // shift above what the pot actually holds.
     const lottoKnown = !!(state.lotto && state.lotto.lastCounted != null);
-    const lottoStart = lottoKnown
-      ? Number(state.lotto.lastOpening != null
-          ? state.lotto.lastOpening
-          : state.lotto.lastCounted)
-      : lottoExpected;
+    const lottoStart = lottoKnown ? Number(state.lotto.lastCounted) : lottoExpected;
 
     // How much a PREVIOUS shift left missing. This — not today's pot count —
     // is what may be moved from the drawer, and it caps the offer.

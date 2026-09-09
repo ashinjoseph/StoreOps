@@ -979,3 +979,31 @@ level.
 
 583 assertions across 25 suites. The three new suites fail 29, 33 and outright
 against the previous commit.
+
+#### Fix: a lotto top-up was counted twice
+
+`lotto_reserve_counted` stores the pot's **closing** balance — the close sheet
+submits `counted + topup` as a single figure. The lotto-payout batch read it as
+the count *before* the top-up and added the top-up on top of it again.
+
+So a $160 move onto a $265 pot stored $425 correctly, and then opened the next
+shift at **$585**. Two consequences, and the second is the worse one:
+
+- the pot looked $160 short against an opening it never had, and demanded a
+  reason for a discrepancy that did not exist
+- `expectedCash` inherited the same $160, so the **drawer read $160 short** on
+  the shift after any top-up — a phantom cash shortfall, on the figure that is
+  now cstore's only remaining control
+
+The stored semantic was right all along; the reader was wrong. `reserveFed` now
+takes the previous closing balance as-is, and `lastOpening` — a field that only
+existed to carry the phantom addition — is gone from `getLottoLog_`, the RPC
+payload and the close sheet.
+
+The `lotto-payout` suite carried an assertion pinning the wrong premise
+("opening balance is counted + topup"). It is replaced by the reported case
+itself — $160 onto a $265 pot, asserting the next shift opens at $425 and the
+drawer reconciles — plus a genuine draw from a topped-up pot, so both directions
+stay covered. Eleven assertions fail against the previous commit.
+
+590 assertions across 25 suites.
