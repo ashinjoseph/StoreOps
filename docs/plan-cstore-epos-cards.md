@@ -257,16 +257,20 @@ missing keys, they don't clear existing ones. That's an operator step (§5).
   has them; always emit the Total row. A `cloverNA` day should show the card total
   as *claimed, unverified* — not as a $0 Clover figure sitting next to it, which
   reads as a total loss.
-- **Sales dashboard totals (~5201):** `Credit`/`Debit`/`Card` tiles render only
-  when non-zero, so a cstore-filtered modern range shows `Card`, a historical
-  range shows `Credit`/`Debit`, and a range spanning the migration shows all
-  three — which is the truth.
-- **Session sub-line (~5277):** same rule for the `cr · db` fragment.
+- **Sales dashboard totals (~5201):** apply the parent/breakdown model in §7.6 —
+  one `Card` tile always, equal to `credit + debit + card_total`; credit/debit as
+  a breakdown beneath it when non-zero, carrying a coverage note when the range
+  spans the migration. **Not** three peer tiles.
+- **Session sub-line (~5277):** each row is one shape, so render `cr · db` or
+  `card`. No coverage note needed at row level.
 
 ### 3.7 `src/PublicSales.html`
 
 - Line ~235 hardcodes `[['Cash', t.cash], ['Credit', t.credit], ['Debit', t.debit], ['Misc', t.misc]]`.
-  Build that array conditionally on non-zero, same as §3.6.
+  Apply the same parent/breakdown model as §3.6 — a `Card` entry always, the split
+  beneath it only when it has something to say. This page is read by people who
+  will not know a till migration happened, so the tiles must make sense without
+  that context.
 - `PublicReport.gs:159` already publishes `cardClaimed` / `cardMeasured` as
   totals — for a `cloverNA` day, `cardMeasured` must be **omitted**, not sent as
   `0`. A public page showing "claimed $1,240 / measured $0" is the worst possible
@@ -480,18 +484,82 @@ Worth revisiting `variance_ok_threshold` (currently 10) and
 `variance_minor_threshold` (30) for cstore specifically, now that they gate the
 only check.
 
-### 7.6 MEDIUM — history gains a discontinuity, and analysis must span it
+### 7.6 MEDIUM — the history discontinuity, and how it is contained
 
-Every range crossing the migration date holds rows of **both shapes**. This
-already bit the earlier weekday and correlation analysis, which read
-`credit_card_sales` / `debit_card_sales` directly.
+**Where it does not exist.** At the **total** level there is no discontinuity at
+all. D1 makes the columns mutually exclusive per row, so
 
-- Dashboard tiles must render the union (§3.6) — that part is planned.
-- **Any analysis script must sum `credit + debit + card_total`**, never assume one
-  shape. Worth a note in `docs/data-model.md`, which currently documents the
-  16-column sales sheet.
-- The migration date is worth recording in `config` (`cstore_epos_from`) so a
-  reader can explain the discontinuity without archaeology.
+```
+total = cash + credit + debit + card_total + misc
+```
+
+is correct on both sides of the migration with **no date logic anywhere**. That
+covers revenue, the daily chart, all four insight cards, the weekday and
+part-of-month splits, commission thresholds, the public headline and every
+reconcile figure — the great majority of the system, and none of it needs to know
+the migration happened.
+
+This is the whole reason D1 rejected writing the total into `credit_card_sales`.
+Under that design the arithmetic would still work, but the split would be a lie,
+and a lie is not something you can later separate back out.
+
+**Where it does exist.** The tender split appears in exactly **three** places, and
+a sweep confirms all three are scalar summaries over a range — **never a time
+series**:
+
+| Surface | Line |
+|---|---|
+| Sales dashboard tender tiles | `Index.html:5201` |
+| Per-session sub-line (`cash · cr · db`) | `Index.html:5277` |
+| Public sales tender tiles | `PublicSales.html:235` |
+
+`buildDaily_` does compute `d.credit` / `d.debit` per day (`Sales.gs:424`), but
+**nothing renders them** — the chart plots `d.total` and `byCompany`. So no
+plotted line collapses to zero on the migration date. Worth knowing, because that
+is the failure everyone expects from a schema change like this and it is not
+present here.
+
+**How the three surfaces are handled.** An earlier draft of §3.6 said "render each
+tile when non-zero". That is arithmetically fine and **presentationally wrong**: a
+range spanning the migration would show `Credit`, `Debit` **and** `Card` as three
+peer tiles, implying a third tender type appeared. The correct model is:
+
+> **Card is the tender. Credit/debit is a breakdown of it that only some rows
+> carry.**
+
+So:
+
+- **One `Card` tile, always** = `credit + debit + card_total`. Continuous across
+  the boundary, never disappears, always comparable period to period.
+- **Credit/debit render as a breakdown beneath it**, not beside it, and only when
+  non-zero. When the range spans the migration the breakdown states its coverage —
+  *"of which $58,000 split credit/debit"* — so a reader can see it explains part
+  of the total rather than assuming it explains all of it.
+- **The per-session sub-line needs no coverage note.** A session is entirely one
+  shape, so each row renders either `cr · db` or `card`. The discontinuity exists
+  between rows, never inside one.
+
+That makes the *display* continuous, not just the arithmetic — which is what
+"addressed" has to mean, or the numbers reconcile while the screen misleads.
+
+**Provenance.** Add `cstore_epos_from` to `config` (the migration date), for three
+reasons: a reader can explain the boundary without archaeology; the coverage note
+above can name it; and any future analysis can split on it deliberately rather
+than inferring from which columns happen to be blank.
+
+**Analysis discipline.** This is the one part no code can enforce. The ad-hoc
+analyses run earlier in this project read `credit_card_sales` and
+`debit_card_sales` straight from the workbook — **those would silently undercount
+every post-migration cstore row.** Any script must sum all three card columns.
+Record it in `docs/data-model.md`, which currently documents the sales sheet at 16
+columns and will be wrong the moment §3.1 lands.
+
+**What remains genuinely lost.** For cstore days after the migration, the
+credit-vs-debit mix is **not recoverable** — the ePOS reports one figure and no
+record of the split exists. Any question of the form *"has debit's share grown?"*
+can be answered up to the migration date and no further. That is a consequence of
+the till change itself, not of this design, and there is no code that recovers it.
+Worth stating so nobody goes looking for it later.
 
 ### 7.7 LOW — the status vocabulary needs one review pass
 
@@ -573,8 +641,17 @@ lands** — that is the house rule and it has caught wrong tests twice.
     required fields from `Index.html` — confirm it fails first).
 13. cstore close sheet renders one card field, no credit/debit ids.
 14. vape close sheet still renders both.
-15. Dashboard tiles: card-only range → no Credit/Debit tiles; historical range →
-    no Card tile; spanning range → all three.
+15. Dashboard tiles, the continuity assertions:
+    - post-migration range → a `Card` tile, no credit/debit breakdown
+    - historical range → a `Card` tile **still present** and equal to
+      credit + debit, with the breakdown beneath it
+    - spanning range → one `Card` tile equal to all three summed, breakdown
+      present with a coverage note. **Assert `Card` is never absent** — a tile
+      that vanishes mid-range is the discontinuity leaking into the UI.
+15a. `total` is identical whether a range sits before, after or across the
+    migration boundary for the same underlying money. This is the assertion that
+    proves D1's mutual exclusivity holds end to end.
+15b. Same for `PublicSales.html` tiles.
 16. `PublicReport` omits `cardMeasured` on a `cloverNA` day rather than sending 0.
 
 **Plausibility check (§7.3, if shipped in this batch)**
