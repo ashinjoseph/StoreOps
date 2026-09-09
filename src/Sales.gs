@@ -15,15 +15,54 @@ const Sales = (() => {
     sales_id: 1, session_id: 2, staff_id: 3, company: 4, date: 5,
     cash_sales: 6, credit_card_sales: 7, debit_card_sales: 8, cashback_paid: 9,
     hst_collected: 10, bottle_deposit: 11, round_off: 12,
-    misc_cash_sales: 13, misc_credit_sales: 14, misc_debit_sales: 15, misc_notes: 16
+    misc_cash_sales: 13, misc_credit_sales: 14, misc_debit_sales: 15, misc_notes: 16,
+    // A till that doesn't split credit from debit reports one figure. These are
+    // mutually exclusive with the credit/debit pair on any given row, so the row
+    // total can sum all of them without double counting.
+    card_total_sales: 17, misc_card_sales: 18
   };
-  const NUM_COLS = 16;
+  const NUM_COLS = 18;
   const DATA_START_ROW = 3;
 
   function sheet_() {
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.SALES);
     if (!sh) throw new Error('sales sheet not found — run First-time Setup');
     return sh;
+  }
+
+  function configValue_(key, defaultValue) {
+    try {
+      const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.CONFIG);
+      if (!sh || sh.getLastRow() < 3) return defaultValue;
+      const data = sh.getRange(3, 1, sh.getLastRow() - 2, 2).getValues();
+      const row = data.find(r => r[0] === key);
+      return row && row[1] !== '' ? row[1] : defaultValue;
+    } catch (e) {
+      return defaultValue;
+    }
+  }
+
+  /**
+   * Does this till report credit and debit separately?
+   *
+   * Config-driven rather than a hardcoded company: cstore moved to ePOS and
+   * reports one card figure, vape still splits, and a third till should need no
+   * code change. Defaults to TRUE, so an install that has never set the key
+   * keeps the behaviour it has always had.
+   */
+  function cardSplitFor_(company) {
+    return String(configValue_(company + '_card_split', 'true'))
+      .trim().toLowerCase() !== 'false';
+  }
+
+  // Blank is not zero on the card columns. A blank credit cell means "this till
+  // reported a single total"; a zero means "it split its cards and took nothing
+  // on credit". Sums use `|| 0`; anything that DISPLAYS the split must test for
+  // null, or the two become indistinguishable and history stops being readable.
+  function numOrNull_(v) {
+    if (v === '' || v === null || v === undefined) return null;
+    const n = Number(v);
+    return isNaN(n) ? null : n;
   }
 
   function rowToRecord_(row, rowIndex) {
@@ -34,16 +73,23 @@ const Sales = (() => {
       company:          (row[COL.company - 1] || '').toString().trim(),
       date:             row[COL.date - 1] instanceof Date ? row[COL.date - 1] : null,
       cashSales:        Number(row[COL.cash_sales - 1]) || 0,
-      creditCardSales:  Number(row[COL.credit_card_sales - 1]) || 0,
-      debitCardSales:   Number(row[COL.debit_card_sales - 1]) || 0,
+      creditCardSales:  numOrNull_(row[COL.credit_card_sales - 1]),
+      debitCardSales:   numOrNull_(row[COL.debit_card_sales - 1]),
       cashbackPaid:     Number(row[COL.cashback_paid - 1]) || 0,
       hstCollected:     Number(row[COL.hst_collected - 1]) || 0,
       bottleDeposit:    Number(row[COL.bottle_deposit - 1]) || 0,
       roundOff:         Number(row[COL.round_off - 1]) || 0,
       miscCashSales:    Number(row[COL.misc_cash_sales - 1]) || 0,
-      miscCreditSales:  Number(row[COL.misc_credit_sales - 1]) || 0,
-      miscDebitSales:   Number(row[COL.misc_debit_sales - 1]) || 0,
+      miscCreditSales:  numOrNull_(row[COL.misc_credit_sales - 1]),
+      miscDebitSales:   numOrNull_(row[COL.misc_debit_sales - 1]),
       miscNotes:        (row[COL.misc_notes - 1] || '').toString(),
+      cardTotalSales:   numOrNull_(row[COL.card_total_sales - 1]),
+      miscCardSales:    numOrNull_(row[COL.misc_card_sales - 1]),
+      // True when this row carries a credit/debit breakdown. Derived from the
+      // row itself, not from today's config — the same till reports both shapes
+      // across a migration boundary, so the config cannot answer for history.
+      cardSplit:        numOrNull_(row[COL.credit_card_sales - 1]) !== null
+                        || numOrNull_(row[COL.debit_card_sales - 1]) !== null,
       _rowIndex:        rowIndex,
     };
   }
@@ -105,6 +151,10 @@ const Sales = (() => {
       ? Util.parseDate(Util.formatDate(input.date))
       : Util.parseDate(input.date);
 
+    // Which card shape did the caller send? Presence, not config — a close
+    // replayed for an older date must keep the shape it was recorded with.
+    const split = input.cardTotalSales == null && input.miscCardSales == null;
+
     const values = [
       input.sessionId,            // sales_id = session_id
       input.sessionId,
@@ -112,16 +162,21 @@ const Sales = (() => {
       input.company,
       dateMidnight,
       Util.roundMoney(input.cashSales || 0),
-      Util.roundMoney(input.creditCardSales || 0),
-      Util.roundMoney(input.debitCardSales || 0),
+      // Whichever card shape this till did NOT report is written blank, never
+      // zero — see numOrNull_. `split` is decided by what the caller actually
+      // sent, so a row written before a till migrated keeps its own shape.
+      split ? Util.roundMoney(input.creditCardSales || 0) : '',
+      split ? Util.roundMoney(input.debitCardSales || 0) : '',
       Util.roundMoney(input.cashbackPaid || 0),
       Util.roundMoney(input.hstCollected || 0),
       Util.roundMoney(input.bottleDeposit || 0),
       Util.roundMoney(input.roundOff || 0),
       Util.roundMoney(input.miscCashSales || 0),
-      Util.roundMoney(input.miscCreditSales || 0),
-      Util.roundMoney(input.miscDebitSales || 0),
-      input.miscNotes || ''
+      split ? Util.roundMoney(input.miscCreditSales || 0) : '',
+      split ? Util.roundMoney(input.miscDebitSales || 0) : '',
+      input.miscNotes || '',
+      split ? '' : Util.roundMoney(input.cardTotalSales || 0),
+      split ? '' : Util.roundMoney(input.miscCardSales || 0)
     ];
 
     const existing = getForSession_(input.sessionId);
@@ -164,14 +219,20 @@ const Sales = (() => {
   }
 
   /**
-   * Total revenue across cash + credit + debit (excluding cashback).
-   * Used by commission engine.
+   * Total revenue across cash + cards (excluding cashback).
+   * Used by the commission engine.
+   *
+   * Sums BOTH card shapes. They are mutually exclusive per row, so this is
+   * correct on either side of a till migration with no date logic — which is
+   * what keeps every total continuous across the boundary.
    */
   function totalForRow_(row) {
     if (!row) return 0;
     return Util.roundMoney(
       (row.cashSales || 0) + (row.creditCardSales || 0) + (row.debitCardSales || 0) +
-      (row.miscCashSales || 0) + (row.miscCreditSales || 0) + (row.miscDebitSales || 0)
+      (row.cardTotalSales || 0) +
+      (row.miscCashSales || 0) + (row.miscCreditSales || 0) + (row.miscDebitSales || 0) +
+      (row.miscCardSales || 0)
     );
   }
 
@@ -201,7 +262,9 @@ const Sales = (() => {
       map[key].total += totalForRow_(r);
       map[key].cashTotal += (r.cashSales || 0) + (r.miscCashSales || 0);
       map[key].cardTotal += (r.creditCardSales || 0) + (r.debitCardSales || 0)
-                         + (r.miscCreditSales || 0) + (r.miscDebitSales || 0);
+                         + (r.cardTotalSales || 0)
+                         + (r.miscCreditSales || 0) + (r.miscDebitSales || 0)
+                         + (r.miscCardSales || 0);
       map[key].cashbackTotal += r.cashbackPaid || 0;
       map[key].sessionCount += 1;
     });
@@ -415,7 +478,7 @@ const Sales = (() => {
       if (!d) {
         d = map[key] = {
           dateStr: key, dateMs: r.date ? r.date.getTime() : 0,
-          cash: 0, credit: 0, debit: 0, misc: 0, total: 0, sessionCount: 0,
+          cash: 0, credit: 0, debit: 0, card: 0, misc: 0, total: 0, sessionCount: 0,
           byCompany: {},
         };
       }
@@ -423,7 +486,9 @@ const Sales = (() => {
       d.cash   += r.cashSales || 0;
       d.credit += r.creditCardSales || 0;
       d.debit  += r.debitCardSales || 0;
-      d.misc   += (r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0);
+      d.card   += r.cardTotalSales || 0;
+      d.misc   += (r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0)
+                + (r.miscCardSales || 0);
       d.sessionCount++;
       // A blank company still belongs to the day's total, so it needs a bucket
       // — otherwise the stacked segments quietly sum to less than their bar and
@@ -434,8 +499,8 @@ const Sales = (() => {
     });
     return Object.keys(map).map(k => {
       const d = map[k];
-      d.total = Util.roundMoney(d.cash + d.credit + d.debit + d.misc);
-      ['cash', 'credit', 'debit', 'misc'].forEach(x => { d[x] = Util.roundMoney(d[x]); });
+      d.total = Util.roundMoney(d.cash + d.credit + d.debit + d.card + d.misc);
+      ['cash', 'credit', 'debit', 'card', 'misc'].forEach(x => { d[x] = Util.roundMoney(d[x]); });
       Object.keys(d.byCompany).forEach(c => { d.byCompany[c] = Util.roundMoney(d.byCompany[c]); });
       return d;
     }).sort((a, b) => a.dateMs - b.dateMs);
@@ -517,19 +582,29 @@ const Sales = (() => {
     // Sort newest first
     rows.sort((a, b) => b.date - a.date);
 
+    // `cardAll` is the tender; `credit`/`debit` are a breakdown of it that only
+    // some rows carry. A range spanning a till migration holds both shapes, so
+    // the tender figure has to be the sum — otherwise the card line would
+    // collapse at the boundary and read as a business that stopped taking cards.
+    // `splitRows` lets the UI say how much of `cardAll` the breakdown explains.
     const totals = {
-      cash: 0, credit: 0, debit: 0, misc: 0, total: 0,
+      cash: 0, credit: 0, debit: 0, card: 0, cardAll: 0, misc: 0, total: 0,
       cashback: 0, sessionCount: rows.length,
+      splitRows: 0, totalRows: 0,
     };
     rows.forEach(r => {
       totals.cash   += r.cashSales || 0;
       totals.credit += r.creditCardSales || 0;
       totals.debit  += r.debitCardSales || 0;
-      totals.misc   += (r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0);
+      totals.card   += r.cardTotalSales || 0;
+      totals.misc   += (r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0)
+                     + (r.miscCardSales || 0);
       totals.cashback += r.cashbackPaid || 0;
+      if (r.cardSplit) totals.splitRows++; else totals.totalRows++;
     });
-    totals.total = totals.cash + totals.credit + totals.debit + totals.misc;
-    ['cash','credit','debit','misc','total','cashback'].forEach(k => {
+    totals.cardAll = totals.credit + totals.debit + totals.card;
+    totals.total = totals.cash + totals.credit + totals.debit + totals.card + totals.misc;
+    ['cash','credit','debit','card','cardAll','misc','total','cashback'].forEach(k => {
       totals[k] = Util.roundMoney(totals[k]);
     });
 
@@ -567,9 +642,14 @@ const Sales = (() => {
         company: r.company,
         date: r.date ? Util.formatDate(r.date) : null,
         cash: Util.roundMoney(r.cashSales || 0),
-        credit: Util.roundMoney(r.creditCardSales || 0),
-        debit: Util.roundMoney(r.debitCardSales || 0),
-        misc: Util.roundMoney((r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0)),
+        // A session is entirely one shape, so the row carries either the split
+        // or the single figure — never both, and no coverage note is needed at
+        // row level. null (not 0) is what tells the UI which it is.
+        credit: r.cardSplit ? Util.roundMoney(r.creditCardSales || 0) : null,
+        debit: r.cardSplit ? Util.roundMoney(r.debitCardSales || 0) : null,
+        card: r.cardSplit ? null : Util.roundMoney(r.cardTotalSales || 0),
+        misc: Util.roundMoney((r.miscCashSales || 0) + (r.miscCreditSales || 0) + (r.miscDebitSales || 0)
+                            + (r.miscCardSales || 0)),
         cashback: r.cashbackPaid || 0,
         total: totalForRow_(r),
         miscNotes: r.miscNotes,
@@ -608,5 +688,6 @@ const Sales = (() => {
     totalForRow:             totalForRow_,
     aggregateByStaffCompany: aggregateByStaffCompany_,
     getDashboard:            getDashboard_,
+    cardSplitFor:            cardSplitFor_,
   };
 })();

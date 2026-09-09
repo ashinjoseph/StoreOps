@@ -276,7 +276,15 @@ function _rpcGetMyShiftState(token) {
       };
     }
 
-    return { company, state, authorized, expectedFloat: expectedFloat || 0, detail };
+    // cardSplit decides whether the close sheet asks for credit and debit or
+    // for one card figure. Sent per company so the client never hardcodes a
+    // till name, and so a third till needs no client change.
+    return {
+      company, state, authorized,
+      expectedFloat: expectedFloat || 0,
+      cardSplit: Sales.cardSplitFor(company),
+      detail,
+    };
   });
 
   // Today summary (only meaningful if attendance row exists)
@@ -419,12 +427,17 @@ function rpcCloseShift(token, input) {
     const result = TillSessions.close({
       sessionId:     input.sessionId,
       cashSales:     Number(input.cashSales) || 0,
-      creditCard:    Number(input.creditCardSales) || 0,
-      debitCard:     Number(input.debitCardSales) || 0,
+      // null, not 0, when the client didn't send it: TillSessions decides the
+      // row's card shape from which fields are PRESENT, so coercing an absent
+      // field to 0 here would make every close look like a credit/debit split.
+      creditCard:    num_(input.creditCardSales),
+      debitCard:     num_(input.debitCardSales),
       cashback:      Number(input.cashbackPaid) || 0,
       miscCash:      Number(input.miscCashSales) || 0,
-      miscCredit:    Number(input.miscCreditSales) || 0,
-      miscDebit:     Number(input.miscDebitSales) || 0,
+      miscCredit:    num_(input.miscCreditSales),
+      miscDebit:     num_(input.miscDebitSales),
+      cardTotal:     num_(input.cardTotalSales),
+      miscCard:      num_(input.miscCardSales),
       miscNotes:     input.miscNotes || '',
       physicalCount: Number(input.physicalCount),
       // Lotto reserve — cstore only; null means "the UI didn't ask", which
@@ -756,6 +769,11 @@ function rpcGetSalesDashboard(token, filters) {
 }
 
 // ── Clover reconciliation ─────────────────────────────────
+
+/** Absent stays absent. Only a value the client actually sent becomes a number. */
+function num_(v) {
+  return (v === null || v === undefined || v === '') ? null : (Number(v) || 0);
+}
 
 /**
  * Reconcile today's cashier-entered card totals against Clover.

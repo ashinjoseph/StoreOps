@@ -1,30 +1,47 @@
-# WhatsApp template — `shift_close_v2`
+# WhatsApp templates — one close message per till
 
-The reconcile message the app sends at end of day. Submit this at Meta
-(WhatsApp Manager → Message templates → Create), then put the approved
-**name** into the `whatsapp_template_shift_close` row of the `config` tab.
+**`shift_close_v2` is superseded.** It served both tills, and they no longer take
+the same shape of message:
 
-Replaces the previous nine-parameter template. Those nine crammed the cash
-destination, the reserve and the variance into a single parameter, because
-there was no room for more — which produced the one line nobody could read.
-Thirteen parameters now carry one fact each, and the template owns the layout.
+- **cstore** moved to an ePOS. It reports **one card figure** and takes **no
+  Clover payments**, so there is nothing to reconcile the cards against. Its
+  message reports cards as information and checks cash only.
+- **vape** is unchanged — Clover connected, credit and debit reported
+  separately, and no lotto pot, so the reserve line it has always carried said
+  *"not tracked on this till"* every single day.
+
+So there are now two templates: **`shift_close_cstore`** (11 parameters) and
+**`shift_close_vape`** (12). Both need submitting to Meta. Until each is approved
+and its config key is set, **both tills keep using `shift_close_v2` exactly as
+today** — the rollout is safe in any order, and safe half-done.
+
+## Config
+
+| Key | Value |
+|---|---|
+| `whatsapp_template_shift_close_cstore` | `shift_close_cstore` once approved |
+| `whatsapp_template_shift_close_vape` | `shift_close_vape` once approved |
+| `whatsapp_template_shift_close` | keep `shift_close_v2` — the fallback |
+
+`Reconcile.sendNotifications_` sends one message per merchant group and picks the
+op key per group, so a single-company group with its key set uses its own
+template and anything else falls back. Nothing breaks while only one is live.
+
+> **`card_variance_threshold` is `20` in production**, not the `$1` an earlier
+> version of this document claimed. It now applies to **vape only** — cstore has
+> no card comparison to threshold.
 
 ---
 
-## Submission fields
+# `shift_close_cstore` — 11 parameters
 
 | Field | Value |
 |---|---|
-| **Name** | `shift_close_v2` |
+| **Name** | `shift_close_cstore` |
 | **Category** | Utility |
 | **Language** | English (`en`) |
-| **Header** | none |
-| **Footer** | none |
-| **Buttons** | one **URL** button — see below |
-
-Create it as a **new template** rather than editing the live nine-parameter
-one. A new name means the old template keeps sending until the new one is
-approved, and the switch is one config edit with no window where neither works.
+| **Header / Footer** | none |
+| **Buttons** | one URL button — see below |
 
 ## Body
 
@@ -49,17 +66,130 @@ approved, and the switch is one config edit with no window where neither works.
 🎟 Lotto reserve
 {{9}}
 
-💳 Cards · cashier / Clover
-Credit {{10}}
-Debit {{11}}
-Total {{12}}
+💳 Cards
+{{10}}
 
-Result: {{13}}
+Result: {{11}}
 
 StoreOps · automated
 ```
 
-## Button
+## Sample values
+
+| # | Sample | What it is |
+|---|---|---|
+| 1 | `Wed 9 Sep 2026` | Date |
+| 2 | `cstore` | Till |
+| 3 | `09:00–21:20` | First open to last close |
+| 4 | `Blesson, Abijith` | Who worked |
+| 5 | `$1842.00 — cash $602.00 · card $1240.00` | Revenue, split by tender |
+| 6 | `$852.00 / $852.00 (var +$0.00) ✅` | Cash recorded vs counted |
+| 7 | `float $250.00 back · reserve $300.00 · $302.00 in hand` | Where the cash went |
+| 8 | `Blesson $1240.00 · Abijith $640.00` | Who is holding cash |
+| 9 | `$500.00 (+$300.00 moved in)` | Lotto pot balance and movement |
+| 10 | `$1240.00 — single total, not independently verified` | Cards, from the ePOS |
+| 11 | `✅ Cash matched` | Overall result |
+
+## Why `{{5}}` carries no variance
+
+It used to compare what the cashier typed against `(cash counted − float) +
+Clover card total`. Both sides carried a card term and they cancelled when the
+cards agreed. **Remove Clover and only the reported side keeps its card term**, so
+a perfectly clean day would report a variance equal to the whole card take —
+roughly half of cstore revenue, on the line people read first.
+
+Rebuilding it as a cash-only cross-check was rejected too: that just restates
+`{{6}}`, which is now this till's only verdict, and two lines reporting one
+variance is what made the old nine-parameter message unreadable. So `{{5}}` is
+**descriptive** — full revenue, split by tender, no mark.
+
+## Why `{{11}}` says "Cash matched"
+
+*"All matched"* would claim a card check that no longer runs. The status is
+derived from cash variance alone; `card_variance_threshold` is never read for
+this till.
+
+## What is no longer checked
+
+The card figure is typed by a cashier and verified by nothing — roughly half of
+cstore revenue moved from verified to asserted when Clover was switched off. That
+is a consequence of the till migration, not of this template. The realistic
+restorations are a plausibility check against the trailing median, a weekly
+comparison against card settlement, or an ePOS export.
+
+---
+
+# `shift_close_vape` — 12 parameters
+
+`shift_close_v2` with the lotto line removed. Everything else keeps its wording
+and behaviour, including the genuine Clover cross-check and the
+`⚠️ Clover unavailable` warning when the API is actually unreachable.
+
+| Field | Value |
+|---|---|
+| **Name** | `shift_close_vape` |
+| **Category** | Utility |
+| **Language** | English (`en`) |
+| **Header / Footer** | none |
+| **Buttons** | one URL button — see below |
+
+## Body
+
+```
+🧾 Shift Reconciliation
+📅 {{1}}
+
+🏪 {{2}}
+⏰ {{3}}
+👤 {{4}}
+
+Σ Total sales
+{{5}}
+
+💵 Cash · recorded / counted
+{{6}}
+↳ {{7}}
+
+🤝 Cash in hand
+{{8}}
+
+💳 Cards · cashier / Clover
+Credit {{9}}
+Debit {{10}}
+Total {{11}}
+
+Result: {{12}}
+
+StoreOps · automated
+```
+
+## Sample values
+
+| # | Sample |
+|---|---|
+| 1 | `Wed 9 Sep 2026` |
+| 2 | `vape` |
+| 3 | `09:00–21:20` |
+| 4 | `Ashin` |
+| 5 | `reported $651.00 / counted $651.00 (var +$0.00) ✅` |
+| 6 | `$950.00 / $950.00 (var +$0.00) ✅` |
+| 7 | `float $60.00 back · $890.00 in hand` |
+| 8 | `Ashin $1240.00` |
+| 9 | `$1.00 / $1.00 (var +$0.00) ✅` |
+| 10 | `$50.00 / $50.00 (var +$0.00) ✅` |
+| 11 | `$51.00 / $51.00 (var +$0.00) ✅` |
+| 12 | `✅ All matched` |
+
+## Why the lotto line went
+
+Only cstore sells lotto. `{{9}}` printed *"not tracked on this till"* on every
+vape message since the parameter existed — a whole line saying nothing, on a
+message people skim. `reconParams_` appends the reserve parameter only where a
+pot exists, so a third till that does sell lotto would get it back automatically.
+
+---
+
+# The button (both templates)
 
 Add a single **Visit website** button:
 
@@ -69,7 +199,7 @@ Add a single **Visit website** button:
 | Button text | `View sales dashboard` |
 | URL | the deployed web app URL + `?v=sales` |
 
-For the current primary deployment (`AKfycbyaRT5Gi…`), paste this verbatim:
+For the current primary deployment, paste this verbatim:
 
 ```
 https://script.google.com/macros/s/AKfycbyaRT5Gi2aepnsrafOwn-bErrmDawFXvhsB-pSkgb5E2PPfoOLyNQIRL9zx8lgP1wIe/exec?v=sales
@@ -77,87 +207,45 @@ https://script.google.com/macros/s/AKfycbyaRT5Gi2aepnsrafOwn-bErrmDawFXvhsB-pSkg
 
 **The link points at sales, not the reconciliation.** The people on this thread
 are owners and managers, and the message already carries the reconciliation
-itself — a second copy behind a tap adds nothing, while how trade is going is
-the thing they cannot see anywhere else. The reconcile report still exists at
-`?v=recon` for whoever wants it; only the link changed.
+itself. The reconcile report still exists at `?v=recon`.
 
 The sales view publishes **aggregates only** — totals, the daily chart split by
-till, and the four insight cards. No session rows, no cashier names. That is
-deliberate: the reconcile report names staff against cash amounts, which is a
-reasonable thing to send to five known numbers and an unreasonable thing to
-leave on a URL that can be forwarded onward and cannot be rotated.
+till, and the insight cards. No session rows, no cashier names. The reconcile
+report names staff against cash amounts, which is reasonable to send to five
+known numbers and unreasonable to leave on a forwardable URL.
 
-It opens the read-only sales dashboard: revenue for the last 60 days, the daily
-chart stacked by till, and the trend, weekday, part-of-month and cash-share
-cards — no login.
+**Static, not dynamic.** A static URL is baked into the approved template, so the
+send carries no button component and the parameter count stays as documented. A
+link sent as text would need an extra parameter and a second approval round.
 
-**Check this is still the live deployment before submitting.** The URL is baked
-into the approved template, and a web app deployed to a different script project
-gets a different URL — which is exactly what happened at the cutover, when the
-primary moved to a copy of the original prod workbook. Submitting a stale URL
-costs a second approval round.
-
-**Static, not dynamic — this matters.** A static URL is baked into the approved
-template, so the send carries no button component and the body stays at 13
-parameters. Had the link gone in as text it would have needed a 14th parameter
-and a second approval round. Nothing in `Notifier.sendTemplate_` changes.
-
-The plain-text fallback (when no template is configured) appends the same URL
-as a line instead, since plain messages have no buttons.
-
-Set `public_report_url` in the `config` tab to the `/exec` URL — the code adds
-`?v=sales` itself. Leave it blank and no link is sent at all, rather than a dead
-one.
+Set `public_report_url` in `config` to the `/exec` URL — the code appends
+`?v=sales` itself. Blank means no link is sent, rather than a dead one.
 
 > The report needs the deployment set to **Execute as: Me** and **Who has
-> access: Anyone**. That is a console setting, not code, and the link 404s
-> until it is set.
+> access: Anyone**. That is a console setting, not code.
 
-## Sample values
+---
 
-Meta requires one sample per variable before it will accept the template.
-These are real outputs from the reconcile harness, so what you paste in is
-what the message actually looks like.
+# Rollout
 
-| # | Sample | What it is |
-|---|---|---|
-| 1 | `Sat 15 Aug 2026` | Date |
-| 2 | `cstore + vape` | Tills in this Clover merchant group |
-| 3 | `09:00–21:20` | First open to last close |
-| 4 | `Ashin, Meera` | Who worked |
-| 5 | `reported $651.00 / counted $651.00 (var +$0.00) ✅` | Sales claimed vs drawer + Clover |
-| 6 | `$950.00 / $950.00 (var +$0.00) ✅` | Cash recorded vs counted |
-| 7 | `float $350.00 back · reserve $300.00 · $300.00 in hand` | Where the counted cash went |
-| 8 | `Ashin $1240.00 · Meera $640.00` | Who is holding cash, by name |
-| 9 | `$500.00 (+$300.00 moved in)` | Lotto pot balance and movement |
-| 10 | `$1.00 / $1.00 (var +$0.00) ✅` | Credit, cashier vs Clover |
-| 11 | `$50.00 / $50.00 (var +$0.00) ✅` | Debit, cashier vs Clover |
-| 12 | `$51.00 / $51.00 (var +$0.00) ✅` | Card total |
-| 13 | `✅ All matched` | Overall result |
+1. Submit both templates. Utility templates usually approve in minutes.
+2. As each is approved, set its config key. Order does not matter; an unset key
+   falls back to `shift_close_v2`.
+3. Close one cstore shift and one vape shift and read both messages.
 
-## What each parameter says on a bad day
+**A wrong parameter count fails silently.** Meta returns `http_400`,
+`Notifier.dispatch_` uses `muteHttpExceptions`, and the reconciliation still runs
+and still writes its row — you lose the message for that day, not the data, and
+nothing throws. The `epos-recon` suite asserts the count per shape for exactly
+this reason.
 
-The values change shape with the situation — the template does not.
+# Reference — how the figures are worked out
 
-| # | Good day | Something to look at |
-|---|---|---|
-| 5 | `reported $651.00 / counted $651.00 (var +$0.00) ✅` | `reported $651.00 (no Clover)` |
-| 6 | `$950.00 / $950.00 (var +$0.00) ✅` | `$950.00 / $910.00 (var -$40.00) ⚠️` |
-| 7 | `float $250.00 back · $400.00 in hand` | `float $250.00 back · reserve $300.00 · $100.00 in hand` |
-| 8 | `nobody is holding cash` | `Ashin $1240.00 · Meera $640.00 · ⚠️ 1 shift held over the limit` |
-| 9 | `$500.00` | `$200.00 - short $300.00 - 400 paid` |
-| 13 | `✅ All matched` | `⚠️ cash short $40.00 · cards off $12.00` |
+## How the total-sales, card-total and result figures are worked out
 
-Parameter 9 reads `not tracked on this till` for a vape-only day, or on a
-spreadsheet that hasn't run the lotto migration. A fixed template can't drop
-a section, so it says so rather than sending a bare dash.
-
-Parameter 8 always names people. A total with a headcount — *"$1240 out with
-2 people"* — says there is something to chase without saying who to chase,
-which is the half that makes it actionable. Where the cash handling tables
-aren't set up yet it falls back to today's takings, marked `(today)`.
-
-## How {{5}}, {{12}} and {{13}} are worked out
+> Parameter numbers below refer to the retired 13-parameter `shift_close_v2`.
+> The arithmetic is unchanged for vape; for cstore the total-sales line is now
+> descriptive and the result covers cash only.
 
 **{{5}} Total sales** compares what the cashier *said* against what can be
 *measured*:

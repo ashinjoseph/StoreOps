@@ -319,6 +319,7 @@ const TillSessions = (() => {
    * @param input { sessionId, actorId,
    *                cashSales, creditCard, debitCard, cashback,
    *                miscCash, miscCredit, miscDebit, miscNotes,
+   *                cardTotal?, miscCard?,   (tills that don't split cards)
    *                physicalCount, hstCollected?, bottleDeposit?, roundOff?,
    *                lottoCounted?, lottoTopupFromTill?, lottoNote?,
    *                notes? }
@@ -404,6 +405,20 @@ const TillSessions = (() => {
       ? Util.roundMoney((prevReserve.counted + prevReserve.topup) - lottoCounted)
       : 0;
 
+    // A till either splits its cards or reports one total — never both. Getting
+    // both means the client and <company>_card_split disagree, and silently
+    // trusting either half would write a row whose card figures cannot be
+    // reconciled with each other afterwards.
+    const sentSplit = input.creditCard != null || input.debitCard != null
+                   || input.miscCredit != null || input.miscDebit != null;
+    const sentTotal = input.cardTotal != null || input.miscCard != null;
+    if (sentSplit && sentTotal) {
+      throw new Error(
+        'Close for ' + session.company + ' sent both a credit/debit split and a ' +
+        'single card total. Send one shape — check ' + session.company + '_card_split.'
+      );
+    }
+
     // Build sales payload
     const salesInput = {
       sessionId: session.sessionId,
@@ -422,6 +437,16 @@ const TillSessions = (() => {
       miscDebitSales:   Number(input.miscDebit) || 0,
       miscNotes:        input.miscNotes || '',
     };
+    // Pass the single-total shape through as null-or-number, never 0 — Sales.write_
+    // decides the row's shape from whether these are present at all.
+    if (sentTotal) {
+      salesInput.cardTotalSales = Number(input.cardTotal) || 0;
+      salesInput.miscCardSales  = Number(input.miscCard) || 0;
+      salesInput.creditCardSales = 0;
+      salesInput.debitCardSales  = 0;
+      salesInput.miscCreditSales = 0;
+      salesInput.miscDebitSales  = 0;
+    }
 
     // A negative cash_sales figure means payouts exceeded takings for the
     // shift — only meaningful where there is a lotto pot to explain it. On a

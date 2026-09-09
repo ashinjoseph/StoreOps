@@ -230,14 +230,34 @@ function chart(daily, companies) {
     }) +
   '</div></section>';
 
-  // Tender mix
+  // Tender mix.
+  //
+  // Card is the tender; credit and debit are a breakdown of it that only some
+  // rows carry, because a till that moved to ePOS reports one figure. So the
+  // Card tile is ALWAYS present and always the sum — a tile that vanished
+  // partway through a range would read as a business that stopped taking cards
+  // — and the breakdown appears beneath it only when it has something to say.
+  // Readers of this page have no idea a till migration happened; the tiles have
+  // to make sense without that context.
+  var tiles = [['Cash', t.cash], ['Card', t.cardAll]];
+  if (t.misc) tiles.push(['Misc', t.misc]);
   html += '<section><div class="sec-title">By tender</div><div class="tiles">' +
-    [['Cash', t.cash], ['Credit', t.credit], ['Debit', t.debit], ['Misc', t.misc]]
-      .map(function (x) {
-        return '<div class="tile"><div class="k">' + x[0] + '</div>' +
-          '<div class="v">' + money(x[1]) + '</div></div>';
-      }).join('') +
-  '</div></section>';
+    tiles.map(function (x) {
+      return '<div class="tile"><div class="k">' + esc(x[0]) + '</div>' +
+        '<div class="v">' + money(x[1]) + '</div></div>';
+    }).join('') +
+  '</div>';
+  if (t.credit || t.debit) {
+    var split = t.credit + t.debit;
+    html += '<div class="note">Of the card total, ' + money(split) +
+      ' is recorded split by type — credit ' + money(t.credit) +
+      ' · debit ' + money(t.debit) +
+      (split < t.cardAll - 0.005
+        ? '. The rest is reported as a single card figure by the till.'
+        : '.') +
+      '</div>';
+  }
+  html += '</section>';
 
   // Daily
   html += '<section><div class="sec-title">Day by day' +

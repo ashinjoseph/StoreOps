@@ -82,6 +82,7 @@ function onOpen() {
     .addItem('🛒 Add product_id to shopping_list', 'menu_migrateShoppingListProductId')
     .addItem('🎟️ Add lotto reserve to till_sessions', 'menu_migrateTillSessionsLottoReserve')
     .addItem('💵 Add cash handling tables',          'menu_migrateCashHandling')
+    .addItem('💳 Add card total to sales',           'menu_migrateSalesCardTotal')
     .addItem('🔑 Sync config keys',                 'menu_syncConfigKeys')
     .addSeparator()
     .addItem('⚠️ Reset Data (keeps schema)',         'resetDataTables')
@@ -394,7 +395,12 @@ function configDefaults_() {
     ['clover_cstore_token',          '',               'Clover API token (Bearer) for cstore'],
     ['clover_vape_merchant_id',      '',               'Clover merchant ID for vape (same as cstore = one shared account)'],
     ['clover_vape_token',            '',               'Clover API token (Bearer) for vape'],
-    ['card_variance_threshold',      '1',              'Card credit/debit/total mismatch under this = OK (dollars)'],
+    ['card_variance_threshold',      '1',              'Card mismatch under this = OK (dollars). Only tills with card_split AND Clover are checked'],
+    ['cstore_card_split',            'false',          'cstore till reports ONE card total (ePOS) — no credit/debit split'],
+    ['vape_card_split',              'true',           'vape till reports credit and debit separately'],
+    ['cstore_epos_from',             '',               'Date cstore moved to ePOS (yyyy-MM-dd). Marks where the credit/debit split stops — reporting only'],
+    ['whatsapp_template_shift_close_cstore', '',       'Close template for cstore. Blank = fall back to whatsapp_template_shift_close'],
+    ['whatsapp_template_shift_close_vape',   '',       'Close template for vape. Blank = fall back to whatsapp_template_shift_close'],
     ['cash_manager_staff_id',        '',               'Staff who holds the business cash; shift takings are handed over to them. Blank = cash handling not configured'],
     ['cash_handover_stale_days',     '7',              'Flag cash still out with a cashier after this many days'],
     ['public_report_url',            '',               'Deployed web app /exec URL. The reconcile message links to <url>?v=recon (7-day read-only report, no login). Blank = no link sent'],
@@ -597,12 +603,17 @@ function setupSalesSheet_() {
   if (ss.getSheetByName(SHEETS.SALES)) return;
   const sh = ss.insertSheet(SHEETS.SALES);
 
-  writeHeader_(sh, '🛒  Sales — by tender, per till session', 16);
+  writeHeader_(sh, '🛒  Sales — by tender, per till session', 18);
+  // card_total_sales / misc_card_sales carry the single figure a till reports
+  // when it does not split credit from debit (see <company>_card_split). They
+  // are mutually exclusive with the credit/debit pair on any given row, so the
+  // row total sums all of them without double counting.
   writeColumnHeaders_(sh, [
     'sales_id', 'session_id', 'staff_id', 'company', 'date',
     'cash_sales', 'credit_card_sales', 'debit_card_sales', 'cashback_paid',
     'hst_collected', 'bottle_deposit', 'round_off',
-    'misc_cash_sales', 'misc_credit_sales', 'misc_debit_sales', 'misc_notes'
+    'misc_cash_sales', 'misc_credit_sales', 'misc_debit_sales', 'misc_notes',
+    'card_total_sales', 'misc_card_sales'
   ]);
 
   applyEnumValidation_(sh, 4, COMPANIES);
@@ -1204,6 +1215,38 @@ function menu_migrateTillSessionsLottoReserve() {
   sh.setColumnWidth(20, 130);
   sh.setColumnWidth(21, 220);
   ui.alert('Added lotto reserve columns at 19-21. Existing rows are unchanged.' + configNote);
+}
+
+// One-shot migration: append the two card-total columns (17-18) to an EXISTING
+// sales sheet. Mirrors menu_migrateTillSessionsLottoReserve — guard on the
+// header so a second run is harmless, and sync the config keys from here so the
+// one click that adds the columns also lands the switches that use them.
+function menu_migrateSalesCardTotal() {
+  const ui = SpreadsheetApp.getUi();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.SALES);
+  if (!sh) { ui.alert('sales not found — run First-time Setup first.'); return; }
+  const headers = sh.getRange(2, 1, 1, Math.max(sh.getLastColumn(), 18)).getValues()[0];
+  let configNote = '';
+  try {
+    const synced = syncConfigKeys_();
+    if (synced.added.length) configNote = '\n\nAlso added to config: ' + synced.added.join(', ') + '.';
+  } catch (e) {
+    configNote = '\n\nConfig keys not synced — ' + e.message;
+  }
+  if (headers.indexOf('card_total_sales') !== -1) {
+    ui.alert('Already migrated — card total columns present.' + configNote);
+    return;
+  }
+  sh.getRange(2, 17, 1, 2)
+    .setValues([['card_total_sales', 'misc_card_sales']])
+    .setFontWeight('bold').setFontColor('#FFFFFF')
+    .setBackground(COLORS.SUBHEADER).setHorizontalAlignment('center');
+  sh.getRange(3, 17, 5000, 2).setNumberFormat('$#,##0.00');
+  sh.setColumnWidth(17, 130);
+  sh.setColumnWidth(18, 130);
+  // Existing rows keep blank cells, NOT zeros. Blank means "this till split its
+  // cards"; zero would mean "it reported a single total of nothing".
+  ui.alert('Added card total columns at 17-18. Existing rows are unchanged.' + configNote);
 }
 
 // ============================================================

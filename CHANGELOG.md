@@ -852,3 +852,130 @@ over the cases that bite — `-0`, a bare armed `-`, and flip-twice being the
 identity. It fails 12 assertions against the previous commit.
 
 459 assertions across 22 suites.
+
+### cstore moves to ePOS: one card figure, no Clover (Batch 13)
+
+cstore's till is now an ePOS. It reports **one card total** instead of a
+credit/debit split, and it takes **no Clover payments at all** — so there is
+nothing left to reconcile the cards against. vape is unchanged: Clover connected,
+split reported, checked as before. Every change below is per company.
+
+#### The schema adds columns rather than repurposing them
+
+`sales` gains `card_total_sales` (17) and `misc_card_sales` (18). The
+credit/debit columns keep every historical value.
+
+Writing the single total into `credit_card_sales` would have been simpler and
+would have made every report say *"Credit $1,240 · Debit $0"* for cstore — a
+statement about the world that is false, and one that makes 262 rows of real
+history indistinguishable from the new shape. The columns are **mutually
+exclusive per row** instead, so
+
+```
+total = cash + credit + debit + card_total + misc
+```
+
+is correct on both sides of the migration **with no date logic anywhere**.
+
+**Blank is not zero.** A blank `credit_card_sales` means *"this till reported one
+figure"*; a zero means *"it split its cards and took nothing on credit"*.
+`numOrNull_` preserves the distinction and `cardSplit` exposes it per row —
+derived from the row itself, never from today's config, because the same till
+reports both shapes across the boundary.
+
+Which shape a till uses is `<company>_card_split` in config, defaulting to
+`true`, so an untouched install keeps the behaviour it has always had and a third
+till needs no code change.
+
+#### "Not configured" is not "unavailable"
+
+`statusParam_` returned `⚠️ Clover unavailable - cards not verified` whenever
+Clover was absent. After the migration that would have fired **every single day**
+for cstore, training everyone to ignore the one line that flags real problems.
+
+A group is now `cloverNA` when the only reason is `not_configured`: cards are out
+of scope, no warning, no `cardsOff`, and `card_variance_threshold` is never read.
+A genuine outage — network, auth, 5xx — still warns exactly as before, and both
+cases are asserted, because either alone passes a broken implementation.
+
+#### The expensive one: the total-sales line
+
+`{{5}}` compared the cashier's figure against `(cash counted − float) + Clover
+card total`. Both sides carried a card term and they cancelled when the cards
+agreed. **Remove Clover and only the reported side keeps its term**, so a
+perfectly clean day would have reported a variance equal to the whole card take —
+roughly half of cstore revenue, on the line management reads first.
+
+Rebuilding it as a cash-only cross-check was rejected too: that restates the cash
+line, which is now this till's only verdict, and two lines reporting one variance
+is what made the old nine-parameter message unreadable. So for a Clover-less till
+`{{5}}` is **descriptive** — `$1,842.00 — cash $602.00 · card $1,240.00` — with
+no mark, and the status says `✅ Cash matched` rather than `All matched`, which
+would claim a check that no longer runs.
+
+#### Two templates, one per till
+
+`shift_close_v2` served both and no longer fits either. cstore gets
+**`shift_close_cstore`** (11 parameters, cards as information). vape gets
+**`shift_close_vape`** (12) — v2 minus the lotto line, which printed *"not
+tracked on this till"* on every vape message since the parameter existed. The
+reserve parameter is now appended only where a pot exists, so a till that does
+sell lotto would get it back automatically.
+
+Routing was small: `sendNotifications_` already loops per merchant group and each
+group knows its companies, so it picks an op key per group and falls back to the
+shared template when a key is unset. Until both are approved, both tills keep
+using v2 — the rollout is safe half-done.
+
+A wrong parameter count is an `http_400` that `dispatch_` swallows: the day
+reconciles, the row is written, and the message silently never arrives. The suite
+asserts the count per shape, because nothing at runtime will.
+
+#### What the sweep found that the plan had missed
+
+**The public reconcile page had no unavailable branch at all** — unlike the
+in-app tab, which has one. With Clover gone it would have published
+
+> **Cards** $1,240.00 / $0.00 · **−$1,240.00**
+
+in red, every day, on the no-login link that goes to owners and managers. It also
+hardcoded a $1 tolerance and ignored the configured threshold. `PublicReport` now
+omits the measured figure rather than sending zero, and the cell renders the
+claim alone with a *"not verified"* note.
+
+**The in-app tab keyed off the stored status string**, so a cards-not-applicable
+day reporting `OK` would have fallen through and rendered *"Credit $0.00 /
+$1,240.00"* in red — the same wrong number, relocated. All three renderers now
+branch on whether a measured figure exists, which is the blank-is-not-zero rule
+applied to the read side.
+
+#### Tender tiles stay continuous
+
+Card is the tender; credit and debit are a breakdown of it that only some rows
+carry. So the **Card tile is always present and always the sum** — a tile that
+vanished partway through a range would read as a business that stopped taking
+cards — and the split renders beneath it with a coverage note when the range
+straddles the migration. A test asserts the Card tile is never absent.
+
+Nothing plots the split over time, so no line collapses at the boundary; per
+session it is one shape or the other, and no coverage note is needed at row
+level.
+
+#### Also
+
+- `close_` rejects a close carrying both shapes, naming the company and the
+  config key that disagreed — that means client and config are out of step, and
+  trusting either half would write a row that cannot be reconciled afterwards.
+- `rpcCloseShift` forwards the new fields and passes absent ones through as null
+  rather than 0; coercing here would make every close look like a split.
+- `aggregateByStaffCompany` includes the single total, so commissions on cstore
+  card sales do not silently under-pay. It is a feed, not a screen, so nothing
+  would have looked wrong.
+- `menu_migrateSalesCardTotal` appends the columns to an existing sheet, guarded
+  on the header so a second run is harmless.
+- `docs/data-model.md` documents both shapes and the rule that any query must sum
+  all three card columns — reading only credit and debit undercounts every
+  post-migration row, and looks like a decline rather than a bug.
+
+583 assertions across 25 suites. The three new suites fail 29, 33 and outright
+against the previous commit.
