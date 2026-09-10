@@ -1007,3 +1007,32 @@ drawer reconciles — plus a genuine draw from a topped-up pot, so both directio
 stay covered. Eleven assertions fail against the previous commit.
 
 590 assertions across 25 suites.
+
+#### Fix: the close message stopped sending
+
+The ePOS batch changed the reconcile message's parameter **shape** with the
+till's nature — cstore to 11, vape to 12 — while template **routing** still fell
+back to the shared `shift_close_v2` whenever the per-till keys were unset.
+
+So both tills sent the wrong parameter count to a 13-parameter template. Meta
+answers `http_400`, `Notifier.dispatch_` uses `muteHttpExceptions`, and the day
+reconciles and writes its row regardless: **no message, no error, nothing
+anywhere saying the send failed.** This is the exact failure the batch documented
+as a trap and then shipped.
+
+vape broke **regardless of configuration** — dropping its lotto parameter was
+unconditional — so it had been silent since that deploy, not just since the
+cstore config was switched on.
+
+The shape now belongs to the **template being sent to**, not to the till.
+Falling back to the shared template builds the legacy 13 — lotto slot filled with
+"not tracked on this till" as it always was, cards in the "no Clover" wording —
+and the 11/12 shapes apply only once `whatsapp_template_shift_close_<company>`
+names a template that expects them.
+
+The batch's own plan called for asserting the parameter count on the fallback
+path. The test that shipped asserted only the op key, which is why routing was
+covered and the count was not. Both are pinned now, in both directions: unset
+keys give 13, configured keys give 11 and 12.
+
+597 assertions across 25 suites. Four fail against the previous commit.

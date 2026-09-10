@@ -344,10 +344,11 @@ const Reconcile = (() => {
     let anySent = false;
     const perGroup = [];
     merchants.forEach(m => {
-      const params = reconParams_(dateObj, m);
+      const opKey = opKeyFor_(m);
+      const params = reconParams_(dateObj, m, opKey === 'shift_close');
       const plain = formatMessage_(dateObj, [m]);
       let r;
-      try { r = Notifier.sendOp(opKeyFor_(m), params, plain); }
+      try { r = Notifier.sendOp(opKey, params, plain); }
       catch (e) { r = { sent: false, reason: 'exception', detail: e.message }; }
       if (r && r.sent) anySent = true;
       perGroup.push(r);
@@ -444,7 +445,15 @@ const Reconcile = (() => {
     return m.cardsVerified ? '✅ All matched' : '✅ Cash matched';
   }
 
-  function reconParams_(dateObj, m) {
+  /**
+   * @param legacy  true when this group falls back to the shared
+   *                whatsapp_template_shift_close (13 parameters). The parameter
+   *                SHAPE belongs to the template being sent to, not to the
+   *                till: a shape change shipped ahead of its template is a Meta
+   *                http_400, and dispatch_ swallows that — the day reconciles,
+   *                the row is written, and no message ever arrives.
+   */
+  function reconParams_(dateObj, m, legacy) {
     const friendly = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'EEE d MMM yyyy');
     const windowStr = hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd);
     const companies = m.companies.join(' + ');
@@ -460,7 +469,7 @@ const Reconcile = (() => {
     // cash-only cross-check would just restate {{6}}, which is now this till's
     // only verdict, and two lines reporting one variance is what made the old
     // nine-parameter message unreadable.
-    if (m.cloverNA) {
+    if (m.cloverNA && !legacy) {
       const revenue = Util.roundMoney(m.cashSales + m.cashierCard);
       return [
         friendly,                                              // {{1}}
@@ -519,7 +528,9 @@ const Reconcile = (() => {
       destination_(m),     // {{7}}  float back · reserve · in hand
       inHandParam_(m),     // {{8}}  who carries it, what's still out
     ];
-    if (m.lotto) base.push(lottoParam_(m));   // {{9}} only where a pot exists
+    // {{9}} only where a pot exists — EXCEPT on the shared template, which has a
+    // fixed slot for it and gets "not tracked on this till" as it always has.
+    if (m.lotto || legacy) base.push(lottoParam_(m));
     return base.concat([credit, debit, total, status]);
   }
 
