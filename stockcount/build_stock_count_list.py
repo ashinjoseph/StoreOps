@@ -14,8 +14,12 @@ Writes:
     stock_count_list.csv   — trackable products, grouped for shelf-by-shelf counting
     stock_count_excluded.csv — everything dropped, with the reason (for review)
 
+The kept list is the roster staff count against; the counts collected go back to
+the ePOS catalog, which owns stock from then on. This script only prepares the
+roster — writing the ePOS import file is a separate step, pending that template.
+
 Usage:
-    python scripts/build_stock_count_list.py <export.csv> [<export.csv> ...] -o <outdir>
+    python stockcount/build_stock_count_list.py <export.csv> [...] -o stockcount/
 """
 
 import argparse

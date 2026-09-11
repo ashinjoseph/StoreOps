@@ -1,14 +1,56 @@
-# Stock Count List — what gets counted, and what doesn't
+# Shelf Count — temporary stock capture for ePOS
 
-The POS exports every **button on the till**, not every **product**. Department
-keys, services, lottery and unidentified scans all arrive as ordinary rows.
-Counting those wastes a counter's time and puts meaningless entries into min/max
-reporting, so they are filtered out before staff ever see the list.
+A standalone, throwaway app. Its only job is to get a stock number against every
+real product once, so those numbers can be loaded into the **ePOS product
+catalog**, which is where stock lives from then on.
+
+```
+ePOS product export  →  filter to real products  →  staff count on phones
+                                                          ↓
+                        ePOS catalog  ←  import file in ePOS's format
+```
+
+Once the numbers are in ePOS and ePOS is maintaining them, this app has done its
+job and can be dropped. Nothing here is meant to become permanent.
+
+**This is not part of StoreOps.** It lives in this repo for convenience only —
+it shares no sheet, no auth and no code with the StoreOps web app, and must not
+grow a dependency on it. The `product_master` tab and `ProductMaster.gs` in
+StoreOps are superseded by the ePOS catalog; they are untouched here, and
+retiring them is a separate job.
+
+## Status
+
+| Step | State |
+|---|---|
+| Filter the export down to real products | done — 905 of 931 rows |
+| UI for phone entry | sample only, awaiting review |
+| Capture + sync backend | not started |
+| Export in ePOS import format | **blocked — need the ePOS Bulk Import template** |
+
+The exact column layout ePOS accepts is not published; it comes from the
+template the Bulk Import app itself hands you. Until that template is in hand,
+the export step cannot be written without guessing.
+
+### Careful with leading zeros
+
+Most barcodes in this catalog are zero-padded (`072890000224`). **Excel strips
+leading zeros on open**, silently, which would break the barcode match on import
+and is easy to miss until the upload fails or — worse — matches the wrong
+product. Import the CSV into Google Sheets rather than opening it in Excel, and
+set the barcode column to plain text before anything else.
+
+### One barcode collides
+
+`072890000224` and `72890000224` are the same Heineken bottle entered twice in
+ePOS at two different prices ($3.01 and $3.60). A barcode-keyed import has no
+way to tell which row a count belongs to, so this wants fixing in ePOS before
+the upload, not after.
 
 ## Building the list
 
 ```bash
-python scripts/build_stock_count_list.py <ProductList*.csv> -o scripts/
+python stockcount/build_stock_count_list.py <ProductList*.csv> -o stockcount/
 ```
 
 Reads the semicolon-delimited POS export
