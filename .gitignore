@@ -10,3 +10,6 @@ Thumbs.db
 desktop.ini
 *.bak
 *.swp
+
+# Shelf Count has its own clasp project
+stockcount/.clasp.json

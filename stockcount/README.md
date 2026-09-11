@@ -24,9 +24,25 @@ retiring them is a separate job.
 | Step | State |
 |---|---|
 | Filter the export down to real products | done — 905 of 931 rows |
-| UI for phone entry | sample only, awaiting review |
-| Capture + sync backend | not started |
+| Phone UI for entry | done — `src/Index.html` |
+| Capture + offline-safe sync | done — `src/Code.gs` |
+| Deploy | ready — see [`SETUP.md`](SETUP.md) |
 | Export in ePOS import format | **blocked — need the ePOS Bulk Import template** |
+
+## Layout
+
+```
+stockcount/
+├── build_stock_count_list.py   POS export → countable product list
+├── stock_count_list.csv        905 products, pasted into the sheet
+├── stock_count_excluded.csv    the 26 dropped rows and why
+├── ui-sample.html              standalone mockup, for review without deploying
+├── SETUP.md                    spreadsheet + deployment steps
+└── src/                        the Apps Script project (its own, not StoreOps')
+    ├── appsscript.json
+    ├── Code.gs                 roster + batched count writes
+    └── Index.html              the phone UI
+```
 
 The exact column layout ePOS accepts is not published; it comes from the
 template the Bulk Import app itself hands you. Until that template is in hand,
