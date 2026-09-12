@@ -1073,3 +1073,24 @@ parameter count that disagrees with its template is the failure that looks like
 nothing at all; it now names itself.
 
 608 assertions across 25 suites. Eight fail against the previous commit.
+
+#### Keep the sentence that identifies the fault
+
+The diagnostic release surfaced the failure but sliced Meta's response at 200
+characters, cutting `"details":"body: nu` mid-word. `error_data.details` is the
+only field naming **both** the count sent and the count the template expects, so
+the failure became visible and stayed unidentifiable.
+
+`apiError_` now pulls `error.message` and `error.error_data.details` out of the
+body, so the line reads:
+
+```
+(#132000) Number of parameters does not match the expected number of params —
+body: number of localizable_params (11) does not match the expected number of params (13)
+```
+
+Bounded at 400 characters, and any non-JSON body — an HTML gateway error, an
+empty response — falls back to a raw slice rather than throwing inside the send
+loop.
+
+621 assertions across 26 suites.

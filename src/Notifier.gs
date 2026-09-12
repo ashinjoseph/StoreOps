@@ -141,6 +141,26 @@ const Notifier = (() => {
     return String(raw || '').split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
   }
 
+  /**
+   * The useful sentence out of a Meta error body.
+   *
+   * `error_data.details` is the only field that names BOTH counts — e.g.
+   * "body: number of localizable_params (11) does not match the expected number
+   * of params (13)" — which is what identifies a template mismatch outright. A
+   * flat 200-character slice of the raw JSON cut it off mid-word, leaving the
+   * failure visible but still unidentifiable.
+   */
+  function apiError_(body) {
+    try {
+      const e = (JSON.parse(body) || {}).error || {};
+      const parts = [];
+      if (e.message) parts.push(e.message);
+      if (e.error_data && e.error_data.details) parts.push(e.error_data.details);
+      if (parts.length) return parts.join(' — ').slice(0, 400);
+    } catch (err) { /* not JSON, or a shape we don't know — fall through */ }
+    return String(body || '').slice(0, 400);
+  }
+
   // Shared send loop. buildPayload(to) returns the Cloud API JSON body for
   // one recipient; we POST to each. Never throws — returns
   // { sent, sentCount, total, results } (or a { sent:false, reason } guard).
@@ -164,7 +184,7 @@ const Notifier = (() => {
         });
         const code = resp.getResponseCode();
         if (code >= 200 && code < 300) { sentCount++; results.push({ to: to, sent: true }); }
-        else results.push({ to: to, sent: false, reason: 'http_' + code, detail: resp.getContentText().slice(0, 200) });
+        else results.push({ to: to, sent: false, reason: 'http_' + code, detail: apiError_(resp.getContentText()) });
       } catch (e) {
         results.push({ to: to, sent: false, reason: 'exception', detail: e.message });
       }
