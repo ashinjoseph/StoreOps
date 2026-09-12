@@ -1036,3 +1036,40 @@ covered and the count was not. Both are pinned now, in both directions: unset
 keys give 13, configured keys give 11 and 12.
 
 597 assertions across 25 suites. Four fail against the previous commit.
+
+#### The parameter shape now follows the template, all the way
+
+The previous fix bound the shape to the template only on the **fallback** path.
+With the per-till templates configured it still branched on runtime Clover state:
+`cstore_card_split` was set and the templates were live, but `clover_cstore_*`
+was still populated, so `cloverNA` was false and cstore built the 13-parameter
+comparative shape — and sent it to an 11-parameter template. Silent `http_400`
+again, on the one till whose config was half-migrated.
+
+An approved template has a fixed number of placeholders. The shape is therefore a
+property of **which template was resolved**, never of whether Clover happened to
+answer. `shapeFor_(opKey)` now decides it outright, and the 11/12/13 shapes are
+pinned in both directions — including the case where Clover is still configured
+on a till whose template says it is not verified.
+
+#### A failed send says so
+
+`dispatch_` captured Meta's response text and `sendNotifications_` threw it away,
+so a message that never arrived was indistinguishable from one that did: the
+toast read `✓ Reconciled` either way, nothing was written down, and both silent
+failures in this area ran for days before anyone noticed.
+
+The per-group result now carries what was **attempted** — till, template name,
+parameter count — alongside the outcome, and `describeSend_` renders one line
+like:
+
+```
+cstore → shift_close_cstore(11) FAILED http_400 — (#132000) Number of parameters does not match
+```
+
+That line goes into the `reconcile.day` audit row and into the toast, which now
+reads `✓ Reconciled · WhatsApp NOT sent — …` rather than claiming success. A
+parameter count that disagrees with its template is the failure that looks like
+nothing at all; it now names itself.
+
+608 assertions across 25 suites. Eight fail against the previous commit.

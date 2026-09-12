@@ -291,10 +291,29 @@ const Reconcile = (() => {
       action: 'reconcile.day',
       targetType: 'validation_results',
       targetId: dateStr,
-      details: 'mode=' + mode + '; ' + message.replace(/\n/g, ' | '),
+      details: 'mode=' + mode + '; whatsapp=' + describeSend_(whatsapp) +
+               '; ' + message.replace(/\n/g, ' | '),
     });
 
-    return { ready: true, mode: mode, date: dateStr, merchants: merchants, whatsapp: whatsapp };
+    return { ready: true, mode: mode, date: dateStr, merchants: merchants,
+             whatsapp: whatsapp, whatsappSummary: describeSend_(whatsapp) };
+  }
+
+  /**
+   * One readable line about the send, for the audit row and the UI. Names the
+   * template and parameter count on a failure, because a count that disagrees
+   * with the approved template is the failure that looks like nothing at all.
+   */
+  function describeSend_(w) {
+    if (!w) return 'no result';
+    const groups = (w.perGroup || []).map(g => {
+      const head = g.companies + ' → ' + g.template + '(' + g.params + ')';
+      if (g.sent) return head + ' sent';
+      const why = g.reason || 'not sent';
+      const detail = (g.results || []).map(x => x.detail).filter(Boolean)[0];
+      return head + ' FAILED ' + why + (detail ? ' — ' + detail : '');
+    });
+    return groups.length ? groups.join(' ; ') : (w.reason || 'nothing to send');
   }
 
   /** null → an empty cell. Zero would claim a measurement that never happened. */
@@ -345,13 +364,21 @@ const Reconcile = (() => {
     const perGroup = [];
     merchants.forEach(m => {
       const opKey = opKeyFor_(m);
-      const params = reconParams_(dateObj, m, opKey === 'shift_close');
+      const params = reconParams_(dateObj, m, shapeFor_(opKey));
       const plain = formatMessage_(dateObj, [m]);
       let r;
       try { r = Notifier.sendOp(opKey, params, plain); }
       catch (e) { r = { sent: false, reason: 'exception', detail: e.message }; }
       if (r && r.sent) anySent = true;
-      perGroup.push(r);
+      // Carry what was ATTEMPTED alongside the outcome. Without the template
+      // name and the parameter count, a failed send is indistinguishable from a
+      // disabled notifier, and Meta's reason is the one fact that identifies
+      // which — it was being computed and thrown away.
+      perGroup.push(Object.assign({
+        companies: m.companies.join('+'),
+        template: opKey,
+        params: params.length,
+      }, r || {}));
     });
     return { sent: anySent, perGroup: perGroup };
   }
@@ -453,7 +480,20 @@ const Reconcile = (() => {
    *                http_400, and dispatch_ swallows that — the day reconciles,
    *                the row is written, and no message ever arrives.
    */
-  function reconParams_(dateObj, m, legacy) {
+  /**
+   * Which parameter shape a resolved template expects. The shape is a property
+   * of the TEMPLATE, never of runtime state — an approved template has a fixed
+   * number of placeholders, so deriving the count from whether Clover happened
+   * to answer is how a message silently stops sending.
+   */
+  function shapeFor_(opKey) {
+    if (opKey === 'shift_close_cstore') return 'cards_unverified';  // 11
+    if (opKey === 'shift_close_vape')   return 'cards_checked';     // 12
+    return 'legacy';                                                // 13
+  }
+
+  function reconParams_(dateObj, m, shape) {
+    const legacy = shape === 'legacy';
     const friendly = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'EEE d MMM yyyy');
     const windowStr = hhmm_(m.windowStart) + '–' + hhmm_(m.windowEnd);
     const companies = m.companies.join(' + ');
@@ -469,7 +509,7 @@ const Reconcile = (() => {
     // cash-only cross-check would just restate {{6}}, which is now this till's
     // only verdict, and two lines reporting one variance is what made the old
     // nine-parameter message unreadable.
-    if (m.cloverNA && !legacy) {
+    if (shape === 'cards_unverified') {
       const revenue = Util.roundMoney(m.cashSales + m.cashierCard);
       return [
         friendly,                                              // {{1}}
@@ -530,7 +570,7 @@ const Reconcile = (() => {
     ];
     // {{9}} only where a pot exists — EXCEPT on the shared template, which has a
     // fixed slot for it and gets "not tracked on this till" as it always has.
-    if (m.lotto || legacy) base.push(lottoParam_(m));
+    if (legacy || (shape !== 'cards_checked' && m.lotto)) base.push(lottoParam_(m));
     return base.concat([credit, debit, total, status]);
   }
 
