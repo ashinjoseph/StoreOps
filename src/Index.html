@@ -2476,8 +2476,9 @@
         // against Clover + WhatsApp. Fire-and-forget — never affects the close.
         call('rpcReconcileDay', state.token, false).then(r => {
           if (r && r.ready && !r.empty) {
-            toast((r.whatsapp && r.whatsapp.sent) ? '✓ Day reconciled — WhatsApp sent' : '✓ Day reconciled',
-                  'success');
+            if (r.whatsapp && r.whatsapp.sent) toast('✓ Day reconciled — WhatsApp sent', 'success');
+            else toast('✓ Day reconciled · WhatsApp NOT sent — ' +
+                       (r.whatsappSummary || 'no reason reported'), 'warning');
           }
         }).catch(() => {});
       } catch (e) {
@@ -4823,7 +4824,11 @@
       try {
         const res = (await call('rpcReconcileDay', state.token, true)) || {};
         if (res.empty) toast('Nothing to reconcile yet', 'warning');
-        else toast((res.whatsapp && res.whatsapp.sent) ? '✓ Reconciled — WhatsApp sent' : '✓ Reconciled', 'success');
+        else if (res.whatsapp && res.whatsapp.sent) toast('✓ Reconciled — WhatsApp sent', 'success');
+        // A send that fails says so. "✓ Reconciled" alone is indistinguishable
+        // from a message that went out, which is how a broken send ran for days.
+        else toast('✓ Reconciled · WhatsApp NOT sent — ' +
+                   (res.whatsappSummary || 'no reason reported'), 'warning');
         loadReconPanel(true);
       } catch (e) { toast(e.message, 'error'); b.disabled = false; b.textContent = '↻ Reconcile today'; }
     };
