@@ -5,11 +5,48 @@ Node suites that load the **real** module source — `src/*.gs` through
 stubbed Apps Script globals. No production test hooks, no copied logic: a suite
 that passes is exercising the code that ships.
 
-Run one from the repo root:
+Run everything:
 
 ```
-node tests/suites/public-render.js
+node tests/suites/run.js
 ```
+
+Or one suite, by substring:
+
+```
+node tests/suites/run.js lotto
+node tests/suites/lotto-payout.js
+```
+
+Each suite runs in its own process, so a crash in one cannot take the rest with
+it and global stubs never leak between suites — the old scratchpad harnesses
+shared globals, which hid at least one ordering-dependent pass.
+
+## Writing one
+
+```js
+const H = require('./_lib/harness');
+const t = H.suite('what this covers');
+
+H.sheets({
+  till_sessions: { headers: [...], rows: [[...]] },
+  config: { variance_ok_threshold: 1 },        // plain object is fine
+});
+const M = H.load(['Util.gs', 'TillSessions.gs'], { Staff: {...} });
+
+t.eq('label', actual, expected);
+t.done();
+```
+
+`H.load` evaluates the real source and returns both module objects (`Sales`,
+`TillSessions`) and top-level functions (`rpcCloseShift`) — `WebApp.gs` has no
+module object, so its endpoints come back by name. `H.clientScript('Index.html')`
+lifts the inline script for client-side assertions, and `H.fnSource` pulls one
+function out of a file so it can be run in a sandbox.
+
+**Stub only what the module calls.** If a stub is thinner than the real
+collaborator the suite fails loudly rather than silently diverging — that is the
+point.
 
 ## Why they live here
 
