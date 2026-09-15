@@ -1094,3 +1094,43 @@ empty response — falls back to a raw slice rather than throwing inside the sen
 loop.
 
 621 assertions across 26 suites.
+
+#### Fix: the public sales page was blank
+
+`?v=sales` rendered nothing at all since the ePOS batch. The tender-tile change
+added, inside `render()`:
+
+```js
+var split = t.credit + t.debit;
+```
+
+`split` is also a module-level helper — the per-company insight strip — called
+twice inside that same function. The `var` hoists to the top of `render()` and
+shadows it for the whole body, so the **first** call, several sections earlier,
+got `undefined` and threw. Nothing had been written to `#app` by then, so the
+page came out white with no error.
+
+Renamed to `splitTotal`. The comment on it names the trap, because the next
+person reaching for `split` as a local will be reaching for the obvious word.
+
+**Two blank-page incidents is enough**, so `render()` is now wrapped: a throw
+writes "This report failed to render" plus the message into `#app` instead of
+leaving it empty. On a no-login URL sent to owners, failing legibly is the
+minimum.
+
+A `public-render` suite runs the **whole** page — payload through to `#app` —
+over five payload shapes. The existing `public-sales` suite tested the server
+payload and `public-chart` tested `chart()` in isolation; neither ever called
+`render()`, which is exactly how a fatal error in it shipped twice. It throws on
+5 of 5 real payloads against the previous commit.
+
+#### The suites now live in the repo
+
+They were in a session scratchpad, and the container was recycled mid-diagnosis:
+roughly 620 assertions across 26 suites, gone in one step. `tests/suites/` is
+their home from now on, with the house rule written down — every assertion
+confirmed failing against the commit it fixes. `clasp push` uploads `rootDir:
+src` only, so nothing there reaches Apps Script.
+
+Only `public-render` survived, as it was written after the loss. The rest need
+rebuilding.

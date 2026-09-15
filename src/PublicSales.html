@@ -194,7 +194,25 @@ function chart(daily, companies) {
   return h + '</div>';
 }
 
-(function render() {
+// Anything that throws in here leaves #app untouched — which is a blank white
+// page with nothing to act on. That has happened twice: a templating scriptlet
+// that swallowed the payload, and a local `var` shadowing a helper of the same
+// name. The page is on a no-login URL sent to owners, so it must fail legibly
+// rather than silently.
+(function main() {
+  try {
+    render();
+  } catch (err) {
+    try {
+      document.getElementById('app').innerHTML =
+        '<header><h1>Sales</h1></header><div class="card"><div class="note">' +
+        'This report failed to render. ' + esc(String((err && err.message) || err)) +
+        '</div></div>';
+    } catch (ignored) { /* nothing left to render into */ }
+  }
+})();
+
+function render() {
   var d = DATA || {};
   if (d.unavailable) {
     document.getElementById('app').innerHTML =
@@ -248,11 +266,15 @@ function chart(daily, companies) {
     }).join('') +
   '</div>';
   if (t.credit || t.debit) {
-    var split = t.credit + t.debit;
-    html += '<div class="note">Of the card total, ' + money(split) +
+    // NOT `split` — that is the module-level insight-strip helper, called
+    // twice inside this same function. A `var split` here hoists over it for
+    // the whole body and the first call gets undefined, which threw before
+    // anything reached #app and left the page blank.
+    var splitTotal = t.credit + t.debit;
+    html += '<div class="note">Of the card total, ' + money(splitTotal) +
       ' is recorded split by type — credit ' + money(t.credit) +
       ' · debit ' + money(t.debit) +
-      (split < t.cardAll - 0.005
+      (splitTotal < t.cardAll - 0.005
         ? '. The rest is reported as a single card figure by the till.'
         : '.') +
       '</div>';
@@ -328,7 +350,7 @@ function chart(daily, companies) {
   // days just gone, so land on the newest and let them scroll back.
   var track = document.querySelector('.chart');
   if (track) track.scrollLeft = Math.max(0, track.scrollWidth - track.clientWidth);
-})();
+}
 </script>
 </body>
 </html>
