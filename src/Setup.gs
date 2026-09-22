@@ -81,6 +81,7 @@ function onOpen() {
     .addItem('🧱 Migrate Product Master → v2 (per-type)', 'menu_migrateProductMasterV2')
     .addItem('🏷️ Add needs_detail to product_master', 'menu_migrateProductMasterNeedsDetail')
     .addItem('🔎 Diagnose Vape staging', 'menu_diagnoseVapeStaging')
+    .addItem('🧷 Refresh staging headers', 'menu_refreshStagingHeaders')
     .addItem('🛒 Add product_id to shopping_list', 'menu_migrateShoppingListProductId')
     .addItem('🎟️ Add lotto reserve to till_sessions', 'menu_migrateTillSessionsLottoReserve')
     .addItem('💵 Add cash handling tables',          'menu_migrateCashHandling')
@@ -120,7 +121,8 @@ function menu_importProductType_(type, label) {
     // such said "Errors: 50" on a run that lost 161 rows, and the arithmetic
     // silently failed to add up to the rows that went in.
     const errorCount = result.errorCount == null ? errs.length : result.errorCount;
-    const total = result.imported + (result.updated || 0) + (result.skipped || 0) + errorCount;
+    const total = result.imported + (result.updated || 0) + (result.skipped || 0) +
+                  errorCount + (result.headerEchoes || 0) + (result.blankRows || 0);
     const label_ = e => (e.sku || 'no SKU') + (e.productName ? ' — ' + e.productName : '') +
                         ' (row ' + e.rowIndex + ')';
     ui.alert(
@@ -130,6 +132,12 @@ function menu_importProductType_(type, label) {
       'Updated:   ' + (result.updated || 0) + '\n' +
       'Skipped (dup name, no SKU): ' + (result.skipped || 0) + '\n' +
       'Errors:    ' + errorCount +
+      // A repeated header row means the paste started one row too low, which
+      // is worth saying out loud rather than quietly dropping.
+      (result.headerEchoes
+        ? '\n\n⚠️ ' + result.headerEchoes + ' row(s) repeated the header — the data ' +
+          'was probably pasted one row too low. Data belongs at row 3.'
+        : '') +
       (errorCount
         ? '\n\nFirst ' + Math.min(errs.length, 10) + ' of ' + errorCount + ':\n  • ' +
           errs.slice(0, 10).map(e => label_(e) + '\n      ' + e.message).join('\n  • ') +
@@ -141,6 +149,68 @@ function menu_importProductType_(type, label) {
   } catch (e) {
     ui.alert('Import failed', e.message, ui.ButtonSet.OK);
   }
+}
+
+/**
+ * Rewrite row 2 of every staging tab to the current canonical layout, and
+ * re-apply the column formats that go with it.
+ *
+ * The staging tabs are built once and never touched again — setup returns
+ * early if the sheet exists — so adding a column to the layout leaves every
+ * existing tab describing the old shape. Since the importer maps by column
+ * NAME, a stale header does not fail loudly: every name it looks up is still
+ * there, just pointing one column to the left of the data. Number formats
+ * drift the same way, which is why they are re-applied here too.
+ *
+ * Touches the header row and formatting only. No data row is read or written.
+ */
+function menu_refreshStagingHeaders() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const types = ['beer', 'cigarettes', 'vape', 'other'];
+  const done = [];
+
+  types.forEach(type => {
+    const name = ProductMaster.stagingSheetName(type);
+    const sh = name && ss.getSheetByName(name);
+    if (!sh) return;
+
+    const layout = ProductMaster.stagingLayout(type);
+    const before = sh.getRange(2, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
+      .map(h => (h == null ? '' : h.toString()).trim().toLowerCase());
+    const added = layout.filter(c => before.indexOf(c) === -1);
+
+    if (sh.getMaxColumns() < layout.length) {
+      sh.insertColumnsAfter(sh.getMaxColumns(), layout.length - sh.getMaxColumns());
+    }
+    writeColumnHeaders_(sh, layout);
+
+    // Clear the formats the old layout left behind before laying down the new
+    // ones, or a column that used to hold money keeps the currency format.
+    const rows = Math.max(sh.getMaxRows() - 2, 1);
+    sh.getRange(3, 1, rows, layout.length).setNumberFormat('0.###############');
+    layout.forEach((c, idx) => {
+      const col = idx + 1;
+      if (c === 'category') {
+        applyEnumValidation_(sh, col, PRODUCT_CATEGORIES);
+      } else if (c === 'sku' || c === 'barcode') {
+        sh.getRange(3, col, rows, 1).setNumberFormat('@');
+      } else if (/_pct$/.test(c) || c === 'target_margin_pct') {
+        sh.getRange(3, col, rows, 1).setNumberFormat('0.0%');
+      } else if (_PM_MONEY_RE.test(c)) {
+        sh.getRange(3, col, rows, 1).setNumberFormat('$#,##0.00');
+      }
+    });
+
+    done.push('• ' + name + ' → ' + layout.length + ' columns' +
+              (added.length ? ' (added: ' + added.join(', ') + ')' : ' (already current)'));
+  });
+
+  ui.alert('Staging headers refreshed',
+    (done.length ? done.join('\n') : 'No staging tabs found.') +
+    '\n\nHeaders and formats only — no data row was touched.\n' +
+    'Paste data at ROW 3, with no header line of its own.',
+    ui.ButtonSet.OK);
 }
 
 /**
