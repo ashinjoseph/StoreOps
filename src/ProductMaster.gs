@@ -222,10 +222,30 @@ const ProductMaster = (() => {
   }
 
   // Upsert the detail row keyed by product_id. Preserves created_at on update.
-  function writeDetail_(productId, sku, category, detail) {
+  function writeDetail_(productId, sku, category, detail, bulk, detailRowIndex) {
     if (!ProductTypes.has(category)) return;
-    const sh = detailSheet_(category);
     const cols = ProductTypes.detailColumns(category);
+
+    // Bulk path: the caller has already read this sheet's product_id column
+    // once and is collecting rows to append in a single write. Scanning the
+    // whole column per row — which is what the read below does — is O(n²) and
+    // is what put a 186-row vape import over the six-minute execution limit.
+    if (bulk) {
+      const row = buildDetailRow_(productId, sku, category, detail, null);
+      const known = detailRowIndex && detailRowIndex[productId];
+      if (known) {
+        // Existing detail row — buffer it against its row number. Flushed in
+        // contiguous runs, so a re-import of the whole file is one write.
+        const edits = bulk.detailEdits[category] || (bulk.detailEdits[category] = {});
+        edits[known] = row;
+      } else {
+        const pending = bulk.detail[category] || (bulk.detail[category] = []);
+        pending.push(row);
+      }
+      return;
+    }
+
+    const sh = detailSheet_(category);
     const last = sh.getLastRow();
     let foundRow = -1;
     let createdAt = null;
@@ -245,6 +265,58 @@ const ProductMaster = (() => {
     const rowValues = buildDetailRow_(productId, sku, category, detail, createdAt);
     const targetRow = foundRow > 0 ? foundRow : (sh.getLastRow() + 1);
     sh.getRange(targetRow, 1, 1, cols.length).setValues([rowValues]);
+  }
+
+  /**
+   * Write everything a bulk run collected: one append per sheet, whatever the
+   * row count. Called once, after the loop — so a row that threw mid-run
+   * leaves the rows before it intact, exactly as the row-at-a-time path did.
+   */
+  /**
+   * Write buffered rows back, one call per contiguous run of row numbers. A
+   * run of one is a single-row write, so scattered edits cost no more than
+   * they did before — and a file that touches every row costs one.
+   */
+  function writeRuns_(sh, rowNumbers, rowAt, width) {
+    let start = 0;
+    for (let i = 1; i <= rowNumbers.length; i++) {
+      if (i !== rowNumbers.length && rowNumbers[i] === rowNumbers[i - 1] + 1) continue;
+      const run = rowNumbers.slice(start, i);
+      sh.getRange(run[0], 1, run.length, width).setValues(run.map(rowAt));
+      start = i;
+    }
+  }
+
+  function flushBulk_(bulk) {
+    if (!bulk) return;
+    if (bulk.core.length) {
+      const sh = sheet_();
+      sh.getRange(sh.getLastRow() + 1, 1, bulk.core.length, NUM_COLS)
+        .setValues(bulk.core);
+    }
+    Object.keys(bulk.detail).forEach(category => {
+      const rows = bulk.detail[category];
+      if (!rows.length) return;
+      const sh = detailSheet_(category);
+      const cols = ProductTypes.detailColumns(category);
+      sh.getRange(sh.getLastRow() + 1, 1, rows.length, cols.length).setValues(rows);
+    });
+    Object.keys(bulk.detailEdits || {}).forEach(category => {
+      const edits = bulk.detailEdits[category];
+      const rows = Object.keys(edits).map(Number).sort((a, b) => a - b);
+      if (!rows.length) return;
+      const sh = detailSheet_(category);
+      const width = ProductTypes.detailColumns(category).length;
+      writeRuns_(sh, rows, r => edits[r], width);
+    });
+    // Buffered row edits, written back in contiguous runs — a re-import that
+    // touches every row is then one write, not one per row.
+    const edited = Object.keys(bulk.coreEdits || {})
+      .map(Number).filter(r => bulk.coreEdits[r]).sort((a, b) => a - b);
+    if (edited.length) writeRuns_(sheet_(), edited, r => bulk.coreEdits[r], NUM_COLS);
+    if (bulk.audit.length) AuditLog.writeMany(bulk.audit);
+    bulk.core = []; bulk.detail = {}; bulk.audit = [];
+    bulk.coreEdits = {}; bulk.detailEdits = {};
   }
 
   // ── Reads ─────────────────────────────────────────────────
@@ -403,9 +475,7 @@ const ProductMaster = (() => {
     const minSellPrice = Util.roundMoney(Number(input.minSellPrice) || 0);
     const now = new Date();
 
-    const sh = sheet_();
-    const row = sh.getLastRow() + 1;
-    sh.getRange(row, 1, 1, NUM_COLS).setValues([[
+    const coreRow = [
       productId,
       sku,
       (input.barcode || '').toString().trim(),
@@ -430,11 +500,19 @@ const ProductMaster = (() => {
       input.actorId,
       now,
       input.needsDetail === true,
-    ]]);
+    ];
 
-    if (ProductTypes.has(category)) writeDetail_(productId, sku, category, detail);
+    const bulk = opts.bulk && typeof opts.bulk === 'object' ? opts.bulk : null;
+    if (bulk) {
+      bulk.core.push(coreRow);
+    } else {
+      const sh = sheet_();
+      sh.getRange(sh.getLastRow() + 1, 1, 1, NUM_COLS).setValues([coreRow]);
+    }
 
-    AuditLog.write({
+    if (ProductTypes.has(category)) writeDetail_(productId, sku, category, detail, bulk);
+
+    const audit = {
       actorId: input.actorId,
       action: 'product.created',
       targetType: 'product',
@@ -448,7 +526,8 @@ const ProductMaster = (() => {
         detail: ProductTypes.has(category) ? detail : null,
         sourceFile: input.sourceFile || 'manual',
       },
-    });
+    };
+    if (bulk) bulk.audit.push(audit); else AuditLog.write(audit);
 
     if (opts.bulk) {
       // Enough for the caller to keep its dedup index current. It busts the
@@ -493,7 +572,7 @@ const ProductMaster = (() => {
 
   // Write resolved cost/sell/credit/margin onto the core row, recording
   // before/after for any value that actually changed.
-  function applyResolved_(sh, r, existing, resolved, before, after) {
+  function applyResolved_(setCell, existing, resolved, before, after) {
     const fields = [
       ['costPrice',       COL.cost_price],
       ['sellPrice',       COL.sell_price],
@@ -504,7 +583,7 @@ const ProductMaster = (() => {
     fields.forEach(([k, col]) => {
       const nv = resolved[k];
       if (existing[k] !== nv) {
-        sh.getRange(r, col).setValue(nv);
+        setCell(col, nv);
         if (!(k in after)) { before[k] = existing[k]; after[k] = nv; }
       }
     });
@@ -517,19 +596,43 @@ const ProductMaster = (() => {
    * the resolved cost/sell/credit/margin. For grocery/other, margin is
    * recomputed when cost or sell changes. One audit row per update.
    */
-  function update_(productId, patch, actorId) {
+  function update_(productId, patch, actorId, opts) {
     if (!productId) throw new Error('productId required');
     if (!actorId) throw new Error('actorId required');
     patch = patch || {};
+    opts = opts || {};
+    const bulk = opts.bulk && typeof opts.bulk === 'object' ? opts.bulk : null;
 
-    bustCache_();
-    const existing = getById_(productId);
+    // Outside a bulk run, bust first so the record below is fresh. Inside one,
+    // the caller already holds the record and busts once at the end — busting
+    // here would make the next read cold and re-read the entire sheet for
+    // every row, which is a full-table scan per product.
+    let existing;
+    if (bulk && opts.existing) {
+      existing = opts.existing;
+    } else {
+      bustCache_();
+      existing = getById_(productId);
+    }
     if (!existing) throw new Error('Product not found: ' + productId);
 
     const before = {};
     const after = {};
     const sh = sheet_();
     const r = existing._rowIndex;
+
+    // Every field write goes through here. On its own each setValue is an API
+    // call, and at three or more per row a few hundred products is minutes of
+    // wall clock. In a bulk run the row is buffered whole and written once.
+    const setCell = (col, value) => {
+      if (!bulk) { sh.getRange(r, col).setValue(value); return; }
+      const buffered = bulk.coreEdits[r] ||
+        (bulk.coreEdits[r] = (opts.rawRows && opts.rawRows[r])
+          ? opts.rawRows[r].slice()
+          : null);
+      if (!buffered) { sh.getRange(r, col).setValue(value); return; }
+      buffered[col - 1] = value;
+    };
 
     // 1. core scalar patches
     Object.keys(patch).forEach(key => {
@@ -550,7 +653,7 @@ const ProductMaster = (() => {
         : cur === newVal;
       if (same) return;
 
-      sh.getRange(r, colIdx).setValue(newVal);
+      setCell(colIdx, newVal);
       before[key] = cur;
       after[key] = newVal;
     });
@@ -561,21 +664,26 @@ const ProductMaster = (() => {
       // 2a. detail upsert + re-derive
       const hasDetailPatch = patch.detail && typeof patch.detail === 'object';
       if (hasDetailPatch || ('category' in after)) {
-        const merged = Object.assign({}, readDetail_(productId, finalCategory), patch.detail || {});
+        // readDetail_ scans the whole detail sheet. In a bulk run the caller has
+        // already read it once and hands the record over.
+        const current = (bulk && opts.detailIndex)
+          ? (opts.detailIndex[productId] || {})
+          : readDetail_(productId, finalCategory);
+        const merged = Object.assign({}, current, patch.detail || {});
 
         // core.unit mirrors a detail field (beer → sell_unit)
         const unitFrom = ProductTypes.unitFrom(finalCategory);
         if (unitFrom && merged[unitFrom]) {
           const newUnit = merged[unitFrom].toString().trim();
           if (newUnit && newUnit !== existing.unit && !('unit' in after)) {
-            sh.getRange(r, COL.unit).setValue(newUnit);
+            setCell(COL.unit, newUnit);
             before.unit = existing.unit; after.unit = newUnit;
           }
         }
 
         const resolved = resolvePricing_(finalCategory, patch, merged);
-        writeDetail_(productId, existing.sku, finalCategory, merged);
-        applyResolved_(sh, r, existing, resolved, before, after);
+        writeDetail_(productId, existing.sku, finalCategory, merged, bulk, opts.detailRowIndex);
+        applyResolved_(setCell, existing, resolved, before, after);
         after.detail = patch.detail || merged;
       }
     } else {
@@ -584,8 +692,8 @@ const ProductMaster = (() => {
         const finalCost = ('costPrice' in after) ? after.costPrice : existing.costPrice;
         const finalSell = ('sellPrice' in after) ? after.sellPrice : existing.sellPrice;
         const margin = computeMargin_(finalCost, finalSell);
-        sh.getRange(r, COL.margin_amount).setValue(margin.marginAmount);
-        sh.getRange(r, COL.margin_pct).setValue(margin.marginPct);
+        setCell(COL.margin_amount, margin.marginAmount);
+        setCell(COL.margin_pct, margin.marginPct);
         before.marginAmount = existing.marginAmount;
         before.marginPct = existing.marginPct;
         after.marginAmount = margin.marginAmount;
@@ -596,16 +704,22 @@ const ProductMaster = (() => {
     // 3. stamp + audit only if something actually changed
     if (Object.keys(after).length > 0) {
       const now = new Date();
-      sh.getRange(r, COL.updated_by).setValue(actorId);
-      sh.getRange(r, COL.updated_at).setValue(now);
-      AuditLog.write({
+      setCell(COL.updated_by, actorId);
+      setCell(COL.updated_at, now);
+      const entry = {
         actorId,
         action: 'product.updated',
         targetType: 'product',
         targetId: productId,
         before, after,
-      });
+      };
+      if (bulk) bulk.audit.push(entry); else AuditLog.write(entry);
     }
+
+    // Re-reading the record to return it costs a full sheet read, and in a
+    // bulk run nothing looks at the return value — the caller keeps its own
+    // index. Hand back the id and let the caller bust once at the end.
+    if (bulk) return { productId: productId };
 
     bustCache_();
     return getById_(productId);
@@ -756,6 +870,18 @@ const ProductMaster = (() => {
     // every row of a barcode-only inventory — used to fall through to
     // findDuplicate_, which re-reads the entire sheet per row.
     bustCache_();
+    // Keep the master's raw rows alongside the records: an update buffers the
+    // whole row and writes it once, which needs the columns it is not touching.
+    const rawRows = {};
+    {
+      const msh = sheet_();
+      const mlast = msh.getLastRow();
+      if (mlast >= DATA_START_ROW) {
+        msh.getRange(DATA_START_ROW, 1, mlast - DATA_START_ROW + 1, NUM_COLS)
+          .getValues()
+          .forEach((row, i) => { rawRows[DATA_START_ROW + i] = row; });
+      }
+    }
     const index = {};        // sku (or sku|unit for beer) → product
     const nameIndex = {};    // brand|name → product, the SKU-less fallback key
     const nameKey = (brand, name) =>
@@ -767,6 +893,41 @@ const ProductMaster = (() => {
       const k = isBeer ? (p.sku.toLowerCase() + '|' + (p.unit || '').toLowerCase()) : p.sku.toLowerCase();
       index[k] = p;
     });
+
+    // One collector for the whole run. Every insert appends to it instead of
+    // touching a sheet, and it is flushed once at the end: a few writes in
+    // total rather than eight API calls per row.
+    const bulk = { core: [], detail: {}, audit: [], coreEdits: {}, detailEdits: {} };
+
+    // Read the detail sheet ONCE. An update needs the row's current detail (to
+    // merge the patch into) and its row number (to overwrite it). Looking
+    // either of those up per row is a full-sheet scan per product, and two of
+    // them together are what made a re-import cost more than the first import.
+    const detailIndex = {};
+    const detailRowIndex = {};
+    if (ProductTypes.has(type)) {
+      const dsh = detailSheet_(type);
+      const dcols = ProductTypes.detailColumns(type);
+      const dlast = dsh.getLastRow();
+      if (dlast >= DATA_START_ROW) {
+        const numeric = new Set(ProductTypes.numericColumns(type));
+        dsh.getRange(DATA_START_ROW, 1, dlast - DATA_START_ROW + 1, dcols.length)
+          .getValues()
+          .forEach((row, i) => {
+            const pid = (row[0] || '').toString().trim();
+            if (!pid) return;
+            const obj = {};
+            dcols.forEach((c, idx) => {
+              const v = row[idx];
+              if (numeric.has(c)) obj[c] = Number(v) || 0;
+              else if (c === 'created_at' || c === 'updated_at') obj[c] = (v instanceof Date) ? v : null;
+              else obj[c] = (v == null ? '' : v.toString());
+            });
+            detailIndex[pid] = obj;
+            detailRowIndex[pid] = DATA_START_ROW + i;
+          });
+      }
+    }
 
     let imported = 0, updated = 0, skipped = 0, headerEchoes = 0, blankRows = 0;
     const errors = [];
@@ -812,7 +973,10 @@ const ProductMaster = (() => {
         const key = sku ? (isBeer ? (sku.toLowerCase() + '|' + unit.toLowerCase()) : sku.toLowerCase()) : '';
         const existing = key ? index[key] : null;
         if (existing) {
-          update_(existing.productId, input, actorId);
+          update_(existing.productId, input, actorId, {
+            bulk: bulk, existing: existing, rawRows: rawRows,
+            detailIndex: detailIndex, detailRowIndex: detailRowIndex,
+          });
           updated++;
           return;
         }
@@ -820,7 +984,7 @@ const ProductMaster = (() => {
         const nk = nameKey(input.brand, input.productName);
         if (nameIndex[nk]) { skipped++; return; }
 
-        const created = create_(input, { bulk: true });
+        const created = create_(input, { bulk: bulk });
         imported++;
         // Register immediately, so two rows sharing a name inside one paste
         // collapse the same way they would across two runs.
@@ -850,6 +1014,8 @@ const ProductMaster = (() => {
 
     // One bust for the whole batch — bulk creates deliberately left it stale.
     bustCache_();
+
+    flushBulk_(bulk);
 
     AuditLog.write({
       actorId,
