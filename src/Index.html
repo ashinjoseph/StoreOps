@@ -3104,7 +3104,10 @@
   // Writes are optimistic + debounced: the row repaints immediately, the RPC
   // follows 600ms later, so hammering "+" to 5 collapses into a single write.
   async function openAddShoppingItem() {
-    const privileged = ['admin', 'manager'].indexOf(state.me.role) >= 0;
+    // Adding and correcting products is open to everyone here: cashiers meet a
+    // new product first, and whoever hits an incomplete row is the one holding
+    // the box it came in. Removal is manager-only, but nothing in this sheet
+    // removes anything.
     openSheet({
       title: 'Add items', subtitle: 'Tap + — the list updates as you go',
       bodyHTML: '<div class="loading"><div class="spinner"></div>Loading products…</div>',
@@ -3144,7 +3147,7 @@
         CATS.map(c => '<button class="si-chip' + (c === 'all' ? ' on' : '') + '" data-cat="' + c + '">' +
           (c === 'all' ? 'All' : esc(catLabel(c))) + '</button>').join('') +
       '</div>' +
-      (privileged ? '<button class="more-back" id="siNewProd" style="margin:0 0 8px">+ Create new product</button>' : '') +
+      '<button class="more-back" id="siNewProd" style="margin:0 0 8px">+ Create new product</button>' +
       '<div id="siResults" class="si-results"></div>';
     openSheet({
       title: 'Add items', subtitle: 'Tap + — the list updates as you go', bodyHTML,
@@ -3230,7 +3233,7 @@
       list = list.slice(0, MAX_PICKER_ROWS);
       if (!list.length) {
         $('siResults').innerHTML = '<div class="si-empty">No matching products.' +
-          (privileged ? ' Use “+ Create new product”.' : ' Ask a manager to add it.') + '</div>';
+          ' Use “+ Create new product”.</div>';
         return;
       }
       $('siResults').innerHTML = list.map(p =>
@@ -3282,10 +3285,6 @@
       haptic();
       const p = products.find(x => x.productId === pid);
       if (!p) return;
-      if (!privileged) {
-        return toast('“' + p.productName + '” is missing its flavour or variant. ' +
-                     'A manager needs to complete it before it can be ordered.', 'warning');
-      }
       openProductForm(p, {
         fixMode: true,
         onSaved: async (saved) => {
@@ -3324,7 +3323,7 @@
     $('siSearch').oninput = renderResults;
     renderResults();
 
-    if (privileged) {
+    {
       const np = $('siNewProd');
       if (np) np.onclick = () => openProductForm(null, {
         onSaved: async (created) => {
@@ -3485,7 +3484,9 @@
     const products = state.products || [];
     if (!state.productsFilter) state.productsFilter = pmDefaultFilter();
     const filter = state.productsFilter;
-    const privileged = state.me && (state.me.role === 'admin' || state.me.role === 'manager');
+    // Same split as the picker: anyone can add or correct, only a manager can
+    // take a product out of circulation.
+    const canRemove = state.me && (state.me.role === 'admin' || state.me.role === 'manager');
 
     // Capture focus + caret position so re-render doesn't kill an active
     // <input> (the search box loses focus after every keystroke otherwise).
@@ -3529,7 +3530,7 @@
     let html = moreBack();
     html += '<div class="products-controls">' +
       '<input id="pmSearch" class="pm-search" placeholder="Search SKU / name / brand…" value="' + esc(filter.query) + '" autocomplete="off">' +
-      (privileged ? '<button class="btn-primary" id="pmAddBtn">+ Add</button>' : '') +
+      '<button class="btn-primary" id="pmAddBtn">+ Add</button>' +
     '</div>';
 
     html += '<div class="products-filter-row">' +
@@ -3589,14 +3590,14 @@
             '<div class="product-row-meta">cost ' + money(p.costPrice) + ' · margin ' + marginPctStr + '</div>' +
           '</div>' +
         '</div>' +
-        (privileged
-          ? '<div class="payroll-actions">' +
-              '<button class="payroll-btn payroll-btn-secondary" data-edit-product="' + esc(p.productId) + '">Edit</button>' +
-              (p.active
+        '<div class="payroll-actions">' +
+          '<button class="payroll-btn payroll-btn-secondary" data-edit-product="' + esc(p.productId) + '">Edit</button>' +
+          (p.active
+            ? (canRemove
                 ? '<button class="payroll-btn" data-deactivate-product="' + esc(p.productId) + '">Deactivate</button>'
-                : '<span class="badge-inactive">Inactive</span>')
-            + '</div>'
-          : '') +
+                : '')
+            : '<span class="badge-inactive">Inactive</span>') +
+        '</div>' +
       '</div>';
     });
 
@@ -3646,12 +3647,12 @@
         renderProductsTab();
       };
     }
-    if (privileged) {
-      const addBtn = $('pmAddBtn');
-      if (addBtn) addBtn.onclick = () => openProductForm(null);
-      view.querySelectorAll('[data-edit-product]').forEach(b => {
-        b.onclick = () => openProductForm(products.find(p => p.productId === b.dataset.editProduct));
-      });
+    const addBtn = $('pmAddBtn');
+    if (addBtn) addBtn.onclick = () => openProductForm(null);
+    view.querySelectorAll('[data-edit-product]').forEach(b => {
+      b.onclick = () => openProductForm(products.find(p => p.productId === b.dataset.editProduct));
+    });
+    if (canRemove) {
       view.querySelectorAll('[data-deactivate-product]').forEach(b => {
         b.onclick = () => deactivateProduct(b.dataset.deactivateProduct);
       });

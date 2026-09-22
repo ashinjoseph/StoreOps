@@ -1348,10 +1348,16 @@ function rpcGetProductTypeSchema(token, category) {
 }
 
 // Writes — manager / admin only.
+/**
+ * Any authenticated user. Cashiers are the ones who meet a new product first
+ * — it arrives on a delivery, or a rep leaves a sample — and a catalogue only
+ * a manager can extend is one that falls behind the shelf. Every write is
+ * audited with the actor, and nothing here is destructive: deactivating a
+ * product is still manager+.
+ */
 function rpcCreateProduct(token, input) {
   try {
     const session = _session(token);
-    Auth.require(session, ['admin', 'manager']);
     if (!input || !input.productName) throw new Error('productName required');
     if (!input.category) throw new Error('category required');
     const product = ProductMaster.create({
@@ -1381,10 +1387,14 @@ function rpcCreateProduct(token, input) {
   }
 }
 
+/**
+ * Any authenticated user — same reasoning as create, and the shopping-list
+ * picker sends whoever hits an incomplete product straight here to complete
+ * it. Deactivation stays manager+: correcting a record is not removing one.
+ */
 function rpcUpdateProduct(token, productId, patch) {
   try {
     const session = _session(token);
-    Auth.require(session, ['admin', 'manager']);
     if (!productId) throw new Error('productId required');
     ProductMaster.update(productId, patch || {}, session.staffId);
     return serializeProduct_(ProductMaster.getWithDetail(productId));
