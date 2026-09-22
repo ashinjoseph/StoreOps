@@ -45,7 +45,7 @@ function load(rows) {
   M = H.load(['Util.gs', 'ProductTypes.gs', 'ProductMaster.gs', 'ShoppingList.gs'], {
     SHEETS: { PRODUCT_MASTER: 'product_master', SHOPPING_LIST: 'shopping_list',
               PM_VAPE_STAGING: '_pm_vape_staging' },
-    AuditLog: { write: () => {} },
+    AuditLog: { write: () => {}, writeMany: () => {} },
     Staff: { getAll: () => [{ staffId: 'S_1', name: 'Ashin' }] },
   });
   return M;

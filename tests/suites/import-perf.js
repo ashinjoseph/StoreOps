@@ -70,7 +70,7 @@ function run(stagingRows, existing) {
   });
   const M = H.load(['Util.gs', 'ProductTypes.gs', 'ProductMaster.gs'], {
     SHEETS: { PRODUCT_MASTER: 'product_master', PM_OTHER_STAGING: '_pm_other_staging' },
-    AuditLog: { write: () => {} },
+    AuditLog: { write: () => {}, writeMany: () => {} },
   });
   instrument();
   const res = M.ProductMaster.importFromStaging({ type: 'other', actorId: 'S_1' });
@@ -100,8 +100,14 @@ t.section('Forty times the rows is not forty times the reads');
 // The regression this guards is exactly proportional, so state it that way.
 t.ok('reads did not scale with the paste', large.reads < 200);
 
-t.section('Each product is written once, not by rewriting the sheet');
-t.eq('one write per imported row', large.writes, 200);
+t.section('Writes do not scale with the paste either');
+// This is what put a 186-row vape import over the six-minute execution limit:
+// a row at a time meant eight API calls each — core row, detail row, audit
+// row, and a getLastRow before each — so the cost grew with the file until it
+// stopped finishing. A bulk run now collects and appends once per sheet.
+t.ok('five rows cost a handful of writes', small.writes <= 3);
+t.eq('and two hundred rows cost the same', large.writes, small.writes);
+t.ok('not one per row', large.writes < 200);
 
 /** A product already sitting in the master, as a sheet row. */
 function masterRow(o) {
@@ -224,7 +230,7 @@ function runWithHeader(header, dataRows) {
   });
   const M = H.load(['Util.gs', 'ProductTypes.gs', 'ProductMaster.gs'], {
     SHEETS: { PRODUCT_MASTER: 'product_master', PM_OTHER_STAGING: '_pm_other_staging' },
-    AuditLog: { write: () => {} },
+    AuditLog: { write: () => {}, writeMany: () => {} },
   });
   try { return { res: M.ProductMaster.importFromStaging({ type: 'other', actorId: 'S_1' }) }; }
   catch (e) { return { error: e.message }; }
@@ -254,6 +260,102 @@ t.eq('the real row still imports', out.res.imported, 1);
 t.eq('the echo is reported', out.res.headerEchoes, 1);
 t.eq('and is not counted as an error', out.res.errorCount, 0);
 t.eq('nor as a skip', out.res.skipped, 0);
+
+// ── The registry path, which is where the real cost lives ──────────────────
+// Everything above imports 'other', which writes no detail row and no audit
+// row. That is why a 186-row vape import could take six minutes while this
+// suite stayed green: the type that actually times out was never exercised.
+const VS_COLS = ['sku','barcode','product_name','brand','category','subcategory',
+  'pack_size','unit','supplier','min_sell_price','notes','source_file','needs_detail',
+  'product_line','form_factor','puffs','eliquid_ml','nicotine','flavor',
+  'purchase_price','sale_price','sale_price_credit','last_invoice_no'];
+const VD_COLS = ['product_id','sku','product_line','form_factor','puffs','eliquid_ml',
+  'nicotine','flavor','purchase_price','sale_price','sale_price_credit','last_invoice_no',
+  'created_at','updated_at'];
+const AL_COLS = ['log_id','ts','actor_id','action','target_type','target_id',
+  'before','after','details'];
+const VX = {}; VS_COLS.forEach((c, i) => { VX[c] = i; });
+
+function vapeRow(i) {
+  const r = new Array(VS_COLS.length).fill('');
+  r[VX.sku] = 'YV-' + (20000 + i);
+  r[VX.barcode] = '69375' + (100000 + i);
+  r[VX.product_name] = 'Vape thing ' + i;
+  r[VX.brand] = 'Brand';
+  r[VX.category] = 'vape';
+  r[VX.product_line] = 'Line';
+  r[VX.form_factor] = 'Disposable';
+  r[VX.flavor] = 'Flavour ' + i;
+  r[VX.sale_price] = 24.99;
+  return r;
+}
+
+let apiCalls = 0;
+function runVape(rows, master, detail) {
+  apiCalls = 0;
+  H.sheets({
+    product_master:      { headers: PM_COLS, rows: master || [] },
+    product_vape_detail: { headers: VD_COLS, rows: detail || [] },
+    audit_log:           { headers: AL_COLS, rows: [] },
+    _pm_vape_staging:    { headers: VS_COLS, rows: rows },
+    config: {},
+  });
+  const M = H.load(['Util.gs', 'ProductTypes.gs', 'ProductMaster.gs', 'AuditLog.gs'], {
+    SHEETS: { PRODUCT_MASTER: 'product_master', PM_VAPE_STAGING: '_pm_vape_staging',
+              AUDIT_LOG: 'audit_log' },
+  });
+  const ss = global.SpreadsheetApp.getActiveSpreadsheet();
+  const orig = ss.getSheetByName;
+  global.SpreadsheetApp = {
+    getActiveSpreadsheet: () => ({
+      getSheetByName: name => {
+        const sh = orig(name);
+        if (!sh) return sh;
+        const glr = sh.getLastRow, g = sh.getRange;
+        sh.getLastRow = function () { apiCalls++; return glr.call(sh); };
+        sh.getRange = function (r, c, nr, nc) {
+          const range = g.call(sh, r, c, nr, nc);
+          const gv = range.getValues, sv = range.setValues, s1 = range.setValue;
+          range.getValues = function () { apiCalls++; return gv.call(range); };
+          range.setValues = function (v) { apiCalls++; return sv.call(range, v); };
+          range.setValue = function (v) { apiCalls++; return s1.call(range, v); };
+          return range;
+        };
+        return sh;
+      },
+      insertSheet: () => null,
+    }),
+    getUi: () => ({ alert: () => {} }),
+  };
+  const res = M.ProductMaster.importFromStaging({ type: 'vape', actorId: 'IMPORT' });
+  return { res: res, calls: apiCalls, M: M };
+}
+
+t.section('A vape import does not cost more the bigger it gets');
+// Apps Script kills an execution at six minutes. At a few hundred milliseconds
+// per API call that is roughly 1400 calls — which a row-at-a-time import of
+// 186 products reached exactly, and did in production.
+const tiny = runVape([vapeRow(1), vapeRow(2), vapeRow(3)]);
+t.eq('three rows import', tiny.res.imported, 3);
+const big = runVape(Array.from({ length: 200 }, (_, i) => vapeRow(i)));
+t.eq('two hundred rows import', big.res.imported, 200);
+t.ok('and cost about the same as three', big.calls <= tiny.calls + 2);
+t.ok('nowhere near the execution limit', big.calls < 60);
+
+t.section('Re-importing the same file is just as cheap');
+// The second run is all updates. It used to cost MORE than the first — a full
+// master read and a full detail read per row — so a correction pass timed out
+// even when the first import had not.
+const rows200 = Array.from({ length: 200 }, (_, i) => vapeRow(i));
+const first = runVape(rows200);
+const master = H.rowsOf('product_master').map(r => r.slice());
+const detail = H.rowsOf('product_vape_detail').map(r => r.slice());
+const second = runVape(rows200, master, detail);
+t.eq('nothing is inserted twice', second.res.imported, 0);
+t.eq('every row is updated', second.res.updated, 200);
+t.ok('and it costs no more than the insert did', second.calls <= first.calls + 5);
+t.ok('still nowhere near the limit', second.calls < 60);
+t.eq('the master did not grow', second.M.ProductMaster.getAll().length, 200);
 
 t.section('An empty staging tab costs nothing');
 r = run([]);

@@ -18,12 +18,8 @@ const AuditLog = (() => {
     return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.AUDIT_LOG);
   }
 
-  function write_(entry) {
-    const sh = sheet_();
-    if (!sh) return;
-
-    const row = sh.getLastRow() + 1;
-    sh.getRange(row, 1, 1, NUM_COLS).setValues([[
+  function toRow_(entry) {
+    return [
       Util.newId('LOG'),
       new Date(),
       entry.actorId || '',
@@ -33,7 +29,27 @@ const AuditLog = (() => {
       entry.before ? JSON.stringify(entry.before) : '',
       entry.after  ? JSON.stringify(entry.after)  : '',
       entry.details || ''
-    ]]);
+    ];
+  }
+
+  function write_(entry) {
+    const sh = sheet_();
+    if (!sh) return;
+    const row = sh.getLastRow() + 1;
+    sh.getRange(row, 1, 1, NUM_COLS).setValues([toRow_(entry)]);
+  }
+
+  /**
+   * Append many entries in one write. A bulk import logs a row per product,
+   * and at one setValues each that is two API calls per product — enough, on
+   * its own, to put a couple of hundred rows over the execution limit.
+   */
+  function writeMany_(entries) {
+    if (!entries || !entries.length) return;
+    const sh = sheet_();
+    if (!sh) return;
+    const row = sh.getLastRow() + 1;
+    sh.getRange(row, 1, entries.length, NUM_COLS).setValues(entries.map(toRow_));
   }
 
   function recent_(limit, filters) {
@@ -69,7 +85,8 @@ const AuditLog = (() => {
   }
 
   return {
-    write:  write_,
-    recent: recent_,
+    write:     write_,
+    writeMany: writeMany_,
+    recent:    recent_,
   };
 })();
