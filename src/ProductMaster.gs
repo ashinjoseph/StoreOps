@@ -727,6 +727,25 @@ const ProductMaster = (() => {
 
     const lastCol = sh.getLastColumn();
     const headers = sh.getRange(2, 1, 1, lastCol).getValues()[0].map(normHeader_);
+
+    // Mapping is by header NAME, which is only sound while the header row
+    // describes the data underneath it. A stale header — one written before a
+    // column was added — still contains every name this code looks up, so
+    // every lookup succeeds and every one of them is off by the width of the
+    // missing column. That reads a whole file into the wrong fields and fails
+    // as "sale_price > 0", pointing at the data instead of at the header.
+    // Refuse instead, and say which column is missing.
+    const expected = stagingLayout_(type);
+    const missing = expected.filter(c => headers.indexOf(c) === -1);
+    if (missing.length) {
+      throw new Error(
+        'The header row of ' + sh.getName() + ' is out of date — missing: ' +
+        missing.join(', ') + '. Mapping is by column name, so a missing column ' +
+        'shifts every column after it and the whole import lands in the wrong ' +
+        'fields. Run "Refresh staging headers" from the StoreOps menu, then ' +
+        're-paste the data at row 3.');
+    }
+
     const values = sh.getRange(DATA_START_ROW, 1, last - DATA_START_ROW + 1, lastCol).getValues();
     const detailInputCols = ProductTypes.inputColumns(type);   // [] for other
     const isBeer = type === 'beer';
@@ -749,7 +768,7 @@ const ProductMaster = (() => {
       index[k] = p;
     });
 
-    let imported = 0, updated = 0, skipped = 0;
+    let imported = 0, updated = 0, skipped = 0, headerEchoes = 0, blankRows = 0;
     const errors = [];
     let errorCount = 0;
     const ERROR_CAP = 50;
@@ -758,8 +777,12 @@ const ProductMaster = (() => {
       const rowIndex = DATA_START_ROW + i;
       try {
         const productName = (colOf('product_name') >= 0 ? row[colOf('product_name')] : '').toString().trim();
-        // blank row or a pasted CSV header echo → skip silently
-        if (!productName || productName.toLowerCase() === 'product_name') return;
+        // A blank row is nothing to do. A row that repeats the header, though,
+        // means the paste started one row too low — worth counting and
+        // reporting rather than swallowing, because it is the visible symptom
+        // of a header/data misalignment.
+        if (!productName) { blankRows++; return; }
+        if (productName.toLowerCase() === 'product_name') { headerEchoes++; return; }
 
         const input = { actorId: actorId };
         Object.keys(CORE_STAGING_TO_CAMEL).forEach(h => {
@@ -833,10 +856,10 @@ const ProductMaster = (() => {
       action: 'product.imported',
       targetType: 'product_master',
       targetId: type,
-      after: { type, imported, updated, skipped, errorCount },
+      after: { type, imported, updated, skipped, errorCount, headerEchoes, blankRows },
     });
 
-    return { imported, updated, skipped, errors, errorCount };
+    return { imported, updated, skipped, errors, errorCount, headerEchoes, blankRows };
   }
 
   // Debug-only — cache health. Never call from RPCs.

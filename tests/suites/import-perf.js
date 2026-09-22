@@ -18,8 +18,10 @@ const PM_COLS = ['product_id','sku','barcode','product_name','brand','category',
   'subcategory','pack_size','unit','supplier','cost_price','sell_price',
   'sell_price_credit','min_sell_price','margin_amount','margin_pct','active',
   'notes','source_file','created_by','created_at','updated_by','updated_at'];
+// Must match ProductMaster.stagingLayout('other') exactly — the importer now
+// refuses a header that is missing any of it, which is the whole point.
 const ST_COLS = ['sku','barcode','product_name','brand','category','subcategory',
-  'pack_size','unit','supplier','min_sell_price','notes','source_file',
+  'pack_size','unit','supplier','min_sell_price','notes','source_file','needs_detail',
   'cost_price','sell_price','sell_price_credit'];
 const SX = {}; ST_COLS.forEach((c, i) => { SX[c] = i; });
 
@@ -203,6 +205,55 @@ t.eq('but the list is capped at 50', r.res.errors.length, 50);
 t.ok('so the count is larger than the list', r.res.errorCount > r.res.errors.length);
 t.eq('read = imported + updated + skipped + errorCount',
      r.res.imported + r.res.updated + r.res.skipped + r.res.errorCount, 130);
+
+t.section('A stale header row is refused, not silently mis-mapped');
+// The real incident: the staging tab was built before needs_detail existed, so
+// row 2 still described 22 columns while the pasted data had 23. Mapping is by
+// NAME, so every lookup still succeeded — each one pointing a column to the
+// left of its data. 161 of 186 rows failed as "sale_price > 0", blaming the
+// data for a header problem.
+const CURRENT = ST_COLS.slice();
+const STALE = CURRENT.filter(c => c !== 'needs_detail');
+
+function runWithHeader(header, dataRows) {
+  masterReads = 0; masterWrites = 0;
+  H.sheets({
+    product_master: { headers: PM_COLS, rows: [] },
+    _pm_other_staging: { headers: header, rows: dataRows },
+    config: {},
+  });
+  const M = H.load(['Util.gs', 'ProductTypes.gs', 'ProductMaster.gs'], {
+    SHEETS: { PRODUCT_MASTER: 'product_master', PM_OTHER_STAGING: '_pm_other_staging' },
+    AuditLog: { write: () => {} },
+  });
+  try { return { res: M.ProductMaster.importFromStaging({ type: 'other', actorId: 'S_1' }) }; }
+  catch (e) { return { error: e.message }; }
+}
+// Data carries the CURRENT shape; the header on row 2 is the stale one.
+const wide = [['SKU-1','111','Cola','Coke','other','','','','','','','','', 1, 2, '']];
+let out = runWithHeader(STALE, wide);
+t.ok('the import refuses outright', !!out.error);
+t.ok('and names the column that is missing', /needs_detail/.test(out.error || ''));
+t.ok('and says the header is the problem, not the data',
+     /header row[\s\S]*out of date/i.test(out.error || ''));
+t.ok('and says how to fix it', /Refresh staging headers/.test(out.error || ''));
+
+t.section('A current header imports normally');
+out = runWithHeader(CURRENT, wide);
+t.ok('no refusal', !out.error);
+t.eq('the row lands', out.res.imported, 1);
+
+t.section('A repeated header row is counted, not swallowed');
+// Pasting one row too low leaves the header sitting in the data. It used to be
+// dropped in silence, which hid exactly the misalignment that caused it.
+out = runWithHeader(CURRENT, [
+  CURRENT.map(c => c),                                            // the echo
+  ['SKU-2','222','Fanta','Coke','other','','','','','','','','', 1, 2, ''],
+]);
+t.eq('the real row still imports', out.res.imported, 1);
+t.eq('the echo is reported', out.res.headerEchoes, 1);
+t.eq('and is not counted as an error', out.res.errorCount, 0);
+t.eq('nor as a skip', out.res.skipped, 0);
 
 t.section('An empty staging tab costs nothing');
 r = run([]);
