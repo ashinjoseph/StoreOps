@@ -80,6 +80,7 @@ function onOpen() {
     .addItem('📦 Import Grocery/Other (from staging)',  'menu_importOther')
     .addItem('🧱 Migrate Product Master → v2 (per-type)', 'menu_migrateProductMasterV2')
     .addItem('🏷️ Add needs_detail to product_master', 'menu_migrateProductMasterNeedsDetail')
+    .addItem('🔎 Diagnose Vape staging', 'menu_diagnoseVapeStaging')
     .addItem('🛒 Add product_id to shopping_list', 'menu_migrateShoppingListProductId')
     .addItem('🎟️ Add lotto reserve to till_sessions', 'menu_migrateTillSessionsLottoReserve')
     .addItem('💵 Add cash handling tables',          'menu_migrateCashHandling')
@@ -115,20 +116,97 @@ function menu_importProductType_(type, label) {
   try {
     const result = ProductMaster.importFromStaging({ type: type, actorId: 'IMPORT' });
     const errs = result.errors || [];
+    // errs is capped, so its length is NOT the error count — reporting it as
+    // such said "Errors: 50" on a run that lost 161 rows, and the arithmetic
+    // silently failed to add up to the rows that went in.
+    const errorCount = result.errorCount == null ? errs.length : result.errorCount;
+    const total = result.imported + (result.updated || 0) + (result.skipped || 0) + errorCount;
+    const label_ = e => (e.sku || 'no SKU') + (e.productName ? ' — ' + e.productName : '') +
+                        ' (row ' + e.rowIndex + ')';
     ui.alert(
       label + ' import done',
-      'Inserted: ' + result.imported + '\n' +
-      'Updated:  ' + (result.updated || 0) + '\n' +
-      'Skipped (dup, no SKU): ' + (result.skipped || 0) + '\n' +
-      'Errors: ' + errs.length +
-      (errs.length
-        ? '\n\nFirst ' + Math.min(errs.length, 3) + ':\n  • ' +
-          errs.slice(0, 3).map(e => 'row ' + e.rowIndex + ': ' + e.message).join('\n  • ')
+      'Rows read: ' + total + '\n' +
+      'Inserted:  ' + result.imported + '\n' +
+      'Updated:   ' + (result.updated || 0) + '\n' +
+      'Skipped (dup name, no SKU): ' + (result.skipped || 0) + '\n' +
+      'Errors:    ' + errorCount +
+      (errorCount
+        ? '\n\nFirst ' + Math.min(errs.length, 10) + ' of ' + errorCount + ':\n  • ' +
+          errs.slice(0, 10).map(e => label_(e) + '\n      ' + e.message).join('\n  • ') +
+          (errorCount > errs.length
+            ? '\n\n(' + (errorCount - errs.length) + ' more not listed.)'
+            : '')
         : ''),
       ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('Import failed', e.message, ui.ButtonSet.OK);
   }
+}
+
+/**
+ * Report what the importer ACTUALLY reads out of a staging tab, rather than
+ * what the file that was pasted in contained. Those two came apart once —
+ * a paste that looked right in the file lost a column's values in the sheet,
+ * and the import reported only a count of failures with no way to see why.
+ *
+ * Reads nothing but the sheet, writes nothing, and names the first rows whose
+ * required fields are missing.
+ */
+function menu_diagnoseVapeStaging() { diagnoseStaging_('vape'); }
+
+function diagnoseStaging_(type) {
+  const ui = SpreadsheetApp.getUi();
+  const name = ProductMaster.stagingSheetName(type);
+  const sh = name && SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  if (!sh) { ui.alert('No staging sheet for ' + type + '.'); return; }
+
+  const lastRow = sh.getLastRow();
+  const lastCol = sh.getLastColumn();
+  if (lastRow < 3) { ui.alert(name + ' has no data rows (row 3 onwards is empty).'); return; }
+
+  const headers = sh.getRange(2, 1, 1, lastCol).getValues()[0]
+    .map(h => (h == null ? '' : h.toString()).trim().toLowerCase());
+  const values = sh.getRange(3, 1, lastRow - 2, lastCol).getValues();
+  const colOf = n => headers.indexOf(n);
+
+  // Required for a vape row to survive: a name to create it under, and a sale
+  // price, since pricing is derived and validate rejects a zero.
+  const need = ['sku', 'product_name', 'sale_price'];
+  const missingCols = need.filter(n => colOf(n) < 0);
+
+  const skuCol = colOf('sku'), nameCol = colOf('product_name'), priceCol = colOf('sale_price');
+  let blankPrice = 0, blankName = 0, populated = 0;
+  const offenders = [];
+  values.forEach((row, i) => {
+    const nm = nameCol >= 0 ? (row[nameCol] || '').toString().trim() : '';
+    if (!nm) { blankName++; return; }
+    const raw = priceCol >= 0 ? row[priceCol] : '';
+    const num = Number(raw);
+    if (!raw && raw !== 0) { blankPrice++; }
+    else if (isNaN(num) || num <= 0) { blankPrice++; }
+    else { populated++; return; }
+    if (offenders.length < 8) {
+      offenders.push('row ' + (i + 3) + '  ' +
+        (skuCol >= 0 ? (row[skuCol] || '').toString().trim() : '?') +
+        '  sale_price=' + JSON.stringify(raw) + ' (' + typeof raw + ')');
+    }
+  });
+
+  ui.alert(name + ' — what the importer sees',
+    'Header row (row 2): ' + lastCol + ' columns\n' +
+    'Data rows (from row 3): ' + values.length + '\n\n' +
+    (missingCols.length
+      ? '⚠️ Header is MISSING: ' + missingCols.join(', ') +
+        '\nThe header must sit on ROW 2, data from row 3.\n\n'
+      : 'Required headers found: ' + need.join(', ') + '\n' +
+        '  sku → col ' + (skuCol + 1) +
+        ', product_name → col ' + (nameCol + 1) +
+        ', sale_price → col ' + (priceCol + 1) + '\n\n') +
+    'Rows with a usable sale_price: ' + populated + '\n' +
+    'Rows with a blank/zero sale_price: ' + blankPrice + '   ← these will error\n' +
+    'Rows with no product_name (skipped silently): ' + blankName +
+    (offenders.length ? '\n\nFirst offenders:\n  ' + offenders.join('\n  ') : ''),
+    ui.ButtonSet.OK);
 }
 
 // ── Migration: product_master gains needs_detail ──────────

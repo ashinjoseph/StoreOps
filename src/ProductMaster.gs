@@ -810,7 +810,18 @@ const ProductMaster = (() => {
         }
       } catch (e) {
         errorCount++;
-        if (errors.length < ERROR_CAP) errors.push({ rowIndex: rowIndex, message: e.message });
+        if (errors.length < ERROR_CAP) {
+          // Name the row, not just its position: the staging tab is hidden, so
+          // "row 47" means counting rows to find out what actually failed.
+          const skuCol = colOf('sku');
+          const nameCol = colOf('product_name');
+          errors.push({
+            rowIndex: rowIndex,
+            sku: skuCol >= 0 ? (row[skuCol] == null ? '' : row[skuCol].toString().trim()) : '',
+            productName: nameCol >= 0 ? (row[nameCol] == null ? '' : row[nameCol].toString().trim()) : '',
+            message: e.message,
+          });
+        }
       }
     });
 
@@ -874,6 +885,7 @@ const ProductMaster = (() => {
     // bulk
     importFromStaging:       importFromStaging_,
     stagingLayout:           stagingLayout_,
+    stagingSheetName:        stagingSheetName_,
     // helpers
     computeMargin:           computeMargin_,
     readDetail:              readDetail_,
