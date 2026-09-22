@@ -31,8 +31,13 @@ const ProductMaster = (() => {
     margin_amount: 15, margin_pct: 16,
     active: 17, notes: 18, source_file: 19,
     created_by: 20, created_at: 21, updated_by: 22, updated_at: 23,
+    // Set when a row is known to be incomplete — most often an import that
+    // landed without the flavour, so several variants read as the same thing.
+    // It stays in the picker (hiding it is how a product gets added twice),
+    // but it cannot be ordered until someone fills the detail in.
+    needs_detail: 24,
   };
-  const NUM_COLS = 23;
+  const NUM_COLS = 24;
   const DATA_START_ROW = 3;
 
   // ── Cache strategy ────────────────────────────────────────
@@ -144,6 +149,7 @@ const ProductMaster = (() => {
       createdAt:       row[COL.created_at - 1] instanceof Date ? row[COL.created_at - 1] : null,
       updatedBy:       (row[COL.updated_by - 1] || '').toString().trim(),
       updatedAt:       row[COL.updated_at - 1] instanceof Date ? row[COL.updated_at - 1] : null,
+      needsDetail:     row[COL.needs_detail - 1] === true,
       _rowIndex:       rowIndex,
     };
   }
@@ -423,6 +429,7 @@ const ProductMaster = (() => {
       now,
       input.actorId,
       now,
+      input.needsDetail === true,
     ]]);
 
     if (ProductTypes.has(category)) writeDetail_(productId, sku, category, detail);
@@ -479,6 +486,7 @@ const ProductMaster = (() => {
     minSellPrice:    COL.min_sell_price,
     notes:           COL.notes,
     active:          COL.active,
+    needsDetail:     COL.needs_detail,
   };
 
   const MONEY_FIELDS = new Set(['costPrice', 'sellPrice', 'sellPriceCredit', 'minSellPrice']);
@@ -532,7 +540,7 @@ const ProductMaster = (() => {
 
       let newVal = patch[key];
       if (MONEY_FIELDS.has(key)) newVal = Util.roundMoney(Number(newVal) || 0);
-      else if (key === 'active') newVal = newVal === true;
+      else if (key === 'active' || key === 'needsDetail') newVal = newVal === true;
       else if (key === 'category') newVal = normalizeCategory_(newVal);
       else newVal = (newVal == null ? '' : newVal.toString()).trim();
 
@@ -653,15 +661,18 @@ const ProductMaster = (() => {
   const CORE_STAGING_BASE = [
     'sku', 'barcode', 'product_name', 'brand', 'category', 'subcategory',
     'pack_size', 'unit', 'supplier', 'min_sell_price', 'notes', 'source_file',
+    'needs_detail',
   ];
   const CORE_STAGING_TO_CAMEL = {
     sku: 'sku', barcode: 'barcode', product_name: 'productName', brand: 'brand',
     category: 'category', subcategory: 'subcategory', pack_size: 'packSize',
     unit: 'unit', supplier: 'supplier', min_sell_price: 'minSellPrice',
-    notes: 'notes', source_file: 'sourceFile',
+    notes: 'notes', source_file: 'sourceFile', needs_detail: 'needsDetail',
     cost_price: 'costPrice', sell_price: 'sellPrice', sell_price_credit: 'sellPriceCredit',
   };
   const CORE_STAGING_MONEY = new Set(['cost_price', 'sell_price', 'sell_price_credit', 'min_sell_price']);
+  // A spreadsheet cell can say yes in several ways; a blank always means no.
+  const CORE_STAGING_TRUTHY = new Set(['true', 'yes', 'y', '1', 'x']);
 
   // Resolved lazily (inside stagingSheet_) so this module has no load-order
   // dependency on Setup.gs's SHEETS map.
@@ -756,6 +767,8 @@ const ProductMaster = (() => {
           if (c < 0) return;
           let v = row[c];
           if (CORE_STAGING_MONEY.has(h)) v = Number(v) || 0;
+          else if (h === 'needs_detail') v = CORE_STAGING_TRUTHY.has(
+            (v == null ? '' : v.toString()).trim().toLowerCase());
           else v = (v == null ? '' : v.toString()).trim();
           input[CORE_STAGING_TO_CAMEL[h]] = v;
         });

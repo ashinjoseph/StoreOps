@@ -156,6 +156,14 @@ const ShoppingList = (() => {
     const p = ProductMaster.getById(productId);
     if (!p) throw new Error('Product not found: ' + productId);
     if (!p.active) throw new Error('Product is inactive: ' + (p.productName || productId));
+    // An incomplete row stays visible in the picker so nobody adds a second
+    // copy of it, but ordering one is guesswork: several variants read as the
+    // same product until the flavour is filled in. The client redirects to the
+    // edit form; this is the gate that makes that more than a suggestion.
+    if (p.needsDetail) {
+      throw new Error('NEEDS_DETAIL: ' + (p.productName || productId) +
+        ' is missing details — fill in the flavour or variant before ordering it');
+    }
 
     const name = (p.productName || '').toString().trim();
     const category = (p.category || 'other').toString().trim();

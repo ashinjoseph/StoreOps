@@ -1245,6 +1245,7 @@ function serializeProduct_(r) {
     marginAmount:    Number(r.marginAmount) || 0,
     marginPct:       Number(r.marginPct) || 0,
     active:          r.active === true,
+    needsDetail:     r.needsDetail === true,
     notes:           r.notes || '',
     sourceFile:      r.sourceFile || '',
     createdBy:       r.createdBy || '',
@@ -1304,6 +1305,9 @@ function rpcGetProductsForPicker(token) {
       subcategory: r.subcategory || '',   // searched on, not displayed
       unit:        r.unit || '',
       costPrice:   Number(r.costPrice) || 0,
+      // The picker shows these but will not let them be ordered — it sends
+      // the user to the edit form instead.
+      needsDetail: r.needsDetail === true,
     }));
   } catch (e) {
     console.error('rpcGetProductsForPicker failed: ' + e.message + '\n' + (e.stack || ''));
@@ -1344,13 +1348,20 @@ function rpcGetProductTypeSchema(token, category) {
 }
 
 // Writes — manager / admin only.
+/**
+ * Any authenticated user. Cashiers are the ones who meet a new product first
+ * — it arrives on a delivery, or a rep leaves a sample — and a catalogue only
+ * a manager can extend is one that falls behind the shelf. Every write is
+ * audited with the actor, and nothing here is destructive: deactivating a
+ * product is still manager+.
+ */
 function rpcCreateProduct(token, input) {
   try {
     const session = _session(token);
-    Auth.require(session, ['admin', 'manager']);
     if (!input || !input.productName) throw new Error('productName required');
     if (!input.category) throw new Error('category required');
     const product = ProductMaster.create({
+      needsDetail:     input.needsDetail === true,
       sku:             input.sku || '',
       barcode:         input.barcode || '',
       productName:     input.productName,
@@ -1376,10 +1387,14 @@ function rpcCreateProduct(token, input) {
   }
 }
 
+/**
+ * Any authenticated user — same reasoning as create, and the shopping-list
+ * picker sends whoever hits an incomplete product straight here to complete
+ * it. Deactivation stays manager+: correcting a record is not removing one.
+ */
 function rpcUpdateProduct(token, productId, patch) {
   try {
     const session = _session(token);
-    Auth.require(session, ['admin', 'manager']);
     if (!productId) throw new Error('productId required');
     ProductMaster.update(productId, patch || {}, session.staffId);
     return serializeProduct_(ProductMaster.getWithDetail(productId));
