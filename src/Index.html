@@ -3126,6 +3126,9 @@
 
     const CATS = ['all', 'vape', 'cigarettes', 'beer', 'grocery', 'other'];
     let activeCat = 'all';
+    // High enough that picking a chip shows the whole shelf, low enough that a
+    // thousand-row "All" does not build a thousand rows of HTML on a phone.
+    const MAX_PICKER_ROWS = 250;
 
     const bodyHTML =
       '<div class="sheet-field"><input type="text" id="siSearch" class="pm-search" placeholder="Search name / brand / SKU…" autocomplete="off"></div>' +
@@ -3209,7 +3212,14 @@
         const hay = [p.sku, p.productName, p.brand, p.category, p.subcategory].join(' ').toLowerCase();
         return terms.every(t => hay.indexOf(t) >= 0);
       });
-      list = list.slice(0, 40);
+      // Tapping a category chip is browsing, not searching — the vape shelf
+      // alone runs to ~190 products, and a cap of 40 hid three quarters of it
+      // with nothing on screen to say so. "Not in the picker" then looks
+      // identical to "past the cut", which is how a product nobody could find
+      // got added to the master a second time. The list scrolls, so hold a
+      // whole category, and when the cut does bite, say so out loud.
+      const matched = list.length;
+      list = list.slice(0, MAX_PICKER_ROWS);
       if (!list.length) {
         $('siResults').innerHTML = '<div class="si-empty">No matching products.' +
           (privileged ? ' Use “+ Create new product”.' : ' Ask a manager to add it.') + '</div>';
@@ -3220,11 +3230,18 @@
           '<div class="si-info">' +
             '<span class="si-name">' + esc(p.productName) + '</span>' +
             '<span class="si-meta">' + (p.brand ? esc(p.brand) + ' · ' : '') + esc(catLabel(p.category)) +
-              (p.unit ? ' · ' + esc(p.unit) : '') + ' · cost ' + money(p.costPrice) + '</span>' +
+              (p.unit ? ' · ' + esc(p.unit) : '') +
+              // Cost is filled in over time, so most rows sit at zero. Saying
+              // "cost $0.00" reads as free rather than as not-yet-recorded.
+              (Number(p.costPrice) > 0 ? ' · cost ' + money(p.costPrice) : '') + '</span>' +
           '</div>' +
           '<div class="si-ctrl" data-ctrl="' + esc(p.productId) + '">' + ctrlHTML(p.productId) + '</div>' +
         '</div>'
-      ).join('');
+      ).join('') +
+      (matched > list.length
+        ? '<div class="si-empty">Showing ' + list.length + ' of ' + matched +
+          ' — type to narrow it down.</div>'
+        : '');
     }
 
     // Delegated so repainting a single control never needs rebinding.
