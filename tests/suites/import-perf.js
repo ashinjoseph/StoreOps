@@ -163,6 +163,47 @@ t.eq('only the real row imports', r.res.imported, 1);
 t.eq('nothing is counted as an error', r.res.errorCount, 0);
 t.eq('and nothing is reported as skipped either', r.res.skipped, 0);
 
+t.section('A failing row is named, not just counted');
+// The staging tab is hidden, so "row 47" means counting rows to find out what
+// broke. The error has to carry the SKU and the name.
+// A bad category is rejected in create_, so this really does throw — a row
+// that merely lacks a price would sail through for the 'other' type, which
+// has no validate rule, and the assertions below would pass on an empty list.
+r = run([
+  stagingRow({ sku: 'YV-1', product_name: 'Good one', cost_price: 1, sell_price: 2 }),
+  stagingRow({ sku: 'YV-2', product_name: 'Bad one', category: 'nonsense',
+               cost_price: 1, sell_price: 2 }),
+]);
+t.eq('the good row landed', r.res.imported, 1);
+t.eq('the bad one is counted as an error', r.res.errorCount, 1);
+const failed = r.res.errors[0];
+t.eq('it carries the SKU', failed.sku, 'YV-2');
+t.eq('and the product name', failed.productName, 'Bad one');
+t.eq('and still the row number', failed.rowIndex, 4);
+t.ok('and says what went wrong', /invalid category/.test(failed.message));
+
+t.section('The error COUNT is not the length of the error list');
+// errors is capped; reporting its length as the count said "Errors: 50" on a
+// run that actually lost 161 rows, and the numbers stopped adding up to the
+// rows that went in.
+// More failures than the list can hold, so the cap actually bites.
+const many = [];
+for (let i = 0; i < 60; i++) {
+  many.push(stagingRow({ sku: 'OK-' + i, product_name: 'Fine ' + i,
+                         cost_price: 1, sell_price: 2 }));
+}
+for (let i = 0; i < 70; i++) {
+  many.push(stagingRow({ sku: 'BAD-' + i, product_name: 'Broken ' + i,
+                         category: 'nonsense', cost_price: 1, sell_price: 2 }));
+}
+r = run(many);
+t.eq('the good rows landed', r.res.imported, 60);
+t.eq('every failure is counted', r.res.errorCount, 70);
+t.eq('but the list is capped at 50', r.res.errors.length, 50);
+t.ok('so the count is larger than the list', r.res.errorCount > r.res.errors.length);
+t.eq('read = imported + updated + skipped + errorCount',
+     r.res.imported + r.res.updated + r.res.skipped + r.res.errorCount, 130);
+
 t.section('An empty staging tab costs nothing');
 r = run([]);
 t.eq('nothing imported', r.res.imported, 0);
