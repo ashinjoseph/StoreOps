@@ -1023,6 +1023,14 @@
   .si-chip { padding: 7px 12px; border-radius: 999px; background: #f1f3f7; color: #4a5570; font-size: 12px; font-weight: 700; border: 1px solid transparent; }
   .si-chip.on { background: #1a4ca1; color: white; }
   .si-empty { font-size: 13px; color: #6a6e79; padding: 14px 4px; text-align: center; }
+  .si-row-fix { background: #fffaf0; border-color: #f0e2c4; }
+  .si-flag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+             background: #f3e2bd; color: #7a5a12; font-size: 10px; font-weight: 600;
+             vertical-align: middle; }
+  .si-fix { border: 1px solid #e0c98c; background: #f9efd6; color: #7a5a12; font-size: 12px;
+            font-weight: 600; border-radius: 8px; padding: 6px 12px; }
+  .si-fixnote { background: #fffaf0; border: 1px solid #f0e2c4; color: #7a5a12; font-size: 12px;
+                border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; line-height: 1.45; }
   .si-pick { background: #eef2ff; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
   .si-pick-name { font-size: 15px; font-weight: 800; color: #1a2540; }
   .si-pick-meta { font-size: 12px; color: #4a5570; margin-top: 2px; }
@@ -3226,16 +3234,24 @@
         return;
       }
       $('siResults').innerHTML = list.map(p =>
-        '<div class="si-row">' +
+        '<div class="si-row' + (p.needsDetail ? ' si-row-fix' : '') + '">' +
           '<div class="si-info">' +
-            '<span class="si-name">' + esc(p.productName) + '</span>' +
+            '<span class="si-name">' + esc(p.productName) +
+              (p.needsDetail ? '<span class="si-flag">needs details</span>' : '') + '</span>' +
             '<span class="si-meta">' + (p.brand ? esc(p.brand) + ' · ' : '') + esc(catLabel(p.category)) +
               (p.unit ? ' · ' + esc(p.unit) : '') +
               // Cost is filled in over time, so most rows sit at zero. Saying
               // "cost $0.00" reads as free rather than as not-yet-recorded.
               (Number(p.costPrice) > 0 ? ' · cost ' + money(p.costPrice) : '') + '</span>' +
           '</div>' +
-          '<div class="si-ctrl" data-ctrl="' + esc(p.productId) + '">' + ctrlHTML(p.productId) + '</div>' +
+          // An incomplete row is listed, never quietly hidden — hiding it is
+          // how a second copy of the same product gets created — but the + is
+          // replaced by the route to fixing it.
+          '<div class="si-ctrl" data-ctrl="' + esc(p.productId) + '">' +
+            (p.needsDetail
+              ? '<button class="si-fix" data-fix="' + esc(p.productId) + '">Fix</button>'
+              : ctrlHTML(p.productId)) +
+          '</div>' +
         '</div>'
       ).join('') +
       (matched > list.length
@@ -3246,12 +3262,55 @@
 
     // Delegated so repainting a single control never needs rebinding.
     $('siResults').onclick = (ev) => {
+      const fix = ev.target.closest('[data-fix]');
+      if (fix) return openFixThenAdd(fix.getAttribute('data-fix'));
       const t = ev.target.closest('[data-add],[data-inc],[data-dec]');
       if (!t) return;
       const dec = t.getAttribute('data-dec');
       if (dec) return bump(dec, -1);
       bump(t.getAttribute('data-add') || t.getAttribute('data-inc'), 1);
     };
+
+    /**
+     * Ordering an incomplete row is guesswork — several variants read as the
+     * same product until the flavour is filled in. So send the user to the
+     * edit form first, and add it to the list only once it comes back fixed.
+     * Editing products is manager+; a cashier is told who can do it rather
+     * than being dropped into a form the server would refuse to save.
+     */
+    function openFixThenAdd(pid) {
+      haptic();
+      const p = products.find(x => x.productId === pid);
+      if (!p) return;
+      if (!privileged) {
+        return toast('“' + p.productName + '” is missing its flavour or variant. ' +
+                     'A manager needs to complete it before it can be ordered.', 'warning');
+      }
+      openProductForm(p, {
+        fixMode: true,
+        onSaved: async (saved) => {
+          // The picker list is cached; without a forced refresh the row would
+          // come back still flagged and still unorderable.
+          let fresh = null;
+          try {
+            fresh = await cachedCall('rpcGetProductsForPicker', [state.token], TTL_REF, { force: true });
+          } catch (e) { }
+          const done = saved && saved.needsDetail === false;
+          if (done) {
+            try {
+              await call('rpcAddToShoppingList', state.token,
+                { productId: pid, quantity: 1, note: '' });
+              toast('✓ Added ' + ((saved && saved.productName) || p.productName), 'success');
+              await loadShoppingTab(true);
+            } catch (e) { toast(e.message, 'error'); }
+          } else {
+            toast('Saved — still marked as needing details, so it stays off the list.', 'warning');
+          }
+          if (fresh) products = fresh;
+          openAddShoppingItem();
+        },
+      });
+    }
 
     $('siChips').onclick = (ev) => {
       const c = ev.target.closest('[data-cat]');
@@ -3636,6 +3695,7 @@
       minSellPrice:    p.minSellPrice ? String(p.minSellPrice) : '',
       supplier:        p.supplier || '',
       notes:           p.notes || '',
+      needsDetail:     p.needsDetail === true,
     };
 
     const catOptions = PRODUCT_CATEGORIES_UI.map(c =>
@@ -3647,6 +3707,13 @@
       : '<div style="font-size:10px;color:#8a8e98;margin-top:3px">Leave blank to dedup by brand + name.</div>';
 
     const bodyHTML =
+      // Arriving from a blocked Add: say why the form opened, so the fields
+      // that matter are obvious before anyone starts scrolling.
+      (opts.fixMode
+        ? '<div class="si-fixnote">This product is missing its flavour or variant, so it ' +
+          'cannot be ordered yet. Give it a name that tells it apart from the others in ' +
+          'its line, then untick the box at the bottom.</div>'
+        : '') +
       '<div class="sheet-field"><label>Category</label>' +
         '<select id="pmCategory">' + catOptions + '</select></div>' +
 
@@ -3693,6 +3760,17 @@
 
       '<div class="sheet-field"><label>Notes (optional)</label>' +
         '<input type="text" id="pmNotes" value="' + esc(initial.notes) + '"></div>' +
+
+      // The gate is a stored field, not a guess from the name: a rename must
+      // not silently make something orderable, and a manager must be able to
+      // flag anything they spot as wrong.
+      '<div class="sheet-field">' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
+          '<input type="checkbox" id="pmNeedsDetail" style="width:auto;margin:0"' +
+            (initial.needsDetail ? ' checked' : '') + '>' +
+          'Needs details before it can be ordered</label>' +
+        '<div style="font-size:10px;color:#8a8e98;margin-top:3px">Stays in the ' +
+          'shopping-list picker, but tapping it opens this form instead of adding it.</div></div>' +
 
       '<div id="pmMarginPreview" class="product-margin-preview">' +
         '<span>Margin</span>' +
@@ -3851,6 +3929,7 @@
         unit:         $('pmUnit').value.trim(),
         supplier:     $('pmSupplier').value.trim(),
         notes:        $('pmNotes').value.trim(),
+        needsDetail:  $('pmNeedsDetail').checked === true,
         minSellPrice: parseFloat($('pmMinSell').value) || 0,
         detail:       readDetailInputs(schema),
       };
@@ -3863,8 +3942,9 @@
       $('pmSaveBtn').disabled = true;
       try {
         if (isEdit) {
-          await call('rpcUpdateProduct', state.token, p.productId, payload);
+          const saved = await call('rpcUpdateProduct', state.token, p.productId, payload);
           toast('Saved', 'success');
+          if (opts.onSaved) { opts.onSaved(saved); return; }
           closeSheet();
           loadProductsTab(true);
         } else {

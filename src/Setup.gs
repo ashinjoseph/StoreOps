@@ -79,6 +79,7 @@ function onOpen() {
     .addItem('📦 Import Vape (from staging)',           'menu_importVape')
     .addItem('📦 Import Grocery/Other (from staging)',  'menu_importOther')
     .addItem('🧱 Migrate Product Master → v2 (per-type)', 'menu_migrateProductMasterV2')
+    .addItem('🏷️ Add needs_detail to product_master', 'menu_migrateProductMasterNeedsDetail')
     .addItem('🛒 Add product_id to shopping_list', 'menu_migrateShoppingListProductId')
     .addItem('🎟️ Add lotto reserve to till_sessions', 'menu_migrateTillSessionsLottoReserve')
     .addItem('💵 Add cash handling tables',          'menu_migrateCashHandling')
@@ -128,6 +129,48 @@ function menu_importProductType_(type, label) {
   } catch (e) {
     ui.alert('Import failed', e.message, ui.ButtonSet.OK);
   }
+}
+
+// ── Migration: product_master gains needs_detail ──────────
+// Marks a row as known-incomplete: it stays in the shopping-list picker
+// (hiding it is how a product ends up added twice) but cannot be ordered
+// until someone fills in the missing flavour or variant. Idempotent —
+// running it twice is a no-op, and existing rows default to FALSE, which
+// is "fine to order", so nothing already in the sheet changes behaviour.
+function menu_migrateProductMasterNeedsDetail() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(SHEETS.PRODUCT_MASTER);
+  if (!sh) { ui.alert('product_master not found — run First-time Setup.'); return; }
+
+  const headers = sh.getRange(2, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
+    .map(h => (h == null ? '' : h.toString()).trim());
+  if (headers.indexOf('needs_detail') !== -1) {
+    ui.alert('Already migrated', 'product_master already has needs_detail.', ui.ButtonSet.OK);
+    return;
+  }
+
+  const col = 24;
+  if (sh.getMaxColumns() < col) sh.insertColumnsAfter(sh.getMaxColumns(), col - sh.getMaxColumns());
+  sh.getRange(2, col).setValue('needs_detail');
+  sh.setColumnWidth(col, 90);
+  applyBoolValidation_(sh, col);
+
+  // Backfill FALSE rather than leaving blanks: the record reads `=== true`,
+  // so a blank already behaves as false, but an explicit value makes the
+  // column sortable and filterable in the sheet.
+  const last = sh.getLastRow();
+  if (last >= 3) {
+    sh.getRange(3, col, last - 2, 1).setValues(
+      new Array(last - 2).fill(0).map(() => [false]));
+  }
+
+  ui.alert('Migration done',
+    'product_master now has needs_detail (column ' + col + ').\n\n' +
+    'Existing rows are set to FALSE — ordering is unchanged.\n' +
+    'Set a row TRUE (or stage needs_detail=yes on import) to keep it in the\n' +
+    'picker while blocking it from the shopping list until it is fixed.',
+    ui.ButtonSet.OK);
 }
 
 // ── Migration: flat product_master → thin core + per-type detail ──
@@ -932,18 +975,20 @@ function setupProductMasterSheet_() {
   if (ss.getSheetByName(SHEETS.PRODUCT_MASTER)) return;
   const sh = ss.insertSheet(SHEETS.PRODUCT_MASTER);
 
-  writeHeader_(sh, '📦  Product Master (core)', 23);
+  writeHeader_(sh, '📦  Product Master (core)', 24);
   writeColumnHeaders_(sh, [
     'product_id', 'sku', 'barcode', 'product_name', 'brand',
     'category', 'subcategory', 'pack_size', 'unit', 'supplier',
     'cost_price', 'sell_price', 'sell_price_credit', 'min_sell_price',
     'margin_amount', 'margin_pct',
     'active', 'notes', 'source_file',
-    'created_by', 'created_at', 'updated_by', 'updated_at'
+    'created_by', 'created_at', 'updated_by', 'updated_at',
+    'needs_detail'
   ]);
 
   applyEnumValidation_(sh, 6, PRODUCT_CATEGORIES);   // category
   applyBoolValidation_(sh, 17);                       // active
+  applyBoolValidation_(sh, 24);                       // needs_detail
 
   // Money formats: cost, sell, sell_credit, min_sell, margin_amount
   for (const col of [11, 12, 13, 14, 15]) {
@@ -960,7 +1005,8 @@ function setupProductMasterSheet_() {
     90, 90, 90, 90,
     90, 70,
     60, 240, 180,
-    100, 150, 100, 150
+    100, 150, 100, 150,
+    90
   ]);
   sh.setFrozenRows(2);
 }

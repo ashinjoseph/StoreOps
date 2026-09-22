@@ -1245,6 +1245,7 @@ function serializeProduct_(r) {
     marginAmount:    Number(r.marginAmount) || 0,
     marginPct:       Number(r.marginPct) || 0,
     active:          r.active === true,
+    needsDetail:     r.needsDetail === true,
     notes:           r.notes || '',
     sourceFile:      r.sourceFile || '',
     createdBy:       r.createdBy || '',
@@ -1304,6 +1305,9 @@ function rpcGetProductsForPicker(token) {
       subcategory: r.subcategory || '',   // searched on, not displayed
       unit:        r.unit || '',
       costPrice:   Number(r.costPrice) || 0,
+      // The picker shows these but will not let them be ordered — it sends
+      // the user to the edit form instead.
+      needsDetail: r.needsDetail === true,
     }));
   } catch (e) {
     console.error('rpcGetProductsForPicker failed: ' + e.message + '\n' + (e.stack || ''));
@@ -1351,6 +1355,7 @@ function rpcCreateProduct(token, input) {
     if (!input || !input.productName) throw new Error('productName required');
     if (!input.category) throw new Error('category required');
     const product = ProductMaster.create({
+      needsDetail:     input.needsDetail === true,
       sku:             input.sku || '',
       barcode:         input.barcode || '',
       productName:     input.productName,

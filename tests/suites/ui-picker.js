@@ -48,7 +48,9 @@ function render(products, cat, search) {
   const html = store.innerHTML;
   return {
     html: html,
-    rows: (html.match(/class="si-row"/g) || []).length,
+    // Not `si-row"` — a flagged row carries a second class, and matching the
+    // closing quote would quietly count it as absent.
+    rows: (html.match(/class="si-row[ "]/g) || []).length,
     names: (html.match(/class="si-name">([^<]*)</g) || [])
       .map(m => m.replace(/.*">/, '').replace('<', '')),
     note: (/class="si-empty">([^<]*)</.exec(html) || [])[1] || '',
@@ -115,9 +117,39 @@ t.ok('the row still renders', r.rows === 1);
 r = render([product(1, { costPrice: 22.93 })], 'vape');
 t.ok('a real cost is shown', /cost \$22\.93/.test(r.html));
 
+t.section('An incomplete row is listed, not hidden');
+// Hiding it is how a second copy of the same product gets created: it is not
+// in the picker, so someone adds it again.
+const flagged = [
+  product(1, { productName: 'STLTH Loop 25K Pod — flavour TBC · 691584095058', needsDetail: true }),
+  product(2, { productName: 'Elf Bar FS70K Mango Ice' }),
+];
+r = render(flagged, 'vape');
+t.eq('both rows are painted', r.rows, 2);
+t.ok('the incomplete one is marked', /class="si-flag">needs details</.test(r.html));
+t.ok('and its row is styled apart', /class="si-row si-row-fix"/.test(r.html));
+t.ok('the complete one is not marked',
+     (r.html.match(/si-flag/g) || []).length === 1);
+
+t.section('…but it cannot be added from the picker');
+t.ok('the incomplete row offers a way to fix it', /data-fix="P1"/.test(r.html));
+t.ok('and no way to add it', !/data-add="P1"/.test(r.html));
+t.ok('the complete row still adds normally', /data-add="P2"/.test(r.html));
+t.ok('and offers no fix button', !/data-fix="P2"/.test(r.html));
+
+t.section('It is still findable while it waits to be fixed');
+t.eq('by the barcode in its name',
+     render(flagged, 'vape', '691584095058').rows, 1);
+t.eq('and by its line', render(flagged, 'vape', 'loop 25k').rows, 1);
+
 t.section('Every painted row can actually be tapped');
 r = render(catalogue(186), 'vape');
 t.eq('one add control per row', (r.html.match(/data-add=/g) || []).length, 186);
 t.eq('one control slot per row', (r.html.match(/data-ctrl=/g) || []).length, 186);
+// A flagged row still gets a control slot — it just holds Fix instead of +.
+r = render(catalogue(10, i => ({ needsDetail: i % 2 === 0 })), 'vape');
+t.eq('every row keeps its slot', (r.html.match(/data-ctrl=/g) || []).length, 10);
+t.eq('half of them add', (r.html.match(/data-add=/g) || []).length, 5);
+t.eq('half of them fix', (r.html.match(/data-fix=/g) || []).length, 5);
 
 t.done();
