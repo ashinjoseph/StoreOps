@@ -4568,7 +4568,14 @@
                 '<span class="' + badgeClass + '">' + esc(r.company || '?') + '</span>' +
                 esc(r.name || ('Rule ' + r.ruleId)) +
               '</div>' +
-              '<div class="payroll-rate">Pay ' + esc(r.percentage) + '% over ' + money(r.threshold) + ' to ' + target + '</div>' +
+              // A fixed rule described as "0% over $0.00" reads as a rule that
+              // pays nothing, which is the opposite of what it does.
+              '<div class="payroll-rate">' +
+                (r.ruleType === 'fixed'
+                  ? 'Pay ' + money(r.fixedAmount) + ' per week to ' + target +
+                    (r.threshold > 0 ? ' once sales reach ' + money(r.threshold) : '')
+                  : 'Pay ' + esc(r.percentage) + '% over ' + money(r.threshold) + ' to ' + target) +
+              '</div>' +
             '</div>' +
             '<div style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;' +
               (r.active ? 'background:#dcfce7;color:#15803d' : 'background:#f0f1f5;color:#6a6e79') + '">' +
@@ -4660,6 +4667,8 @@
       staffId:       r.staffId || '',
       threshold:     r.threshold != null ? String(r.threshold) : '',
       percentage:    r.percentage != null ? String(r.percentage) : '',
+      ruleType:      r.ruleType || 'percentage',
+      fixedAmount:   r.fixedAmount ? String(r.fixedAmount) : '',
       effectiveFrom: r.effectiveFrom ? isoDate(new Date(r.effectiveFrom)) : today,
       effectiveTo:   r.effectiveTo ? isoDate(new Date(r.effectiveTo)) : '',
       notes:         r.notes || '',
@@ -4693,10 +4702,31 @@
         '<label>Staff member' + lockedNote + '</label>' +
         '<select id="ruleStaffId"' + dis + '>' + staffOptions + '</select></div>' +
 
-      '<div class="sheet-field"><label>Sales threshold ($)</label>' +
-        '<input type="number" step="0.01" id="ruleThreshold" inputmode="decimal" value="' + esc(initial.threshold) + '" placeholder="5000"></div>' +
+      // What the rule pays. A management fee is owed whether or not the till
+      // took anything, which no percentage-of-sales rule can express.
+      '<div class="sheet-field"><label>Pays' + lockedNote + '</label>' +
+        '<select id="ruleType"' + dis + '>' +
+          '<option value="percentage"' + (initial.ruleType === 'percentage' ? ' selected' : '') + '>' +
+            'A % of sales over a threshold</option>' +
+          '<option value="fixed"' + (initial.ruleType === 'fixed' ? ' selected' : '') + '>' +
+            'A fixed amount each week</option>' +
+        '</select></div>' +
 
-      '<div class="sheet-field"><label>% Commission (on sales over threshold)</label>' +
+      '<div class="sheet-field" id="ruleFixedField" style="display:' +
+          (initial.ruleType === 'fixed' ? 'block' : 'none') + '">' +
+        '<label>Amount per week ($)</label>' +
+        '<input type="number" step="0.01" id="ruleFixedAmount" inputmode="decimal" value="' +
+          esc(initial.fixedAmount) + '" placeholder="120">' +
+        '<div style="font-size:10px;color:#8a8e98;margin-top:3px">Paid every week the rule ' +
+          'is active, whatever the sales were.</div></div>' +
+
+      '<div class="sheet-field"><label id="ruleThresholdLabel">Sales threshold ($)</label>' +
+        '<input type="number" step="0.01" id="ruleThreshold" inputmode="decimal" value="' + esc(initial.threshold) + '" placeholder="5000">' +
+        '<div style="font-size:10px;color:#8a8e98;margin-top:3px" id="ruleThresholdHint"></div></div>' +
+
+      '<div class="sheet-field" id="rulePctField" style="display:' +
+          (initial.ruleType === 'fixed' ? 'none' : 'block') + '">' +
+        '<label>% Commission (on sales over threshold)</label>' +
         '<input type="number" step="0.01" id="rulePercentage" inputmode="decimal" value="' + esc(initial.percentage) + '" placeholder="3"></div>' +
 
       '<div class="sheet-field"><label>Effective from' + lockedNote + '</label>' +
@@ -4724,22 +4754,54 @@
       $('ruleStaffField').style.display = $('ruleAppliesTo').value === 'specific_staff' ? 'block' : 'none';
     };
 
+    // The threshold means different things either side of this switch, so say
+    // which one is in force rather than leaving a field labelled the same.
+    function syncRuleType() {
+      const fixed = $('ruleType').value === 'fixed';
+      $('ruleFixedField').style.display = fixed ? 'block' : 'none';
+      $('rulePctField').style.display = fixed ? 'none' : 'block';
+      $('ruleThresholdLabel').textContent = fixed
+        ? 'Only pay once sales reach ($) — optional'
+        : 'Sales threshold ($)';
+      $('ruleThresholdHint').textContent = fixed
+        ? 'Leave at 0 for a fee that is paid regardless of sales.'
+        : '';
+      if (fixed && !$('ruleThreshold').value) $('ruleThreshold').value = '0';
+    }
+    $('ruleType').onchange = syncRuleType;
+    syncRuleType();
+
     $('ruleSaveBtn').onclick = async () => {
       const company    = $('ruleCompany').value;
       const appliesTo  = $('ruleAppliesTo').value;
       const staffId    = appliesTo === 'specific_staff' ? $('ruleStaffId').value : '';
-      const threshold  = parseFloat($('ruleThreshold').value);
+      const ruleType   = $('ruleType').value;
+      const isFixed    = ruleType === 'fixed';
+      // A fixed rule's threshold is optional; blank means "pay regardless".
+      const threshold  = isFixed
+        ? (parseFloat($('ruleThreshold').value) || 0)
+        : parseFloat($('ruleThreshold').value);
       const percentage = parseFloat($('rulePercentage').value);
+      const fixedAmount = parseFloat($('ruleFixedAmount').value);
       const effFrom    = $('ruleEffectiveFrom').value;
       const effTo      = $('ruleEffectiveTo').value || null;
       const notes      = $('ruleNotes').value;
-      const name       = $('ruleName').value || (company + ' ' + percentage + '% over $' + threshold);
+      const name       = $('ruleName').value || (isFixed
+        ? (company + ' fixed $' + (fixedAmount || 0) + '/week')
+        : (company + ' ' + percentage + '% over $' + threshold));
 
       // Validation
       if (!company) return toast('Store required', 'error');
       if (appliesTo === 'specific_staff' && !staffId) return toast('Pick a staff member', 'error');
       if (!Number.isFinite(threshold) || threshold < 0) return toast('Valid threshold required', 'error');
-      if (!Number.isFinite(percentage) || percentage <= 0) return toast('Valid percentage required', 'error');
+      if (isFixed) {
+        // A zero here looks configured and pays nothing, every week, silently.
+        if (!Number.isFinite(fixedAmount) || fixedAmount <= 0) {
+          return toast('Enter the amount to pay each week', 'error');
+        }
+      } else if (!Number.isFinite(percentage) || percentage <= 0) {
+        return toast('Valid percentage required', 'error');
+      }
       if (!isEdit && !effFrom) return toast('Effective from date required', 'error');
 
       haptic();
@@ -4751,7 +4813,11 @@
         if (isEdit) {
           await call('rpcUpdateCommissionRule', state.token, {
             ruleId: existingRule.ruleId,
-            name, threshold, percentage,
+            name, threshold,
+            // Only send the half that applies — the server refuses a
+            // fixedAmount on a percentage rule, and vice versa.
+            percentage: isFixed ? undefined : percentage,
+            fixedAmount: isFixed ? fixedAmount : undefined,
             effectiveTo: effTo,
             notes,
           });
@@ -4759,7 +4825,9 @@
         } else {
           await call('rpcCreateCommissionRule', state.token, {
             name, company, appliesTo, staffId,
-            threshold, percentage,
+            threshold, ruleType,
+            percentage: isFixed ? 0 : percentage,
+            fixedAmount: isFixed ? fixedAmount : 0,
             effectiveFrom: effFrom,
             effectiveTo: effTo,
             notes,
