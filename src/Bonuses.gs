@@ -18,9 +18,13 @@ const Bonuses = (() => {
   const COL = {
     bonus_id: 1, staff_id: 2, date: 3, type: 4, amount: 5, reason: 6,
     status: 7, period_start: 8, period_end: 9, company: 10, source_run_id: 11,
-    created_by: 12, created_at: 13, notes: 14
+    created_by: 12, created_at: 13, notes: 14,
+    // Which rule produced this row. A run id says when it was computed; only
+    // the rule id says what decided the amount, which is what lets two rules
+    // pay the same person in the same week without colliding.
+    source_rule_id: 15
   };
-  const NUM_COLS = 14;
+  const NUM_COLS = 15;
   const DATA_START_ROW = 3;
 
   let _bonusCache = null;
@@ -46,6 +50,7 @@ const Bonuses = (() => {
       periodEnd:    row[COL.period_end - 1] instanceof Date ? row[COL.period_end - 1] : null,
       company:      (row[COL.company - 1] || '').toString().trim(),
       sourceRunId:  (row[COL.source_run_id - 1] || '').toString().trim(),
+      sourceRuleId: (row[COL.source_rule_id - 1] || '').toString().trim(),
       createdBy:    (row[COL.created_by - 1] || '').toString().trim(),
       createdAt:    row[COL.created_at - 1] instanceof Date ? row[COL.created_at - 1] : null,
       notes:        (row[COL.notes - 1] || '').toString(),
@@ -86,19 +91,42 @@ const Bonuses = (() => {
    * Idempotency for commission runs: has a commission bonus already been
    * created for (staffId, company, periodStart, periodEnd)?
    */
-  function existsCommissionFor_(staffId, company, periodStart, periodEnd) {
+  /**
+   * Is there already a commission for this staff, company and period?
+   *
+   * `opts.sourceRuleId` narrows the question to one rule — "has THIS rule
+   * already paid?" — which is what a flat fee needs, since it is meant to sit
+   * alongside a sales commission rather than block it or be blocked by it.
+   *
+   * `opts.blockingRuleIds` is the other direction: only rows produced by one
+   * of these rules count, plus rows written before the column existed and so
+   * carrying no rule at all. Listing the rules that SHOULD block, rather than
+   * the ones that should not, means a fee whose rule was later ended — or
+   * deleted outright — stops blocking anything, instead of blocking the sales
+   * commission forever because its rule can no longer be looked up.
+   *
+   * With no opts the answer is exactly what it has always been.
+   */
+  function existsCommissionFor_(staffId, company, periodStart, periodEnd, opts) {
     if (!(periodStart instanceof Date) || !(periodEnd instanceof Date)) return false;
+    opts = opts || {};
     const ps = Util.formatDate(periodStart);
     const pe = Util.formatDate(periodEnd);
-    return getAll_().some(b =>
-      b.type === 'commission' &&
-      b.staffId === staffId &&
-      b.company === company &&
-      b.status !== 'cancelled' &&
-      b.periodStart && b.periodEnd &&
-      Util.formatDate(b.periodStart) === ps &&
-      Util.formatDate(b.periodEnd) === pe
-    );
+    return getAll_().some(b => {
+      if (b.type !== 'commission') return false;
+      if (b.staffId !== staffId) return false;
+      if (b.company !== company) return false;
+      if (b.status === 'cancelled') return false;
+      if (!b.periodStart || !b.periodEnd) return false;
+      if (Util.formatDate(b.periodStart) !== ps) return false;
+      if (Util.formatDate(b.periodEnd) !== pe) return false;
+      if (opts.sourceRuleId) return b.sourceRuleId === opts.sourceRuleId;
+      if (opts.blockingRuleIds) {
+        if (!b.sourceRuleId) return true;          // predates the column
+        return opts.blockingRuleIds.indexOf(b.sourceRuleId) !== -1;
+      }
+      return true;
+    });
   }
 
   // ── Create ──────────────────────────────────────────────
@@ -172,6 +200,7 @@ const Bonuses = (() => {
       periodEnd: input.periodEnd,
       company: input.company,
       sourceRunId: input.sourceRunId || '',
+      sourceRuleId: input.sourceRuleId || '',
       notes: '',
       actorId: input.actorId,
       auditAction: 'bonus.proposed',
@@ -198,6 +227,7 @@ const Bonuses = (() => {
       rec.actorId,
       now,
       rec.notes,
+      rec.sourceRuleId || '',
     ]]);
 
     AuditLog.write({

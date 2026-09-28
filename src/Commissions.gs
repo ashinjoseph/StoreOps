@@ -145,42 +145,75 @@ const Commissions = (() => {
     const staffWithCommission = new Set();
     let totalAmount = 0;
 
+    // A flat fee is owed whether or not the till took anything, so it must
+    // neither be blocked by a sales commission nor block one. Both guards
+    // below need to know which rows a fee produced.
+    // Which rules may block a percentage rule: the other percentage rules.
+    // Named this way round on purpose — a fee whose rule was later ended, or
+    // deleted, then stops blocking anything, rather than suppressing the sales
+    // commission forever because its rule can no longer be resolved.
+    const percentageRuleIds = CommissionRules.getAll()
+      .filter(r => r.ruleType !== 'fixed').map(r => r.ruleId);
+
     rules.forEach(rule => {
       // Determine which staff this rule covers
       const targetStaff = rule.appliesTo === 'all_staff'
         ? allStaff
         : allStaff.filter(s => s.staffId === rule.staffId);
+      const isFixed = rule.ruleType === 'fixed';
 
       targetStaff.forEach(staff => {
         const key = staff.staffId + '|' + rule.company;
         const sales = salesMap[key];
-        if (!sales || sales.total <= rule.threshold + 0.005) {
-          return;  // no sales, or below threshold
-        }
+        const salesTotal = sales ? sales.total : 0;
 
-        // Skip if a commission already exists for this (staff, company, week)
-        // — prevents two rules from creating duplicates if admin layered them
-        if (Bonuses.existsCommissionFor(staff.staffId, rule.company, weekStart, weekEnd)) {
+        // A percentage rule needs sales above the threshold to earn anything.
+        // A fixed rule only consults the threshold when one is set — at zero,
+        // which is the ordinary case for a management fee, it pays regardless
+        // of whether there were any sales at all.
+        if (isFixed) {
+          if (rule.threshold > 0 && salesTotal <= rule.threshold + 0.005) return;
+        } else if (!sales || salesTotal <= rule.threshold + 0.005) {
           return;
         }
 
-        const excess = Util.roundMoney(sales.total - rule.threshold);
-        const commission = Util.roundMoney(excess * rule.percentage / 100);
-        if (commission <= 0.005) return;
+        // Layered rules of the same kind must not double-pay. A fee asks only
+        // whether IT has already paid this week; a percentage rule ignores
+        // rows a fee produced, so the two can both land.
+        const already = isFixed
+          ? Bonuses.existsCommissionFor(staff.staffId, rule.company, weekStart, weekEnd,
+                                        { sourceRuleId: rule.ruleId })
+          : Bonuses.existsCommissionFor(staff.staffId, rule.company, weekStart, weekEnd,
+                                        { blockingRuleIds: percentageRuleIds });
+        if (already) return;
 
-        const reason = 'Weekly commission: ' + rule.company + ' sales of ' +
-                       Util.formatMoney(sales.total) + ' over ' +
-                       Util.formatMoney(rule.threshold) + ' threshold @ ' +
-                       rule.percentage + '%';
+        let amount, reason;
+        if (isFixed) {
+          amount = Util.roundMoney(rule.fixedAmount);
+          reason = 'Weekly fixed amount: ' + rule.name +
+                   (rule.threshold > 0
+                     ? ' (' + rule.company + ' sales of ' + Util.formatMoney(salesTotal) +
+                       ' over ' + Util.formatMoney(rule.threshold) + ' threshold)'
+                     : ' (' + rule.company + ', not tied to sales)');
+        } else {
+          const excess = Util.roundMoney(salesTotal - rule.threshold);
+          amount = Util.roundMoney(excess * rule.percentage / 100);
+          reason = 'Weekly commission: ' + rule.company + ' sales of ' +
+                   Util.formatMoney(salesTotal) + ' over ' +
+                   Util.formatMoney(rule.threshold) + ' threshold @ ' +
+                   rule.percentage + '%';
+        }
+        if (amount <= 0.005) return;
 
         const bonusRec = Bonuses.propose({
           staffId: staff.staffId,
-          amount: commission,
+          amount: amount,
           reason,
           company: rule.company,
           periodStart: weekStart,
           periodEnd: weekEnd,
           sourceRunId: runId,
+          sourceRuleId: rule.ruleId,
           actorId,
         });
 
@@ -190,13 +223,15 @@ const Commissions = (() => {
           staffName: staff.name,
           company: rule.company,
           ruleId: rule.ruleId,
-          sales: sales.total,
+          ruleType: rule.ruleType,
+          sales: salesTotal,
           threshold: rule.threshold,
-          percentage: rule.percentage,
-          amount: commission,
+          percentage: isFixed ? 0 : rule.percentage,
+          fixedAmount: isFixed ? rule.fixedAmount : 0,
+          amount: amount,
         });
         staffWithCommission.add(staff.staffId);
-        totalAmount = Util.roundMoney(totalAmount + commission);
+        totalAmount = Util.roundMoney(totalAmount + amount);
       });
     });
 

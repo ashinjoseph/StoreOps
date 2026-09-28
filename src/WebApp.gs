@@ -973,6 +973,8 @@ function rpcGetCommissionRules(token) {
     company:       r.company,
     threshold:     r.threshold,
     percentage:    r.percentage,
+    ruleType:      r.ruleType,
+    fixedAmount:   r.fixedAmount,
     active:        r.active,
     effectiveFrom: r.effectiveFrom ? r.effectiveFrom.toISOString() : null,
     effectiveTo:   r.effectiveTo ? r.effectiveTo.toISOString() : null,
@@ -1017,6 +1019,8 @@ function rpcCreateCommissionRule(token, input) {
     company: input.company,
     threshold: Number(input.threshold),
     percentage: Number(input.percentage),
+    ruleType: input.ruleType || 'percentage',
+    fixedAmount: Number(input.fixedAmount) || 0,
     active: input.active !== false,
     effectiveFrom: Util.parseDate(input.effectiveFrom),
     effectiveTo: input.effectiveTo ? Util.parseDate(input.effectiveTo) : null,
@@ -1033,6 +1037,7 @@ function rpcUpdateCommissionRule(token, input) {
     name: input.name,
     threshold: input.threshold !== undefined ? Number(input.threshold) : undefined,
     percentage: input.percentage !== undefined ? Number(input.percentage) : undefined,
+    fixedAmount: input.fixedAmount !== undefined ? Number(input.fixedAmount) : undefined,
     active: input.active,
     effectiveTo: input.effectiveTo !== undefined
       ? (input.effectiveTo ? Util.parseDate(input.effectiveTo) : null)

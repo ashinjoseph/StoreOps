@@ -1,8 +1,15 @@
 // ============================================================
 //  CommissionRules.gs — CRUD for commission_rules tab
 // ============================================================
-//  A rule says: "for staff S (or all staff) on company C, when weekly
-//  sales > threshold, pay percentage of (sales - threshold) as commission".
+//  A rule says one of two things:
+//
+//    percentage — "for staff S (or all staff) on company C, when weekly
+//                  sales > threshold, pay percentage of (sales - threshold)"
+//    fixed      — "pay staff S a flat amount for the week". Not tied to
+//                  sales at all, which is the point: a management fee is owed
+//                  whether or not the till took anything. A threshold above
+//                  zero turns it into "pay the flat amount once sales clear
+//                  this", so both shapes are available from one rule type.
 //
 //  Fields:
 //    rule_id          CR_001, CR_002, ...
@@ -10,8 +17,11 @@
 //    applies_to       'all_staff' | 'specific_staff'
 //    staff_id         if applies_to='specific_staff'; else blank
 //    company          'cstore' | 'vape'
-//    threshold        dollars; sales below this earn 0 commission
-//    percentage       e.g. 5 means 5% (not 0.05)
+//    rule_type        'percentage' | 'fixed'   (blank reads as 'percentage')
+//    threshold        dollars; percentage rules earn 0 below this, and a
+//                     fixed rule with a threshold only pays once sales clear it
+//    percentage       e.g. 5 means 5% (not 0.05); ignored by fixed rules
+//    fixed_amount     dollars paid per week by a fixed rule; ignored otherwise
 //    active           bool
 //    effective_from   date
 //    effective_to     optional end date; blank = open-ended
@@ -24,9 +34,19 @@ const CommissionRules = (() => {
     rule_id: 1, name: 2, applies_to: 3, staff_id: 4, company: 5,
     threshold: 6, percentage: 7, active: 8,
     effective_from: 9, effective_to: 10,
-    created_by: 11, created_at: 12, notes: 13
+    created_by: 11, created_at: 12, notes: 13,
+    rule_type: 14, fixed_amount: 15
   };
-  const NUM_COLS = 13;
+  const NUM_COLS = 15;
+
+  const RULE_TYPES = ['percentage', 'fixed'];
+  // Every rule written before fixed amounts existed is a percentage rule, and
+  // a blank cell has to keep meaning that — the migration backfills the column
+  // but a hand-added row may still leave it empty.
+  function normalizeRuleType_(v) {
+    const t = (v == null ? '' : v.toString()).trim().toLowerCase();
+    return t === 'fixed' ? 'fixed' : 'percentage';
+  }
   const DATA_START_ROW = 3;
 
   function sheet_() {
@@ -50,6 +70,8 @@ const CommissionRules = (() => {
       createdBy:     (row[COL.created_by - 1] || '').toString(),
       createdAt:     row[COL.created_at - 1] instanceof Date ? row[COL.created_at - 1] : null,
       notes:         (row[COL.notes - 1] || '').toString(),
+      ruleType:      normalizeRuleType_(row[COL.rule_type - 1]),
+      fixedAmount:   Number(row[COL.fixed_amount - 1]) || 0,
       _rowIndex:     rowIndex,
     };
   }
@@ -129,7 +151,22 @@ const CommissionRules = (() => {
     if (typeof input.threshold !== 'number' || input.threshold < 0) {
       throw new Error('threshold must be a non-negative number');
     }
-    if (typeof input.percentage !== 'number' || input.percentage < 0 || input.percentage > 100) {
+    // Validate what was ASKED FOR, not what it normalises to — normalising
+    // first turns a typo into a percentage rule and accepts it silently.
+    // A blank is still allowed: it means the caller predates the field.
+    const askedType = (input.ruleType == null ? '' : input.ruleType.toString()).trim().toLowerCase();
+    if (askedType && RULE_TYPES.indexOf(askedType) === -1) {
+      throw new Error('Invalid ruleType: ' + input.ruleType +
+                      ' (expected one of: ' + RULE_TYPES.join(', ') + ')');
+    }
+    const ruleType = normalizeRuleType_(askedType);
+    if (ruleType === 'fixed') {
+      // The flat amount IS the rule, so a zero would create something that
+      // looks configured and quietly pays nothing every week.
+      if (typeof input.fixedAmount !== 'number' || input.fixedAmount <= 0) {
+        throw new Error('fixedAmount must be a positive number for a fixed rule');
+      }
+    } else if (typeof input.percentage !== 'number' || input.percentage < 0 || input.percentage > 100) {
       throw new Error('percentage must be between 0 and 100');
     }
     if (!input.actorId) throw new Error('actorId required');
@@ -153,13 +190,15 @@ const CommissionRules = (() => {
       input.appliesTo === 'specific_staff' ? input.staffId : '',
       input.company,
       Util.roundMoney(input.threshold),
-      Number(input.percentage),
+      ruleType === 'fixed' ? 0 : Number(input.percentage),
       input.active !== false,
       effectiveFrom,
       effectiveTo,
       input.actorId,
       now,
       input.notes || '',
+      ruleType,
+      ruleType === 'fixed' ? Util.roundMoney(input.fixedAmount) : 0,
     ]]);
 
     AuditLog.write({
@@ -174,6 +213,8 @@ const CommissionRules = (() => {
         company: input.company,
         threshold: input.threshold,
         percentage: input.percentage,
+        ruleType: ruleType,
+        fixedAmount: ruleType === 'fixed' ? input.fixedAmount : 0,
       },
     });
 
@@ -207,6 +248,7 @@ const CommissionRules = (() => {
       percentage: existing.percentage,
       active: existing.active,
       effectiveTo: existing.effectiveTo,
+      fixedAmount: existing.fixedAmount,
     };
 
     if (input.name !== undefined) sh.getRange(row, COL.name).setValue(input.name);
@@ -220,6 +262,19 @@ const CommissionRules = (() => {
       sh.getRange(row, COL.effective_to).setValue(eto);
     }
     if (input.notes !== undefined) sh.getRange(row, COL.notes).setValue(input.notes);
+    if (input.fixedAmount !== undefined) {
+      // Only meaningful on a fixed rule, and a zero there is a rule that pays
+      // nothing — same trap as on create, so refuse it the same way.
+      if (existing.ruleType !== 'fixed') {
+        throw new Error('fixedAmount only applies to a fixed rule; ' +
+                        input.ruleId + ' is a ' + existing.ruleType + ' rule');
+      }
+      const amt = Number(input.fixedAmount);
+      if (!(amt > 0)) throw new Error('fixedAmount must be a positive number');
+      sh.getRange(row, COL.fixed_amount).setValue(Util.roundMoney(amt));
+    }
+    // ruleType is deliberately NOT patchable: switching a live rule between
+    // shapes silently changes what it pays. End it and write a new one.
 
     AuditLog.write({
       actorId: input.actorId,
@@ -255,5 +310,6 @@ const CommissionRules = (() => {
     create:        create_,
     update:        update_,
     deactivate:    deactivate_,
+    RULE_TYPES:    RULE_TYPES.slice(),
   };
 })();

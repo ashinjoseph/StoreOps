@@ -53,6 +53,7 @@ const BONUS_TYPES = ['bonus', 'commission', 'incentive', 'deduction', 'tip', 'ad
 const BONUS_STATUSES = ['proposed', 'pending', 'paid', 'cancelled'];
 const VARIANCE_STATUSES = ['OK', 'minor', 'investigate', 'pending_validation'];
 const RULE_APPLIES = ['all_staff', 'specific_staff'];
+const RULE_TYPES = ['percentage', 'fixed'];
 const ORDER_CATEGORIES = ['Grocery', 'Cigarettes', 'Vapes', 'Other'];
 const SHOPPING_STATUSES = ['pending', 'bought', 'cleared', 'removed'];
 // product_master uses its own lowercase/snake_case enum, distinct from
@@ -80,6 +81,7 @@ function onOpen() {
     .addItem('📦 Import Grocery/Other (from staging)',  'menu_importOther')
     .addItem('🧱 Migrate Product Master → v2 (per-type)', 'menu_migrateProductMasterV2')
     .addItem('🏷️ Add needs_detail to product_master', 'menu_migrateProductMasterNeedsDetail')
+    .addItem('💼 Add fixed-amount commission rules', 'menu_migrateFixedCommissionRules')
     .addItem('🔎 Diagnose Vape staging', 'menu_diagnoseVapeStaging')
     .addItem('🧷 Refresh staging headers', 'menu_refreshStagingHeaders')
     .addItem('🛒 Add product_id to shopping_list', 'menu_migrateShoppingListProductId')
@@ -276,6 +278,66 @@ function diagnoseStaging_(type) {
     'Rows with a blank/zero sale_price: ' + blankPrice + '   ← these will error\n' +
     'Rows with no product_name (skipped silently): ' + blankName +
     (offenders.length ? '\n\nFirst offenders:\n  ' + offenders.join('\n  ') : ''),
+    ui.ButtonSet.OK);
+}
+
+/**
+ * Teach commission_rules about flat amounts, and bonuses about which rule
+ * produced them.
+ *
+ * A management fee is owed whether or not the till took anything, so it
+ * cannot be expressed as a percentage of sales over a threshold. Existing
+ * rows are backfilled as 'percentage' with a zero amount, which is what they
+ * already were, so nothing that is running today changes.
+ *
+ * Idempotent: columns already present are left alone.
+ */
+function menu_migrateFixedCommissionRules() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const done = [];
+
+  const addCols = (sheetName, specs) => {
+    const sh = ss.getSheetByName(sheetName);
+    if (!sh) { done.push('• ' + sheetName + ' — not found, skipped'); return; }
+    const headers = sh.getRange(2, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
+      .map(h => (h == null ? '' : h.toString()).trim());
+    const added = [];
+    specs.forEach(spec => {
+      if (headers.indexOf(spec.name) !== -1) return;
+      if (sh.getMaxColumns() < spec.col) {
+        sh.insertColumnsAfter(sh.getMaxColumns(), spec.col - sh.getMaxColumns());
+      }
+      sh.getRange(2, spec.col).setValue(spec.name);
+      sh.setColumnWidth(spec.col, spec.width || 110);
+      if (spec.enum) applyEnumValidation_(sh, spec.col, spec.enum);
+      if (spec.money) sh.getRange(3, spec.col, 5000, 1).setNumberFormat('$#,##0.00');
+      const last = sh.getLastRow();
+      if (last >= 3 && spec.backfill !== undefined) {
+        sh.getRange(3, spec.col, last - 2, 1)
+          .setValues(new Array(last - 2).fill(0).map(() => [spec.backfill]));
+      }
+      added.push(spec.name);
+    });
+    done.push('• ' + sheetName + (added.length
+      ? ' → added ' + added.join(', ')
+      : ' → already current'));
+  };
+
+  addCols(SHEETS.COMMISSION_RULES, [
+    { name: 'rule_type',    col: 14, enum: RULE_TYPES, backfill: 'percentage', width: 110 },
+    { name: 'fixed_amount', col: 15, money: true,      backfill: 0,            width: 110 },
+  ]);
+  // Without this a flat fee and a sales commission cannot tell each other
+  // apart, and whichever the engine reaches second is silently skipped.
+  addCols(SHEETS.BONUSES, [
+    { name: 'source_rule_id', col: 15, backfill: '', width: 110 },
+  ]);
+
+  ui.alert('Fixed-amount commission rules',
+    done.join('\n') +
+    '\n\nExisting rules are now explicitly percentage rules with a zero flat\n' +
+    'amount — exactly what they were — so nothing currently running changes.',
     ui.ButtonSet.OK);
 }
 
@@ -882,11 +944,11 @@ function setupBonusesSheet_() {
   if (ss.getSheetByName(SHEETS.BONUSES)) return;
   const sh = ss.insertSheet(SHEETS.BONUSES);
 
-  writeHeader_(sh, '🎁  Bonuses — bonuses, commissions, adjustments', 14);
+  writeHeader_(sh, '🎁  Bonuses — bonuses, commissions, adjustments', 15);
   writeColumnHeaders_(sh, [
     'bonus_id', 'staff_id', 'date', 'type', 'amount', 'reason',
     'status', 'period_start', 'period_end', 'company', 'source_run_id',
-    'created_by', 'created_at', 'notes'
+    'created_by', 'created_at', 'notes', 'source_rule_id'
   ]);
 
   applyEnumValidation_(sh, 4, BONUS_TYPES);
@@ -898,13 +960,13 @@ function setupBonusesSheet_() {
   sh.getRange(3, 13, 5000, 1).setNumberFormat('yyyy-MM-dd HH:mm:ss');
 
   // Placeholder
-  sh.getRange(3, 1, 1, 14).setValues([[
+  sh.getRange(3, 1, 1, 15).setValues([[
     'B_PLACEHOLDER_001', 'S_001', new Date(), 'bonus', 0, 'Placeholder bonus reason',
     'cancelled', '', '', '', '',
-    'S_001', new Date(), 'Placeholder — delete'
+    'S_001', new Date(), 'Placeholder — delete', ''
   ]]).setBackground(COLORS.PLACEHOLDER);
 
-  setColWidths_(sh, [220, 80, 110, 110, 100, 240, 100, 110, 110, 90, 220, 100, 150, 240]);
+  setColWidths_(sh, [220, 80, 110, 110, 100, 240, 100, 110, 110, 90, 220, 100, 150, 240, 110]);
   sh.setFrozenRows(2);
 }
 
@@ -913,16 +975,18 @@ function setupCommissionRulesSheet_() {
   if (ss.getSheetByName(SHEETS.COMMISSION_RULES)) return;
   const sh = ss.insertSheet(SHEETS.COMMISSION_RULES);
 
-  writeHeader_(sh, '🎯  Commission Rules', 13);
+  writeHeader_(sh, '🎯  Commission Rules', 15);
   writeColumnHeaders_(sh, [
     'rule_id', 'name', 'applies_to', 'staff_id', 'company',
     'threshold', 'percentage', 'active', 'effective_from', 'effective_to',
-    'created_by', 'created_at', 'notes'
+    'created_by', 'created_at', 'notes', 'rule_type', 'fixed_amount'
   ]);
 
   applyEnumValidation_(sh, 3, RULE_APPLIES);
   applyEnumValidation_(sh, 5, COMPANIES);
   applyBoolValidation_(sh, 8);
+  applyEnumValidation_(sh, 14, RULE_TYPES);
+  sh.getRange(3, 15, 5000, 1).setNumberFormat('$#,##0.00');
   sh.getRange(3, 6, 5000, 1).setNumberFormat('$#,##0.00');
   sh.getRange(3, 7, 5000, 1).setNumberFormat('0.00');
   sh.getRange(3, 9, 5000, 2).setNumberFormat('yyyy-MM-dd');
@@ -935,7 +999,7 @@ function setupCommissionRulesSheet_() {
     'S_001', new Date(), 'Placeholder — enable when ready'
   ]]).setBackground(COLORS.PLACEHOLDER);
 
-  setColWidths_(sh, [90, 220, 120, 80, 80, 110, 100, 70, 120, 120, 100, 150, 240]);
+  setColWidths_(sh, [90, 220, 120, 80, 80, 110, 100, 70, 120, 120, 100, 150, 240, 110, 110]);
   sh.setFrozenRows(2);
 }
 
