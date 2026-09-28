@@ -197,6 +197,95 @@ t.eq('the fee is attributed to the fixed rule',
 t.eq('and the commission to the percentage rule',
      one(written.filter(b => b.amount === 200)).sourceRuleId, 'CR_002');
 
+// ── Recurrence ────────────────────────────────────────────────────────────
+// The engine is driven by a weekly trigger, one run per week. A management fee
+// is only useful if it comes round again every week on its own, so run several
+// consecutive weeks against ONE set of sheets and watch what accumulates.
+function weekOf(mondayDay) {
+  return {
+    start: new Date(2026, 8, mondayDay),
+    end: new Date(2026, 8, mondayDay + 6, 23, 59, 59),
+  };
+}
+function session(rules, sales) {
+  SALES = sales || [];
+  H.sheets({
+    commission_rules: { headers: CR_COLS, rows: rules.map(r => r.slice()) },
+    bonuses:          { headers: BN_COLS, rows: [] },
+    commission_runs:  { headers: RUN_COLS, rows: [] },
+    config: {},
+  });
+  const mod = H.load(['Util.gs', 'CommissionRules.gs', 'Bonuses.gs', 'Commissions.gs'], {
+    SHEETS: { COMMISSION_RULES: 'commission_rules', BONUSES: 'bonuses',
+              COMMISSION_RUNS: 'commission_runs' },
+    COMPANIES: ['cstore', 'vape'],
+    RULE_APPLIES: ['all_staff', 'specific_staff'],
+    AuditLog: { write: () => {}, writeMany: () => {} },
+    Notifier: { notify: () => {}, sendOp: () => ({ sent: false }) },
+    Staff: {
+      getActive: () => ([{ staffId: 'S_ASH', name: 'Ashin' }]),
+      getById: id => ({ staffId: id, name: id }),
+    },
+    Sales: { aggregateByStaffCompany: () => SALES },
+  });
+  return {
+    M: mod,
+    run: w => mod.Commissions.runForWeek({
+      weekStart: w.start, weekEnd: w.end, actorId: 'SYSTEM_TRIGGER',
+    }),
+  };
+}
+
+t.section('The fee comes round again every week');
+let sess = session([rule({ id: 'CR_001', staffId: 'S_ASH', type: 'fixed',
+                           fixedAmount: 120, from: new Date(2026, 8, 1) })], []);
+const wk1 = sess.run(weekOf(7));
+const wk2 = sess.run(weekOf(14));
+const wk3 = sess.run(weekOf(21));
+t.eq('week 1 pays it', wk1.bonusesProposed.length, 1);
+t.eq('week 2 pays it again', wk2.bonusesProposed.length, 1);
+t.eq('week 3 too', wk3.bonusesProposed.length, 1);
+t.eq('the same amount each time',
+     [wk1, wk2, wk3].map(r => one(r.bonusesProposed).amount), [120, 120, 120]);
+t.eq('three separate bonuses on the books', sess.M.Bonuses.getAll().length, 3);
+t.eq('each against its own week',
+     sess.M.Bonuses.getAll().map(b => b.periodStart.getDate()), [7, 14, 21]);
+t.eq('and still with no sales anywhere', SALES.length, 0);
+
+t.section('…but only once per week');
+// The trigger can fire twice, or someone can run it by hand after it already
+// ran. Neither may pay the fee a second time for a week it already covered.
+const again = sess.run(weekOf(21));
+t.ok('a second run of the same week is skipped', again.skipped === true);
+t.eq('nothing extra was written', sess.M.Bonuses.getAll().length, 3);
+const forced = sess.M.Commissions.runForWeek({
+  weekStart: weekOf(21).start, weekEnd: weekOf(21).end, actorId: 'S_ADM', force: true,
+});
+t.eq('even a forced re-run proposes nothing', forced.bonusesProposed.length, 0);
+t.eq('still three bonuses', sess.M.Bonuses.getAll().length, 3);
+
+t.section('It stops when the rule does');
+sess = session([rule({ id: 'CR_001', staffId: 'S_ASH', type: 'fixed', fixedAmount: 120,
+                       from: new Date(2026, 8, 14), to: new Date(2026, 8, 20) })], []);
+t.eq('nothing before it starts', sess.run(weekOf(7)).bonusesProposed.length, 0);
+t.eq('paid inside its window', sess.run(weekOf(14)).bonusesProposed.length, 1);
+t.eq('nothing after it ends', sess.run(weekOf(21)).bonusesProposed.length, 0);
+t.eq('one bonus in total', sess.M.Bonuses.getAll().length, 1);
+
+t.section('An inactive rule pays nothing at all');
+sess = session([rule({ id: 'CR_001', staffId: 'S_ASH', type: 'fixed', fixedAmount: 120,
+                       from: new Date(2026, 8, 1), active: false })], []);
+t.eq('week 1', sess.run(weekOf(7)).bonusesProposed.length, 0);
+t.eq('week 2', sess.run(weekOf(14)).bonusesProposed.length, 0);
+
+t.section('A rule that runs forever keeps paying');
+// effective_to blank is the ordinary case for a standing fee.
+sess = session([rule({ id: 'CR_001', staffId: 'S_ASH', type: 'fixed', fixedAmount: 120,
+                       from: new Date(2026, 8, 1), to: '' })], []);
+const many = [7, 14, 21, 28].map(d => sess.run(weekOf(d)));
+t.eq('every week pays', many.map(r => r.bonusesProposed.length), [1, 1, 1, 1]);
+t.eq('and the totals are all the fee', many.map(r => r.totalAmount), [120, 120, 120, 120]);
+
 t.section('A rule that would pay nothing is refused');
 // A fixed rule with no amount looks configured in the list and quietly pays
 // zero every week — the kind of thing nobody notices until payroll is short.
