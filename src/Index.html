@@ -1143,11 +1143,16 @@
     font-size: 13px; font-weight: 500;
     z-index: 200;
     box-shadow: 0 4px 14px rgba(0,0,0,0.2);
-    transition: transform 0.25s;
+    transition: transform 0.25s, visibility 0s linear 0.25s;
     max-width: 90%; text-align: center;
     white-space: pre-line;
+    /* Sliding it 100px down from 86px up only moves it 14px past the edge, so
+       an empty pill used to sit over the tab bar at all times. Hide it once
+       the slide-out has finished, and show it before the slide-in starts. */
+    visibility: hidden;
   }
-  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.show { transform: translateX(-50%) translateY(0); visibility: visible;
+                transition: transform 0.25s, visibility 0s; }
   .toast.success { background: #15803d; }
   .toast.error { background: #b91c1c; }
   .toast.warning { background: #d97706; }
