@@ -787,6 +787,17 @@
     margin-right: 6px;
   }
   .mypay-badge.commission { background: #fdf3cd; color: #92611a; }
+  /* A phone gives four tiles ~83px each, narrower than "$1403.60" in the
+     tile font, so the row ran off the right edge. Two by two instead; and
+     the six-column table needs a gap and no tracking, or PAID and
+     REMAINING print as one word. */
+  @media (max-width: 560px) {
+    .mypay-summary { grid-template-columns: repeat(2, 1fr); }
+    .mypay-row { column-gap: 6px; padding: 9px 10px; font-size: 11px;
+                 grid-template-columns: 1.35fr 0.75fr 0.8fr 0.95fr 0.8fr 1fr; }
+    .mypay-row > div { white-space: nowrap; }
+    .mypay-row.header { letter-spacing: 0; font-size: 10px; }
+  }
   .mypay-explainer {
     background: #f5f6f8; border-radius: 10px;
     padding: 12px 14px; font-size: 12px; color: #4a4e59;
@@ -888,6 +899,7 @@
   .pv-var  { display: block; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .pv-var.ok  { color: #15803d; }
   .pv-var.bad { color: #b91c1c; }
+  .pv-var.na  { color: #9aa0ac; font-weight: 600; }
 
   /* ── Sales / reconciliation tables → stacked cards on small screens ── */
   @media (max-width: 560px) {
@@ -1142,11 +1154,16 @@
     font-size: 13px; font-weight: 500;
     z-index: 200;
     box-shadow: 0 4px 14px rgba(0,0,0,0.2);
-    transition: transform 0.25s;
+    transition: transform 0.25s, visibility 0s linear 0.25s;
     max-width: 90%; text-align: center;
     white-space: pre-line;
+    /* Sliding it 100px down from 86px up only moves it 14px past the edge, so
+       an empty pill used to sit over the tab bar at all times. Hide it once
+       the slide-out has finished, and show it before the slide-in starts. */
+    visibility: hidden;
   }
-  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.show { transform: translateX(-50%) translateY(0); visibility: visible;
+                transition: transform 0.25s, visibility 0s; }
   .toast.success { background: #15803d; }
   .toast.error { background: #b91c1c; }
   .toast.warning { background: #d97706; }
@@ -3444,10 +3461,14 @@
 
   const PM_SORTS = {
     name_asc:    { label: 'Name (A–Z)',        cmp: (a, b) => (a.productName || '').localeCompare(b.productName || '') },
-    margin_desc: { label: 'Margin % (high→low)', cmp: (a, b) => (b.marginPct || 0) - (a.marginPct || 0) },
+    // A product with no recorded cost has no margin to rank; it sorts last
+    // rather than first at "100%".
+    margin_desc: { label: 'Margin % (high→low)', cmp: (a, b) => pmMarginKey_(b) - pmMarginKey_(a) },
     sell_desc:   { label: 'Sell $ (high→low)',  cmp: (a, b) => (b.sellPrice || 0) - (a.sellPrice || 0) },
     sell_asc:    { label: 'Sell $ (low→high)',  cmp: (a, b) => (a.sellPrice || 0) - (b.sellPrice || 0) },
   };
+
+  function pmMarginKey_(p) { return p.costPrice > 0 ? (p.marginPct || 0) : -Infinity; }
 
   function pmDefaultFilter() {
     return { query: '', category: '', brand: '', supplier: '', sort: 'name_asc' };
@@ -3570,9 +3591,16 @@
       const flagBadge = belowMin
         ? ' <span class="badge-warn" title="Sell price is below the min sell floor">⚠ below min</span>'
         : '';
-      const marginPctStr = p.sellPrice > 0
+      // Cost is filled in over time and most new rows sit at zero. "cost
+      // $0.00 · margin 100%" reads as free stock and a perfect margin, so say
+      // it is missing instead — the rule the picker already follows.
+      const hasCost = p.costPrice > 0;
+      const marginPctStr = p.sellPrice > 0 && hasCost
         ? (Math.round(p.marginPct * 1000) / 10).toFixed(1) + '%'
         : '—';
+      const costStr = hasCost
+        ? 'cost ' + money(p.costPrice) + ' · margin ' + marginPctStr
+        : 'no cost recorded';
       html += '<div class="payroll-card">' +
         '<div class="product-row-head">' +
           '<div style="min-width:0; flex:1">' +
@@ -3587,7 +3615,7 @@
           '</div>' +
           '<div class="product-row-margin">' +
             money(p.sellPrice) +
-            '<div class="product-row-meta">cost ' + money(p.costPrice) + ' · margin ' + marginPctStr + '</div>' +
+            '<div class="product-row-meta">' + costStr + '</div>' +
           '</div>' +
         '</div>' +
         '<div class="payroll-actions">' +
@@ -4968,7 +4996,12 @@
             '<div>' + esc(r.businessDate) + '<br><small style="color:#9aa0ac">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></div>' +
             '<div data-label="Store">' + esc(r.companies) + '</div>' +
             '<div class="r" data-label="Cash">' + pairVar_(r.cashCounted - r.cashVariance, r.cashCounted) + '</div>' +
-            '<div class="r" data-label="Cards">' + pairVar_(r.cashierCard, r.cloverCard) + '</div>' +
+            // No Clover figure means the cards were not checked — show the
+            // claim alone, as the detail view and the public report do.
+            '<div class="r" data-label="Cards">' + (r.cloverCard == null
+              ? '<span class="pv"><span class="pv-pair">' + money(r.cashierCard) + '</span>' +
+                '<span class="pv-var na">not verified</span></span>'
+              : pairVar_(r.cashierCard, r.cloverCard)) + '</div>' +
             '<div class="r" data-label="Status"><span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
           '</div>';
         });

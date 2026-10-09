@@ -215,4 +215,38 @@ t.ok('says the total is unverified', /not verified/.test(plain));
 t.ok('carries the cash verdict', /Cash - recorded \/ counted/.test(plain));
 t.ok('and no "Clover unavailable" noise', plain.indexOf('Clover unavailable') === -1);
 
+// ── 3. Blank survives the round trip through the sheet ──────
+// reconcileDay wrote blank cells for a till with no Clover, and getRecent read
+// them back as 0. The dashboard history and the public report then showed
+// "claimed $1,240 / measured $0.00 · -$1,240.00" in red, every day.
+t.section('What was not measured reads back as not measured');
+scenario([CST(), VAP()],
+         [saleTotal('CST-1', 'cstore', 600, 1240), saleSplit('VAP-1', 'vape', 51, 1, 50)],
+         { cstore_card_split: 'false' });
+const back = M.Reconcile.getRecent(10);
+const cst = back.find(r => r.companies === 'cstore');
+const vap = back.find(r => r.companies === 'vape');
+t.eq('the cstore card total is null, not 0', cst.cloverCard, null);
+t.eq('and so is its card variance', cst.cardVariance, null);
+t.eq('blank cashier credit stays blank', cst.cashierCredit, null);
+t.eq('the claimed card figure is still there', cst.cashierCard, 1240);
+t.eq('a measured Clover total still reads back', vap.cloverCard, 51);
+t.eq('including a measured zero variance', vap.cardVariance, 0);
+
+// The same rows through the public report, unstubbed: this is the page that
+// published the fictional loss.
+const PR = H.load(['Util.gs', 'PublicReport.gs'], {
+  Reconcile: M.Reconcile,
+  Sales: { getDashboard: () => ({ totals: {}, daily: [], companies: [] }) },
+  TillSessions: { getLottoLog: () => ({ enabled: false }) },
+  CashHandling: { sheetsExist: () => false, getOutstanding: () => [] },
+  Staff: { getAll: () => [] },
+}).PublicReport;
+const pub = PR.build(7).reconcile.rows;
+const pc = pub.find(r => r.companies === 'cstore');
+const pv = pub.find(r => r.companies === 'vape');
+t.eq('the public row omits the measured card figure', pc.cardMeasured, null);
+t.eq('and publishes no card variance', pc.cardVar, null);
+t.eq('a verified till still publishes its measurement', pv.cardMeasured, 51);
+
 t.done();

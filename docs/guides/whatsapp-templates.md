@@ -81,11 +81,11 @@ StoreOps · automated
 | 1 | `Wed 9 Sep 2026` | Date |
 | 2 | `cstore` | Till |
 | 3 | `09:00–21:20` | First open to last close |
-| 4 | `Blesson, Abijith` | Who worked |
+| 4 | `Maya, Jordan` | Who worked |
 | 5 | `$1842.00 — cash $602.00 · card $1240.00` | Revenue, split by tender |
 | 6 | `$852.00 / $852.00 (var +$0.00) ✅` | Cash recorded vs counted |
 | 7 | `float $250.00 back · reserve $300.00 · $302.00 in hand` | Where the cash went |
-| 8 | `Blesson $1240.00 · Abijith $640.00` | Who is holding cash |
+| 8 | `Maya $1240.00 · Jordan $640.00` | Who is holding cash |
 | 9 | `$500.00 (+$300.00 moved in)` | Lotto pot balance and movement |
 | 10 | `$1240.00 — single total, not independently verified` | Cards, from the ePOS |
 | 11 | `✅ Cash matched` | Overall result |
@@ -170,11 +170,11 @@ StoreOps · automated
 | 1 | `Wed 9 Sep 2026` |
 | 2 | `vape` |
 | 3 | `09:00–21:20` |
-| 4 | `Ashin` |
+| 4 | `Sam` |
 | 5 | `reported $651.00 / counted $651.00 (var +$0.00) ✅` |
 | 6 | `$950.00 / $950.00 (var +$0.00) ✅` |
 | 7 | `float $60.00 back · $890.00 in hand` |
-| 8 | `Ashin $1240.00` |
+| 8 | `Sam $1240.00` |
 | 9 | `$1.00 / $1.00 (var +$0.00) ✅` |
 | 10 | `$50.00 / $50.00 (var +$0.00) ✅` |
 | 11 | `$51.00 / $51.00 (var +$0.00) ✅` |

@@ -1,0 +1,22 @@
+name: CI
+
+# Every suite, including the docs guard, on every push and pull request.
+# The suites need nothing but Node: they load src/ directly and stub the
+# Google services, so there is no install step and no secret involved.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run every suite
+        run: node tests/suites/run.js

@@ -1,5 +1,14 @@
 # Plan — cstore moves to ePOS: one card total, no Clover
 
+> **Historical plan**, kept as written before the change shipped in #12
+> (Sep 2026). Some paths it mentions have since moved: the WhatsApp templates
+> are now [guides/whatsapp-templates.md](../guides/whatsapp-templates.md) and
+> the data model is [architecture/data-model.md](../architecture/data-model.md).
+> The decisions it reached are recorded as ADRs
+> [0004](../adr/0004-blank-is-not-zero.md),
+> [0005](../adr/0005-card-shapes-are-mutually-exclusive-columns.md) and
+> [0007](../adr/0007-message-shape-follows-the-template.md).
+
 **Status:** ready to implement. Written for handover.
 **Base commit:** `ad165be`
 **Scope owner decision still needed:** §6 (WhatsApp template). Everything else is settled.
@@ -342,11 +351,11 @@ Cards are **information**, never a check. The status speaks only to cash.
 | 1 | Date | `Wed 9 Sep 2026` |
 | 2 | Till | `cstore` |
 | 3 | Hours | `09:00–21:20` |
-| 4 | Staff | `Blesson, Abijith` |
+| 4 | Staff | `Maya, Jordan` |
 | 5 | Total sales — descriptive, **no variance** | `$1,842.00 — cash $602.00 · card $1,240.00` |
 | 6 | **Cash · recorded / counted** — the only check | `$852.00 / $852.00 (var +$0.00) ✅` |
 | 7 | Cash destination | `float $250.00 back · reserve $300.00 · $302.00 in hand` |
-| 8 | Cash in hand, by name | `Blesson $1,240.00 · Abijith $640.00` |
+| 8 | Cash in hand, by name | `Maya $1,240.00 · Jordan $640.00` |
 | 9 | Lotto reserve | `$500.00 (+$300.00 moved in)` |
 | 10 | Cards (ePOS, informational) | `$1,240.00 — single total, not independently verified` |
 | 11 | Result | `✅ Cash matched` / `⚠️ cash short $40.00` |

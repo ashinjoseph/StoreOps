@@ -1,70 +1,103 @@
-# StoreOps — Schedule, Payroll, Sales & Reconciliation
+# StoreOps
 
-Single Apps Script project that runs the store's daily operations:
+**Daily operations for a two-till convenience and vape store, on staff
+phones.** Open a till, close it in one sheet, reconcile cash and cards against
+what measured them, follow every dollar from the drawer to the cash manager,
+schedule, pay, compute commissions, and order stock.
 
-- **Cashiers** open/close till sessions per company (cstore + vape), enter
-  sales by tender, count cash, reconcile float.
-- **Admins** manage staff, schedule shifts in advance, record payments,
-  approve commissions, view audit logs.
-- **Managers** edit shifts, view sales dashboard, review payments
-  (read-only).
-- **Payroll** computes from actual hours worked (attendance), pays via
-  chronological allocation against unpaid attendance days, includes a
-  bonuses/commissions module that auto-proposes weekly commissions.
+It runs on **Google Apps Script with a Google Sheet as the database**, so it
+costs nothing to host, has no servers, and keeps the data where the owner can
+open it.
 
-Replaces:
-- The Schedule_Payroll v3 project (never deployed)
-- The Scarbro Mart Reconciliation app (cashier flow + reconciliation)
+| My Shift | Closing a till | Reconcile | Shopping list |
+|---|---|---|---|
+| ![My Shift](docs/images/shift.png) | ![Close sheet](docs/images/close-sheet.png) | ![Reconcile](docs/images/recon.png) | ![Picker](docs/images/picker.png) |
 
-Both apps' ideologies are preserved; data starts fresh.
+<sub>Screenshots are generated from the real code over a fictional store. See
+[how](docs/adr/0018-docs-are-generated-from-the-running-code.md).</sub>
 
-## Project layout
+## What it does
+
+| | |
+|---|---|
+| 🏪 **[Shifts and the close](docs/components/shifts-and-close.md)** | Float, tenders, lotto pot, drawer count; expected cash and variance worked out live |
+| ⚖️ **[Reconcile](docs/components/reconcile.md)** | Cash against the count, cards against Clover, and "not verified" where nothing measured |
+| 💬 **[Notifications](docs/components/notifications.md)** | WhatsApp close message per till, through Meta-approved templates; failures say why |
+| 💵 **[Cash handling](docs/components/cash-handling.md)** | Takings tracked per shift until handed over, oldest first, never deleted |
+| 📅 **[Schedule and attendance](docs/components/schedule-and-attendance.md)** | Plan the week; hours worked come from the tills |
+| 💰 **[Payroll](docs/components/payroll.md)** | Pay oldest days first; each person sees hours × rate for themselves |
+| 🎯 **[Commissions](docs/components/commissions.md)** | % over a threshold or a fixed weekly fee, proposed weekly, approved by a person |
+| 📊 **[Sales dashboard](docs/components/sales-dashboard.md)** | Trend, weekday, part of month, cash share, with no misleading averages |
+| 🔗 **[Public reports](docs/components/public-reports.md)** | Two no-login pages for owners; no API exposed |
+| 📦 **[Product master](docs/components/product-master.md)** | Per-type pricing (beer, cigarettes, vape, grocery) and bulk CSV import |
+| 🛒 **[Shopping list](docs/components/shopping-list.md)** | One-tap picker by category, sent as one WhatsApp message |
+| 🔐 **[App shell and auth](docs/components/app-shell-and-auth.md)** | PIN login, server-side sessions, four roles |
+
+## How it's built
+
+```mermaid
+flowchart LR
+    phone(["📱 Staff phone"]) -- "google.script.run" --> rpc["WebApp.gs<br/>61 RPCs<br/>session → role check"]
+    owner(["👥 Owner, no login"]) -- "?v=sales · ?v=recon" --> pages["Public pages<br/>data inlined"]
+    rpc --> mods["Domain modules<br/>TillSessions · Reconcile · CashHandling<br/>Payments · Commissions · ProductMaster …"]
+    pages --> mods
+    mods --> sheet[("Google Sheet<br/>27 tabs")]
+    mods --> clover["Clover API"]
+    mods --> wa["WhatsApp Cloud API"]
+    gh["GitHub Actions"] -- "clasp push" --> rpc
+```
+
+More: [architecture overview](docs/architecture/overview.md) ·
+[data model](docs/architecture/data-model.md) ·
+[security](docs/architecture/security.md) ·
+[deployment](docs/architecture/deployment.md) ·
+[decisions](docs/adr/README.md)
+
+## By the numbers
+
+| | |
+|---|---|
+| Server | 23 Apps Script modules, ~11k lines, 61 RPC endpoints |
+| Client | one single-page app + two public pages |
+| Tests | 27 suites, 1,000+ assertions over the real source, in CI on every push |
+| Docs | 12 component pages, 19 ADRs, generated schema, code map and screenshots |
+
+## Quick start
+
+```sh
+npm test                     # every suite, no Google account needed
+npm run docs:screenshots     # regenerate docs/images from the real app (Playwright)
+npm run docs:generate        # regenerate schema, code map and llms.txt
+```
+
+To deploy your own copy, follow the [setup guide](docs/guides/setup.md).
+Pushing a branch updates the test project; merging to `main` deploys
+production ([deployment](docs/architecture/deployment.md)).
+
+## Documentation
+
+Start at **[docs/README.md](docs/README.md)** for the overall picture. Presenting the
+project? Use the **[ten-minute tour](docs/showcase.md)**. Working on it with an AI
+agent? Point it at **[AGENTS.md](AGENTS.md)** and **[llms.txt](llms.txt)**.
+
+| | |
+|---|---|
+| [Context](docs/context.md) | the business, goals, constraints, glossary |
+| [Architecture](docs/architecture/overview.md) | system context, layers, module map, the daily flow |
+| [Components](docs/components/README.md) | one page per feature, with screenshots |
+| [ADRs](docs/adr/README.md) | 19 decisions and the reasoning behind them |
+| [Testing](docs/guides/testing.md) | how the suites run the real code |
+| [Docs process](docs/guides/docs-process.md) | how the docs stay current, enforced in CI |
+| [Code map](docs/reference/code-map.md) | every module, RPC and its roles, generated from the code |
+| [Changelog](CHANGELOG.md) | every batch, with the reasoning |
+
+## Repository layout
 
 ```
-StoreOps/
-├── appsscript.json         Apps Script manifest
-├── package.json            clasp + types for IDE
-├── .clasp.json.example     template — copy to .clasp.json (gitignored)
-├── .gitignore, .claspignore
-├── README.md, CHANGELOG.md
-├── src/                    *.gs and *.html — what clasp push uploads
-├── docs/                   design + setup
-└── tests/                  manual test scenarios
+AGENTS.md            start here if you're an AI agent (CLAUDE.md imports it)
+src/                 what clasp uploads: *.gs modules, Index.html, public pages
+tests/suites/        Node suites over the real source (npm test)
+scripts/docs/        screenshot, schema and diagram tooling
+docs/                architecture, components, ADRs, guides, generated reference
+.github/workflows/   ci.yml (tests), test-deploy.yml (branch), deploy.yml (main)
 ```
-
-## First-time setup
-
-See [`docs/quickstart.md`](docs/quickstart.md).
-
-## Daily workflow
-
-```
-git add -A && git commit -m "..."
-npx clasp push                  # pushes HEAD; test deployment auto-updates
-# verify on the test URL
-npx clasp deploy --description "vX.Y description" --deploymentId <prod_id>
-git tag vX.Y && git push --tags
-```
-
-## Source files (overview)
-
-| File | Purpose |
-|------|---------|
-| `Util.gs` | Date helpers, ID generation, money math, shift parsing |
-| `Setup.gs` | First-time schema + menu + placeholder rows |
-| `Staff.gs` | Roster + login code verification |
-| `Auth.gs` | Sessions, tokens, rate limiting |
-| `AuditLog.gs` | Append-only event log |
-| `Notifier.gs` | Future WhatsApp hook (no-op for now) |
-| `Attendance.gs` | Per-day work record + payroll source |
-| `TillSessions.gs` | Per-company cash reconciliation |
-| `Sales.gs` | Sales by tender, per till_session |
-| `Payments.gs` | Payment recording + chronological allocation walk |
-| `Bonuses.gs` | Bonuses + commissions storage |
-| `Commissions.gs` | Weekly commission engine |
-| `CommissionRules.gs` | Rule CRUD |
-| `WebApp.gs` | RPC layer with auth + role guards |
-| `Index.html` | Single-page UI (login + cashier + admin + manager views) |
-
-See [`docs/data-model.md`](docs/data-model.md) for the schema.
-See [`docs/auth-design.md`](docs/auth-design.md) for the auth model.

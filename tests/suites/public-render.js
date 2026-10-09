@@ -2,7 +2,7 @@
 // anywhere in render() leaves #app untouched — which on a phone is a blank page
 // with no error, exactly what was reported.
 const fs = require('fs'), vm = require('vm');
-const html = fs.readFileSync('/home/user/StoreOps/src/PublicSales.html', 'utf8');
+const html = fs.readFileSync(require('path').resolve(__dirname, '..', '..', 'src', 'PublicSales.html'), 'utf8');
 
 // Lift the inline script, replace the templated payload with a real one.
 const m = /<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/.exec(html);
@@ -127,7 +127,7 @@ ok('no coverage note when nothing is split', !/is recorded split by type/.test(o
 ok('Card tile still present', /<div class="k">Card<\/div>/.test(out));
 
 console.log('\nA throw fails legibly instead of blank');
-const src = fs.readFileSync('/home/user/StoreOps/src/PublicSales.html', 'utf8');
+const src = fs.readFileSync(require('path').resolve(__dirname, '..', '..', 'src', 'PublicSales.html'), 'utf8');
 ok('render is wrapped', /\(function main\(\) \{\s*\n\s*try \{\s*\n\s*render\(\);/.test(src));
 ok('the catch writes into #app', /catch \(err\)[\s\S]{0,200}getElementById\('app'\)/.test(src));
 ok('and names the error', /failed to render/.test(src));
