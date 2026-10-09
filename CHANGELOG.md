@@ -1134,3 +1134,75 @@ src` only, so nothing there reaches Apps Script.
 
 Only `public-render` survived, as it was written after the loss. The rest need
 rebuilding.
+
+### Product import, the vape shelf, and fixed commission rules (PRs #18–#23)
+
+- **#18 — the lost suites rebuilt.** 22 suites, 800 assertions, each confirmed
+  failing against the code it guards.
+- **#19 — the whole vape shelf is orderable.** Category chips show every
+  product in the category. A product flagged `needs_detail` stays in the picker
+  with a **Fix** button instead of **+**, and the server refuses to order it
+  until the flavour or variant is filled in. Creating and editing products is
+  open to every role; cashiers add most new stock.
+- **#20 — a failed import says which rows failed, and why**, instead of a bare
+  error count.
+- **#21 — a stale staging header is refused** instead of being mapped by
+  position into the wrong columns. **Refresh staging headers** rewrites it.
+- **#22 — imports stop timing out.** The vape import reads each sheet once and
+  writes each sheet once, whatever the size of the paste.
+- **#23 — fixed-amount commission rules**, for a weekly management fee that
+  isn't tied to sales. Every bonus now records the rule that produced it
+  (`source_rule_id`), so a fee and a sales commission no longer block each
+  other.
+
+### Documentation, and what writing it found (Batch 14)
+
+The repo now explains itself, with pictures, to a new developer, a manager or an
+interviewer. Start at `docs/README.md`.
+
+- **Architecture:** system context, layers, module map, the daily flow, data
+  model with an ER diagram, security (threat model, sessions, the role table
+  read from the code), deployment and CI. Mermaid throughout, every diagram
+  checked to render (`npm run docs:mermaid`).
+- **Twelve component pages**, each with screenshots, a diagram, the rules it
+  must not break, a code map, the tests that hold it down, and its history.
+- **Eighteen ADRs** for decisions already made, from the platform choice to
+  blank-is-not-zero, written from this changelog and the pull requests.
+- **A ten-minute showcase** for interviews and management reviews.
+- **Screenshots are generated, not taken.** `scripts/docs` runs every `src/*.gs`
+  file in Node over an in-memory spreadsheet, seeds 120 days of a fictional store
+  through the real module APIs, and renders the real pages in Chromium with
+  `google.script.run` answered by the real RPCs. No real names, pay or takings.
+- **The schema reference is generated** from what `Setup.gs` and the migrations
+  build (`npm run docs:schema`).
+- **Docs are enforced.** A `docs-guard` suite fails when the schema doc is stale,
+  an ADR or component page isn't indexed, a link is dead, or an image isn't
+  produced by the screenshot list. `ci.yml` runs every suite on every push and
+  pull request, the first time CI has run the tests at all. A PR template and
+  `CLAUDE.md` carry the checklist.
+- A `syntax` suite compiles every `.gs` file and inline page script, so CI runs
+  the old copy-paste syntax gate.
+
+#### Found while generating the screenshots
+
+Running the whole app end to end over consistent data surfaced four real bugs.
+Each fix is its own commit, with assertions confirmed failing without it.
+
+- **Reconcile history and the public report showed cstore's whole card take as
+  a loss, every day.** `Reconcile.getRecent_` read blank Clover columns with
+  `Number(x) || 0`, so "not measured" came back as "measured $0.00". The public
+  report's null guard could never fire. The suite that should have caught it
+  stubbed `getRecent` with `null`, so it passed without running the real read.
+  Blank now reads back as `null`; the history cell says *not verified*.
+- **Script injection through the public 7-day report.** The inlined payload
+  wasn't escaped for the HTML parser, and it carries cashier-typed notes. A
+  note containing `</script>` would have run in every owner's browser. `<` is
+  now written as `<`.
+- **My Pay overflowed a phone.** Four tiles at ~83px each, and a six-column
+  table that ran PAID and REMAINING together. Two-by-two tiles under 560px.
+- **Product Master showed uncosted products as "cost $0.00 · margin 100%"**
+  and sorted them first by margin. Now *no cost recorded*, and sorted last.
+
+Also: an empty toast pill that sat permanently over the tab bar is now hidden,
+and a stale "no-op" header comment in `Notifier.gs` describes what it actually
+does.

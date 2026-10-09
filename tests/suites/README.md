@@ -5,10 +5,10 @@ Node suites that load the **real** module source — `src/*.gs` through
 stubbed Apps Script globals. No production test hooks, no copied logic: a suite
 that passes is exercising the code that ships.
 
-Run everything:
+Run everything (CI runs this on every push and pull request):
 
 ```
-node tests/suites/run.js
+npm test
 ```
 
 Or one suite, by substring:
@@ -27,6 +27,8 @@ shared globals, which hid at least one ordering-dependent pass.
 | suite | what it holds down |
 | --- | --- |
 | `cash-handling` | oldest-first allocation across companies, overpayment and partial guards |
+| `commission-fixed` | fixed weekly amounts beside sales commissions: once a week, no mutual blocking, `source_rule_id` |
+| `docs-guard` | docs stay in step with the code: schema, indexes, links, images, this table |
 | `import-perf` | a bulk paste costing a fixed number of master reads, and the dedup keys |
 | `link` | the dashboard link on the close message — appended view, or no link at all |
 | `lotto-payout` | netting, reserve-fed-to-till derived from two counts, no double-counted top-up |
@@ -34,6 +36,7 @@ shared globals, which hid at least one ordering-dependent pass.
 | `parity` | the app and the public page rendering one payload the same way |
 | `perf` | the dashboard read path, counted |
 | `public-chart` | bar labels, proportional heights, and opening on the newest day |
+| `public-inline` | a cashier's note can't close the public page's inline script |
 | `public-render` | the whole PublicSales page rendering rather than going blank |
 | `public-report` | what a no-login payload may carry, and sections that fail politely |
 | `reconcile` | not-configured vs outage, no fictional variance, shape follows the template |
@@ -41,9 +44,14 @@ shared globals, which hid at least one ordering-dependent pass.
 | `rpc-guards` | privilege read from the session, never from the payload |
 | `sales-cards` | two card shapes, mutually exclusive per row, blank never zero |
 | `sales-insights` | per-trading-day averaging over a 61-day fixture |
+| `shopping-gate` | a needs-detail product can't be ordered until completed |
+| `syntax` | every `.gs` file and inline page script compiles |
 | `template-guard` | the Apps Script scriptlet contract, read as the preprocessor reads it |
 | `ui-close-sheet` | card shape, the lotto pot, the sign button, and the running sums |
 | `ui-dashboard` | tender tiles that never lose a tender, and where the chart sits |
+| `ui-picker` | chips show a whole category, needs-detail rows listed but not addable |
+| `ui-products` | no cost is "no cost recorded", not a 100% margin; margin sort |
+| `ui-recon` | reconcile history shows "not verified", never a $0 measurement |
 | `wiring` | every close-sheet field, from the browser's payload to the ledger |
 
 One suite from the lost set is **not** rebuilt: `realdata`, which read the live
@@ -95,8 +103,9 @@ trusting it.
 
 ## Syntax gate
 
-Not a suite, but run it before any push — Apps Script reports a template or
-parse error as a runtime failure blamed on an unrelated line:
+Now the `syntax` suite, so CI runs it. The one-liner below does the same check
+without the harness — Apps Script reports a template or parse error as a
+runtime failure blamed on an unrelated line:
 
 ```
 node -e 'const fs=require("fs"),vm=require("vm");let b=0;
