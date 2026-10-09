@@ -51,6 +51,16 @@ module.exports = [
   } },
 
   // ── Management views ──────────────────────────────────────
+  // ── Everyone's other two tabs ──────────────────────────────
+  { name: 'schedule', token: 'tok-S_002', run: async ({ page, settle, shot }) => {
+      await tab(page, settle, 'schedule');
+      await shot('schedule');
+  } },
+  { name: 'mypay', token: 'tok-S_004', run: async ({ page, settle, shot }) => {
+      await tab(page, settle, 'mypay');
+      await shot('mypay');
+  } },
+
   { name: 'sales', token: 'tok-S_001', also: ['sales-insights'],
     run: async ({ page, settle, shot }) => {
       await tab(page, settle, 'sales');

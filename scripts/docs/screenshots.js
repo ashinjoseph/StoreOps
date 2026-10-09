@@ -86,7 +86,7 @@ const SHIM = `
 // the scriptlet before serving. Do the same here.
 function publicPage(file, payload) {
   return fs.readFileSync(path.join(SRC, file), 'utf8')
-    .replace(/<\?!=\s*payload\s*\?>/, JSON.stringify(payload));
+    .replace(/<\?!=\s*payload\s*\?>/, () => api.inlineJson_(payload));
 }
 
 async function main() {

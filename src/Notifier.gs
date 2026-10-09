@@ -1,10 +1,13 @@
 // ============================================================
-//  Notifier.gs — event broadcast hook
+//  Notifier.gs — WhatsApp Cloud API sends + internal event log
 // ============================================================
-//  Centralized event dispatcher. Currently a no-op that just logs to
-//  AuditLog. Future: wire to WhatsApp Cloud API, email, etc.
+//  Two paths:
+//    sendOp / sendTemplate / sendWhatsApp — real WhatsApp messages through
+//      approved templates (shift open, shift close, shopping list). Never
+//      throw; return { sent, reason, results } so callers can say why.
+//    notify — internal events, written to AuditLog only; sends nothing.
 //
-//  Call from anywhere:
+//  notify, from anywhere:
 //    Notifier.notify('shift.opened', { staffId, sessionId, openingFloat });
 //    Notifier.notify('shift.closed', { staffId, sessionId, variance });
 //    Notifier.notify('payment.recorded', { staffId, amount });

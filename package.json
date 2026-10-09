@@ -10,7 +10,10 @@
     "open": "clasp open",
     "logs": "clasp logs --watch",
     "test": "node tests/suites/run.js",
-    "docs:screenshots": "node scripts/docs/screenshots.js"
+    "docs:screenshots": "node scripts/docs/screenshots.js",
+    "docs:schema": "node scripts/docs/schema.js",
+    "docs:check": "node tests/suites/run.js docs-guard",
+    "docs:mermaid": "node scripts/docs/mermaid.js"
   },
   "devDependencies": {
     "@google/clasp": "^2.4.2",
