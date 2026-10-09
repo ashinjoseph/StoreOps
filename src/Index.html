@@ -888,6 +888,7 @@
   .pv-var  { display: block; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .pv-var.ok  { color: #15803d; }
   .pv-var.bad { color: #b91c1c; }
+  .pv-var.na  { color: #9aa0ac; font-weight: 600; }
 
   /* ── Sales / reconciliation tables → stacked cards on small screens ── */
   @media (max-width: 560px) {
@@ -4968,7 +4969,12 @@
             '<div>' + esc(r.businessDate) + '<br><small style="color:#9aa0ac">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></div>' +
             '<div data-label="Store">' + esc(r.companies) + '</div>' +
             '<div class="r" data-label="Cash">' + pairVar_(r.cashCounted - r.cashVariance, r.cashCounted) + '</div>' +
-            '<div class="r" data-label="Cards">' + pairVar_(r.cashierCard, r.cloverCard) + '</div>' +
+            // No Clover figure means the cards were not checked — show the
+            // claim alone, as the detail view and the public report do.
+            '<div class="r" data-label="Cards">' + (r.cloverCard == null
+              ? '<span class="pv"><span class="pv-pair">' + money(r.cashierCard) + '</span>' +
+                '<span class="pv-var na">not verified</span></span>'
+              : pairVar_(r.cashierCard, r.cloverCard)) + '</div>' +
             '<div class="r" data-label="Status"><span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
           '</div>';
         });

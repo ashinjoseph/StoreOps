@@ -318,6 +318,12 @@ const Reconcile = (() => {
 
   /** null → an empty cell. Zero would claim a measurement that never happened. */
   function blank_(v) { return (v === null || v === undefined) ? '' : v; }
+  // The inverse of blank_: an empty cell is "not measured", not zero.
+  function numOrNull_(v) {
+    if (v === '' || v === null || v === undefined) return null;
+    const n = Number(v);
+    return isNaN(n) ? null : n;
+  }
 
   function writeRow_(dateObj, rec, mode, actorId, now) {
     const sh = sheet_();
@@ -718,13 +724,17 @@ const Reconcile = (() => {
         windowEnd:    toIso(r[COL.window_end - 1]),
         merchant:     (r[COL.merchant - 1] || '').toString(),
         companies:    (r[COL.companies - 1] || '').toString(),
-        cashierCredit: Number(r[COL.cashier_credit - 1]) || 0,
-        cloverCredit:  Number(r[COL.clover_credit - 1]) || 0,
-        cashierDebit:  Number(r[COL.cashier_debit - 1]) || 0,
-        cloverDebit:   Number(r[COL.clover_debit - 1]) || 0,
+        // Read back blank as null, the way blank_ wrote it. "|| 0" turned a
+        // till with no Clover into "measured $0.00", and every reader of this
+        // (the dashboard history, the public report) then showed the whole
+        // card take as a red shortfall, every day.
+        cashierCredit: numOrNull_(r[COL.cashier_credit - 1]),
+        cloverCredit:  numOrNull_(r[COL.clover_credit - 1]),
+        cashierDebit:  numOrNull_(r[COL.cashier_debit - 1]),
+        cloverDebit:   numOrNull_(r[COL.clover_debit - 1]),
         cashierCard:   Number(r[COL.cashier_card - 1]) || 0,
-        cloverCard:    Number(r[COL.clover_card - 1]) || 0,
-        cardVariance:  Number(r[COL.card_variance - 1]) || 0,
+        cloverCard:    numOrNull_(r[COL.clover_card - 1]),
+        cardVariance:  numOrNull_(r[COL.card_variance - 1]),
         cashSales:     Number(r[COL.cash_sales - 1]) || 0,
         cashCounted:   Number(r[COL.cash_counted - 1]) || 0,
         cashVariance:  Number(r[COL.cash_variance - 1]) || 0,
