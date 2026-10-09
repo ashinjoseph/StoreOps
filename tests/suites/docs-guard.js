@@ -5,8 +5,9 @@
 //  checks what a machine can: the generated schema matches what Setup.gs
 //  builds, every ADR and component page is indexed, component pages have
 //  their sections, relative links resolve, every image shown exists and is
-//  produced by scripts/docs/screens.js, and every suite is listed in the
-//  suites README. Whether the prose is still TRUE is the reviewer's job.
+//  produced by scripts/docs/screens.js, every suite is listed in the suites
+//  README, and the agent-facing files (AGENTS.md, llms.txt, the generated
+//  code map) are current and complete. Whether the prose is still TRUE is the reviewer's job.
 // ============================================================
 const fs = require('fs');
 const path = require('path');
@@ -25,7 +26,7 @@ function walk(dir, out) {
   });
   return out;
 }
-const pages = walk(DOCS, [path.join(ROOT, 'README.md')]);
+const pages = walk(DOCS, ['README.md', 'AGENTS.md', 'CLAUDE.md'].map(f => path.join(ROOT, f)));
 const isTemplate = p => path.basename(p) === '_template.md';
 // Markdown with fenced code removed, so examples in code blocks aren't links.
 const prose = p => read(p).replace(/```[\s\S]*?```/g, '');
@@ -45,6 +46,31 @@ t.section('The schema reference matches what Setup.gs builds');
   const want = S.build();
   const have = fs.existsSync(S.OUT) ? read(S.OUT) : '';
   t.ok('docs/reference/schema.md is current (npm run docs:schema)', have === want);
+}
+
+t.section('The code map and llms.txt are generated, and current');
+{
+  const C = require(path.join(ROOT, 'scripts', 'docs', 'codemap.js'));
+  t.ok('docs/reference/code-map.md is current (npm run docs:codemap)',
+       fs.existsSync(C.OUT) && read(C.OUT) === C.build());
+  const Ll = require(path.join(ROOT, 'scripts', 'docs', 'llms.js'));
+  t.ok('llms.txt is current (npm run docs:llms)',
+       fs.existsSync(Ll.OUT) && read(Ll.OUT) === Ll.build());
+}
+
+t.section('Every doc an agent might need is reachable from llms.txt');
+{
+  const idx = read(path.join(ROOT, 'llms.txt'));
+  pages.filter(p => !isTemplate(p) && p !== path.join(ROOT, 'README.md') &&
+                    p !== path.join(ROOT, 'CLAUDE.md') && p !== path.join(DOCS, 'components', 'README.md'))
+    .forEach(p => t.ok('listed: ' + rel(p), idx.indexOf('(' + rel(p).split(path.sep).join('/') + ')') !== -1));
+  const dead = [];
+  const re = /\]\(([^)]+)\)/g;
+  let m;
+  while ((m = re.exec(idx))) if (!/^https?:/.test(m[1]) && !fs.existsSync(path.join(ROOT, m[1]))) dead.push(m[1]);
+  t.eq('no dead links in llms.txt', dead.join(', '), '');
+  t.ok('CLAUDE.md imports AGENTS.md, so the two cannot diverge',
+       /^@AGENTS\.md$/m.test(read(path.join(ROOT, 'CLAUDE.md'))));
 }
 
 // ── 2. ADRs are all indexed ─────────────────────────────────

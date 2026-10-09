@@ -31,6 +31,7 @@ requests and the code. Their dates are when the decision took effect.
 | [0016](0016-per-execution-caches-for-read-paths.md) | Per-execution caches on read paths, busted by writes | Accepted | 2026-08 |
 | [0017](0017-tests-run-the-real-source.md) | Tests run the real source, and every assertion is seen failing | Accepted | 2026-09 |
 | [0018](0018-docs-are-generated-from-the-running-code.md) | Screenshots and schema docs are generated from the running code | Accepted | 2026-10 |
+| [0019](0019-agent-facing-docs.md) | AGENTS.md is the agents' entry point; their maps are generated | Accepted | 2026-10 |
 
 ## When to write one
 

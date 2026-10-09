@@ -20,7 +20,7 @@ the real source, and every one was seen failing before it was kept.
 | Client | one 6k-line single-page app + two public pages |
 | Data | 27 tabs, every change audited |
 | Quality | 27 test suites, 1,000+ assertions, CI on every push |
-| Docs | 12 component pages, 18 ADRs, generated schema and screenshots |
+| Docs | 12 component pages, 19 ADRs, generated schema and screenshots |
 
 ## The tour
 

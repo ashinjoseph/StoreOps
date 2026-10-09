@@ -1206,3 +1206,20 @@ Each fix is its own commit, with assertions confirmed failing without it.
 Also: an empty toast pill that sat permanently over the tab bar is now hidden,
 and a stale "no-op" header comment in `Notifier.gs` describes what it actually
 does.
+
+#### Readable by AI agents, too
+
+- **`AGENTS.md`** is the entry point for coding agents (and a fast start for
+  people): layout, commands, the shape of the code, ten hard rules each linked to
+  its ADR, recipes for common changes, and gotchas that have bitten before.
+  `CLAUDE.md` imports it, so the two can't diverge.
+- **`docs/reference/code-map.md`** is generated from the source: every module's
+  purpose, public API, tabs, callers and the suites that load it; every `rpc*`
+  with its parameters and the roles its `Auth.require` admits (following one
+  level of helper calls); the status vocabularies.
+- **`llms.txt`** indexes every doc with a one-line description, generated from
+  the pages themselves.
+- The docs guard now fails when the code map or `llms.txt` is stale, when a doc
+  is missing from `llms.txt`, or when `CLAUDE.md` stops importing `AGENTS.md`.
+  `npm run docs:generate` rebuilds all three generated files.
+- [ADR-0019](docs/adr/0019-agent-facing-docs.md) records the decision.

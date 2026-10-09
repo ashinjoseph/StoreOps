@@ -60,14 +60,14 @@ More: [architecture overview](docs/architecture/overview.md) ·
 | Server | 23 Apps Script modules, ~11k lines, 61 RPC endpoints |
 | Client | one single-page app + two public pages |
 | Tests | 27 suites, 1,000+ assertions over the real source, in CI on every push |
-| Docs | 12 component pages, 18 ADRs, generated schema reference and screenshots |
+| Docs | 12 component pages, 19 ADRs, generated schema, code map and screenshots |
 
 ## Quick start
 
 ```sh
 npm test                     # every suite, no Google account needed
 npm run docs:screenshots     # regenerate docs/images from the real app (Playwright)
-npm run docs:schema          # regenerate docs/reference/schema.md
+npm run docs:generate        # regenerate schema, code map and llms.txt
 ```
 
 To deploy your own copy, follow the [setup guide](docs/guides/setup.md).
@@ -77,21 +77,24 @@ production ([deployment](docs/architecture/deployment.md)).
 ## Documentation
 
 Start at **[docs/README.md](docs/README.md)** for the overall picture. Presenting the
-project? Use the **[ten-minute tour](docs/showcase.md)**.
+project? Use the **[ten-minute tour](docs/showcase.md)**. Working on it with an AI
+agent? Point it at **[AGENTS.md](AGENTS.md)** and **[llms.txt](llms.txt)**.
 
 | | |
 |---|---|
 | [Context](docs/context.md) | the business, goals, constraints, glossary |
 | [Architecture](docs/architecture/overview.md) | system context, layers, module map, the daily flow |
 | [Components](docs/components/README.md) | one page per feature, with screenshots |
-| [ADRs](docs/adr/README.md) | 18 decisions and the reasoning behind them |
+| [ADRs](docs/adr/README.md) | 19 decisions and the reasoning behind them |
 | [Testing](docs/guides/testing.md) | how the suites run the real code |
 | [Docs process](docs/guides/docs-process.md) | how the docs stay current, enforced in CI |
+| [Code map](docs/reference/code-map.md) | every module, RPC and its roles, generated from the code |
 | [Changelog](CHANGELOG.md) | every batch, with the reasoning |
 
 ## Repository layout
 
 ```
+AGENTS.md            start here if you're an AI agent (CLAUDE.md imports it)
 src/                 what clasp uploads: *.gs modules, Index.html, public pages
 tests/suites/        Node suites over the real source (npm test)
 scripts/docs/        screenshot, schema and diagram tooling

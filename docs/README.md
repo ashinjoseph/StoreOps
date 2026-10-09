@@ -58,14 +58,18 @@ flowchart LR
 | understand the business and the problem | [Context](context.md): the store, goals, constraints, glossary |
 | see how it's built | [Architecture overview](architecture/overview.md): system context, layers, module map, the daily flow |
 | see a feature, with screenshots | [Components](components/README.md): one page per feature |
-| know why something is the way it is | [Decisions (ADRs)](adr/README.md): 18 recorded decisions |
+| know why something is the way it is | [Decisions (ADRs)](adr/README.md): 19 recorded decisions |
 | set it up | [Setup guide](guides/setup.md) |
 | change it safely | [Testing](guides/testing.md) and [keeping the docs current](guides/docs-process.md) |
 | present it | [Showcase](showcase.md): a ten-minute tour for an interview or a management review |
+| find a module, RPC or column fast | [Code map](reference/code-map.md) and [schema](reference/schema.md), both generated from the code |
+| work on it as an AI agent | [AGENTS.md](../AGENTS.md), then [llms.txt](../llms.txt) for the full index |
 
 ## Map of the docs
 
 ```
+AGENTS.md                     instructions for AI coding agents (CLAUDE.md imports it)
+llms.txt                      index of every doc for language models (generated)
 docs/
 ├── README.md                 ← you are here
 ├── context.md                the business, goals, non-goals, glossary
@@ -83,6 +87,7 @@ docs/
 │   ├── docs-process.md       the docs checklist, enforced by CI
 │   └── whatsapp-templates.md template bodies to submit to Meta
 ├── reference/
+│   ├── code-map.md           every module, RPC (with roles) and enum (generated)
 │   └── schema.md             every tab, column and config key (generated)
 ├── plans/                    design plans, kept as written
 └── images/                   screenshots (generated, fictional data)

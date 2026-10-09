@@ -13,7 +13,10 @@
     "docs:screenshots": "node scripts/docs/screenshots.js",
     "docs:schema": "node scripts/docs/schema.js",
     "docs:check": "node tests/suites/run.js docs-guard",
-    "docs:mermaid": "node scripts/docs/mermaid.js"
+    "docs:mermaid": "node scripts/docs/mermaid.js",
+    "docs:codemap": "node scripts/docs/codemap.js",
+    "docs:llms": "node scripts/docs/llms.js",
+    "docs:generate": "node scripts/docs/schema.js && node scripts/docs/codemap.js && node scripts/docs/llms.js"
   },
   "devDependencies": {
     "@google/clasp": "^2.4.2",

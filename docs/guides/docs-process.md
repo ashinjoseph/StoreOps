@@ -17,6 +17,9 @@ build for anything mechanical that was missed.
 | changes what a user sees or does | the component page in `docs/components/`, and its screenshot (`npm run docs:screenshots -- <name>`) |
 | adds a screen | an entry in `scripts/docs/screens.js`, then reference the new image from the component page |
 | adds or changes a column, tab or config key | a migration in `Setup.gs`, then `npm run docs:schema`; the meaning goes in [data-model.md](../architecture/data-model.md) |
+| adds or changes a module, an exported function or an RPC | `npm run docs:codemap` |
+| adds a doc page | `npm run docs:llms` (or `npm run docs:generate` for all three) |
+| changes how agents should work here (a new hard rule, a recipe) | [AGENTS.md](../../AGENTS.md) |
 | picks between designs, or accepts a known cost | a new ADR in `docs/adr/`, added to the [index](../adr/README.md) |
 | adds a module, an integration or a new way in | [architecture/overview.md](../architecture/overview.md): the diagrams and the module map |
 | changes login, roles or the public pages | [architecture/security.md](../architecture/security.md), including the role table |
@@ -37,7 +40,10 @@ npm run docs:mermaid     # every diagram renders (needs mermaid, see below)
 `tests/suites/docs-guard.js` runs in CI with the rest of the suites. It fails
 when:
 
-- `docs/reference/schema.md` doesn't match what `Setup.gs` builds;
+- `docs/reference/schema.md` doesn't match what `Setup.gs` builds, or
+  `docs/reference/code-map.md` doesn't match `src/`, or `llms.txt` doesn't
+  match the docs (a page is missing from it, or a link in it is dead);
+- `CLAUDE.md` stops importing `AGENTS.md`;
 - a file in `docs/adr/` isn't in the ADR index, or the index links a file that
   doesn't exist;
 - a component page isn't in the components index, or is missing a required

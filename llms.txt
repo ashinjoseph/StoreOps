@@ -1,0 +1,75 @@
+# StoreOps
+
+> Daily operations for a two-till convenience and vape store, on staff phones: till open/close, cash and card reconciliation, cash handovers, schedule, payroll, commissions, product catalogue and shopping list. Google Apps Script (V8) with a Google Sheet as the database; the browser calls server functions through google.script.run.
+
+Server code is `src/*.gs` (one module object per file, one global scope); the UI is `src/Index.html`; tests in `tests/suites/` load the real source in Node (`npm test`). Read AGENTS.md before changing code. Generated references (code map, schema) are exact; prose pages explain intent and rules.
+
+## Start here
+
+- [AGENTS.md](AGENTS.md): how to work in this repo: layout, commands, code shape, hard rules, recipes, gotchas
+- [StoreOps documentation](docs/README.md): StoreOps runs the daily operations of a two-till convenience and vape store
+- [Context](docs/context.md): One building with two counters, run as two companies
+
+## Reference (generated from the code)
+
+- [Code map](docs/reference/code-map.md): every server module (purpose, public API, tabs, callers, tests), every rpc* endpoint with its parameters and allowed roles, and the status vocabularies
+- [Schema reference](docs/reference/schema.md): every tab and column the code builds, and every config key with what it controls
+
+## Architecture
+
+- [Data model](docs/architecture/data-model.md): All data lives in one Google Sheet
+- [Deployment and operations](docs/architecture/deployment.md): Two Apps Script projects, each bound to its own Google Sheet
+- [Architecture overview](docs/architecture/overview.md): StoreOps is a serverless web app on Google Apps Script that uses a Google Sheet as its database
+- [Security](docs/architecture/security.md): StoreOps protects pay, cash and sales figures from people who shouldn't see them, and records who changed what
+
+## Components
+
+- [App shell and auth](docs/components/app-shell-and-auth.md): One page that signs a person in with a PIN, shows them the tabs their role allows, and talks to the server through a small, cached RPC layer
+- [Cash handling](docs/components/cash-handling.md): Track every dollar a cashier walks out with until it reaches the cash manager, shift by shift, with a record of who said it moved
+- [Commissions](docs/components/commissions.md): Rules say who earns what. Each Monday the engine works out the week and proposes bonuses; a person approves them before anything is paid.
+- [Notifications](docs/components/notifications.md): The owner and manager get a WhatsApp message when a till opens, when the day is reconciled, and when the shopping list is sent
+- [Payroll](docs/components/payroll.md): Pay people for the days they worked, oldest first, and let each person check the arithmetic for themselves
+- [Product master](docs/components/product-master.md): One catalogue of everything the store sells, with cost, price and margin worked out from the inputs each kind of product actually has
+- [Public reports](docs/components/public-reports.md): Two read-only pages for owners and partners who need the numbers but shouldn't need a PIN
+- [Reconcile](docs/components/reconcile.md): After every close, compare what the cashier entered against something that measured it independently, and say plainly what was checked and what wasn't
+- [Sales dashboard](docs/components/sales-dashboard.md): How trade is going, in the four questions a corner store acts on
+- [Schedule and attendance](docs/components/schedule-and-attendance.md): Plan the week, then let the tills record who actually worked and for how long
+- [Shifts and the close](docs/components/shifts-and-close.md): A cashier opens a till, works the shift, and closes it in one sheet
+- [Shopping list](docs/components/shopping-list.md): Anyone who notices something running low adds it from the catalogue in a tap
+
+## Decisions (ADRs)
+
+- [Architecture decision records](docs/adr/README.md): index, and when and how to write one
+- [0001. Apps Script and a Google Sheet as the platform](docs/adr/0001-apps-script-and-sheets-as-the-platform.md)
+- [0002. PIN login with server-side sessions](docs/adr/0002-pin-login-with-server-side-sessions.md)
+- [0003. Public pages inline their data; no public RPC](docs/adr/0003-public-pages-inline-their-data.md)
+- [0004. Blank is not zero](docs/adr/0004-blank-is-not-zero.md)
+- [0005. Card shapes are mutually exclusive columns; schema changes append](docs/adr/0005-card-shapes-are-mutually-exclusive-columns.md)
+- [0006. Lotto payouts are netted into cash sales](docs/adr/0006-lotto-payouts-are-netted-into-cash-sales.md)
+- [0007. A message's shape follows its template, and a failed send says why](docs/adr/0007-message-shape-follows-the-template.md)
+- [0008. What the lotto pot fed the drawer is derived from two counts](docs/adr/0008-lotto-reserve-is-derived-from-two-counts.md)
+- [0009. Staging imports are header-driven and refuse a stale header](docs/adr/0009-staging-imports-are-header-driven.md)
+- [0010. Bulk work reads once and writes once](docs/adr/0010-bulk-import-reads-once-writes-once.md)
+- [0011. Commissions are proposed, then approved by a person](docs/adr/0011-commissions-are-proposed-then-approved.md)
+- [0012. Product core plus per-type detail tables](docs/adr/0012-product-core-plus-per-type-detail.md)
+- [0013. Every bonus records the rule that produced it](docs/adr/0013-fixed-amount-rules-record-their-source-rule.md)
+- [0014. An append-only audit log; void, never delete](docs/adr/0014-append-only-audit-log.md)
+- [0015. "Needs detail" is a stored flag, enforced on the server](docs/adr/0015-needs-detail-is-a-stored-flag.md)
+- [0016. Per-execution caches on read paths, busted by writes](docs/adr/0016-per-execution-caches-for-read-paths.md)
+- [0017. Tests run the real source, and every assertion is seen failing](docs/adr/0017-tests-run-the-real-source.md)
+- [0018. Screenshots and schema docs are generated from the running code](docs/adr/0018-docs-are-generated-from-the-running-code.md)
+- [0019. AGENTS.md is the agents' entry point; their maps are generated](docs/adr/0019-agent-facing-docs.md)
+
+## Guides
+
+- [Keeping the docs current](docs/guides/docs-process.md): The docs are part of the change, not a follow-up
+- [Setting up StoreOps](docs/guides/setup.md): From nothing to a working web app in about 30 minutes
+- [Testing](docs/guides/testing.md): Apps Script has no test runner, and the services it depends on (SpreadsheetApp, UrlFetchApp, HtmlService) don't exist outside Google
+- [WhatsApp templates — one close message per till](docs/guides/whatsapp-templates.md): the close-message template bodies, parameters and sample values to submit to Meta, and how each figure is worked out
+- [Test suites](tests/suites/README.md): every suite and what it holds down; how to write one
+
+## Optional
+
+- [StoreOps: a ten-minute tour](docs/showcase.md): A guide to presenting this project in an interview or a management review
+- [Plan — cstore moves to ePOS: one card total, no Clover](docs/plans/2026-09-cstore-epos-cards.md): Historical plan, kept as written before the change shipped in #12 (Sep 2026)
+- [Changelog](CHANGELOG.md): every batch of work since v1, with the reasoning
