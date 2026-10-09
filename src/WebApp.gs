@@ -38,6 +38,17 @@ function doGet(e) {
  * Requires the deployment to be "Execute as: Me" with access "Anyone", which
  * is a console setting, not code.
  */
+/**
+ * JSON for `var DATA = <?!= payload ?>;` inside an inline <script>. The
+ * unescaping scriptlet hands the HTML parser the text raw, and the parser ends
+ * the script at the first "</script>" it sees — inside a string or not. Notes
+ * cashiers type reach these pages, so "<" is written as \u003c: identical to
+ * JavaScript once parsed, invisible to the HTML parser.
+ */
+function inlineJson_(obj) {
+  return JSON.stringify(obj).replace(/</g, '\\u003c');
+}
+
 function publicReconPage_(e) {
   // NaN survives both Math.max and Math.min, so a junk ?days= would otherwise
   // reach the window builder and render an empty report. Coerce first, clamp
@@ -58,7 +69,7 @@ function publicReconPage_(e) {
     };
   }
   const t = HtmlService.createTemplateFromFile('Public');
-  t.payload = JSON.stringify(payload);
+  t.payload = inlineJson_(payload);
   return t.evaluate()
     .setTitle('StoreOps · ' + days + '-day report')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
@@ -85,7 +96,7 @@ function publicSalesPage_(e) {
     payload = { days: days, unavailable: 'Report temporarily unavailable.' };
   }
   const t = HtmlService.createTemplateFromFile('PublicSales');
-  t.payload = JSON.stringify(payload);
+  t.payload = inlineJson_(payload);
   return t.evaluate()
     .setTitle('StoreOps · sales')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
