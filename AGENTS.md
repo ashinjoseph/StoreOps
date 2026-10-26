@@ -157,6 +157,10 @@ make stubs return what the real thing returns — `''` for an empty cell, not
 - Apps Script templating is a **text preprocessor**: `<?` inside a JS string or
   comment in an `.html` template still opens a scriptlet. `template-guard` and
   `syntax` suites catch it.
+- WhatsApp stopped arriving? `Notifier.diagnose()` (💬 Check WhatsApp setup on
+  the Reconcile tab) names the cause; failed sends are in `audit_log`
+  (`reconcile.day`, `notify.shift_open_failed`). `clover_enabled` must never
+  gate a message.
 - `google.script.run` can't return `Date` objects — they arrive as `null`.
 - `var` inside a client function hoists over a module-level helper of the same
   name (this blanked the public sales page once). Use `const`/`let`.

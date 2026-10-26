@@ -142,7 +142,8 @@ the code:
 |---|---|
 | Login dropdown is empty | No `active = TRUE` rows in `staff` |
 | Endless return to login | Session property deleted or expired. Log out, then log in. |
-| Close message never arrives | Template not approved, or parameter count mismatch. The reconcile toast and `audit_log` now say which. |
+| WhatsApp messages stop arriving | Run **💬 Check WhatsApp setup** (Reconcile tab, or the Sheet menu). Most often an expired access token. See [notifications](../components/notifications.md#when-messages-stop-arriving). |
+| Close message never arrives, no toast | Another till is still open; the message sends once every till for the day is closed. |
 | "Clover unavailable" on vape | Network, auth or 5xx from Clover. Not shown for a till with no Clover configured. |
 | Import says a column is missing | The staging header is from an older layout. Run **Refresh staging headers**. |
 | Public page shows "unavailable" cards | A section's sheet hasn't been migrated yet. The rest of the page still renders. |

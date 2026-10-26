@@ -873,6 +873,15 @@
   .recon-card { background: white; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
   .recon-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .recon-title { font-size: 13px; font-weight: 800; color: #1a2540; }
+  .recon-tools { margin: -2px 0 10px; }
+  .recon-btn-quiet { background: transparent; padding: 4px 0; color: #4a5568; }
+  .wa-check { padding: 10px 0; border-bottom: 1px solid #f0f1f5; }
+  .wa-check-head { font-weight: 700; font-size: 14px; color: #1a2540; }
+  .wa-mark { display: inline-block; width: 22px; }
+  .wa-check.ok .wa-mark { color: #15803d; }
+  .wa-check.bad .wa-mark { color: #b91c1c; }
+  .wa-check-detail { font-size: 12.5px; color: #4a4e59; margin: 3px 0 0 22px; word-break: break-word; }
+  .wa-check-fix { font-size: 12.5px; color: #92400e; background: #fff7ed; border-radius: 7px; padding: 6px 8px; margin: 6px 0 0 22px; }
   .recon-btn { font-size: 12px; font-weight: 700; color: #1a4ca1; background: #eef2ff; padding: 6px 10px; border-radius: 7px; }
   .recon-empty { font-size: 12px; color: #6a6e79; padding: 6px 0; }
   .recon-group { border-top: 1px solid #f0f1f5; padding-top: 8px; margin-top: 8px; }
@@ -2030,7 +2039,13 @@
         toast('✓ ' + company.toUpperCase() + ' shift opened', 'success');
         loadShiftTab(true);
         // Async WhatsApp "shift opened" notice (name + till) — never blocks open.
-        call('rpcNotifyShiftOpen', state.token, company).catch(() => {});
+        // A failed notice says so, like the close does; switched off on purpose doesn't.
+        call('rpcNotifyShiftOpen', state.token, company).then(r => {
+          if (r && !r.sent && r.reason !== 'disabled') {
+            const why = ((r.results || []).find(x => !x.sent) || {});
+            toast('Shift opened · WhatsApp NOT sent — ' + (why.detail || why.reason || r.reason || 'no reason reported'), 'warning');
+          }
+        }).catch(() => {});
       } catch (e) {
         toast(e.message, 'error');
         $('openSubmit').disabled = false;
@@ -4971,7 +4986,8 @@
       '<div class="recon-head">' +
         '<div class="recon-title">Daily reconciliation</div>' +
         '<button class="recon-btn" id="reconRunBtn">↻ Reconcile today</button>' +
-      '</div>';
+      '</div>' +
+      '<div class="recon-tools"><button class="recon-btn recon-btn-quiet" id="reconWaBtn">💬 Check WhatsApp setup</button></div>';
 
     // Today — detailed (credit/debit/total)
     if (!todayRows.length) {
@@ -5017,6 +5033,17 @@
       state.reconHistOpen = !state.reconHistOpen;
       renderReconPanel(state.reconRows || []);
     };
+    $('reconWaBtn').onclick = async () => {
+      haptic();
+      const b = $('reconWaBtn'); b.disabled = true; b.textContent = 'Checking…';
+      try {
+        const d = await call('rpcCheckWhatsApp', state.token);
+        openSheet({ title: 'WhatsApp setup', subtitle: d && d.ok ? 'Everything checks out' : 'Something needs fixing',
+                    bodyHTML: renderWhatsAppCheck_(d),
+                    actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Done</button>' });
+      } catch (e) { toast(e.message, 'error'); }
+      b.disabled = false; b.textContent = '💬 Check WhatsApp setup';
+    };
     $('reconRunBtn').onclick = async () => {
       haptic();
       const b = $('reconRunBtn'); b.disabled = true; b.textContent = 'Reconciling…';
@@ -5031,6 +5058,18 @@
         loadReconPanel(true);
       } catch (e) { toast(e.message, 'error'); b.disabled = false; b.textContent = '↻ Reconcile today'; }
     };
+  }
+
+  // One row per check, in order; a failing one carries what to change.
+  function renderWhatsAppCheck_(d) {
+    const checks = (d && d.checks) || [];
+    if (!checks.length) return '<div class="recon-empty">No result.</div>';
+    return checks.map(c =>
+      '<div class="wa-check ' + (c.ok ? 'ok' : 'bad') + '">' +
+        '<div class="wa-check-head"><span class="wa-mark">' + (c.ok ? '✓' : '✗') + '</span>' + esc(c.label) + '</div>' +
+        (c.detail ? '<div class="wa-check-detail">' + esc(c.detail) + '</div>' : '') +
+        (!c.ok && c.fix ? '<div class="wa-check-fix">' + esc(c.fix) + '</div>' : '') +
+      '</div>').join('');
   }
 
   function fmtWin_(startIso, endIso) {

@@ -255,7 +255,77 @@ const Notifier = (() => {
     return sendWhatsApp_(plain);
   }
 
+  /**
+   * What would stop a WhatsApp message arriving, checked in order, without
+   * sending one. The last check asks Meta about the phone number with the
+   * configured token — a GET, so an expired or revoked token, or a wrong
+   * phone number ID, is named in Meta's own words. Never returns the token.
+   *
+   * Returns { ok, checks: [{ name, label, ok, detail, fix }] }.
+   */
+  function diagnose_() {
+    const checks = [];
+    const add = (name, label, ok, detail, fix) =>
+      checks.push({ name: name, label: label, ok: !!ok, detail: detail || '', fix: ok ? '' : (fix || '') });
+
+    const enabled = isEnabled_();
+    add('enabled', 'Notifications switched on', enabled,
+        enabled ? 'notifier_enabled is TRUE' : 'notifier_enabled is not TRUE — nothing is sent',
+        'Set notifier_enabled to TRUE in the config tab.');
+
+    const url = String(configValue_('whatsapp_api_url', '') || '').trim();
+    const m = /^(https:\/\/graph\.facebook\.com\/v[\d.]+\/)(\d+)\/messages\/?$/.exec(url);
+    add('url', 'API URL', !!m,
+        m ? 'phone number ID ' + m[2] : (url ? 'not a …/<phone number ID>/messages URL' : 'whatsapp_api_url is blank'),
+        'Set whatsapp_api_url to https://graph.facebook.com/v21.0/<PHONE_NUMBER_ID>/messages (Meta → WhatsApp → API Setup).');
+
+    const token = String(configValue_('whatsapp_api_token', '') || '').trim();
+    add('token', 'Access token', !!token, token ? 'set' : 'whatsapp_api_token is blank',
+        'Paste a permanent System User token into whatsapp_api_token.');
+
+    const to = recipients_();
+    add('recipients', 'Recipients', to.length > 0,
+        to.length ? to.length + ' number' + (to.length === 1 ? '' : 's') : 'whatsapp_target_number is blank',
+        'Put one or more numbers (E.164, no +) in whatsapp_target_number.');
+
+    const ops = ['shift_open', 'shift_close', 'shift_close_cstore', 'shift_close_vape', 'shopping_list'];
+    const set = ops.filter(op => configValue_('whatsapp_template_' + op, ''));
+    const unset = ops.filter(op => set.indexOf(op) === -1);
+    add('templates', 'Templates', set.length > 0,
+        (set.length ? 'set: ' + set.map(op => op + '=' + configValue_('whatsapp_template_' + op, '')).join(', ') : 'none set') +
+        (unset.length ? ' · not set: ' + unset.join(', ') + ' (those send plain text, which Meta only delivers inside a 24h chat window)' : ''),
+        'Set whatsapp_template_<op> to the approved template name for each message.');
+
+    if (m && token) {
+      try {
+        const resp = UrlFetchApp.fetch(m[1] + m[2] + '?fields=verified_name,display_phone_number,quality_rating', {
+          method: 'get', headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true,
+        });
+        const code = resp.getResponseCode();
+        if (code >= 200 && code < 300) {
+          let info = {};
+          try { info = JSON.parse(resp.getContentText()) || {}; } catch (e) {}
+          add('meta', 'Meta accepts the token and number', true,
+              [info.verified_name, info.display_phone_number, info.quality_rating && ('quality ' + info.quality_rating)]
+                .filter(Boolean).join(' · ') || 'HTTP ' + code);
+        } else {
+          add('meta', 'Meta accepts the token and number', false,
+              'HTTP ' + code + ' — ' + apiError_(resp.getContentText()),
+              code === 401 || /token/i.test(resp.getContentText())
+                ? 'The access token has expired or been revoked. Generate a permanent System User token in Meta Business Settings and paste it into whatsapp_api_token.'
+                : 'Check the phone number ID in whatsapp_api_url and that the token has whatsapp_business_messaging permission.');
+        }
+      } catch (e) {
+        add('meta', 'Meta accepts the token and number', false, 'request failed: ' + e.message,
+            'Retry; if it persists, check the script has permission to make external requests.');
+      }
+    }
+
+    return { ok: checks.every(c => c.ok), checks: checks };
+  }
+
   return {
+    diagnose: diagnose_,
     notify: notify_,
     sendWhatsApp: sendWhatsApp_,
     sendTemplate: sendTemplate_,

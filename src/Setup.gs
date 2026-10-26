@@ -89,9 +89,25 @@ function onOpen() {
     .addItem('💵 Add cash handling tables',          'menu_migrateCashHandling')
     .addItem('💳 Add card total to sales',           'menu_migrateSalesCardTotal')
     .addItem('🔑 Sync config keys',                 'menu_syncConfigKeys')
+    .addItem('💬 Check WhatsApp setup',             'menu_checkWhatsApp')
     .addSeparator()
     .addItem('⚠️ Reset Data (keeps schema)',         'resetDataTables')
     .addToUi();
+}
+
+// ── WhatsApp diagnostics ────────────────────────────────────
+// The same check as the 💬 button on the Reconcile tab: every setting in
+// order, then Meta's own answer about the token and phone number. Sends
+// nothing; never shows the token.
+function menu_checkWhatsApp() {
+  const d = Notifier.diagnose();
+  const lines = d.checks.map(c =>
+    (c.ok ? '✅ ' : '❌ ') + c.label + (c.detail ? ' — ' + c.detail : '') +
+    (!c.ok && c.fix ? '\n      → ' + c.fix : ''));
+  SpreadsheetApp.getUi().alert(
+    d.ok ? 'WhatsApp setup: all good' : 'WhatsApp setup: needs fixing',
+    lines.join('\n\n'),
+    SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 // ── Per-type Product Master imports ─────────────────────────

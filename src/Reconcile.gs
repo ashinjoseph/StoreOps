@@ -88,7 +88,11 @@ const Reconcile = (() => {
    *        | { ready:true, mode, date, merchants:[...], whatsapp:{sent} }
    */
   function reconcileDay_(actorId, mode) {
-    if (mode !== 'manual' && !Clover.isEnabled()) return { ready: false, disabled: true };
+    // No Clover gate here. The close message reports CASH for every till and
+    // cards only where Clover measures them; switching clover_enabled off used
+    // to return before the message was built, silently stopping every close
+    // WhatsApp (no toast, no audit row). notifier_enabled is the switch for
+    // messages; clover_enabled only decides whether cards are checked.
 
     const today = Util.todayMidnight();
     const todayEnd = Util.endOfDay(today);
@@ -210,7 +214,9 @@ const Reconcile = (() => {
       // warning that means "the check you rely on did not run", or the one line
       // people read becomes noise they learn to ignore. A genuine outage
       // (network, auth, 5xx) still does.
-      const cloverNA = !clover.ok && clover.error === 'not_configured';
+      // Switched off is the same as not configured: cards are out of scope by
+      // choice, which must not read as an outage every day.
+      const cloverNA = !clover.ok && (clover.error === 'not_configured' || clover.error === 'disabled');
       const cardsVerified = clover.ok;
 
       // Nothing to compare against: no diffs computed, none stored, and the

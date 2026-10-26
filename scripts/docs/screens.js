@@ -74,6 +74,13 @@ module.exports = [
       await settle(page);
       await shot('recon');
   } },
+  { name: 'whatsapp-check', token: 'tok-S_002', run: async ({ page, settle, shot }) => {
+      await tab(page, settle, 'recon');
+      await page.click('#reconWaBtn');
+      await settle(page);
+      await page.waitForTimeout(400);
+      await shot('whatsapp-check');
+  } },
   { name: 'cash', token: 'tok-S_002', run: async ({ page, settle, shot }) => {
       await tab(page, settle, 'cash');
       await shot('cash');

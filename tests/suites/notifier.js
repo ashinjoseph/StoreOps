@@ -14,7 +14,7 @@ const CFG = {
   notifier_enabled: 'true',
   whatsapp_api_url: 'https://graph.facebook.com/v25.0/1/messages',
   whatsapp_api_token: 'TOKEN',
-  whatsapp_target_number: '14376790199, 19059241896',
+  whatsapp_target_number: '14165550100, 19055550101',
   whatsapp_template_lang: 'en',
   whatsapp_template_shift_close_cstore: 'shift_close_cstore',
 };
@@ -27,7 +27,8 @@ function load(cfg) {
   return H.load(['Util.gs', 'Notifier.gs'], {
     UrlFetchApp: {
       fetch: (url, opt) => {
-        POSTED.push({ url, payload: JSON.parse(opt.payload), muted: opt.muteHttpExceptions });
+        POSTED.push({ url, method: (opt.method || 'get').toLowerCase(), headers: opt.headers || {},
+                      payload: opt.payload ? JSON.parse(opt.payload) : null, muted: opt.muteHttpExceptions });
         return { getResponseCode: () => RESPONSE.code, getContentText: () => RESPONSE.body };
       },
     },
@@ -116,5 +117,62 @@ N = load();
 N.sendOp('shift_close_nosuch', ELEVEN, 'plain text');
 t.ok('an unset key falls back to plain text, not a template',
      POSTED.length === 0 || POSTED[0].payload.type !== 'template');
+
+// ── Diagnose: what's wrong, without sending anything ────────
+// "WhatsApp isn't working" had no first step: a send that fails says why only
+// to whoever was looking at the toast, a disabled switch says nothing at all,
+// and an expired token is only discovered by a message not arriving. diagnose
+// checks each piece in order and asks Meta about the token and the number —
+// a read, never a message.
+const check = (d, name) => (d.checks || []).find(c => c.name === name) || {};
+
+t.section('Diagnose: a healthy setup asks Meta, sends nothing');
+N = load({ whatsapp_template_shift_open: 'shift_open' });
+RESPONSE = { code: 200, body: JSON.stringify({ verified_name: 'Fictional Mart', display_phone_number: '+1 416-555-0199', quality_rating: 'GREEN' }) };
+let D = N.diagnose();
+t.eq('one request', POSTED.length, 1);
+t.eq('a GET, not a send', POSTED[0] && POSTED[0].method, 'get');
+t.ok('to the phone number, not /messages', POSTED[0] && /\/1\?fields=/.test(POSTED[0].url));
+t.ok('with the token as a bearer header', POSTED[0] && /^Bearer TOKEN$/.test(POSTED[0].headers.Authorization || ''));
+t.eq('all good', D.ok, true);
+t.ok('names the WhatsApp number it would send from', /Fictional Mart/.test(check(D, 'meta').detail || ''));
+t.ok('counts the recipients', /2/.test(check(D, 'recipients').detail || ''));
+t.ok('the token never appears in the report', JSON.stringify(D).indexOf('TOKEN') === -1);
+
+t.section('Diagnose: an expired token is named, in Meta\'s words');
+N = load();
+RESPONSE = { code: 401, body: JSON.stringify({ error: { message: 'Error validating access token: Session has expired on Sunday, 19-Oct-26.', code: 190 } }) };
+D = N.diagnose();
+t.eq('not ok', D.ok, false);
+t.eq('the Meta check fails', check(D, 'meta').ok, false);
+t.ok('with Meta\'s own sentence', /Session has expired/.test(check(D, 'meta').detail || ''));
+t.ok('and what to do about it', /token/i.test(check(D, 'meta').fix || ''));
+
+t.section('Diagnose: a switched-off notifier is the first thing reported');
+N = load({ notifier_enabled: 'false' });
+D = N.diagnose();
+t.eq('not ok', D.ok, false);
+t.eq('the switch is flagged', check(D, 'enabled').ok, false);
+t.ok('naming the config key to change', /notifier_enabled/.test(check(D, 'enabled').fix || ''));
+
+t.section('Diagnose: missing settings are named, and Meta is not asked');
+N = load({ whatsapp_api_token: '', whatsapp_target_number: '' });
+D = N.diagnose();
+t.eq('no request made without a token', POSTED.length, 0);
+t.eq('token flagged', check(D, 'token').ok, false);
+t.eq('recipients flagged', check(D, 'recipients').ok, false);
+t.ok('the URL itself is fine', check(D, 'url').ok === true);
+
+t.section('Diagnose: a URL that isn\'t a /messages endpoint is caught');
+N = load({ whatsapp_api_url: 'https://graph.facebook.com/v21.0/' });
+D = N.diagnose();
+t.eq('url flagged', check(D, 'url').ok, false);
+
+t.section('Diagnose: lists which templates are set');
+N = load({ whatsapp_template_shift_open: '' });
+RESPONSE = { code: 200, body: '{}' };
+D = N.diagnose();
+t.ok('a configured close template is listed', /shift_close_cstore/.test(check(D, 'templates').detail || ''));
+t.ok('an unset one is called out', /shift_open/.test(check(D, 'templates').detail || ''));
 
 t.done();

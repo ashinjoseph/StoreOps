@@ -72,7 +72,16 @@ function seed(api, ss) {
   setConfig('public_report_url', 'https://script.google.com/macros/s/EXAMPLE/exec');
   setConfig('cstore_card_split', 'false');      // cstore is on ePOS: one card figure
   setConfig('vape_card_split', 'true');
-  setConfig('notifier_enabled', 'false');
+  // WhatsApp configured as a store would have it, with fictional values. The
+  // docs runtime never reaches Meta (screenshots.js answers for it), so this
+  // only feeds the "Check WhatsApp setup" screen.
+  setConfig('notifier_enabled', 'TRUE');
+  setConfig('whatsapp_api_url', 'https://graph.facebook.com/v21.0/100000000000001/messages');
+  setConfig('whatsapp_api_token', 'fictional-token');
+  setConfig('whatsapp_target_number', '14165550100,14165550101');
+  setConfig('whatsapp_template_shift_open', 'shift_open');
+  setConfig('whatsapp_template_shift_close_cstore', 'shift_close_cstore');
+  setConfig('whatsapp_template_shift_close_vape', 'shift_close_vape');
 
   // ── Staff ────────────────────────────────────────────────
   const created = new Date(); created.setDate(created.getDate() - 120);

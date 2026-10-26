@@ -31,6 +31,7 @@ function quiet(fn) {
 }
 
 let calls;
+let SEND_RESULT = { sent: true };
 function load() {
   calls = [];
   H.sheets({ config: { cash_manager_staff_id: 'S_MEE' } });
@@ -70,6 +71,11 @@ function load() {
     TillSessions: { getAll: () => [], getForDateRange: () => [] },
     Sales: { cardSplitFor: () => true, getDashboard: () => ({}) },
     Reconcile: { getRecent: () => [] },
+    Notifier: {
+      diagnose: () => { calls.push(['diagnose']); return { ok: false, checks: [] }; },
+      sendOp: (op, params) => { calls.push(['sendOp', op, params]); return SEND_RESULT; },
+    },
+    AuditLog: { write: e => calls.push(['audit', e]) },
     ProductMaster: {
       create: i => { calls.push(['create', i]); return { productId: 'PM_1' }; },
       update: (id, patch, actor) => { calls.push(['update', id, patch, actor]); },
@@ -198,5 +204,36 @@ t.section('A client-claimed role is ignored');
 load();
 t.throws('role in the payload buys nothing',
   () => rpcVoidCashHandover('tok-cashier', 'H1', { role: 'admin' }), 'FORBIDDEN');
+
+t.section('Checking the WhatsApp setup is for people who read the reconcile');
+// It reports which config keys are set and what Meta says about the token —
+// operational detail, but no secret: the token itself is never returned.
+load();
+t.throws('a cashier cannot run it', () => rpcCheckWhatsApp('tok-cashier'), 'FORBIDDEN');
+load();
+rpcCheckWhatsApp('tok-manager');
+t.eq('a manager can', calls[0] && calls[0][0], 'diagnose');
+t.throws('nobody without a session', () => rpcCheckWhatsApp('nope'), 'NOT_LOGGED_IN');
+
+t.section('A shift-open notice that fails leaves a record');
+// The client discarded this result, and sendOp writes nothing on failure, so
+// a broken shift-open message was invisible everywhere.
+load();
+SEND_RESULT = { sent: false, reason: 'http_401', results: [{ to: '1', sent: false, reason: 'http_401', detail: 'Session has expired' }] };
+let r = rpcNotifyShiftOpen('tok-cashier', 'cstore');
+const audit = calls.filter(c => c[0] === 'audit').map(c => c[1]);
+t.eq('the result goes back to the client', r && r.sent, false);
+t.eq('one audit row', audit.length, 1);
+t.ok('naming the failure', audit[0] && /notify\.shift_open/.test(audit[0].action) &&
+     /Session has expired/.test(audit[0].details || ''));
+load();
+SEND_RESULT = { sent: true };
+rpcNotifyShiftOpen('tok-cashier', 'cstore');
+t.eq('a successful send adds no noise', calls.filter(c => c[0] === 'audit').length, 0);
+load();
+SEND_RESULT = { sent: false, reason: 'disabled' };
+rpcNotifyShiftOpen('tok-cashier', 'cstore');
+t.eq('nor does a notifier switched off on purpose', calls.filter(c => c[0] === 'audit').length, 0);
+SEND_RESULT = { sent: true };
 
 t.done();

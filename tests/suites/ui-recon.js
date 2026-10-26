@@ -13,7 +13,7 @@ const t = H.suite('Reconcile panel — history and today');
 const js = H.clientScript('Index.html');
 const NEEDED = ['esc', 'money', 'todayMidnight', 'isoDate', 'fmtWin_',
                 'pairVar_', 'signedMoney_', 'reconGroupDetail_', 'reconRow_',
-                'renderReconPanel'];
+                'renderReconPanel', 'renderWhatsAppCheck_'];
 const lifted = NEEDED.map(n => H.fnSource(js, n)).join('\n\n');
 
 function render(rows) {
@@ -66,5 +66,25 @@ html = render([row({ companies: 'vape', cashierCard: 0, cloverCard: 0, cardVaria
 cell = cardsCell(html);
 t.ok('zero against zero is a clean match', /pv-var ok/.test(cell));
 t.ok('not "not verified"', !/not verified/.test(cell));
+
+t.section('The WhatsApp check is one tap from the reconcile panel');
+html = render([row()]);
+t.ok('the button is there', /id="reconWaBtn"/.test(html));
+
+t.section('The check result names what is wrong and what to change');
+const ctx = { console };
+vm.createContext(ctx);
+vm.runInContext(lifted, ctx);
+const sheet = ctx.renderWhatsAppCheck_({ ok: false, checks: [
+  { name: 'enabled', label: 'Notifications switched on', ok: true, detail: 'notifier_enabled is TRUE', fix: 'stale advice' },
+  { name: 'meta', label: 'Meta accepts the token and number', ok: false,
+    detail: 'HTTP 401 — Session has expired <b>', fix: 'Generate a permanent System User token' },
+]});
+t.ok('a passing check is marked as passing', /wa-check ok[\s\S]*Notifications switched on/.test(sheet));
+t.ok('a failing one is marked as failing', /wa-check bad[\s\S]*Meta accepts/.test(sheet));
+t.ok('with Meta\'s reason', /Session has expired/.test(sheet));
+t.ok('and the fix', /permanent System User token/.test(sheet));
+t.ok('text from Meta is escaped, not rendered', sheet.indexOf('<b>') === -1);
+t.ok('a passing check shows no fix', (sheet.match(/wa-check-fix/g) || []).length === 1);
 
 t.done();

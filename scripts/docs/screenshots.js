@@ -36,6 +36,15 @@ const F = require('./fixtures');
 const { api, ss } = R.boot();
 F.seed(api, ss);
 
+// Meta, as the docs show it: the token has expired. That is the commonest way
+// WhatsApp stops working, and it's what the "Check WhatsApp setup" screen is
+// for. Nothing in the screenshot flows sends a message; this only answers
+// the diagnostic's GET.
+UrlFetchApp.fetch = url => /graph\.facebook\.com/.test(url)
+  ? { getResponseCode: () => 401, getContentText: () => JSON.stringify({ error: {
+      message: 'Error validating access token: Session has expired on Sunday, 19-Oct-26.', code: 190 } }) }
+  : { getResponseCode: () => 200, getContentText: () => '{}' };
+
 // Sessions by token. The real Auth issues and validates these against
 // PropertiesService; the screenshots only need to say who is looking.
 const SESSIONS = {};

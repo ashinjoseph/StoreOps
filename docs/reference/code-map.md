@@ -32,21 +32,21 @@ Apps Script loads every file into one global scope.
 | [`Clover`](#clover) | 128 | Clover REST API client (card totals for a day) | `config` | — | **none** |
 | [`CommissionRules`](#commissionrules) | 316 | CRUD for commission_rules tab | `commission_rules` | Staff | commission-fixed |
 | [`Commissions`](#commissions) | 398 | weekly commission engine + Monday trigger | `commission_runs`, `config` | Bonuses, CommissionRules, Notifier, Sales, Staff | commission-fixed |
-| [`Notifier`](#notifier) | 265 | WhatsApp Cloud API sends + internal event log | `config` | — | notifier |
+| [`Notifier`](#notifier) | 335 | WhatsApp Cloud API sends + internal event log | `config` | — | notifier |
 | [`OrderCatalog`](#ordercatalog) | 148 | master list of orderable items | `order_catalog` | — | **none** |
 | [`Payments`](#payments) | 616 | payment recording, two distinct flows | `payment_items`, `payments` | Attendance, Bonuses, Notifier, Staff | **none** |
 | [`ProductMaster`](#productmaster) | 1087 | thin CORE catalog of products | `_pm_beer_staging`, `_pm_cig_staging`, `_pm_other_staging`, `_pm_vape_staging`, `product_master` | ProductTypes, Setup | import-perf, shopping-gate |
 | [`ProductTypes`](#producttypes) | 239 | per-product-type registry | — | ProductMaster, Setup | import-perf, shopping-gate |
 | [`PublicReport`](#publicreport) | 244 | the 7-day report served outside the app | — | CashHandling, Reconcile, Sales, TillSessions | public-report, reconcile |
-| [`Reconcile`](#reconcile) | 758 | per-shift cashier vs Clover reconciliation | `config`, `validation_results` | CashHandling, Clover, Notifier, Sales, Staff, TillSessions | link, reconcile |
+| [`Reconcile`](#reconcile) | 764 | per-shift cashier vs Clover reconciliation | `config`, `validation_results` | CashHandling, Clover, Notifier, Sales, Staff, TillSessions | link, reconcile |
 | [`Sales`](#sales) | 694 | sales rows (one per till_session) | `config`, `sales` | Setup, Staff, TillSessions | parity, perf, sales-cards, sales-insights |
-| [`Setup`](#setup) | 1582 | first-time schema creation + menu + placeholders | `_pm_beer_staging`, `_pm_cig_staging`, `_pm_import_staging`, `_pm_other_staging`, `_pm_vape_staging`, `attendance`, `audit_log`, `bonuses`, `cash_handover_items`, `cash_handovers`, `clover_batches`, `commission_rules`, `commission_runs`, `config`, `order_catalog`, `payment_items`, `payments`, `pos_extracted`, `product_beer_detail`, `product_cigarettes_detail`, `product_master`, `product_vape_detail`, `sales`, `shopping_list`, `staff`, `suppliers`, `till_sessions`, `validation_results` | CashHandling, Commissions, ProductMaster, ProductTypes | **none** |
+| [`Setup`](#setup) | 1598 | first-time schema creation + menu + placeholders | `_pm_beer_staging`, `_pm_cig_staging`, `_pm_import_staging`, `_pm_other_staging`, `_pm_vape_staging`, `attendance`, `audit_log`, `bonuses`, `cash_handover_items`, `cash_handovers`, `clover_batches`, `commission_rules`, `commission_runs`, `config`, `order_catalog`, `payment_items`, `payments`, `pos_extracted`, `product_beer_detail`, `product_cigarettes_detail`, `product_master`, `product_vape_detail`, `sales`, `shopping_list`, `staff`, `suppliers`, `till_sessions`, `validation_results` | CashHandling, Commissions, Notifier, ProductMaster, ProductTypes | **none** |
 | [`ShoppingList`](#shoppinglist) | 368 | shared "to order" list + generation | `shopping_list` | Notifier, ProductMaster, Staff | shopping-gate |
 | [`Staff`](#staff) | 172 | staff roster operations | `staff` | — | **none** |
 | [`Suppliers`](#suppliers) | 65 | supplier reference (read-only in app) | `suppliers` | — | **none** |
 | [`TillSessions`](#tillsessions) | 793 | per-company cash reconciliation | `config`, `till_sessions` | Attendance, Notifier, Sales, Staff | cash-handling, link, lotto-payout, reconcile |
 | [`Util`](#util) | 190 | date/ID/money/parsing helpers (no sheet access) | — | — | cash-handling, commission-fixed, import-perf, link, lotto-payout, notifier, parity, perf, public-inline, public-report, reconcile, routing, rpc-guards, sales-cards, sales-insights, shopping-gate, wiring |
-| [`WebApp`](#webapp) | 1506 | HTTP entry point + RPC layer | `commission_rules` | Attendance, Auth, Bonuses, CashHandling, CommissionRules, Commissions, Notifier, OrderCatalog, Payments, ProductMaster, ProductTypes, PublicReport, Reconcile, Sales, ShoppingList, Staff, Suppliers, TillSessions | public-inline, routing, rpc-guards, template-guard, wiring |
+| [`WebApp`](#webapp) | 1534 | HTTP entry point + RPC layer | `commission_rules` | Attendance, Auth, Bonuses, CashHandling, CommissionRules, Commissions, Notifier, OrderCatalog, Payments, ProductMaster, ProductTypes, PublicReport, Reconcile, Sales, ShoppingList, Staff, Suppliers, TillSessions | public-inline, routing, rpc-guards, template-guard, wiring |
 
 ## RPC endpoints
 
@@ -66,7 +66,8 @@ Roles: `admin`, `manager`, `payroll_admin`, `employee`.
 | `rpcGetMyOwedSummary` | `token` | any signed-in | Payments, Staff |
 | `rpcGetMyShiftState` | `token` | any signed-in | Attendance, CashHandling, Sales, TillSessions |
 | `rpcOpenShift` | `token, input` | any signed-in | TillSessions |
-| `rpcNotifyShiftOpen` | `token, company` | any signed-in | Notifier |
+| `rpcNotifyShiftOpen` | `token, company` | any signed-in | AuditLog, Notifier |
+| `rpcCheckWhatsApp` | `token` | admin, manager, payroll_admin | Notifier |
 | `rpcCloseShift` | `token, input` | any signed-in | TillSessions |
 | `rpcGetWeekSchedule` | `token, weekStartStr` | any signed-in | Attendance, Staff |
 | `rpcScheduleShift` | `token, input` | admin, manager | Attendance |
@@ -119,13 +120,13 @@ Roles: `admin`, `manager`, `payroll_admin`, `employee`.
 | `rpcReactivateProduct` | `token, productId` | admin, manager | ProductMaster |
 | `rpcImportProductMasterFromStaging` | `token, opts` | admin | ProductMaster |
 
-61 endpoints.
+62 endpoints.
 
 ## Pages
 
 | File | Lines | Served by | Client functions |
 |---|---:|---|---:|
-| `src/Index.html` | 6118 | `doGet` (no `?v`) | 134 |
+| `src/Index.html` | 6157 | `doGet` (no `?v`) | 135 |
 | `src/Public.html` | 340 | `doGet` `?v=recon` | 9 |
 | `src/PublicSales.html` | 357 | `doGet` `?v=sales` | 9 |
 
@@ -208,7 +209,7 @@ Tab names are `SHEETS.*`; their columns are in the [schema reference](schema.md)
 
 `src/Notifier.gs` · WhatsApp Cloud API sends + internal event log
 
-`notify(event, payload)` · `sendWhatsApp(body)` · `sendTemplate(templateName, params)` · `sendOp(opKey, params, plain)`
+`diagnose()` · `notify(event, payload)` · `sendWhatsApp(body)` · `sendTemplate(templateName, params)` · `sendOp(opKey, params, plain)`
 
 ### OrderCatalog
 
@@ -256,7 +257,7 @@ Tab names are `SHEETS.*`; their columns are in the [schema reference](schema.md)
 
 `src/Setup.gs` · first-time schema creation + menu + placeholders
 
-`onOpen()` · `menu_importBeer()` · `menu_importCigarettes()` · `menu_importVape()` · `menu_importOther()` · `menu_importProductType_(type, label)` · `menu_refreshStagingHeaders()` · `menu_diagnoseVapeStaging()` · `diagnoseStaging_(type)` · `menu_migrateFixedCommissionRules()` · `menu_migrateProductMasterNeedsDetail()` · `menu_migrateProductMasterV2()` · `menu_runCommissionEngine()` · `menu_installCommissionTrigger()` · `menu_removeCommissionTrigger()` · `firstTimeSetup()` · `configDefaults_()` · `setupConfigSheet_()` · `syncConfigKeys_()` · `menu_syncConfigKeys()` · `setupStaffSheet_()` · `setupAttendanceSheet_()` · `setupTillSessionsSheet_()` · `setupSalesSheet_()` · `setupPaymentsSheet_()` · `setupPaymentItemsSheet_()` · `setupBonusesSheet_()` · `setupCommissionRulesSheet_()` · `setupCommissionRunsSheet_()` · `setupAuditLogSheet_()` · `setupPosExtractedSheet_()` · `setupCloverBatchesSheet_()` · `setupValidationResultsSheet_()` · `setupSuppliersSheet_()` · `setupOrderCatalogSheet_()` · `setupProductMasterSheet_()` · `setupProductDetailSheet_(category, sheetName, title)` · `setupProductBeerDetailSheet_()` · `setupProductCigDetailSheet_()` · `setupProductVapeDetailSheet_()` · `setupTypeStagingSheet_(type, sheetName, title)` · `setupBeerStagingSheet_()` · `setupCigStagingSheet_()` · `setupVapeStagingSheet_()` · `setupOtherStagingSheet_()` · `setupShoppingListSheet_()` · `menu_migrateShoppingListProductId()` · `setupCashHandoversSheet_()` · `setupCashHandoverItemsSheet_()` · `menu_migrateCashHandling()` · `menu_migrateTillSessionsLottoReserve()` · `menu_migrateSalesCardTotal()` · `writeHeader_(sh, title, cols)` · `writeColumnHeaders_(sh, names)` · `applyEnumValidation_(sh, col, options)` · `applyBoolValidation_(sh, col)` · `setColWidths_(sh, widths)` · `resetDataTables()`
+`onOpen()` · `menu_checkWhatsApp()` · `menu_importBeer()` · `menu_importCigarettes()` · `menu_importVape()` · `menu_importOther()` · `menu_importProductType_(type, label)` · `menu_refreshStagingHeaders()` · `menu_diagnoseVapeStaging()` · `diagnoseStaging_(type)` · `menu_migrateFixedCommissionRules()` · `menu_migrateProductMasterNeedsDetail()` · `menu_migrateProductMasterV2()` · `menu_runCommissionEngine()` · `menu_installCommissionTrigger()` · `menu_removeCommissionTrigger()` · `firstTimeSetup()` · `configDefaults_()` · `setupConfigSheet_()` · `syncConfigKeys_()` · `menu_syncConfigKeys()` · `setupStaffSheet_()` · `setupAttendanceSheet_()` · `setupTillSessionsSheet_()` · `setupSalesSheet_()` · `setupPaymentsSheet_()` · `setupPaymentItemsSheet_()` · `setupBonusesSheet_()` · `setupCommissionRulesSheet_()` · `setupCommissionRunsSheet_()` · `setupAuditLogSheet_()` · `setupPosExtractedSheet_()` · `setupCloverBatchesSheet_()` · `setupValidationResultsSheet_()` · `setupSuppliersSheet_()` · `setupOrderCatalogSheet_()` · `setupProductMasterSheet_()` · `setupProductDetailSheet_(category, sheetName, title)` · `setupProductBeerDetailSheet_()` · `setupProductCigDetailSheet_()` · `setupProductVapeDetailSheet_()` · `setupTypeStagingSheet_(type, sheetName, title)` · `setupBeerStagingSheet_()` · `setupCigStagingSheet_()` · `setupVapeStagingSheet_()` · `setupOtherStagingSheet_()` · `setupShoppingListSheet_()` · `menu_migrateShoppingListProductId()` · `setupCashHandoversSheet_()` · `setupCashHandoverItemsSheet_()` · `menu_migrateCashHandling()` · `menu_migrateTillSessionsLottoReserve()` · `menu_migrateSalesCardTotal()` · `writeHeader_(sh, title, cols)` · `writeColumnHeaders_(sh, names)` · `applyEnumValidation_(sh, col, options)` · `applyBoolValidation_(sh, col)` · `setColWidths_(sh, widths)` · `resetDataTables()`
 
 ### ShoppingList
 

@@ -1223,3 +1223,32 @@ does.
   is missing from `llms.txt`, or when `CLAUDE.md` stops importing `AGENTS.md`.
   `npm run docs:generate` rebuilds all three generated files.
 - [ADR-0019](docs/adr/0019-agent-facing-docs.md) records the decision.
+
+### WhatsApp notifications stopped: what can cause it, and a check that says which (Batch 15)
+
+Investigating "WhatsApp notifications aren't working" turned up two ways a
+message could fail with no sign anywhere, plus no quick way to tell an expired
+token from a switched-off setting.
+
+- **The close message depended on Clover.** The automatic reconcile after each
+  close returned before building the message whenever `clover_enabled` was off,
+  with no toast and no audit row. Since cstore left Clover, switching it off is
+  the natural move, and it switched off every close message with it. Reconcile
+  now always runs; Clover switched off counts as *not configured*, so cards read
+  "not verified" with no daily outage warning. `notifier_enabled` is the switch
+  for messages.
+- **A failed shift-open notice was invisible.** The app discarded the result,
+  and failed sends wrote nothing. Now the cashier sees *Shift opened · WhatsApp
+  NOT sent — <reason>*, and `audit_log` gets a `notify.shift_open_failed` row
+  with Meta's reason per number.
+- **💬 Check WhatsApp setup**, a button on the Reconcile tab for managers and
+  admins and a Sheet menu item, checks the switch, URL, token, recipients and
+  templates, then asks Meta (a GET, never a send) whether the token and phone
+  number are valid. An expired token comes back in Meta's own words with the fix.
+  It never shows the token.
+- Two real-looking phone numbers in the notifier suite were replaced with 555
+  numbers.
+
+New assertions in `reconcile`, `notifier`, `rpc-guards` and `ui-recon`. All
+were confirmed failing against the previous code or a deliberate mutation of
+the fix.

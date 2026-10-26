@@ -28,7 +28,7 @@ for cards:
 flowchart TD
     start(["rpcReconcileDay<br/>auto after a close · manual button"]) --> group["Group today's closed sessions<br/>by merchant (Clover account)"]
     group --> each{{"for each group"}}
-    each --> cfg{"Clover configured<br/>for this till?"}
+    each --> cfg{"Clover enabled and<br/>configured for this till?"}
     cfg -- no --> na["cloverNA<br/>cards out of scope<br/>no warning, no card threshold"]
     cfg -- yes --> fetch["Clover.getCardTotals(window)"]
     fetch --> ok{"ok?"}
@@ -62,7 +62,10 @@ Three outcomes for the cards, and they must stay distinct:
 
 - **"Not configured" is not "unavailable."** Warning every day about a till
   that was never meant to have Clover teaches everyone to ignore the warning
-  line.
+  line. Clover switched off (`clover_enabled` false) counts as not configured.
+- **Reconcile runs, and the message goes, whether or not Clover is on.** The
+  automatic reconcile used to stop when `clover_enabled` was off, which
+  silently stopped every close message.
 - **Blank is not zero**, on write and on read
   ([ADR-0004](../adr/0004-blank-is-not-zero.md)). `getRecent_` reads the Clover
   columns back as `null`. Reading them as `0` once made both the in-app history
@@ -84,12 +87,15 @@ Three outcomes for the cards, and they must stay distinct:
 
 | Suite | Holds down |
 |---|---|
-| `reconcile` | not-configured vs outage, no fictional variance, a real shortfall still surfaces, blank round-trips as null through the sheet and the public report |
+| `reconcile` | not-configured vs outage, no fictional variance, a real shortfall still surfaces, blank round-trips as null through the sheet and the public report; with Clover off the automatic reconcile still sends the close message and raises no outage |
 | `ui-recon` | the history cell: "not verified" for a till with no Clover, red only for a real difference, a measured zero is a match |
 | `parity` | the app and the public page agree on every figure and sign |
 
 ## History
 
+- **Oct 2026:** the automatic reconcile no longer stops when `clover_enabled` is
+  off; Clover switched off is treated as not configured. A **💬 Check WhatsApp
+  setup** button sits under the panel header.
 - **Oct 2026:** unmeasured card figures read back as `null`, not `$0`. The
   in-app history and the public report had shown cstore's whole card take as a
   shortfall every day.

@@ -52,10 +52,11 @@ const saleTotal = (id, c, cash, card) => ({
 });
 
 let SENT, M;
+let CLOVER_ON = true, MODE = 'manual';
 // cstore has no Clover merchant (ePOS); vape does.
 function clover(vapeOk) {
   return {
-    isEnabled: () => true,
+    isEnabled: () => CLOVER_ON,
     merchantFor: c => c === 'vape' ? { merchantId: 'VAPE1', token: 'x' } : { merchantId: '', token: '' },
     getCardTotals: m => !m.merchantId
       ? { ok: false, error: 'not_configured' }
@@ -87,7 +88,7 @@ function scenario(sessions, sales, cfg, vapeOk) {
                 sendOp: (op, params, plain) => { SENT.push({ op, params, plain });
                   return { sent: false, reason: 'harness' }; } },
   });
-  return M.Reconcile.reconcileDay('S_004', 'manual');
+  return M.Reconcile.reconcileDay('S_004', MODE);
 }
 
 const CST = () => sess({ id: 'CST-1', company: 'cstore', float: 250, counted: 850, expected: 850 });
@@ -248,5 +249,29 @@ const pv = pub.find(r => r.companies === 'vape');
 t.eq('the public row omits the measured card figure', pc.cardMeasured, null);
 t.eq('and publishes no card variance', pc.cardVar, null);
 t.eq('a verified till still publishes its measurement', pv.cardMeasured, 51);
+
+// ── 4. The close message does not depend on Clover ──────────
+// The automatic reconcile (fired after every close) returned
+// {ready:false, disabled:true} whenever clover_enabled was off — before
+// building the message, before the audit row. Since cstore left Clover,
+// switching it off is the natural thing to do, and it silently switched off
+// every close message with it: no WhatsApp, no toast, no audit entry.
+t.section('Switching Clover off does not switch the close message off');
+CLOVER_ON = false; MODE = 'auto';
+res = scenario([CST()], [saleTotal('CST-1', 'cstore', 600, 1240)],
+               { cstore_card_split: 'false',
+                 whatsapp_template_shift_close_cstore: 'shift_close_cstore' });
+t.ok('the automatic reconcile still runs', res.ready === true && !res.disabled);
+t.eq('and the close message is attempted', SENT.length, 1);
+t.eq('through the till\'s own template', SENT[0] && SENT[0].op, 'shift_close_cstore');
+
+t.section('Cards on a till with Clover switched off are out of scope, not an outage');
+res = scenario([VAP()], [saleSplit('VAP-1', 'vape', 51, 1, 50)], {});
+rec = res.merchants && res.merchants[0];
+t.ok('reconciled', !!rec);
+t.ok('no "Clover unavailable" warning every day', rec && rec.status !== 'clover_unavailable');
+t.eq('treated as not configured', rec && rec.cloverNA, true);
+t.eq('nothing measured, nothing invented', rec && rec.cloverCard, null);
+CLOVER_ON = true; MODE = 'manual';
 
 t.done();

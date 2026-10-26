@@ -419,7 +419,35 @@ function rpcNotifyShiftOpen(token, company) {
   const when = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEE d MMM, HH:mm');
   const params = [session.name, label, when];
   const plain = '🟢 ' + session.name + ' opened the ' + label + ' till\n🕐 ' + when;
-  try { return Notifier.sendOp('shift_open', params, plain); } catch (e) { return { sent: false, reason: 'exception' }; }
+  let r;
+  try { r = Notifier.sendOp('shift_open', params, plain); }
+  catch (e) { r = { sent: false, reason: 'exception', detail: e.message }; }
+  // A failed notice used to vanish: the client ignored this result and sendOp
+  // records nothing. Leave a row whoever opened the till, so "the messages
+  // stopped" has an answer in audit_log. Switched off on purpose is not news.
+  if (r && !r.sent && r.reason !== 'disabled') {
+    const why = (r.results || []).filter(x => !x.sent)
+      .map(x => x.to + ' ' + x.reason + (x.detail ? ': ' + x.detail : '')).join('; ');
+    AuditLog.write({
+      actorId: session.staffId, action: 'notify.shift_open_failed',
+      targetType: 'notification', targetId: label,
+      details: 'WhatsApp shift-open NOT sent — ' + (why || r.reason || 'no reason') +
+               (r.detail ? ' (' + r.detail + ')' : ''),
+    });
+  }
+  return r;
+}
+
+/**
+ * What would stop WhatsApp messages arriving, checked without sending one:
+ * the switch, the URL, the token, recipients, templates, and Meta's own view
+ * of the token and phone number. Never returns the token. The people who read
+ * the reconcile can run it — the same group the close message is for.
+ */
+function rpcCheckWhatsApp(token) {
+  const session = _session(token);
+  Auth.require(session, ['admin', 'manager', 'payroll_admin']);
+  return Notifier.diagnose();
 }
 
 function rpcCloseShift(token, input) {
