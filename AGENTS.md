@@ -24,6 +24,7 @@ framework, no build step.
 | How the pieces fit | [docs/architecture/overview.md](docs/architecture/overview.md) |
 | Domain words (float, variance, lotto reserve, handover…) | [docs/context.md#glossary](docs/context.md#glossary) |
 | Machine-readable index of all docs | [llms.txt](llms.txt) |
+| The planned move off Sheets (draft, not started) | [docs/plans/2026-11-operations-app-migration.md](docs/plans/2026-11-operations-app-migration.md) and its [task cards](docs/plans/2026-11-operations-app-tasks.md) |
 
 ```
 src/                 everything that ships (clasp rootDir)
