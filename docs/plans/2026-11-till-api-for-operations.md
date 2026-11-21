@@ -91,7 +91,9 @@ Body: `{ "kind": "...", "store_id": "...", "idempotency_key": "...", "payload": 
 Answer: `{ "proposal_id", "status": "pending" }`. A repeated `idempotency_key`
 returns the first proposal, not a second one.
 
-First kinds needed, in phase 5:
+First kinds needed, in phase 5. Operations sends these only when a person
+presses a button, never on a schedule, and only for the vape till: the cstore
+till can't take supplier costs, so cstore costs stay in Operations.
 
 | `kind` | Payload |
 |---|---|

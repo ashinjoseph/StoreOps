@@ -105,9 +105,15 @@ the archived Sheet. No module that does migrate depends on them; only
 
 Also left behind: the `shopping_list` WhatsApp message and its config key
 `whatsapp_template_shopping_list`, and the Shopping List, Suppliers and
-Product Master entries in the drawer. Purchase receipts (P5-05) don't need
-the product master: costs and stock go to the till as proposals, and the
-till's catalogue is the one the store sells from.
+Product Master entries in the drawer.
+
+Product costs and suppliers don't go away; they get a new design instead of
+a port (owner, Nov 21). Purchase receipts (P5-05) create them in the `ops`
+schema, which is where product costs live for both stores. The vape till can
+take supplier costs, so a person sends them there with a button (P5-08);
+nothing is pushed automatically. The cstore till can't, so its costs stay in
+Operations only. Receipts are also the bookkeeping record: the photo and its
+figures are kept together for tax filing, and exported later (P5-09).
 
 ## 3. Decisions to confirm
 
@@ -176,7 +182,7 @@ flowchart LR
 | 2 Foundation | An empty Operations app runs on a staging URL: login works, one RPC answers, the parity harness runs | No | 10 |
 | 3 Port | Every migrated RPC returns the same answer as the old app over the same data, and the UI suites pass | No | 9 |
 | 4 Data and cutover | Production data is imported, totals match the Sheet, staff use the new URL | **Yes: the switch** | 7 |
-| 5 New abilities | Store assignment, the till link, the LLM gateway, receipts and deliveries each ship on their own | Yes, one at a time | 7 |
+| 5 New abilities | Store assignment, the till link, the LLM gateway, receipts and deliveries each ship on their own | Yes, one at a time | 9 |
 | 6 App | The app installs to a home screen | Yes | 2 |
 
 Phase 1 is independent of phases 2–4 and can run alongside them. Inside

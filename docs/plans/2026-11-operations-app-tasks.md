@@ -59,9 +59,11 @@ hand one out.
 | P5-02 | Till link: staff sync and PIN check | T2 | P5-01, P1-02 | security | todo |
 | P5-03 | Vape close from the till snapshot | T2 | P5-02 | money | todo |
 | P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | todo |
-| P5-05 | Purchase receipts | T2 | P5-04 | money | todo |
+| P5-05 | Purchase receipts, supplier records and product costs | T2 | P5-04 | money | todo |
 | P5-06 | Receipt test set through both models | T2 + owner | P5-04 | | todo |
 | P5-07 | Delivery runs: spec first, then build | T3 | P5-04 | | todo |
+| P5-08 | Send costs to the vape till, on a button | T2 | P5-05, P1-02 | money | todo |
+| P5-09 | Bookkeeping export of receipts | T2 | P5-05 | money | todo |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
 | P6-02 | Store listings: decide | owner | P6-01 | | todo |
 
@@ -438,13 +440,26 @@ Claude even on failure; `cf_then_claude` calls Claude only when a validator
 fails; the cap stops further calls; with no Claude key installed the app
 starts and `cf_only` works.
 
-### P5-05 · Purchase receipts · T2 · money
-**Make:** photo upload to R2; a draft from the gateway; a review screen where
-a person corrects and confirms; posting the purchase in Operations; a
-proposal to the till for cost and stock. Record every field the reviewer
-changed.
-**Done when:** tests show nothing is posted without a person's confirmation,
-and a draft whose lines don't add up is marked for attention.
+### P5-05 · Purchase receipts, supplier records and product costs · T2 · money
+A receipt is first a **bookkeeping record**: the photo and the figures on it,
+kept together for tax filing. Product costs come out of it.
+**Make:**
+- tables in `ops`: `suppliers`, `purchase_receipts` (store, supplier, receipt
+  date, invoice number, subtotal, HST, total, how it was paid, photo key,
+  status), `purchase_receipt_lines`, and `product_costs` (store, item or SKU,
+  supplier, unit cost, effective day, the receipt it came from);
+- photo upload to R2, the photo linked to its receipt;
+- a draft from the LLM gateway, and a review screen where a person corrects
+  and confirms; record every field the reviewer changed;
+- confirming a receipt writes its lines to `product_costs` for that store.
+**Rules:** a confirmed receipt and its photo are never deleted, only voided
+with a reason and audited; the R2 bucket gives the Worker no delete right.
+Tax records generally have to be kept for six years; confirm the period with
+the bookkeeper.
+**Done when:** tests show nothing is recorded without a person's
+confirmation; a draft whose lines don't add up to the total is marked for
+attention; a voided receipt stays listed with its photo; the old Sheet's
+`product_master` and `suppliers` tabs are not read.
 
 ### P5-06 · Receipt test set · T2 + owner
 The owner supplies 20–30 real receipts. Run each through both models; report
@@ -454,6 +469,25 @@ per model: passed validators, fields a person had to correct, cost.
 ### P5-07 · Delivery runs · T3
 Write the spec with the owner first (who drives, what an order needs at the
 door, what counts as delivered). Then split the build into cards.
+
+### P5-08 · Send costs to the vape till, on a button · T2 · money
+**Read:** `ops/contracts/till-api.v1.yaml` (`POST /proposals`, kind
+`cost_update`).
+**Make:** on a confirmed vape receipt, a "Send costs to the till" action that
+sends its lines as one `cost_update` proposal, using the receipt id as the
+idempotency key, and shows the proposal's status. No cron, no automatic send.
+The action doesn't exist for cstore receipts.
+**Done when:** tests cover: nothing is sent until a person presses the
+button; pressing it twice makes one proposal; a cstore receipt can't be sent;
+till down, the receipt stays unsent with the error shown.
+
+### P5-09 · Bookkeeping export of receipts · T2 · money
+**Make:** an export of receipts for a date range and store: one CSV of
+receipts, one of lines, and a zip of the photos named by receipt id. Voided
+receipts are included and marked.
+**Done when:** the CSV totals match the receipts screen for the same range.
+An integration with QuickBooks or similar is a later decision; this export
+is what it will start from.
 
 ## Phase 6 — App
 
