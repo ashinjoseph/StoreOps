@@ -1,8 +1,11 @@
 # What Operations needs from the till — API v1
 
-> **Status: draft for the owner, who builds the till side.** This is the
-> request: what Operations will ask, what it needs back, and the rules the
-> answers must follow. The till team turns it into the till's own contract
+> **Status: answered (2026-11-21).** The agreed contract is
+> [`ops/contracts/till-api.v1.yaml`](../../ops/contracts/till-api.v1.yaml);
+> what changed from this request, and Operations' review, are in
+> [what was agreed](2026-11-till-api-agreed.md). This page is kept as the
+> request was written. It is the request: what Operations will ask, what it
+> needs back, and the rules the answers must follow. The till team turns it into the till's own contract
 > (an OpenAPI file) and shares it back; that file becomes
 > `ops/contracts/till-api.v1.yaml` and is frozen for the Operations work.
 > See [ADR-0021](../adr/0021-till-figures-come-through-an-api.md) for why it

@@ -1,0 +1,436 @@
+openapi: 3.1.0
+info:
+  title: Scarbro Mart till, Operations API
+  version: 1.0.0
+  description: |
+    What the till gives the Store Operations app. Agreed with the owner on 2026-11-21, from Operations' request
+    "What Operations needs from the till, API v1". The covering note (OPS-API.md) lists what changed from that request and why.
+
+    **Ground rules**
+    - **Key.** One key per Operations environment, sent as `Authorization: Bearer <key>`. The owner makes it in the Office
+      (Setup, AI access, "Store Operations key"), with the 6-digit code. It is shown once, stored only as a hash, lasts
+      **90 days**, and can be revoked at any time. Make the next key before the old one expires; both work until then.
+      An Operations key can do nothing but this API, and no AI key can call it.
+    - **Reach.** Read-only, apart from `POST /proposals`. No customers, no order details, no loyalty, no card numbers.
+    - **Logging.** Every call is recorded by the till: the key, the endpoint, its parameters, whether it succeeded, the time taken.
+    - **Rate.** 60 requests a minute per key; more is `429` with `Retry-After`.
+    - **Store.** Every request except `GET /stores` and `GET /proposals/{id}` names a `store_id` the key may see (`GET /stores`).
+    - **Money.** JSON numbers rounded to the cent. **Before HST** unless the field name says `total` or `hst`.
+      Refunds are **negative** amounts in the same fields. Takings are money taken, so their fields say `total`.
+    - **Time.** Moments in UTC, ISO 8601 (`2026-11-25T23:04:11Z`). Days are `business_day` (`YYYY-MM-DD`, America/Toronto).
+    - **Corrections.** Figures are **after** voids and payment-method fixes. A shift carries `last_corrected_at`.
+    - **Empty is not an error.** A store or day with nothing is `200` with an empty list.
+    - **Versioning.** Everything is under `/ops/v1/`. Fields may be added; renaming or removing one needs `/ops/v2/`.
+  contact:
+    name: Scarbro Mart (the owner)
+servers:
+  - url: https://office.scarbromart.ca/ops/v1
+    description: production
+  - url: https://staging--scarbromart-office.netlify.app/ops/v1
+    description: staging (invented data; its own key)
+security:
+  - bearer: []
+
+paths:
+  /stores:
+    get:
+      summary: The stores this key may see
+      operationId: listStores
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stores]
+                properties:
+                  stores: { type: array, items: { $ref: '#/components/schemas/Store' } }
+        default: { $ref: '#/components/responses/Error' }
+
+  /staff:
+    get:
+      summary: Everyone who can work a till at this store
+      description: |
+        People with an Office login who may act in the store (all stores, or this one). `has_pin` says whether they have
+        set a till PIN; the PIN and its hash are never given. There is no PIN check in this API (owner, 2026-11-21).
+      operationId: listStaff
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [store_id, staff]
+                properties:
+                  store_id: { type: string, format: uuid }
+                  staff: { type: array, items: { $ref: '#/components/schemas/StaffMember' } }
+        default: { $ref: '#/components/responses/Error' }
+
+  /shifts:
+    get:
+      summary: Every shift of a business day, open ones included
+      description: |
+        A shift belongs to the business day it was **opened** on (Toronto). The Office daily report lists a shift on every
+        day it was open, so the two differ only for a shift that runs past midnight.
+      operationId: listShifts
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: day
+          in: query
+          required: true
+          schema: { type: string, format: date }
+          description: The business day, YYYY-MM-DD. Not after today.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [store_id, business_day, shifts]
+                properties:
+                  store_id: { type: string, format: uuid }
+                  business_day: { type: string, format: date }
+                  shifts: { type: array, items: { $ref: '#/components/schemas/Shift' } }
+        default: { $ref: '#/components/responses/Error' }
+
+  /sales/daily:
+    get:
+      summary: One row per business day and channel
+      description: |
+        Three channels: `till` (sales rung at the counter), `online` (website pickup orders) and `delivery` (website delivery
+        orders). `online` plus `delivery` is the Office dashboard's "Online"; `till` is its "In store". A day and channel with
+        no sales has no row. At most 92 days per request.
+      operationId: dailySales
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date }
+          description: Inclusive. Not after today; at most 91 days after `from`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [store_id, from, to, days]
+                properties:
+                  store_id: { type: string, format: uuid }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+                  days: { type: array, items: { $ref: '#/components/schemas/DailyRow' } }
+        default: { $ref: '#/components/responses/Error' }
+
+  /proposals:
+    post:
+      summary: Propose a change for the owner to approve in the Office
+      description: |
+        Sent only when a person presses a button in Operations, never on a schedule. Nothing changes until the owner approves
+        it in the Office (Review, Proposals). The one kind in v1 is `receipt`: a supplier delivery, with the stock received and
+        the cost from the invoice together, exactly as the till receives a delivery itself. There is no cost change without a
+        delivery (owner, 2026-11-21).
+
+        `idempotency_key` repeated with the same body returns the first proposal (`200`); with a different body it is `409`.
+      operationId: createProposal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProposalRequest' }
+      responses:
+        '201':
+          description: Recorded, waiting for the owner
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProposalCreated' }
+        '200':
+          description: The same idempotency key and body as an earlier request; that proposal is returned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProposalCreated' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /proposals/{proposal_id}:
+    get:
+      summary: Where a proposal this key made stands
+      operationId: getProposal
+      parameters:
+        - name: proposal_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProposalStatus' }
+        default: { $ref: '#/components/responses/Error' }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: The Operations key, made in the Office. Never sent in a URL.
+
+  parameters:
+    StoreId:
+      name: store_id
+      in: query
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Error:
+      description: |
+        `400 bad_request` (a parameter missing or wrong; the message says which) · `401 unauthorized` (no key, an unknown,
+        expired or revoked key, or a key that is not an Operations key) · `403 forbidden_store` (a store this key may not see) ·
+        `404 not_found` (no such endpoint, or a proposal this key did not make) · `409 conflict` (an idempotency key reused with
+        a different body) · `422 rejected` (a proposal the till refuses: an unknown SKU or supplier, an invoice already
+        received; the message says why) · `429 rate_limited` · `500 server_error` · `503 unavailable` (the database did not
+        answer; try again later).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [bad_request, unauthorized, forbidden_store, not_found, conflict, rejected, rate_limited, server_error, unavailable] }
+            message: { type: string }
+
+    Store:
+      type: object
+      required: [store_id, code, name, active, company_id, company_code]
+      properties:
+        store_id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        active: { type: boolean, description: Always true today; the till has no closed stores yet. }
+        company_id: { type: string, format: uuid }
+        company_code: { type: string, description: Map this to Operations' own company (e.g. its `vape`). }
+
+    Person:
+      type: object
+      required: [staff_id, name]
+      properties:
+        staff_id: { type: string, format: uuid, description: The id on sales and shifts. }
+        name: { type: string }
+
+    StaffMember:
+      type: object
+      required: [staff_id, display_name, role, active, all_stores, store_ids, has_pin]
+      properties:
+        staff_id: { type: string, format: uuid }
+        display_name: { type: string }
+        role: { type: string, enum: [owner, area_manager, store_manager, cashier] }
+        active: { type: boolean }
+        all_stores: { type: boolean }
+        store_ids: { type: array, items: { type: string, format: uuid }, description: Empty when all_stores. }
+        has_pin: { type: boolean }
+
+    Takings:
+      type: object
+      description: |
+        Money taken by each method, after voids and method fixes. `sales_total` is positive, `refunds_total` negative,
+        `net_total` their sum. A Clover card payment counts under `credit` or `debit` by its card type. `other` is a card
+        payment whose type the till did not record, and a card paid at the door (its type is not recorded).
+      required: [cash, credit, debit, etransfer, other]
+      properties:
+        cash: { $ref: '#/components/schemas/MethodTakings' }
+        credit: { $ref: '#/components/schemas/MethodTakings' }
+        debit: { $ref: '#/components/schemas/MethodTakings' }
+        etransfer: { $ref: '#/components/schemas/MethodTakings' }
+        other: { $ref: '#/components/schemas/MethodTakings' }
+
+    MethodTakings:
+      type: object
+      required: [sales_total, refunds_total, net_total]
+      properties:
+        sales_total: { type: number }
+        refunds_total: { type: number }
+        net_total: { type: number }
+
+    SalesSummary:
+      type: object
+      description: |
+        Sales less refunds, after voids. Always `net = subtotal - discount` and `total = net + surcharge + hst + rounding`.
+      required: [count, refund_count, subtotal, discount, net, surcharge, rounding, hst, total]
+      properties:
+        count: { type: integer, description: Sales. }
+        refund_count: { type: integer, description: Refunds. }
+        subtotal: { type: number, description: Before discounts and HST. }
+        discount: { type: number }
+        net: { type: number, description: After discounts, before HST. }
+        surcharge: { type: number, description: The credit card surcharge. }
+        rounding: { type: number, description: Cash rounding to the nickel. }
+        hst: { type: number }
+        total: { type: number, description: What customers paid, less what was refunded. }
+
+    Shift:
+      type: object
+      required: [shift_id, z_number, register, device_name, business_day, opened_at, opened_by, closed_at, closed_by, status,
+                 opening_float, expected, counted, variance, close_note, cash_moves, door_cash, takings, sales_summary,
+                 staff_takings, last_corrected_at]
+      properties:
+        shift_id: { type: string, format: uuid }
+        z_number: { type: [integer, 'null'], description: Null while open. }
+        register: { type: string, description: e.g. T1. }
+        device_name: { type: string }
+        business_day: { type: string, format: date, description: The Toronto day it was opened. }
+        opened_at: { type: string, format: date-time }
+        opened_by: { $ref: '#/components/schemas/Person' }
+        closed_at: { type: [string, 'null'], format: date-time }
+        closed_by: { oneOf: [ { $ref: '#/components/schemas/Person' }, { type: 'null' } ] }
+        status: { type: string, enum: [open, closed, auto_closed] }
+        opening_float: { type: number }
+        expected:
+          type: [number, 'null']
+          description: |
+            Cash the drawer should hold at close: the till's own figure (float, cash sales less cash refunds, paid in less
+            paid out) **plus `door_cash`**. The till's part is as counted at close and is not recalculated after a later void
+            (`last_corrected_at` says one happened). Null while open.
+        counted: { type: [number, 'null'], description: Null while open. }
+        variance: { type: [number, 'null'], description: counted - expected. Null while open, never 0 for "unknown". }
+        close_note: { type: [string, 'null'] }
+        cash_moves:
+          type: object
+          required: [paid_in, paid_out, no_sale_count]
+          properties:
+            paid_in: { type: number }
+            paid_out: { type: number }
+            no_sale_count: { type: integer }
+        door_cash:
+          type: object
+          description: |
+            Cash the driver collected at the door for deliveries recorded as delivered while this shift was open, which goes
+            into this drawer (owner, 2026-11-21). A delivery recorded while no shift was open at the store counts in the next
+            shift opened there; with two shifts open at once, in the one opened first. Its sales are in the `delivery`
+            channel, not in this shift's `takings` or `sales_summary`.
+          required: [orders, total]
+          properties:
+            orders: { type: integer }
+            total: { type: number }
+        takings:
+          $ref: '#/components/schemas/Takings'
+          description: Everything paid through this till in the shift, website pickups paid at the counter included.
+        sales_summary:
+          $ref: '#/components/schemas/SalesSummary'
+          description: Everything rung at this till in the shift, website pickups paid at the counter included.
+        staff_takings:
+          type: array
+          description: Per person who rang sales in the shift (feeds commissions). net is before HST, refunds taken off.
+          items:
+            type: object
+            required: [staff_id, name, count, net]
+            properties:
+              staff_id: { type: string, format: uuid }
+              name: { type: string }
+              count: { type: integer }
+              net: { type: number }
+        last_corrected_at: { type: [string, 'null'], format: date-time, description: The newest void or method fix of a sale in this shift. }
+
+    DailyRow:
+      type: object
+      description: |
+        `till`: counter sales and refunds (not website orders), by the day rung. `online`: website pickup orders, by the day
+        collected, wherever they were paid (a pickup paid at the counter is here, not in `till`). `delivery`: website delivery
+        orders, by the day delivered. For every row, the takings' `net_total`s add up to `sales_summary.total`.
+        A delivery cancelled after a failed drop (the fee kept) is not in these figures.
+      required: [business_day, channel, sales_summary, takings]
+      properties:
+        business_day: { type: string, format: date }
+        channel: { type: string, enum: [till, online, delivery] }
+        sales_summary: { $ref: '#/components/schemas/SalesSummary' }
+        takings: { $ref: '#/components/schemas/Takings' }
+        delivery:
+          type: object
+          description: The `delivery` channel only.
+          required: [orders, fees]
+          properties:
+            orders: { type: integer }
+            fees: { type: number, description: 'Delivery fees, before HST. They are in this row''s subtotal and net, so its sums hold (the Office dashboard shows the fee apart from its "net").' }
+
+    ProposalRequest:
+      type: object
+      required: [kind, store_id, idempotency_key, payload, proposed_by]
+      properties:
+        kind: { type: string, enum: [receipt] }
+        store_id: { type: string, format: uuid }
+        idempotency_key: { type: string, minLength: 8, maxLength: 100 }
+        proposed_by:
+          type: object
+          required: [name]
+          description: The Operations person who pressed the button. staff_id when they also have a till login.
+          properties:
+            staff_id: { type: string, format: uuid }
+            name: { type: string, maxLength: 80 }
+        note: { type: string, maxLength: 300, description: Shown to the owner with the proposal. }
+        payload: { $ref: '#/components/schemas/ReceiptPayload' }
+
+    ReceiptPayload:
+      type: object
+      description: |
+        A supplier delivery. Give `order` (the till's purchase order, `PO-0003`) or `vendor` (the till's supplier code) for a
+        delivery nobody ordered in the till. Each line's cost becomes `(carton_price + duty_per_carton) / pieces`; a line may
+        leave out what the till already knows for that supplier and product. Stock goes up by `received` when approved.
+      required: [invoice, invoiced_on, lines]
+      properties:
+        order: { type: string, pattern: '^PO-[0-9]{4,}$' }
+        vendor: { type: string }
+        invoice: { type: string, minLength: 1, maxLength: 40 }
+        invoiced_on: { type: string, format: date, description: Not in the future. }
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            required: [sku, received]
+            properties:
+              sku: { type: string, description: The till's code, e.g. YV-23649. Each once. }
+              received: { type: integer, minimum: 0, maximum: 99999, description: Pieces received. }
+              pieces: { type: integer, minimum: 1, maximum: 500, description: Pieces in a carton. }
+              carton_price: { type: number, description: Before duty and HST. }
+              duty_per_carton: { type: number, description: Federal and Ontario excise for the carton. }
+        not_matched:
+          type: array
+          maxItems: 30
+          items: { type: string, maxLength: 200 }
+          description: Invoice lines Operations could not match to a till code, as written.
+
+    ProposalCreated:
+      type: object
+      required: [proposal_id, status, expires_at]
+      properties:
+        proposal_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending] }
+        expires_at: { type: string, format: date-time, description: Seven days after it was made, if the owner has not decided. }
+
+    ProposalStatus:
+      type: object
+      required: [proposal_id, status, decided_at, decided_by, note]
+      properties:
+        proposal_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, approved, rejected, expired] }
+        decided_at: { type: [string, 'null'], format: date-time }
+        decided_by: { type: [string, 'null'], description: The name of the person who decided. }
+        note: { type: [string, 'null'], description: The owner's note when deciding. }

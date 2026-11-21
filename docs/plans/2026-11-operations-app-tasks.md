@@ -20,7 +20,7 @@ hand one out.
 | ID | Card | Tier | Needs | Flags | Status |
 |---|---|:-:|---|---|---|
 | P0-01 | Owner answers decisions D1–D12 | owner | | | todo |
-| P0-02 | Till API contract v1, from the owner | owner + T3 review | | security | todo |
+| P0-02 | Till API contract v1, from the owner | owner + T3 review | | security | waiting on owner: lint fixes |
 | P0-03 | Database schema contract | T3 | P0-01 | money | todo |
 | P0-04 | RPC contract file | T1 | | | todo |
 | P1-01 | Archive old audit-log rows (current app) | T2 | | | todo |
@@ -56,13 +56,13 @@ hand one out.
 | P4-06 | Nightly export to a Google Sheet | T2 | P4-05 | | todo |
 | P4-07 | Retire the Apps Script deploy | T1 | P4-05 + 30 days | | todo |
 | P5-01 | Stores and staff assignments | T2 | P4-05 | security | todo |
-| P5-02 | Till link: staff sync and PIN check | T2 | P5-01, P1-02 | security | todo |
+| P5-02 | Till link: staff sync and key expiry | T2 | P5-01, P1-02 | security | todo |
 | P5-03 | Vape close from the till snapshot | T2 | P5-02 | money | todo |
 | P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | todo |
 | P5-05 | Purchase receipts, supplier records and product costs | T2 | P5-04 | money | todo |
 | P5-06 | Receipt test set through both models | T2 + owner | P5-04 | | todo |
 | P5-07 | Delivery runs: spec first, then build | T3 | P5-04 | | todo |
-| P5-08 | Send costs to the vape till, on a button | T2 | P5-05, P1-02 | money | todo |
+| P5-08 | Send a vape delivery to the till, on a button | T2 | P5-05, P1-02 | money | todo |
 | P5-09 | Bookkeeping export of receipts | T2 | P5-05 | money | todo |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
 | P6-02 | Store listings: decide | owner | P6-01 | | todo |
@@ -159,7 +159,8 @@ the docs steps in `AGENTS.md` are done.
 
 ### P1-02 · Till API built · owner · security
 Lives in the till platform's repository; built by the owner. Implements
-`ops/contracts/till-api.v1.yaml`.
+`ops/contracts/till-api.v1.yaml`. A staging key, on invented data, comes
+first; then a production key.
 **Done when:** the check at the end of the till API request passes for one
 real closed day.
 
@@ -170,7 +171,9 @@ Only if D9 says yes. On the current Apps Script app.
 function `openShiftForm`; `docs/components/shifts-and-close.md`.
 **Make:** `src/TillApi.gs`; a config flag `till_api_enabled`, default off;
 the vape close sheet shows the till's figures prefilled and editable, with a
-note of where they came from.
+note of where they came from. Takings are the `*_total` fields of
+`takings`. The till's `expected` includes `door_cash`; show door cash as its
+own line so the cashier sees why expected is higher.
 **Done when:** with the flag off nothing changes (existing suites pass
 untouched); with it on and the API failing, the close still works by hand;
 `npm test` passes with new assertions seen failing first.
@@ -419,20 +422,25 @@ dates; every list and every write filtered by the caller's stores.
 **Done when:** tests show a person assigned to store A can neither read nor
 write store B through any RPC in the contract.
 
-### P5-02 · Till link: staff sync and PIN check · T2 · security
-**Read:** `ops/contracts/till-api.v1.yaml`.
-**Make:** `ops/src/till/client.ts` (never throws; returns `{ok:false,error}`);
-a link from an Operations person to a till staff id; PIN check delegated to
-the till for linked people, with Operations' own PIN for the rest.
-Tests and local runs use a fake till built from the contract; the till's
-staging runs on the owner's machine, not in the cloud.
-**Done when:** tests cover: linked person, unlinked person, till down (the
-person can still log in with their Operations PIN if they have one).
+### P5-02 · Till link: staff sync and key expiry · T2 · security
+**Read:** `ops/contracts/till-api.v1.yaml`; `docs/plans/2026-11-till-api-agreed.md`.
+**Make:** `ops/src/till/client.ts` (never throws; returns `{ok:false,error}`;
+waits for `Retry-After` on `429`); a link from an Operations person to a
+till `staff_id`, offered from `GET /staff`; a map from the till's stores to
+Operations' stores. Sign-in stays Operations' own (D6): the till has no PIN
+check. The key's expiry date is recorded when it is installed, and admins
+are warned 14 days before it.
+Tests and local runs use a fake till built from the contract.
+**Done when:** tests cover: linking a person; a till person who isn't in
+Operations is listed, not created; till down, the link screen says so and
+sign-in is unaffected; the expiry warning shows at 14 days and not at 15.
 
 ### P5-03 · Vape close from the till snapshot · T2 · money
 **Make:** at close, fetch the shift from the till, store it as a snapshot
 with the time fetched, and prefill the close for the cashier to confirm. A
 later difference between the till and the snapshot is flagged, never applied.
+Use the till's `expected`, which includes `door_cash`; store door cash as
+its own column. A shift belongs to the business day it opened.
 The till reports `etransfer` as its own method; add a matching column to the
 Operations sales row (a schema change with its own migration) instead of
 folding it into cash or card.
@@ -459,6 +467,9 @@ kept together for tax filing. Product costs come out of it.
   date, invoice number, subtotal, HST, total, how it was paid, photo key,
   status), `purchase_receipt_lines`, and `product_costs` (store, item or SKU,
   supplier, unit cost, effective day, the receipt it came from);
+- vape lines keep the invoice's shape, as the till does: pieces per carton,
+  carton price and duty per carton, with unit cost = (carton price + duty) /
+  pieces; plus the till's product code and the till's supplier code;
 - photo upload to R2, the photo linked to its receipt;
 - a draft from the LLM gateway, and a review screen where a person corrects
   and confirms; record every field the reviewer changed;
@@ -481,16 +492,24 @@ per model: passed validators, fields a person had to correct, cost.
 Write the spec with the owner first (who drives, what an order needs at the
 door, what counts as delivered). Then split the build into cards.
 
-### P5-08 · Send costs to the vape till, on a button · T2 · money
+### P5-08 · Send a vape delivery to the till, on a button · T2 · money
 **Read:** `ops/contracts/till-api.v1.yaml` (`POST /proposals`, kind
-`cost_update`).
-**Make:** on a confirmed vape receipt, a "Send costs to the till" action that
-sends its lines as one `cost_update` proposal, using the receipt id as the
-idempotency key, and shows the proposal's status. No cron, no automatic send.
-The action doesn't exist for cstore receipts.
+`receipt`); `docs/plans/2026-11-till-api-agreed.md`.
+**Make:** on a confirmed vape receipt, a "Send to the till" action that sends
+it as one `receipt` proposal: stock received and cost together, with the
+till's purchase order or supplier code, the invoice number and date, and
+each line's till code. Lines with no till code go in `not_matched`, as
+written. Show the proposal's status, including `expired`. The idempotency
+key is `<receipt id>-<attempt>`, so a resend after expiry is a new proposal
+and a double press is not. No cron, no automatic send. The action doesn't
+exist for cstore receipts.
+Until the till lists its product codes (review item 2), the person types a
+till code once per supplier item and Operations remembers it.
 **Done when:** tests cover: nothing is sent until a person presses the
-button; pressing it twice makes one proposal; a cstore receipt can't be sent;
-till down, the receipt stays unsent with the error shown.
+button; pressing it twice makes one proposal; an expired proposal can be
+sent again; `422` shows the till's reason and leaves the receipt unsent;
+a cstore receipt can't be sent; till down, the receipt stays unsent with the
+error shown.
 
 ### P5-09 · Bookkeeping export of receipts · T2 · money
 **Make:** an export of receipts for a date range and store: one CSV of

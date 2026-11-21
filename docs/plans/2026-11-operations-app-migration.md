@@ -127,7 +127,7 @@ named in the last column.
 | D3 | How the Worker reaches it | Plain SQL through Supabase's connection pooler, via Cloudflare Hyperdrive. Locally, Hyperdrive's local connection string points at the developer's Postgres. Tests run on an in-process Postgres, so CI needs no database server. | P2-02, P2-03 |
 | D4 | Company and store | `cstore` and `vape` stay as companies. A store is a location; there is one today. A till belongs to a company in a store. | P0-03, P5-01 |
 | D5 | Login | Name and 4-digit PIN with lockout, as today, at launch. A stronger second step for admin and payroll roles in phase 5. | P2-06, P5-02 |
-| D6 | Where PINs are checked | Operations' own PINs at launch. Delegated to the till API in phase 5 for people who have a till login. | P2-06, P5-02 |
+| D6 | Where PINs are checked | **Answered (Nov 21):** always by Operations, with its own PINs. The till offers no PIN check: its PINs are checked on the till PC so it works offline, and an internet-facing check of a short PIN could be guessed through. | P2-06, P5-02 |
 | D7 | cstore ePOS | **Answered:** no integration; the cstore close stays manual. One-off exports are possible, so P4-03 may use one to cross-check past cstore card totals during the dry run. | P3-05, P4-03 |
 | D8 | Which Claude model handles escalations | The smallest current model, with the model name as a setting. Changing it is a config edit. | P5-04 |
 | D9 | Quick wins on the current app | Do the audit-log archive now. Do the vape prefill on the current app only if the till API is ready before phase 3 ends. | P1-01, P1-03 |
@@ -154,6 +154,11 @@ named in the last column.
    flipped to the Supabase project once built. With the till's staging local,
    Operations' tests and local runs use a fake till built from the contract,
    never a till database.
+5. **The till API contract is agreed** and saved as
+   `ops/contracts/till-api.v1.yaml`. What changed from the request (no PIN
+   check, one `receipt` proposal kind, a `delivery` channel, door cash in
+   the drawer) and the review are in
+   [what was agreed](2026-11-till-api-agreed.md).
 
 **How D2 got here.** The plan first proposed Operations' own database. The
 free plan allows two active projects, both used by the till, so the next
