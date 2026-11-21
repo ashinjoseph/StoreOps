@@ -59,7 +59,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [0017. Tests run the real source, and every assertion is seen failing](docs/adr/0017-tests-run-the-real-source.md)
 - [0018. Screenshots and schema docs are generated from the running code](docs/adr/0018-docs-are-generated-from-the-running-code.md)
 - [0019. AGENTS.md is the agents' entry point; their maps are generated](docs/adr/0019-agent-facing-docs.md)
-- [0020. Operations moves to its own app, walled off from the till](docs/adr/0020-operations-moves-off-sheets.md)
+- [0020. Operations moves to its own app and database](docs/adr/0020-operations-moves-off-sheets.md)
 - [0021. Till figures come through an API, and Operations keeps its own snapshot](docs/adr/0021-till-figures-come-through-an-api.md)
 - [0022. LLM calls go to the free model first, with Claude behind a flag](docs/adr/0022-llm-calls-go-to-the-free-model-first.md)
 

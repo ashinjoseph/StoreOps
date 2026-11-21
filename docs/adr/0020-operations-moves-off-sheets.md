@@ -1,4 +1,4 @@
-# 0020. Operations moves to its own app, walled off from the till
+# 0020. Operations moves to its own app and database
 
 - **Status:** Proposed (pending owner review of the migration plan)
 - **Date:** 2026-11
@@ -25,12 +25,10 @@ are internal. The two must not share a database.
 ## Decision
 
 - StoreOps becomes the **Operations app**: a Cloudflare Worker serving the
-  existing UI, over **its own Postgres data, walled off from the till's**:
-  an `ops` schema on the existing Supabase projects, reached through a
-  database role that has no grants on the till's tables and isn't exposed
-  through Supabase's public API. It moves to its own Supabase project when
-  the organization is on a paid plan; until then the free plan's project
-  limit makes the schema the practical choice.
+  existing UI, over **its own Postgres database in its own Supabase
+  project**, separate from the till's. The project is the one the till's
+  staging used, freed by moving that staging to a local database. It is
+  built against a local Postgres first, and is staging until the switch.
 - **The `rpc*` contract is kept as it is.** The UI is moved unchanged; only
   the transport and the storage change. Old and new are compared RPC by RPC
   over the same data before the switch.
@@ -48,8 +46,9 @@ are internal. The two must not share a database.
 - ✅ Every existing rule and ADR carries over; the tests carry over with them.
 - ⚠️ Costs may start once Cloudflare or Supabase usage passes their free
   allowances.
-- ⚠️ Sharing a database with the till means sharing its capacity, backups
-  and maintenance windows until Operations moves to its own project.
+- ⚠️ The free Supabase plan has no automatic backups and pauses an idle
+  project. A nightly copy of every table to R2 and the daily use of
+  production cover both; staging is kept awake by a weekly request.
 - ⚠️ The owner can no longer fix a number by editing a cell. Corrections go
   through the app, which is also what keeps the audit log complete.
 - ⚠️ A migration of all history, with a dry run and a reconcile, before the
@@ -60,11 +59,16 @@ are internal. The two must not share a database.
 
 - **Stay on Sheets and archive old rows:** buys months, fixes none of the
   other limits. Kept as a quick win, not as the answer.
-- **Put Operations' tables in the till's own tables or schema:** least work,
-  and it puts payroll inside the system with tax duties and ties Operations
-  to the till's schema. A separate schema and role keeps that boundary.
-- **A separate Supabase project from day one:** the cleanest separation,
-  and likely needs the paid plan. The planned destination, not the start.
+- **Put Operations' tables in the till's database:** least work, and it puts
+  payroll inside the system with tax duties and ties Operations to the
+  till's schema.
+- **An `ops` schema with its own role inside the till's projects:** proposed
+  while both free projects were in use. Keeps the tables apart but shares the
+  till's capacity, backups and maintenance. Dropped once a project was freed.
+- **Cloudflare D1:** no database password and on the same platform as the
+  Worker, but it can't run a transaction that reads and then writes, which
+  handovers and payments rely on, and it is SQLite rather than the Postgres
+  the till uses.
 - **A native app over Sheets:** rewrites the UI and keeps the slow part.
 - **Rewrite from scratch:** discards the rules and tests that six months of
   incidents paid for.

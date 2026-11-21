@@ -272,9 +272,11 @@ against a trivial ported handler, and deliberately breaking that handler
 makes it fail with a readable diff.
 
 ### P2-10 · Staging deploy · T2 · security
-**Needs from the owner:** a Cloudflare account, an empty database, secrets.
+**Needs from the owner:** a Cloudflare account; the Supabase project freed
+from the till's staging, empty; secrets.
 **Make:** a workflow that deploys `ops/` to a staging URL on push to the
-working branch, runs migrations first, and never touches production.
+working branch, runs migrations first, and never touches production; a
+weekly cron request so the free project isn't paused while idle.
 **Done when:** the staging URL serves the login page and `/health`; the
 report names every paid service this turned on and its expected cost.
 
@@ -391,12 +393,19 @@ writing. Two people then use staging for a normal day beside the real app.
 
 ### P4-05 · Cutover runbook, then the switch · T3 + owner · money
 **Make:** `docs/guides/cutover.md`: the steps of plan section 6 with the
-exact commands, who does each, how long each takes, and the way back.
+exact commands, who does each, how long each takes, and the way back. The
+Supabase project has been staging until now: the runbook empties schema
+`ops` before the real import, and moves staging to a new `ops_staging`
+schema with its own role and fictional data only.
 **Done when:** staff are on the new URL and the first close reconciles.
 
 ### P4-06 · Nightly export to a Google Sheet · T2
-**Make:** a cron job that writes each table to a tab of a read-only Sheet.
-**Done when:** the Sheet's totals match P4-03's database side.
+**Make:** a cron job that writes each table to a tab of a read-only Sheet,
+and the same tables as dated files in R2, kept 90 days. The free Supabase
+plan has no automatic backups, so the R2 copy is the backup.
+**Done when:** the Sheet's totals match P4-03's database side, and a restore
+from last night's R2 files into an empty local Postgres gives the same
+totals.
 
 ### P4-07 · Retire the Apps Script deploy · T1
 Thirty days after the switch. Remove the two deploy workflows; mark `src/`
@@ -415,6 +424,8 @@ write store B through any RPC in the contract.
 **Make:** `ops/src/till/client.ts` (never throws; returns `{ok:false,error}`);
 a link from an Operations person to a till staff id; PIN check delegated to
 the till for linked people, with Operations' own PIN for the rest.
+Tests and local runs use a fake till built from the contract; the till's
+staging runs on the owner's machine, not in the cloud.
 **Done when:** tests cover: linked person, unlinked person, till down (the
 person can still log in with their Operations PIN if they have one).
 

@@ -41,7 +41,7 @@ flowchart TB
 
     subgraph data["Operations data"]
         direction LR
-        opsdb[("Operations data<br/>ops schema on Supabase")]
+        opsdb[("Operations Postgres<br/>its own Supabase project")]
         sheet[("Google Sheet<br/>nightly read-only copy")]
     end
 
@@ -123,8 +123,8 @@ named in the last column.
 | # | Decision | Proposed default | Affects |
 |---|---|---|---|
 | D1 | Where the new code lives | An `ops/` folder in this repo. Docs, ADRs, history and the old source stay beside it for porting. | P2-01 |
-| D2 | Database | **Revised (Nov 21):** a separate `ops` schema inside the existing Supabase projects, with its own database role that has no grants on the till's tables, and not exposed through Supabase's public API. Move it to its own project when the organization goes to a paid plan. See "Answers" below. | P0-03, P2-02, P2-10 |
-| D3 | How the Worker reaches it | Plain SQL through Supabase's connection pooler, via Cloudflare Hyperdrive. Tests run on an in-process Postgres, so CI needs no database server. | P2-02, P2-03 |
+| D2 | Database | **Answered (Nov 21):** Postgres in **its own Supabase project**: the one the till's staging uses today, freed when the owner moves the till's staging to a local database. Building happens on a local Postgres; the Supabase project is Operations' staging until the switch and its production from then on. Tables sit in schema `ops`, reached through an `ops_app` role, and the schema isn't exposed through Supabase's public API. See "Answers" below. | P0-03, P2-02, P2-10, P4-05, P4-06 |
+| D3 | How the Worker reaches it | Plain SQL through Supabase's connection pooler, via Cloudflare Hyperdrive. Locally, Hyperdrive's local connection string points at the developer's Postgres. Tests run on an in-process Postgres, so CI needs no database server. | P2-02, P2-03 |
 | D4 | Company and store | `cstore` and `vape` stay as companies. A store is a location; there is one today. A till belongs to a company in a store. | P0-03, P5-01 |
 | D5 | Login | Name and 4-digit PIN with lockout, as today, at launch. A stronger second step for admin and payroll roles in phase 5. | P2-06, P5-02 |
 | D6 | Where PINs are checked | Operations' own PINs at launch. Delegated to the till API in phase 5 for people who have a till login. | P2-06, P5-02 |
@@ -148,15 +148,30 @@ named in the last column.
 3. **The owner builds the till-side API**, from
    [the till API request](2026-11-till-api-for-operations.md), and shares the
    resulting contract back.
+4. **Where Operations' database runs.** The owner moves the till's staging
+   database to a local one, which frees a Supabase project on the free plan.
+   Operations gets that project. Building starts on a local Postgres and is
+   flipped to the Supabase project once built. With the till's staging local,
+   Operations' tests and local runs use a fake till built from the contract,
+   never a till database.
 
-**Why D2 changed.** The Supabase organization is on the free plan and
-already runs two projects, staging and production. A third and fourth
-project for Operations would likely need the paid plan; check Supabase's
-current limits. A separate schema with its own role keeps the boundary that
-matters (Operations can't read or write the till's tables, and the till
-never reads Operations'), costs nothing, and moves out to its own project
-with one dump and restore. What it doesn't separate: both share one
-database's capacity, backups and maintenance windows.
+**How D2 got here.** The plan first proposed Operations' own database. The
+free plan allows two active projects, both used by the till, so the next
+proposal was an `ops` schema inside the till's projects. Cloudflare D1 was
+weighed and set aside: it can't run a transaction that reads and then
+writes, which handovers and payments rely on. The owner then freed a project
+by moving the till's staging to a local database, so Operations gets real
+separation: its own capacity and maintenance, and no route to the till's
+tables at all.
+
+**What the free plan doesn't give**, and what covers it:
+
+| Gap | Cover |
+|---|---|
+| No automatic backups | The nightly job also writes every table to R2, kept 90 days (P4-06), beside the read-only Sheet |
+| A project idle for about a week is paused | Production is used daily. Before the switch, a weekly cron request keeps the staging project awake |
+| 500 MB database | The Sheet's whole history is a small fraction of that; the audit-log archive (P1-01) keeps it so |
+| One project for Operations | Until the switch it is staging. After it, staging is a second schema, `ops_staging`, with its own role and fictional data only (P4-05) |
 
 ## 4. Phases
 
@@ -361,7 +376,7 @@ when all their needs are `done` and their "Make" lists don't overlap.
 Proposed, pending this review:
 
 - [ADR-0020](../adr/0020-operations-moves-off-sheets.md): Operations moves to
-  its own app, with its own schema and database role. Would supersede ADR-0001.
+  its own app and database. Would supersede ADR-0001.
 - [ADR-0021](../adr/0021-till-figures-come-through-an-api.md): till figures
   come through an API, and Operations keeps its own snapshot.
 - [ADR-0022](../adr/0022-llm-calls-go-to-the-free-model-first.md): LLM calls
