@@ -11,6 +11,10 @@ the plan, nothing else. A card may start when every card under **Needs** is
 
 **For a worker:** you were given one card. Do that card only.
 
+Cards marked `dropped` cover areas the owner deprecated (plan section 2,
+"Not migrated"). Their IDs stay so other cards' references don't move; never
+hand one out.
+
 ## Ledger
 
 | ID | Card | Tier | Needs | Flags | Status |
@@ -32,10 +36,10 @@ the plan, nothing else. A card may start when every card under **Needs** is
 | P2-08 | UI served with the new transport | T2 | P2-07 | | todo |
 | P2-09 | Parity harness | T3 | P2-07 | | todo |
 | P2-10 | Staging deploy | T2 | P2-08 | security | todo |
-| P3-01 | Port Staff, Suppliers, OrderCatalog | T1 | P2-09 | | todo |
-| P3-02 | Port ProductTypes and ProductMaster | T2 | P2-09 | | todo |
-| P3-03 | Product import by CSV upload | T2 | P3-02 | | todo |
-| P3-04 | Port ShoppingList | T2 | P3-02, P3-08 | | todo |
+| P3-01 | Port Staff | T1 | P2-09 | | todo |
+| P3-02 | ~~Port ProductTypes and ProductMaster~~ | | | | dropped |
+| P3-03 | ~~Product import by CSV upload~~ | | | | dropped |
+| P3-04 | ~~Port ShoppingList~~ | | | | dropped |
 | P3-05 | Port the shift core: Attendance, TillSessions, Sales | T2 | P3-01 | money | todo |
 | P3-06 | Port CashHandling | T2 | P3-05 | money | todo |
 | P3-07 | Port Clover and Reconcile | T2 | P3-06, P3-08 | money | todo |
@@ -122,7 +126,10 @@ only. Rules:
 - new tables: `stores`, `staff_stores`, `sessions`, `login_failures`;
 - every operational table gets `store_id`, defaulting to the one store;
 - `audit_log` can be inserted into, never updated or deleted;
-- staging tabs, `pos_extracted` and `clover_batches` are left out.
+- the deprecated tabs are left out: `product_master`, the three
+  `product_*_detail` tabs, the `_pm_*_staging` tabs, `suppliers`,
+  `order_catalog`, `shopping_list`, `pos_extracted`, `clover_batches`
+  (plan section 2, "Not migrated").
 **Done when:** the file loads into an empty Postgres with no errors, and
 every column in `schema.md` is either present or listed in a "left out, and
 why" comment at the top.
@@ -130,9 +137,12 @@ why" comment at the top.
 ### P0-04 · RPC contract file · T1
 **Read:** `scripts/docs/codemap.js` (it already parses every RPC).
 **Make:** `scripts/docs/rpc-contract.js`, `ops/contracts/rpc.json`: for each
-RPC its name, parameter names, allowed roles, and whether it needs a session.
-**Done when:** the file lists 62 RPCs and matches the RPC table in
-`docs/reference/code-map.md`; `npm test` passes.
+RPC its name, parameter names, allowed roles, whether it needs a session, and
+`"migrate": false` for the 21 whose module is deprecated (`ProductMaster`,
+`ProductTypes`, `ShoppingList`, `Suppliers`, `OrderCatalog` in the code map's
+module column).
+**Done when:** the file lists all 62 RPCs, 41 to migrate and 21 not, and
+matches the RPC table in `docs/reference/code-map.md`; `npm test` passes.
 
 ## Phase 1 — Quick wins on the current app
 
@@ -238,10 +248,13 @@ dates in results arrive as ISO strings.
 in `src/Index.html` only the functions `call`, `cachedCall`, `handleRpcError`.
 **Make:** `ops/public/transport.js` giving the page a `google.script.run`
 that posts to `/rpc/<name>`; a build step that copies `src/Index.html` to
-`ops/public/` unchanged apart from loading the transport; the UI suites
-(`tests/suites/ui-*.js`) pointed at the copy as well.
+`ops/public/` unchanged apart from loading the transport and removing the
+`shopping`, `suppliers` and `products` entries from `MORE_ITEMS`; the UI
+suites (`tests/suites/ui-*.js`, except `ui-picker` and `ui-products`)
+pointed at the copy as well.
 **Done when:** the login screen loads from the Worker locally and a login
-round-trips; the UI suites pass against both copies.
+round-trips; the UI suites pass against both copies; the copy's drawer has
+no Shopping List, Suppliers or Product Master entry.
 **Don't:** edit `src/Index.html` by hand in `ops/public/`; it is generated.
 
 ### P2-09 · Parity harness · T3
@@ -271,33 +284,15 @@ parity list. **Done when:** typecheck and tests pass; parity passes for the
 RPCs named; the matching suite in `tests/suites/` has been ported assertion
 for assertion (list any you could not port, and why).
 
-### P3-01 · Staff, Suppliers, OrderCatalog · T1
-**Read:** `src/Staff.gs`, `src/Suppliers.gs`, `src/OrderCatalog.gs`.
+### P3-01 · Staff · T1
+**Read:** `src/Staff.gs`.
 **RPCs:** `rpcGetActiveStaffForLogin`, `rpcGetStaffDirectory`,
-`rpcGetAllStaff`, `rpcGetSuppliers`, `rpcGetOrderCatalog`, `rpcAddCatalogItem`.
+`rpcGetAllStaff`.
 Also add `rpcLogin` and `rpcLogout` from P2-06 to the parity list.
 
-### P3-02 · ProductTypes and ProductMaster · T2
-**Read:** `src/ProductTypes.gs`, `src/ProductMaster.gs` (skip
-`importFromStaging_`); ADRs 0012, 0015; `tests/suites/shopping-gate.js`.
-**RPCs:** `rpcGetProductMaster`, `rpcSearchProducts`, `rpcGetProduct`,
-`rpcGetProductCategories`, `rpcGetProductTypeSchema`, `rpcCreateProduct`,
-`rpcUpdateProduct`, `rpcDeactivateProduct`, `rpcReactivateProduct`.
-**Note:** lists read the core table only; detail loads for one product.
-
-### P3-03 · Product import by CSV upload · T2
-**Read:** `src/ProductMaster.gs` (`importFromStaging_` and its helpers);
-ADRs 0009, 0010; `tests/suites/import-perf.js`.
-**Make:** an upload that takes the same CSV columns as the staging tabs,
-validates the header by name, and writes in one transaction.
-**RPCs:** `rpcImportProductMasterFromStaging` (same name, takes the file).
-
-### P3-04 · ShoppingList · T2
-**Read:** `src/ShoppingList.gs`; `tests/suites/shopping-gate.js`.
-**RPCs:** `rpcGetShoppingList`, `rpcAddToShoppingList`,
-`rpcEditShoppingListEntry`, `rpcRemoveShoppingListEntry`,
-`rpcSetShoppingItemBought`, `rpcClearShoppingList`,
-`rpcGenerateShoppingList`, `rpcGetProductsForPicker`.
+### P3-02, P3-03, P3-04 · dropped
+Product master, product import and shopping list are deprecated (plan
+section 2, "Not migrated"). Not ported.
 
 ### P3-05 · Shift core: Attendance, TillSessions, Sales · T2 · money
 **Read:** `src/Attendance.gs`, `src/TillSessions.gs`, `src/Sales.gs`
@@ -327,7 +322,9 @@ second sees the first.
 **Read:** `src/Notifier.gs`; `tests/suites/notifier.js`;
 `docs/guides/whatsapp-templates.md`.
 **RPCs:** `rpcNotifyShiftOpen`, `rpcCheckWhatsApp`.
-**Note:** the token comes from a Worker secret. No test may call Meta.
+**Note:** the token comes from a Worker secret. No test may call Meta. Leave
+out the `shopping_list` message and its template key; the shopping list is
+deprecated.
 
 ### P3-09 · Payments and Bonuses · T2 · money
 **Read:** `src/Payments.gs`, `src/Bonuses.gs`; ADR-0011;
@@ -366,12 +363,13 @@ inlined and `<` escaped. No RPC is reachable without a session.
 ### P4-01 · Sheet export tool · T2
 **Make:** `ops/tools/export-sheet.ts`: one file per tab from a downloaded
 workbook, values exactly as stored (blank stays blank, dates as dates).
+Export every tab, deprecated ones included: the export is also the archive.
 **Done when:** run on the fixture workbook, row counts match the workbook.
 
 ### P4-02 · Import tool with a rejects file · T2 · money
 **Read:** `ops/contracts/schema.sql`; ADR-0004.
 **Make:** `ops/tools/import.ts`: loads the export in foreign-key order inside
-one transaction; blank becomes `NULL`; any row that fails goes to
+one transaction, skipping the deprecated tabs listed in P0-03; blank becomes `NULL`; any row that fails goes to
 `rejects.csv` with its tab, row number and reason.
 **Done when:** the fixture imports with zero rejects; a workbook with a
 broken row produces exactly one reject and loads the rest.

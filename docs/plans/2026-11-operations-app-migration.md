@@ -65,7 +65,8 @@ flowchart TB
 
 What stays the same on purpose:
 
-- **The 62 `rpc*` names, parameters and role rules.** The UI keeps calling
+- **The names, parameters and role rules of the 41 `rpc*` that migrate**
+  (of 62; the rest belong to the deprecated areas below). The UI keeps calling
   them; only the transport and the storage underneath change. This is what
   makes the port checkable: old and new must return the same answer.
 - **Every rule in the ADRs.** Blank is not zero becomes `NULL` is not zero.
@@ -84,9 +85,29 @@ What changes:
 | Secrets in the `config` tab | Worker secrets; `config` keeps only non-secret settings |
 | No locking on payments and handovers | One database transaction with a row lock per allocation |
 | Monday trigger installed by hand | Cloudflare cron trigger |
-| Staging tabs for product import | CSV upload, same validation |
 | Vape close typed by the cashier | Figures fetched from the till API, confirmed by the cashier |
 | `cstore` / `vape` per person | Person assigned to stores; every record carries a store |
+
+### Not migrated: deprecated areas
+
+The owner marked these as deprecated (Nov 21). They are not ported, not
+imported, and have no tables in the new schema. Their data stays readable in
+the archived Sheet. No module that does migrate depends on them; only
+`WebApp.gs` and `Setup.gs` refer to them.
+
+| Area | Tabs | Modules | RPCs | Suites not ported |
+|---|---|---|---:|---|
+| Product master, with every per-type detail (beer, cigarettes, vapes, other) | `product_master`, `product_beer_detail`, `product_cigarettes_detail`, `product_vape_detail`, the four `_pm_*_staging` tabs | `ProductMaster.gs`, `ProductTypes.gs` | 11 | `import-perf`, `ui-products` |
+| Suppliers | `suppliers` | `Suppliers.gs` | 1 | |
+| Order catalogue | `order_catalog` | `OrderCatalog.gs` | 2 | |
+| Shopping list | `shopping_list` | `ShoppingList.gs` | 7 | `shopping-gate`, `ui-picker` |
+| Never implemented | `pos_extracted`, `clover_batches` | | 0 | |
+
+Also left behind: the `shopping_list` WhatsApp message and its config key
+`whatsapp_template_shopping_list`, and the Shopping List, Suppliers and
+Product Master entries in the drawer. Purchase receipts (P5-05) don't need
+the product master: costs and stock go to the till as proposals, and the
+till's catalogue is the one the store sells from.
 
 ## 3. Decisions to confirm
 
@@ -153,7 +174,7 @@ flowchart LR
 | 0 Contracts | The schema, the till API contract and the RPC list are files in the repo, and the remaining decisions are answered | No | 4 |
 | 1 Quick wins | The audit log is archived; the till API answers for one real shift | Yes, on the current app | 3 |
 | 2 Foundation | An empty Operations app runs on a staging URL: login works, one RPC answers, the parity harness runs | No | 10 |
-| 3 Port | Every RPC returns the same answer as the old app over the same data, and the UI suites pass | No | 12 |
+| 3 Port | Every migrated RPC returns the same answer as the old app over the same data, and the UI suites pass | No | 9 |
 | 4 Data and cutover | Production data is imported, totals match the Sheet, staff use the new URL | **Yes: the switch** | 7 |
 | 5 New abilities | Store assignment, the till link, the LLM gateway, receipts and deliveries each ship on their own | Yes, one at a time | 7 |
 | 6 App | The app installs to a home screen | Yes | 2 |
@@ -161,8 +182,8 @@ flowchart LR
 Phase 1 is independent of phases 2–4 and can run alongside them. Inside
 phase 3, cards that don't share files can run in parallel.
 
-I haven't put dates on this. Phase 3 is the bulk: about 11,000 lines of
-server code to port, in 12 cards. A fair first measure is how long the first
+I haven't put dates on this. Phase 3 is the bulk: about 9,500 lines of
+server code to port, in 9 cards. A fair first measure is how long the first
 three cards of phase 3 take; the rest are the same shape.
 
 ## 5. How the work is run
@@ -290,8 +311,10 @@ when all their needs are `done` and their "Make" lists don't overlap.
 
 ## 6. Data migration and the switch
 
-1. **Export** every tab of the production Sheet to files (card P4-01).
-2. **Import** into an empty staging database. Blank cells become `NULL`.
+1. **Export** every tab of the production Sheet to files (card P4-01),
+   deprecated ones included, so the archive is complete.
+2. **Import** into an empty staging database, skipping the deprecated tabs.
+   Blank cells become `NULL`.
    Every row that can't be imported goes to a rejects file with its reason;
    nothing is dropped silently (P4-02).
 3. **Reconcile**: per table and per month, compare row counts and money
@@ -311,7 +334,7 @@ when all their needs are `done` and their "Make" lists don't overlap.
 
 | Risk | What limits it |
 |---|---|
-| A ported rule behaves differently | Parity against the old runtime on every RPC; ported unit tests; T3 review of money cards |
+| A ported rule behaves differently | Parity against the old runtime on every migrated RPC; ported unit tests; T3 review of money cards |
 | The fixture doesn't cover a real-world case | The dry run reconciles real production data, month by month |
 | A small model guesses instead of stopping | Worker rule 8; contracts are files it may not edit; CI is the judge |
 | Two people pay the same shift at once | Fixed by design in the new app: one transaction with a row lock (P3-09, P3-06) |
