@@ -41,7 +41,7 @@ flowchart TB
 
     subgraph data["Operations data"]
         direction LR
-        opsdb[("Operations Postgres<br/>its own database")]
+        opsdb[("Operations data<br/>ops schema on Supabase")]
         sheet[("Google Sheet<br/>nightly read-only copy")]
     end
 
@@ -96,23 +96,40 @@ named in the last column.
 | # | Decision | Proposed default | Affects |
 |---|---|---|---|
 | D1 | Where the new code lives | An `ops/` folder in this repo. Docs, ADRs, history and the old source stay beside it for porting. | P2-01 |
-| D2 | Database | A separate Postgres database (its own Supabase project), not the till's. | P2-02, P2-10 |
-| D3 | How the Worker reaches it | Plain SQL through a pooled connection (Hyperdrive). Tests run on an in-process Postgres, so CI needs no database server. | P2-02, P2-03 |
+| D2 | Database | **Revised (Nov 21):** a separate `ops` schema inside the existing Supabase projects, with its own database role that has no grants on the till's tables, and not exposed through Supabase's public API. Move it to its own project when the organization goes to a paid plan. See "Answers" below. | P0-03, P2-02, P2-10 |
+| D3 | How the Worker reaches it | Plain SQL through Supabase's connection pooler, via Cloudflare Hyperdrive. Tests run on an in-process Postgres, so CI needs no database server. | P2-02, P2-03 |
 | D4 | Company and store | `cstore` and `vape` stay as companies. A store is a location; there is one today. A till belongs to a company in a store. | P0-03, P5-01 |
 | D5 | Login | Name and 4-digit PIN with lockout, as today, at launch. A stronger second step for admin and payroll roles in phase 5. | P2-06, P5-02 |
 | D6 | Where PINs are checked | Operations' own PINs at launch. Delegated to the till API in phase 5 for people who have a till login. | P2-06, P5-02 |
-| D7 | cstore ePOS | No integration. The cstore close stays manual unless the ePOS turns out to have an export. | P3-05 |
+| D7 | cstore ePOS | **Answered:** no integration; the cstore close stays manual. One-off exports are possible, so P4-03 may use one to cross-check past cstore card totals during the dry run. | P3-05, P4-03 |
 | D8 | Which Claude model handles escalations | The smallest current model, with the model name as a setting. Changing it is a config edit. | P5-04 |
 | D9 | Quick wins on the current app | Do the audit-log archive now. Do the vape prefill on the current app only if the till API is ready before phase 3 ends. | P1-01, P1-03 |
 | D10 | Owner's view of the data | A nightly read-only export to a Google Sheet. | P4-06 |
 | D11 | Cutover | One switch on a quiet morning, after a full dry run, with the Sheet app kept read-only for 30 days as the way back. | P4-04, P4-05 |
 | D12 | Who orchestrates | A strong-model session hands out cards and reviews. The owner approves every merge to `main` and every production step. | section 5 |
 
-Three questions only you can answer:
+### Answers (Nov 21)
 
-1. Is the Cloudflare move hosting only, with the till's data staying where it is?
-2. Does the cstore ePOS offer any export or API?
-3. Who builds the till-side API (phase 1, card P1-02)? It lives in the till's repository, which this plan can't see.
+1. **Hosting moves from Netlify to Cloudflare; the database stays on
+   Supabase.** The till's database needs no migration: Workers reach
+   Supabase through its connection pooler, via Hyperdrive or Supabase's own
+   client library. What does need care in that move: secrets and environment
+   variables, Netlify functions rewritten for the Workers runtime, and using
+   the pooler rather than direct connections.
+2. **cstore ePOS:** no daily export, and its API is paid, so no integration.
+   One-off exports can be done (see D7).
+3. **The owner builds the till-side API**, from
+   [the till API request](2026-11-till-api-for-operations.md), and shares the
+   resulting contract back.
+
+**Why D2 changed.** The Supabase organization is on the free plan and
+already runs two projects, staging and production. A third and fourth
+project for Operations would likely need the paid plan; check Supabase's
+current limits. A separate schema with its own role keeps the boundary that
+matters (Operations can't read or write the till's tables, and the till
+never reads Operations'), costs nothing, and moves out to its own project
+with one dump and restore. What it doesn't separate: both share one
+database's capacity, backups and maintenance windows.
 
 ## 4. Phases
 
@@ -133,7 +150,7 @@ flowchart LR
 
 | Phase | Ends when | Ships to staff? | Cards |
 |---|---|---|---:|
-| 0 Contracts | The schema, the till API contract and the RPC list are files in the repo, and D1–D12 are answered | No | 4 |
+| 0 Contracts | The schema, the till API contract and the RPC list are files in the repo, and the remaining decisions are answered | No | 4 |
 | 1 Quick wins | The audit log is archived; the till API answers for one real shift | Yes, on the current app | 3 |
 | 2 Foundation | An empty Operations app runs on a staging URL: login works, one RPC answers, the parity harness runs | No | 10 |
 | 3 Port | Every RPC returns the same answer as the old app over the same data, and the UI suites pass | No | 12 |
@@ -315,7 +332,7 @@ when all their needs are `done` and their "Make" lists don't overlap.
 Proposed, pending this review:
 
 - [ADR-0020](../adr/0020-operations-moves-off-sheets.md): Operations moves to
-  its own app and database. Would supersede ADR-0001.
+  its own app, with its own schema and database role. Would supersede ADR-0001.
 - [ADR-0021](../adr/0021-till-figures-come-through-an-api.md): till figures
   come through an API, and Operations keeps its own snapshot.
 - [ADR-0022](../adr/0022-llm-calls-go-to-the-free-model-first.md): LLM calls

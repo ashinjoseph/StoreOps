@@ -1,4 +1,4 @@
-# 0020. Operations moves to its own app and database
+# 0020. Operations moves to its own app, walled off from the till
 
 - **Status:** Proposed (pending owner review of the migration plan)
 - **Date:** 2026-11
@@ -25,7 +25,12 @@ are internal. The two must not share a database.
 ## Decision
 
 - StoreOps becomes the **Operations app**: a Cloudflare Worker serving the
-  existing UI, over **its own Postgres database**, separate from the till's.
+  existing UI, over **its own Postgres data, walled off from the till's**:
+  an `ops` schema on the existing Supabase projects, reached through a
+  database role that has no grants on the till's tables and isn't exposed
+  through Supabase's public API. It moves to its own Supabase project when
+  the organization is on a paid plan; until then the free plan's project
+  limit makes the schema the practical choice.
 - **The `rpc*` contract is kept as it is.** The UI is moved unchanged; only
   the transport and the storage change. Old and new are compared RPC by RPC
   over the same data before the switch.
@@ -41,7 +46,10 @@ are internal. The two must not share a database.
 - ✅ Read cost stops growing with history, and the double-allocation gap closes.
 - ✅ Installable app, uploads, cron and capped LLM calls become possible.
 - ✅ Every existing rule and ADR carries over; the tests carry over with them.
-- ⚠️ No longer free: a database and a Worker plan have a monthly cost.
+- ⚠️ Costs may start once Cloudflare or Supabase usage passes their free
+  allowances.
+- ⚠️ Sharing a database with the till means sharing its capacity, backups
+  and maintenance windows until Operations moves to its own project.
 - ⚠️ The owner can no longer fix a number by editing a cell. Corrections go
   through the app, which is also what keeps the audit log complete.
 - ⚠️ A migration of all history, with a dry run and a reconcile, before the
@@ -52,9 +60,11 @@ are internal. The two must not share a database.
 
 - **Stay on Sheets and archive old rows:** buys months, fixes none of the
   other limits. Kept as a quick win, not as the answer.
-- **Put Operations' tables in the till's database:** least work, and it puts
-  payroll inside the system with tax duties and ties Operations to the till's
-  schema.
+- **Put Operations' tables in the till's own tables or schema:** least work,
+  and it puts payroll inside the system with tax duties and ties Operations
+  to the till's schema. A separate schema and role keeps that boundary.
+- **A separate Supabase project from day one:** the cleanest separation,
+  and likely needs the paid plan. The planned destination, not the start.
 - **A native app over Sheets:** rewrites the UI and keeps the slow part.
 - **Rewrite from scratch:** discards the rules and tests that six months of
   incidents paid for.

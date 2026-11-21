@@ -32,7 +32,7 @@ requests and the code. Their dates are when the decision took effect.
 | [0017](0017-tests-run-the-real-source.md) | Tests run the real source, and every assertion is seen failing | Accepted | 2026-09 |
 | [0018](0018-docs-are-generated-from-the-running-code.md) | Screenshots and schema docs are generated from the running code | Accepted | 2026-10 |
 | [0019](0019-agent-facing-docs.md) | AGENTS.md is the agents' entry point; their maps are generated | Accepted | 2026-10 |
-| [0020](0020-operations-moves-off-sheets.md) | Operations moves to its own app and database | Proposed | 2026-11 |
+| [0020](0020-operations-moves-off-sheets.md) | Operations moves to its own app, walled off from the till | Proposed | 2026-11 |
 | [0021](0021-till-figures-come-through-an-api.md) | Till figures come through an API, and Operations keeps its own snapshot | Proposed | 2026-11 |
 | [0022](0022-llm-calls-go-to-the-free-model-first.md) | LLM calls go to the free model first, with Claude behind a flag | Proposed | 2026-11 |
 

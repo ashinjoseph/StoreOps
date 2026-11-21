@@ -16,11 +16,11 @@ the plan, nothing else. A card may start when every card under **Needs** is
 | ID | Card | Tier | Needs | Flags | Status |
 |---|---|:-:|---|---|---|
 | P0-01 | Owner answers decisions D1–D12 | owner | | | todo |
-| P0-02 | Till API contract v1 | T3 | P0-01 | security | todo |
+| P0-02 | Till API contract v1, from the owner | owner + T3 review | | security | todo |
 | P0-03 | Database schema contract | T3 | P0-01 | money | todo |
 | P0-04 | RPC contract file | T1 | | | todo |
 | P1-01 | Archive old audit-log rows (current app) | T2 | | | todo |
-| P1-02 | Till API built (till repository) | external | P0-02 | security | todo |
+| P1-02 | Till API built (till repository) | owner | P0-02 | security | todo |
 | P1-03 | Vape close prefilled from the till (current app) | T2 | P1-02 | money | todo |
 | P2-01 | Scaffold `ops/` and its CI | T1 | P0-01 | | todo |
 | P2-02 | Migrations runner and first migration | T1 | P2-01, P0-03 | | todo |
@@ -100,30 +100,21 @@ Commands the cards use:
 **Make:** the table in section 3 of the plan, edited to show each answer.
 **Done when:** every row has an answer, and the three questions under it too.
 
-### P0-02 · Till API contract v1 · T3 · security
-**Read:** `docs/adr/0021-till-figures-come-through-an-api.md`; the till
-platform's daily report shape (ask the owner for one sample).
-**Make:** `ops/contracts/till-api.v1.yaml` (OpenAPI) with five endpoints:
-
-| Endpoint | Returns |
-|---|---|
-| `GET /ops/v1/staff` | till staff id, name, active, stores |
-| `POST /ops/v1/pin/verify` | whether a PIN is right for one person; the till applies its own lockout |
-| `GET /ops/v1/shifts?store&day` | each shift: register, opened and closed (time, by whom), float, cash sales, cash refunds, paid in, paid out, expected, counted, variance, **and takings split by cash, credit, debit for that shift** |
-| `GET /ops/v1/sales/daily?store&from&to` | per day: net, HST, total, by payment method |
-| `POST /ops/v1/proposals` | accepts a proposal for Office approval; returns its id and status |
-
-State in the file: bearer key, read-only apart from proposals, every call
-logged by the till, rate limited, money before HST unless a field says total,
-times in UTC with the Toronto business day given separately.
-**Done when:** the file passes an OpenAPI linter, and the owner has agreed it
-with whoever builds P1-02.
+### P0-02 · Till API contract v1, from the owner · owner + T3 review · security
+The owner builds the till side from
+[the till API request](2026-11-till-api-for-operations.md) and shares the
+till's OpenAPI file.
+**Make:** that file, copied to `ops/contracts/till-api.v1.yaml` unchanged.
+**Done when:** a T3 review confirms every field in the request is present
+with the stated meaning (or lists the differences for the owner), and the
+file passes an OpenAPI linter.
 
 ### P0-03 · Database schema contract · T3 · money
 **Read:** `docs/reference/schema.md`; `docs/architecture/data-model.md`;
-ADRs 0004, 0005, 0013, 0014; decision D4.
+ADRs 0004, 0005, 0013, 0014; decisions D2 and D4.
 **Make:** `ops/contracts/schema.sql`: one table per data tab, same column
-names. Rules:
+names, all in schema `ops`, plus the `ops_app` role with rights on `ops`
+only. Rules:
 - money `numeric(12,2)`; dates `date`; moments `timestamptz`;
 - a column that can be "not measured" is nullable and has no default;
 - existing text IDs stay as primary keys, so the import is lossless;
@@ -154,10 +145,11 @@ Rows are moved, never deleted. Tests in `tests/suites/`.
 the docs steps in `AGENTS.md` are done.
 **Don't:** change how audit rows are written.
 
-### P1-02 · Till API built · external · security
-Lives in the till platform's repository. Implements `ops/contracts/till-api.v1.yaml`.
-**Done when:** the shifts endpoint returns one real closed shift whose figures
-match the till's own daily report.
+### P1-02 · Till API built · owner · security
+Lives in the till platform's repository; built by the owner. Implements
+`ops/contracts/till-api.v1.yaml`.
+**Done when:** the check at the end of the till API request passes for one
+real closed day.
 
 ### P1-03 · Vape close prefilled from the till · T2 · money
 Only if D9 says yes. On the current Apps Script app.
@@ -388,7 +380,9 @@ broken row produces exactly one reject and loads the rest.
 **Make:** `ops/tools/reconcile.ts`: per table and per month, row count and
 the sum of every money column, Sheet beside database, with differences.
 **Done when:** it reports zero differences on the fixture, and a planted
-one-cent change is reported.
+one-cent change is reported. Optional: if the owner provides a one-off cstore
+ePOS export, a second report compares its card totals with the Sheet's
+cstore `card_total_sales` per day.
 
 ### P4-04 · Dry run on a copy of production · T3 + owner · money
 Export production, import to staging, run P4-03, explain every difference in
@@ -428,8 +422,12 @@ person can still log in with their Operations PIN if they have one).
 **Make:** at close, fetch the shift from the till, store it as a snapshot
 with the time fetched, and prefill the close for the cashier to confirm. A
 later difference between the till and the snapshot is flagged, never applied.
+The till reports `etransfer` as its own method; add a matching column to the
+Operations sales row (a schema change with its own migration) instead of
+folding it into cash or card.
 **Done when:** tests cover: till figures used; till down, manual entry; till
-corrected afterwards, flag raised and pay unchanged.
+corrected afterwards, flag raised and pay unchanged; an e-Transfer sale kept
+separate and counted in the day's total.
 
 ### P5-04 · LLM gateway · T2 · security
 **Read:** `docs/adr/0022-llm-calls-go-to-the-free-model-first.md`.
