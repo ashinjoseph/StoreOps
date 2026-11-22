@@ -428,7 +428,8 @@ write store B through any RPC in the contract.
 waits for `Retry-After` on `429`); a link from an Operations person to a
 till `staff_id`, offered from `GET /staff`; a map from the till's stores to
 Operations' stores. Sign-in stays Operations' own (D6): the till has no PIN
-check. The key's expiry date is recorded when it is installed, and admins
+check. The nil uuid (`00000000-0000-0000-0000-000000000000`,
+"Not known") is the till's "no one recorded" and is never linked. The key's expiry date is recorded when it is installed, and admins
 are warned 14 days before it.
 Tests and local runs use a fake till built from the contract.
 **Done when:** tests cover: linking a person; a till person who isn't in
@@ -441,6 +442,9 @@ with the time fetched, and prefill the close for the cashier to confirm. A
 later difference between the till and the snapshot is flagged, never applied.
 Use the till's `expected`, which includes `door_cash`; store door cash as
 its own column. A shift belongs to the business day it opened.
+`staff_takings` rows with the nil uuid count toward no one's commission and
+are shown to the manager. Takings that don't add up to the sales total (the
+till's "To check" case) are stored and flagged, never rejected.
 The till reports `etransfer` as its own method; add a matching column to the
 Operations sales row (a schema change with its own migration) instead of
 folding it into cash or card.
@@ -510,6 +514,8 @@ button; pressing it twice makes one proposal; an expired proposal can be
 sent again; `422` shows the till's reason and leaves the receipt unsent;
 a cstore receipt can't be sent; till down, the receipt stays unsent with the
 error shown.
+A resend reads `GET /proposals/{id}` for the status: a repeated request
+always answers `pending`.
 
 ### P5-09 · Bookkeeping export of receipts · T2 · money
 **Make:** an export of receipts for a date range and store: one CSV of

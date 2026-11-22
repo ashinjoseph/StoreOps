@@ -103,7 +103,9 @@ paths:
       summary: One row per business day and channel
       description: |
         Three channels: `till` (sales rung at the counter), `online` (website pickup orders) and `delivery` (website delivery
-        orders). `online` plus `delivery` is the Office dashboard's "Online"; `till` is its "In store". A day and channel with
+        orders). `till` is the Office dashboard's "In store". `online` plus `delivery` is its "Online", except two things the
+        dashboard keeps elsewhere: the credit card surcharge and cash rounding of a pickup paid at the counter (here they are in
+        `online`, as that money was taken), and a refund at the counter of a pickup (here in `online`). A day and channel with
         no sales has no row. At most 92 days per request.
       operationId: dailySales
       parameters:
@@ -297,7 +299,9 @@ components:
         device_name: { type: string }
         business_day: { type: string, format: date, description: The Toronto day it was opened. }
         opened_at: { type: string, format: date-time }
-        opened_by: { $ref: '#/components/schemas/Person' }
+        opened_by:
+          $ref: '#/components/schemas/Person'
+          description: When the till recorded no one, staff_id is 00000000-0000-0000-0000-000000000000 and name is "Not known".
         closed_at: { type: [string, 'null'], format: date-time }
         closed_by: { oneOf: [ { $ref: '#/components/schemas/Person' }, { type: 'null' } ] }
         status: { type: string, enum: [open, closed, auto_closed] }
@@ -342,7 +346,7 @@ components:
             type: object
             required: [staff_id, name, count, net]
             properties:
-              staff_id: { type: string, format: uuid }
+              staff_id: { type: string, format: uuid, description: 'The nil uuid, with name "Not known", for sales the till recorded with no one.' }
               name: { type: string }
               count: { type: integer }
               net: { type: number }
@@ -353,7 +357,8 @@ components:
       description: |
         `till`: counter sales and refunds (not website orders), by the day rung. `online`: website pickup orders, by the day
         collected, wherever they were paid (a pickup paid at the counter is here, not in `till`). `delivery`: website delivery
-        orders, by the day delivered. For every row, the takings' `net_total`s add up to `sales_summary.total`.
+        orders, by the day delivered. For every row, the takings' `net_total`s add up to `sales_summary.total`, unless a till
+        sale's payments did not cover its total: the till keeps such a sale and the Office flags it ("To check").
         A delivery cancelled after a failed drop (the fee kept) is not in these figures.
       required: [business_day, channel, sales_summary, takings]
       properties:
@@ -422,7 +427,7 @@ components:
       required: [proposal_id, status, expires_at]
       properties:
         proposal_id: { type: string, format: uuid }
-        status: { type: string, enum: [pending] }
+        status: { type: string, enum: [pending], description: 'Also on a repeated request (200) after the owner decided: ask GET /proposals/{id} for where it stands.' }
         expires_at: { type: string, format: date-time, description: Seven days after it was made, if the owner has not decided. }
 
     ProposalStatus:
