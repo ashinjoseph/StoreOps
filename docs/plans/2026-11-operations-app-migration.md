@@ -124,7 +124,7 @@ named in the last column.
 |---|---|---|---|
 | D1 | Where the new code lives | An `ops/` folder in this repo. Docs, ADRs, history and the old source stay beside it for porting. | P2-01 |
 | D2 | Database | **Answered (Nov 21):** Postgres in **its own Supabase project**: the one the till's staging uses today, freed when the owner moves the till's staging to a local database. Building happens on a local Postgres; the Supabase project is Operations' staging until the switch and its production from then on. Tables sit in schema `ops`, reached through an `ops_app` role, and the schema isn't exposed through Supabase's public API. See "Answers" below. | P0-03, P2-02, P2-10, P4-05, P4-06 |
-| D3 | How the Worker reaches it | Plain SQL through Supabase's connection pooler, via Cloudflare Hyperdrive. Locally, Hyperdrive's local connection string points at the developer's Postgres. Tests run on an in-process Postgres, so CI needs no database server. | P2-02, P2-03 |
+| D3 | How the Worker reaches it | Plain SQL through Supabase's connection pooler, via Cloudflare Hyperdrive. Locally, a Postgres container from Docker Compose with the same version, roles and migrations, and the same image as a service container in CI; see [the local database spec](2026-11-ops-local-database.md). | P2-01, P2-02, P2-03, P2-10 |
 | D4 | Company and store | `cstore` and `vape` stay as companies. A store is a location; there is one today. A till belongs to a company in a store. | P0-03, P5-01 |
 | D5 | Login | Name and 4-digit PIN with lockout, as today, at launch. A stronger second step for admin and payroll roles in phase 5. | P2-06, P5-02 |
 | D6 | Where PINs are checked | **Answered (Nov 21):** always by Operations, with its own PINs. The till offers no PIN check: its PINs are checked on the till PC so it works offline, and an internet-facing check of a short PIN could be guessed through. | P2-06, P5-02 |
@@ -153,7 +153,9 @@ named in the last column.
    Operations gets that project. Building starts on a local Postgres and is
    flipped to the Supabase project once built. With the till's staging local,
    Operations' tests and local runs use a fake till built from the contract,
-   never a till database.
+   never a till database. Retrieval checks call the till's staging API,
+   on Netlify for now and the till team's Docker setup later; only the
+   `TILL_API_BASE_URL` setting changes (P1-04).
 5. **The till API contract is agreed** and saved as
    `ops/contracts/till-api.v1.yaml`. What changed from the request (no PIN
    check, one `receipt` proposal kind, a `delivery` channel, door cash in
@@ -198,7 +200,7 @@ flowchart LR
 | Phase | Ends when | Ships to staff? | Cards |
 |---|---|---|---:|
 | 0 Contracts | The schema, the till API contract and the RPC list are files in the repo, and the remaining decisions are answered | No | 4 |
-| 1 Quick wins | The audit log is archived; the till API answers for one real shift | Yes, on the current app | 3 |
+| 1 Quick wins | The audit log is archived; the till API answers for one real shift | Yes, on the current app | 4 |
 | 2 Foundation | An empty Operations app runs on a staging URL: login works, one RPC answers, the parity harness runs | No | 10 |
 | 3 Port | Every migrated RPC returns the same answer as the old app over the same data, and the UI suites pass | No | 9 |
 | 4 Data and cutover | Production data is imported, totals match the Sheet, staff use the new URL | **Yes: the switch** | 7 |

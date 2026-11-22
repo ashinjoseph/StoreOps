@@ -26,6 +26,7 @@ hand one out.
 | P1-01 | Archive old audit-log rows (current app) | T2 | | | todo |
 | P1-02 | Till API built (till repository) | owner | P0-02 | security | todo |
 | P1-03 | Vape close prefilled from the till (current app) | T2 | P1-02 | money | todo |
+| P1-04 | Till API retrieval check against staging | T1 | P0-02, P2-01 | security | todo |
 | P2-01 | Scaffold `ops/` and its CI | T1 | P0-01 | | todo |
 | P2-02 | Migrations runner and first migration | T1 | P2-01, P0-03 | | todo |
 | P2-03 | Database, money, date and ID helpers | T2 | P2-02 | money | todo |
@@ -178,27 +179,42 @@ own line so the cashier sees why expected is higher.
 untouched); with it on and the API failing, the close still works by hand;
 `npm test` passes with new assertions seen failing first.
 
+### P1-04 · Till API retrieval check against staging · T1 · security
+**Read:** `ops/contracts/till-api.v1.yaml`; `docs/plans/2026-11-ops-local-database.md`
+("The till, while building").
+**Make:** `ops/tools/till-check.ts`: with `TILL_API_BASE_URL` and
+`TILL_API_KEY` from the environment, call every `GET` in the contract
+(stores; staff, shifts for yesterday and sales for the last 7 days, for each
+store); validate each answer against the contract's schemas; print counts
+and any schema differences. Never print the key. Never call `POST`.
+**Done when:** against the till's staging it reports every endpoint
+answering and matching the contract, or lists each difference for the owner;
+pointing it at another staging is a change of `TILL_API_BASE_URL` only; a
+test with a faked `fetch` shows a missing required field is reported.
+
 ## Phase 2 — Foundation
 
 ### P2-01 · Scaffold `ops/` and its CI · T1
 **Read:** `.github/workflows/ci.yml`, `deploy.yml`, `test-deploy.yml`.
 **Make:** the `ops/` layout above with an empty Worker that answers
 `GET /health`; a typecheck, a test runner with one passing test; a CI job
-that runs both. Add `paths: ['src/**']` to the two deploy workflows so
-changes under `ops/` or `docs/` no longer push the current app.
+that runs both, with a Postgres service container as in
+`docs/plans/2026-11-ops-local-database.md`. Add `paths: ['src/**']` to the
+two deploy workflows so changes under `ops/` or `docs/` no longer push the
+current app.
 **Done when:** `npm --prefix ops run typecheck` and `npm --prefix ops test`
 pass; `npm test` passes; CI is green.
 **Don't:** add a framework beyond a small router; add any paid service.
 
 ### P2-02 · Migrations runner and first migration · T1
-**Read:** `ops/contracts/schema.sql`.
-**Make:** `ops/migrations/0001_init.sql` (the contract, verbatim);
-`ops/src/db/migrate.ts` that applies numbered files once each, in order, and
-records them; a test helper that gives each test file a fresh in-process
-Postgres with all migrations applied.
-**Done when:** a test creates the database twice in a row with no error and
-finds every table from the contract. If the in-process Postgres can't run a
-statement in the contract, report BLOCKED with the statement.
+**Read:** `ops/contracts/schema.sql`; `docs/plans/2026-11-ops-local-database.md`.
+**Make:** `ops/db/compose.yml`, `ops/db/init/01-roles.sh`, `ops/.env.example`
+and the `db:*` commands, as in the spec; `ops/migrations/0001_init.sql` (the
+contract, verbatim); `ops/src/db/migrate.ts` that applies numbered files once
+each, in order, as `ops_owner`, and records them; a test helper that gives
+each test file its own database copied from a migrated `ops_template`.
+**Done when:** the checks at the end of the spec pass locally and in CI;
+`db:reset` twice in a row gives no error and every table from the contract.
 
 ### P2-03 · Database, money, date and ID helpers · T2 · money
 **Read:** `src/Util.gs`; ADR-0004.
@@ -275,13 +291,17 @@ against a trivial ported handler, and deliberately breaking that handler
 makes it fail with a readable diff.
 
 ### P2-10 · Staging deploy · T2 · security
-**Needs from the owner:** a Cloudflare account; the Supabase project freed
-from the till's staging, empty; secrets.
+**Read:** `docs/plans/2026-11-ops-local-database.md` ("Flip to Supabase").
+**Needs from the owner:** a Cloudflare account; a fresh Supabase project in
+the slot freed from the till's staging, with the role script run and `ops`
+kept out of the exposed schemas; secrets.
 **Make:** a workflow that deploys `ops/` to a staging URL on push to the
-working branch, runs migrations first, and never touches production; a
-weekly cron request so the free project isn't paused while idle.
+working branch, runs migrations first as `ops_owner`, and never touches
+production; a weekly cron request so the free project isn't paused while
+idle; `TILL_API_BASE_URL` and `TILL_API_KEY` set for the till's staging.
 **Done when:** the staging URL serves the login page and `/health`; the
-report names every paid service this turned on and its expected cost.
+spec's checks pass against Supabase as `ops_app`; the report names every
+paid service this turned on and its expected cost.
 
 ## Phase 3 — Port, module by module
 
