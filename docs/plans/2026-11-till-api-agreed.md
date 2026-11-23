@@ -1,17 +1,17 @@
 # The till's API for Operations — what was agreed, and the review
 
-> **Status: contract received 2026-11-21, revised 2026-11-22; review done.
-> One of the five fixes asked is made; four and a question are open.**
-> Part 1 is the till side's covering note, kept as sent apart from the
-> heading and the link to the contract. Part 2 is Operations' review of
-> the contract (card P0-02). The contract itself is
+> **Status: agreed, contract 1.1.0 (2026-11-22).** Every ask from
+> Operations' review is done, and the contract lints clean. Part 1 is the
+> till side's covering note, kept as sent apart from the heading and the
+> link to the contract. Part 2 is Operations' review (card P0-02). The
+> contract itself is
 > [`ops/contracts/till-api.v1.yaml`](../../ops/contracts/till-api.v1.yaml),
 > copied unchanged. The request it answers is
 > [What Operations needs from the till](2026-11-till-api-for-operations.md).
 
 ## Part 1 — The till side's note
 
-**To the Store Operations team, from the till side, 2026-11-21 (revised 2026-11-22).**
+**To the Store Operations team, from the till side, 2026-11-21. Updated 2026-11-22 for your review: contract 1.1.0.**
 
 This answers your draft "What Operations needs from the till, API v1". The contract is the OpenAPI file next to this note,
 `till-api.v1.yaml`: save it as `ops/contracts/till-api.v1.yaml`. Most of your draft is
@@ -29,7 +29,19 @@ in it as you wrote it. This note lists only what changed, and why.
 | Cash paid at the door "never in a till shift's cash" | **It goes into the drawer**: each shift has `door_cash {orders, total}`, and `expected` includes it | The owner's answer to your question 3. Door cash from deliveries recorded as delivered while a shift was open counts in that shift; one recorded while no shift was open counts in the next shift opened at the store; with two open at once, in the one opened first. The sale itself stays in the `delivery` channel. (Cash at the door is switched off in production today; this is how it counts once it is on.) |
 | Keys | **90 days**, then a new key | Made by the owner in the Office with the 6-digit code; shown once, stored hashed, revocable. Make the next one before the old one expires: both work until then. An Operations key can call nothing but this API. |
 | Errors | Your shape, with these codes: `bad_request`, `unauthorized`, `forbidden_store`, `not_found`, `conflict` (an idempotency key reused with another body), `rejected` (a proposal the till refuses, e.g. an unknown code or an invoice already received), `rate_limited`, `server_error`, `unavailable` | |
-| `GET /proposals/{id}` | Statuses `pending`, `approved`, `rejected`, **`expired`** | A proposal nobody decides within 7 days expires. Only the key that made a proposal can read it. |
+| `GET /proposals/{id}` | Statuses `pending`, `approved`, `rejected`, **`expired`** | A proposal nobody decides within 7 days expires. Any Operations key of the company can read it (1.1.0). |
+
+### Your review (2026-11-21 and 22): what 1.1.0 does
+
+Fields and endpoints are only added; nothing you build against 1.0.0 changes.
+
+| # | Your ask | Done in 1.1.0 |
+|---|---|---|
+| 1 | Quote the five cut-off descriptions | Quoted. Our own check of every schema in the file now finds no stray keys, and it runs as a test, so a description cannot be cut off again unnoticed. Please re-run `redocly lint` on your side. |
+| 2 | Product codes, supplier codes and open purchase orders | **`GET /products`**: every flavour with its till `sku`, name, barcode and other barcodes, whether it is on sale, whether its code is a placeholder (`TMP-…`), and per supplier their code, their name, pieces per carton and preferred. **`GET /suppliers`**: each supplier's code (what a receipt gives as `vendor`), name and active. **`GET /orders?status=open`**: purchase orders sent or arrived and not yet received (the only ones a receipt may name), with their lines: sku, cartons, pieces per carton, pieces ordered, the supplier's code. All take `store_id`. **No supplier prices or costs** in any of them: a receipt takes them from the invoice, and cost does not leave the till. |
+| 4 | Reading proposals after a key change | Any Operations key of the company reads a proposal made by any of its Operations keys, so no overlap is needed for that. **Idempotency keys also hold across a key change**: a repeat sent with the new key returns the first proposal. Still make the next key before the old one expires, so no call fails. |
+| 5 | "Order or vendor" in the schema | `ReceiptPayload` has `anyOf: [{required: [order]}, {required: [vendor]}]`. |
+| Q | Does `422` "invoice already received" count pending and expired proposals? | It counts a delivery **received** and a proposal **still waiting** for the owner (same supplier, same invoice number, any case). A **rejected or expired** proposal does not count, so resending an expired delivery under a new idempotency key with the same invoice is accepted. This is now in the contract. |
 
 ### Your four questions
 
@@ -63,68 +75,45 @@ You get a staging key first, on invented data, then a production key from the ow
 
 ## Part 2 — Operations' review (card P0-02)
 
-**Verdict: accepted for building against.** Every field in the request is
-there with the meaning asked for, or changed for a stated reason (Part 1).
-The changes are taken into the plan and cards (see the end). Five small
-fixes are asked of the till side; none blocks phases 2–4.
+**Verdict: accepted, 1.1.0.** Every field in the request is there with the
+meaning asked for, or changed for a reason Part 1 gives. Two rounds of
+review (Nov 21 and 22) are closed.
 
-### Linter
+### Checks on 1.1.0
 
-`redocly lint` (recommended rules): **5 errors, 7 warnings.**
+| Check | Result |
+|---|---|
+| `redocly lint`, recommended rules | Valid: 0 errors. 10 warnings, all acceptable: errors are listed once under `default` instead of per 4xx code (9), and `info` has no `license` (1) |
+| Additive only, against 1.0.0 | Every path, parameter, schema property, required list and enum of 1.0.0 is unchanged; 42 items added |
 
-The five errors are one YAML problem. Inside `{ … }`, an unquoted
-description that contains a comma ends at the comma, and the rest becomes a
-stray property. The machine-readable contract is unaffected, but these
-descriptions are cut short for anyone generating docs or a client from the
-file:
+### The asks, and how 1.1.0 answered them
 
-| Line | Field | Reads as |
-|---:|---|---|
-| 282 | `SalesSummary.net` | "After discounts" |
-| 286 | `SalesSummary.total` | "What customers paid" |
-| 312 | `Shift.variance` | "counted - expected. Null while open" |
-| 409 | `ReceiptPayload.lines[].sku` | "The till's code" |
-| 426 | `ProposalCreated.expires_at` | "Seven days after it was made" |
-
-**Fix:** put those five descriptions in quotes.
-
-The warnings are acceptable: errors are listed once as `default` rather than
-per 4xx code, and there is no `license` in `info`.
-
-### Asked of the till side
-
-| # | What | Why it matters | Suggested fix | Nov 22 revision |
-|---|---|---|---|---|
-| 1 | Quote the five descriptions above | The contract should lint clean before it is frozen | Quotes | Open: the same five lint errors remain (now lines 284, 288, 316, 414, 431) |
-| 2 | **A way to read the till's product codes, supplier codes and open purchase orders** | A `receipt` needs the till's `sku` per line and an `order` or `vendor`. Without a list, a person types each code by hand, which is where mistakes come from | Add `GET /products?store_id=` (sku, name, barcode, active, supplier code, pieces per carton), `GET /suppliers`, and `GET /orders?store_id=&status=open`. Adding endpoints is allowed within v1 | Open |
-| 3 | `ProposalCreated.status` is only `pending`, but a repeat with the same key returns the earlier proposal, which may be approved, rejected or expired by then | A client generated from the file would reject a real answer | Allow all four statuses there, or say a repeat always answers with the current status | **Answered:** a repeat always answers `pending`; `GET /proposals/{id}` gives the current status. Operations reads that |
-| 4 | Only the key that made a proposal can read it, and keys last 90 days | After a key change, Operations can't see what happened to proposals the old key made | Let any Operations key of the same environment read its proposals; otherwise Operations keeps the overlap of two keys to at least 8 days | Open. Until answered, Operations keeps two keys overlapping for at least 8 days |
-| 5 | "Order or vendor" is in the description, not the schema | A payload with neither passes validation on Operations' side | `anyOf: [{required: [order]}, {required: [vendor]}]` on `ReceiptPayload` | Open. Operations checks it in its own code meanwhile |
-
-And one question, still open on Nov 22: does "invoice already received"
-(`422`) count only approved receipts, or pending and expired proposals too? Operations resends
-an expired receipt under a new idempotency key with the same invoice, and
-needs to know whether that is refused.
+| # | Ask | 1.1.0 |
+|---|---|---|
+| 1 | Quote five cut-off descriptions | Done; the till side now tests for it |
+| 2 | Product codes, supplier codes, open purchase orders | Done: `GET /products`, `GET /suppliers`, `GET /orders?status=open`. No prices or costs in any of them |
+| 3 | Status on a repeated proposal | A repeat always answers `pending`; `GET /proposals/{id}` gives the current status |
+| 4 | Reading proposals after a key change | Done: any Operations key of the company reads them, and idempotency keys hold across a key change |
+| 5 | "Order or vendor" in the schema | Done: `anyOf` on `ReceiptPayload` |
+| Q | What `422` "invoice already received" counts | A received delivery or a proposal still waiting. A rejected or expired one doesn't, so it can be resent under a new idempotency key |
 
 ### Taken into the plan
 
-- **PINs (D6):** Operations always checks its own PINs. The till link is for
-  staff and figures, not sign-in. ADR-0021 updated.
-- **Receipts (P5-05, P5-08):** vape receipt lines keep the invoice's shape
-  (pieces per carton, carton price, duty per carton) and the till's product
-  code; a vape delivery is sent as one `receipt` proposal, stock and cost
-  together. Until item 2 above exists, the till code is typed once per
-  supplier item and remembered.
+- **PINs (D6):** Operations always checks its own PINs. ADR-0021.
+- **Receipts (P5-05, P5-08):** vape lines keep the invoice's shape (pieces
+  per carton, carton price, duty per carton) and are matched to till codes
+  from `GET /products` (barcode, the supplier's own code, then name); the
+  supplier and order are picked from `GET /suppliers` and `GET /orders`.
+  The till gives no costs, so Operations' own `product_costs` is the cost
+  history for both stores.
 - **The vape close (P1-03, P5-03):** the till's `expected` includes
   `door_cash`; takings fields are `*_total`; `etransfer` has its own column.
-- **Keys (P5-02):** Operations records when its key expires and warns an
-  admin 14 days before.
+- **Keys (P5-02):** Operations records each key's expiry and warns an admin
+  14 days before. Proposals and idempotency keys survive a key change.
 - **Daily sales:** three channels, `till`, `online` and `delivery`. A
   pickup paid at the counter puts its surcharge, rounding and any counter
-  refund in `online`, so `online` + `delivery` differs from the dashboard's
-  "Online" by those amounts.
-- **Added Nov 22:** a sale or shift with no person recorded carries the nil
-  uuid and the name "Not known". Operations never links that id to a person,
-  and its sales count toward no one's commission; they are listed for a
-  manager to see. A day whose takings don't add up to its total (a till sale
-  the payments didn't cover) is shown with the till's flag, not rejected.
+  refund in `online`.
+- **"Not known" (the nil uuid):** never linked to a person; its sales count
+  toward no one's commission and are listed for a manager.
+- **Takings short of the total** (a till sale its payments didn't cover):
+  stored with the till's flag, never rejected.

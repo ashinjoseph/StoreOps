@@ -20,7 +20,7 @@ hand one out.
 | ID | Card | Tier | Needs | Flags | Status |
 |---|---|:-:|---|---|---|
 | P0-01 | Owner answers decisions D1–D12 | owner | | | todo |
-| P0-02 | Till API contract v1, from the owner | owner + T3 review | | security | waiting on owner: lint fixes |
+| P0-02 | Till API contract v1, from the owner | owner + T3 review | | security | done (1.1.0) |
 | P0-03 | Database schema contract | T3 | P0-01 | money | todo |
 | P0-04 | RPC contract file | T1 | | | todo |
 | P1-01 | Archive old audit-log rows (current app) | T2 | | | todo |
@@ -184,8 +184,8 @@ untouched); with it on and the API failing, the close still works by hand;
 ("The till, while building").
 **Make:** `ops/tools/till-check.ts`: with `TILL_API_BASE_URL` and
 `TILL_API_KEY` from the environment, call every `GET` in the contract
-(stores; staff, shifts for yesterday and sales for the last 7 days, for each
-store); validate each answer against the contract's schemas; print counts
+(stores; then for each store: staff, shifts for yesterday, sales for the
+last 7 days, products, suppliers and open orders); validate each answer against the contract's schemas; print counts
 and any schema differences. Never print the key. Never call `POST`.
 **Done when:** against the till's staging it reports every endpoint
 answering and matching the contract, or lists each difference for the owner;
@@ -493,7 +493,9 @@ kept together for tax filing. Product costs come out of it.
   supplier, unit cost, effective day, the receipt it came from);
 - vape lines keep the invoice's shape, as the till does: pieces per carton,
   carton price and duty per carton, with unit cost = (carton price + duty) /
-  pieces; plus the till's product code and the till's supplier code;
+  pieces; plus the till's product code and supplier code, picked from
+  `GET /products` and `GET /suppliers` (the till gives no costs, so this
+  table is the cost history for both stores);
 - photo upload to R2, the photo linked to its receipt;
 - a draft from the LLM gateway, and a review screen where a person corrects
   and confirms; record every field the reviewer changed;
@@ -527,13 +529,18 @@ written. Show the proposal's status, including `expired`. The idempotency
 key is `<receipt id>-<attempt>`, so a resend after expiry is a new proposal
 and a double press is not. No cron, no automatic send. The action doesn't
 exist for cstore receipts.
-Until the till lists its product codes (review item 2), the person types a
-till code once per supplier item and Operations remembers it.
+Match each invoice line to a till code from `GET /products`: by barcode,
+then the supplier's own code, then name, and let the person confirm or
+change each match. Offer the open orders from `GET /orders` for the
+supplier; with none, send `vendor`. A placeholder code (`sku_pending`) may
+be sent and is shown as such. After a `422` for a waiting proposal, show
+that one; after an expired or rejected one, resend under a new key.
 **Done when:** tests cover: nothing is sent until a person presses the
 button; pressing it twice makes one proposal; an expired proposal can be
 sent again; `422` shows the till's reason and leaves the receipt unsent;
 a cstore receipt can't be sent; till down, the receipt stays unsent with the
-error shown.
+error shown; a line is matched by barcode, and failing that by the
+supplier's own code; a line with no match goes in `not_matched`.
 A resend reads `GET /proposals/{id}` for the status: a repeated request
 always answers `pending`.
 

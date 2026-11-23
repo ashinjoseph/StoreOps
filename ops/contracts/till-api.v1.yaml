@@ -1,17 +1,22 @@
 openapi: 3.1.0
 info:
   title: Scarbro Mart till, Operations API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     What the till gives the Store Operations app. Agreed with the owner on 2026-11-21, from Operations' request
     "What Operations needs from the till, API v1". The covering note (OPS-API.md) lists what changed from that request and why.
+    1.1.0 (2026-11-22, from Operations' review): `GET /products`, `GET /suppliers` and `GET /orders`, so a receipt's codes are
+    picked, not typed; any Operations key of the company reads a proposal an earlier one made, and idempotency keys hold
+    across a key change; `ReceiptPayload` requires
+    `order` or `vendor` in the schema; descriptions quoted so the file lints clean. Nothing renamed or removed.
 
     **Ground rules**
     - **Key.** One key per Operations environment, sent as `Authorization: Bearer <key>`. The owner makes it in the Office
       (Setup, AI access, "Store Operations key"), with the 6-digit code. It is shown once, stored only as a hash, lasts
       **90 days**, and can be revoked at any time. Make the next key before the old one expires; both work until then.
       An Operations key can do nothing but this API, and no AI key can call it.
-    - **Reach.** Read-only, apart from `POST /proposals`. No customers, no order details, no loyalty, no card numbers.
+    - **Reach.** Read-only, apart from `POST /proposals`. No customers, no order details, no loyalty, no card numbers, and
+      no supplier prices or costs (a receipt takes them from the invoice).
     - **Logging.** Every call is recorded by the till: the key, the endpoint, its parameters, whether it succeeded, the time taken.
     - **Rate.** 60 requests a minute per key; more is `429` with `Retry-After`.
     - **Store.** Every request except `GET /stores` and `GET /proposals/{id}` names a `store_id` the key may see (`GET /stores`).
@@ -134,6 +139,74 @@ paths:
                   days: { type: array, items: { $ref: '#/components/schemas/DailyRow' } }
         default: { $ref: '#/components/responses/Error' }
 
+  /products:
+    get:
+      summary: The till's product codes, for a receipt's lines
+      description: |
+        Every flavour in the till's catalogue (the company's stores share one), on sale or not, with the codes a delivery is
+        matched on: the till's `sku`, the barcodes, and each supplier's own code and carton. No prices or costs.
+      operationId: listProducts
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [store_id, products]
+                properties:
+                  store_id: { type: string, format: uuid }
+                  products: { type: array, items: { $ref: '#/components/schemas/Product' } }
+        default: { $ref: '#/components/responses/Error' }
+
+  /suppliers:
+    get:
+      summary: The till's supplier codes, for a receipt's `vendor`
+      operationId: listSuppliers
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [store_id, suppliers]
+                properties:
+                  store_id: { type: string, format: uuid }
+                  suppliers: { type: array, items: { $ref: '#/components/schemas/Supplier' } }
+        default: { $ref: '#/components/responses/Error' }
+
+  /orders:
+    get:
+      summary: Purchase orders a receipt can name
+      description: |
+        The till's purchase orders that are sent or arrived and not yet received: the only ones a `receipt` may give as
+        `order`. Ordered quantities and the supplier's codes; no prices or costs.
+      operationId: listOrders
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [open], default: open }
+          description: 'Only `open` in v1.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [store_id, orders]
+                properties:
+                  store_id: { type: string, format: uuid }
+                  orders: { type: array, items: { $ref: '#/components/schemas/PurchaseOrder' } }
+        default: { $ref: '#/components/responses/Error' }
+
   /proposals:
     post:
       summary: Propose a change for the owner to approve in the Office
@@ -144,6 +217,7 @@ paths:
         delivery (owner, 2026-11-21).
 
         `idempotency_key` repeated with the same body returns the first proposal (`200`); with a different body it is `409`.
+        It holds across a key change: the company's Operations keys share one set of idempotency keys.
       operationId: createProposal
       requestBody:
         required: true
@@ -165,7 +239,10 @@ paths:
 
   /proposals/{proposal_id}:
     get:
-      summary: Where a proposal this key made stands
+      summary: Where a proposal stands
+      description: |
+        Any Operations key of the company reads a proposal made by any Operations key of the company, so a proposal made
+        before a key change can still be followed. A proposal made by an AI assistant's key is never shown here.
       operationId: getProposal
       parameters:
         - name: proposal_id
@@ -199,9 +276,9 @@ components:
       description: |
         `400 bad_request` (a parameter missing or wrong; the message says which) · `401 unauthorized` (no key, an unknown,
         expired or revoked key, or a key that is not an Operations key) · `403 forbidden_store` (a store this key may not see) ·
-        `404 not_found` (no such endpoint, or a proposal this key did not make) · `409 conflict` (an idempotency key reused with
-        a different body) · `422 rejected` (a proposal the till refuses: an unknown SKU or supplier, an invoice already
-        received; the message says why) · `429 rate_limited` · `500 server_error` · `503 unavailable` (the database did not
+        `404 not_found` (no such endpoint, or no proposal by an Operations key of this company) · `409 conflict` (an idempotency key reused with
+        a different body) · `422 rejected` (a proposal the till refuses: an unknown SKU, supplier or order, an invoice already
+        received or still waiting for the owner; the message says why) · `429 rate_limited` · `500 server_error` · `503 unavailable` (the database did not
         answer; try again later).
       content:
         application/json:
@@ -281,11 +358,11 @@ components:
         refund_count: { type: integer, description: Refunds. }
         subtotal: { type: number, description: Before discounts and HST. }
         discount: { type: number }
-        net: { type: number, description: After discounts, before HST. }
+        net: { type: number, description: 'After discounts, before HST.' }
         surcharge: { type: number, description: The credit card surcharge. }
         rounding: { type: number, description: Cash rounding to the nickel. }
         hst: { type: number }
-        total: { type: number, description: What customers paid, less what was refunded. }
+        total: { type: number, description: 'What customers paid, less what was refunded.' }
 
     Shift:
       type: object
@@ -313,7 +390,7 @@ components:
             paid out) **plus `door_cash`**. The till's part is as counted at close and is not recalculated after a later void
             (`last_corrected_at` says one happened). Null while open.
         counted: { type: [number, 'null'], description: Null while open. }
-        variance: { type: [number, 'null'], description: counted - expected. Null while open, never 0 for "unknown". }
+        variance: { type: [number, 'null'], description: 'counted - expected. Null while open, never 0 for "unknown".' }
         close_note: { type: [string, 'null'] }
         cash_moves:
           type: object
@@ -397,7 +474,12 @@ components:
         A supplier delivery. Give `order` (the till's purchase order, `PO-0003`) or `vendor` (the till's supplier code) for a
         delivery nobody ordered in the till. Each line's cost becomes `(carton_price + duty_per_carton) / pieces`; a line may
         leave out what the till already knows for that supplier and product. Stock goes up by `received` when approved.
+        The same supplier's invoice is refused (`422`) while a proposal for it waits for the owner, and once it has been
+        received; a rejected or expired proposal does not count, so it may be sent again under a new idempotency key.
       required: [invoice, invoiced_on, lines]
+      anyOf:
+        - required: [order]
+        - required: [vendor]
       properties:
         order: { type: string, pattern: '^PO-[0-9]{4,}$' }
         vendor: { type: string }
@@ -411,7 +493,7 @@ components:
             type: object
             required: [sku, received]
             properties:
-              sku: { type: string, description: The till's code, e.g. YV-23649. Each once. }
+              sku: { type: string, description: 'The till''s code (GET /products), e.g. YV-23649. Each once.' }
               received: { type: integer, minimum: 0, maximum: 99999, description: Pieces received. }
               pieces: { type: integer, minimum: 1, maximum: 500, description: Pieces in a carton. }
               carton_price: { type: number, description: Before duty and HST. }
@@ -428,7 +510,7 @@ components:
       properties:
         proposal_id: { type: string, format: uuid }
         status: { type: string, enum: [pending], description: 'Also on a repeated request (200) after the owner decided: ask GET /proposals/{id} for where it stands.' }
-        expires_at: { type: string, format: date-time, description: Seven days after it was made, if the owner has not decided. }
+        expires_at: { type: string, format: date-time, description: 'Seven days after it was made, if the owner has not decided.' }
 
     ProposalStatus:
       type: object
@@ -439,3 +521,57 @@ components:
         decided_at: { type: [string, 'null'], format: date-time }
         decided_by: { type: [string, 'null'], description: The name of the person who decided. }
         note: { type: [string, 'null'], description: The owner's note when deciding. }
+
+    Product:
+      type: object
+      required: [sku, name, product, barcode, barcode_aliases, active, sku_pending, suppliers]
+      properties:
+        sku: { type: string, description: 'The till''s code: what a receipt line gives.' }
+        name: { type: string, description: 'Product and flavour, as the till shows it.' }
+        product: { type: string }
+        barcode: { type: [string, 'null'] }
+        barcode_aliases: { type: array, items: { type: string }, description: Other barcodes that ring this flavour. }
+        active: { type: boolean, description: On sale. A delivery of one not on sale may still be received. }
+        sku_pending: { type: boolean, description: 'A placeholder code (TMP-…) for a flavour not yet given its YV- code.' }
+        suppliers:
+          type: array
+          items:
+            type: object
+            required: [vendor, their_code, their_name, pieces, preferred]
+            properties:
+              vendor: { type: string, description: The supplier's code (GET /suppliers). }
+              their_code: { type: [string, 'null'], description: The supplier's own code for it. }
+              their_name: { type: [string, 'null'], description: The supplier's own name for it. }
+              pieces: { type: integer, description: Pieces in the supplier's carton. }
+              preferred: { type: boolean }
+
+    Supplier:
+      type: object
+      required: [vendor, name, active]
+      properties:
+        vendor: { type: string, description: 'The till''s supplier code: what a receipt gives as `vendor`.' }
+        name: { type: string }
+        active: { type: boolean }
+
+    PurchaseOrder:
+      type: object
+      required: [order, vendor, status, created_at, sent_at, arrived_at, lines]
+      properties:
+        order: { type: string, description: 'e.g. PO-0003: what a receipt gives as `order`.' }
+        vendor: { type: string }
+        status: { type: string, enum: [sent, arrived] }
+        created_at: { type: string, format: date-time }
+        sent_at: { type: [string, 'null'], format: date-time }
+        arrived_at: { type: [string, 'null'], format: date-time }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [sku, name, cartons, pieces, ordered_pieces, their_code]
+            properties:
+              sku: { type: string }
+              name: { type: string }
+              cartons: { type: integer }
+              pieces: { type: integer, description: Pieces in a carton. }
+              ordered_pieces: { type: integer, description: cartons x pieces. }
+              their_code: { type: [string, 'null'] }
