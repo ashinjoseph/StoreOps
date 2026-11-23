@@ -117,3 +117,74 @@ review (Nov 21 and 22) are closed.
   toward no one's commission and are listed for a manager.
 - **Takings short of the total** (a till sale its payments didn't cover):
   stored with the till's flag, never rejected.
+
+### Staging retrieval check
+
+**2026-11-23, contract 1.1.0, staging** (`staging--scarbromart-office.netlify.app/ops/v1`,
+invented data). Card P1-04's checks run once by hand, with GETs only and no
+`POST`: 10 requests, a little over one a second, with the key added by the session's
+network proxy. Every answer was validated against the contract's schemas
+(required fields, types, enums, nullability, uuid/date/date-time formats)
+and against its arithmetic rules. The script itself (`ops/tools/till-check.ts`)
+is still to be written. Raw answers were kept out of the repo. Below are
+figures and field paths only.
+
+| Endpoint | Asked | Status | Count | Schema differences |
+|---|---|---|---|---|
+| `GET /stores` | | 200 | 1 store | 0 |
+| `GET /staff` | the store | 200 | 7 (1 owner, 6 store_manager; 3 active; 2 with a PIN) | 0 |
+| `GET /shifts` | 2026-11-22, then back a day at a time | 200 ×4 | 22nd, 21st, 20th: 0 each. 19th: 3 (1 `closed`, 2 `auto_closed`) | 0 |
+| `GET /sales/daily` | 2026-11-16 to 2026-11-22 | 200 | 6 rows over 3 days (17th to 19th): 3 `till`, 2 `online`, 1 `delivery` | 0 |
+| `GET /products` | the store | 200 | 224 (218 active, 59 `sku_pending`, 59 with no barcode, 2 supplier links) | 0 |
+| `GET /suppliers` | the store | 200 | 1 (active) | 0 |
+| `GET /orders` | the store (default `open`) | 200 | 0 | 0 |
+
+**Rules checked, all held:**
+
+- `variance = counted − expected` on the one `closed` shift
+  (50.00 − 50.00 = 0.00).
+- `net = subtotal − discount` and `total = net + surcharge + hst + rounding`
+  on all 3 shifts and all 6 daily rows, refunds and a −0.01 rounding included.
+- Every method's `net_total = sales_total + refunds_total`, with `sales_total`
+  ≥ 0 and `refunds_total` ≤ 0.
+- In `sales/daily`, the takings' `net_total`s equal `sales_summary.total` on
+  all 6 rows. No row needed the under-paid exception. They also matched on all
+  3 shifts, where the contract doesn't promise it.
+- `delivery` is on the `delivery` row only, and its fees (19.96 on 4 orders)
+  are inside its subtotal. There is one row per day and channel, all inside
+  the range asked.
+- On each shift, `staff_takings[].net` sums to `sales_summary.net`.
+- The `closed` shift's one sale (paid by e-transfer) is a website pickup paid
+  at the counter. Its 16.10 is in that shift's takings, and in the day's
+  `online` row (66.94 = 16.10 + 50.84), not in `till`, as Part 1 says.
+- Every vendor on a product is in `GET /suppliers`. There are no duplicate
+  SKUs, and `sku_pending` agrees with a `TMP-` code on every product.
+
+**Differences from the contract: none.** Nothing missing, mistyped, outside
+an enum or wrongly null. No fields beyond the contract.
+
+**Not covered, because staging has no data for it:** a `PurchaseOrder` (no
+open orders, so the `orders` schema was only checked on an empty list); an
+under-paid sale; the nil uuid ("Not known"); `last_corrected_at` set; a
+shift past midnight; and more than one supplier.
+
+**To ask the till side:**
+
+1. **What does `auto_closed` mean, and which fields may be null on it?** The
+   contract only says the close fields are "null while open". On staging, one
+   `auto_closed` shift has `z_number`, `expected`, `counted` and `variance` all
+   null. Another has `z_number` and `expected` (50.00) but `counted` and
+   `variance` null. Operations will read a null `counted` as *not counted*,
+   never 0 (ADR-0004). Please confirm, and say whether `closed_by` can be null
+   on a `closed` shift.
+2. **Door cash on a shift closed without a count.** That first `auto_closed`
+   shift has `door_cash` of 2 orders, 112.96, and `expected` null. Where does
+   that cash go: into the next shift's `expected`, or nowhere?
+3. **How Operations can see an under-paid sale.** `DailyRow` has no field for
+   the "To check" flag, so a gap between takings and total can't be told apart
+   from an error. Could a count or amount of flagged sales be added (additive
+   in v1)?
+4. **More staging data.** Please add an open purchase order with lines, a
+   second supplier, more supplier links on products, a refund inside a
+   shift, a sale with no person recorded, and a void after close. Then the
+   untested shapes above get checked before the production key.
