@@ -465,7 +465,12 @@ its own column. A shift belongs to the business day it opened.
 An empty `counted` (including on an `auto_closed` shift) is *not counted*:
 shown as such, `variance` left empty, never 0. Door cash belongs to the
 shift open when the delivery was recorded, and the driver answers for it,
-not the cashier (owner, Nov 23; how the till records it is still open).
+not the cashier (owner, Nov 23). Once the till sends the driver handover
+(`door_cash.collected_total`, `handed_over_total`, `driver`,
+`handed_over_at`; asked Nov 23), store it as its own snapshot row and show
+two figures: the driver's gap (`handed_over_total − collected_total`) and
+the cashier's variance. A handover not yet made shows as *with the driver*.
+Neither gap is ever taken from pay; both go to a manager.
 `staff_takings` rows with the nil uuid count toward no one's commission and
 are shown to the manager. Takings that don't add up to the sales total (the
 till's "To check" case) are stored and flagged, never rejected.
@@ -521,6 +526,12 @@ per model: passed validators, fields a person had to correct, cost.
 ### P5-07 · Delivery runs · T3
 Write the spec with the owner first (who drives, what an order needs at the
 door, what counts as delivered). Then split the build into cards.
+The spec must cover the driver's door cash: per run, cash the deliveries
+collected, the handover at the till (from the till's `door_cash` handover
+fields), the driver's gap, and cash still *with the driver* at the end of a
+run. A driver's gap is shown to a manager and never taken from pay (Ontario
+limits deductions for cash shortages; check with the bookkeeper before any
+policy).
 
 ### P5-08 · Send a vape delivery to the till, on a button · T2 · money
 **Read:** `ops/contracts/till-api.v1.yaml` (`POST /proposals`, kind

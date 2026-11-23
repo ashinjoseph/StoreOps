@@ -196,10 +196,30 @@ shift past midnight; and more than one supplier.
    leaves `variance` empty (ADR-0004).
 2. **Door cash belongs to the shift that was open when the delivery was
    recorded,** even if that shift closes without a count. The driver, not
-   the cashier, answers for it. How the till should record that is open:
-   Operations' proposal is a driver handover at the till (see the plan,
-   P5-03).
+   the cashier, answers for it. **Agreed with the owner: a driver handover
+   at the till**, asked of the till side below.
 3. The owner is asking the till side for a field showing flagged
    under-paid sales.
 4. The owner is asking the till side for more staging data.
+
+**Asked of the till side (2026-11-23): door cash as a driver handover.**
+When the driver brings door cash back, the till records a handover: the
+driver, the deliveries it covers, and the amount counted at the till. The
+drawer then answers for what was counted, and the driver for any gap
+against what the deliveries collected. Additive in v1; nothing renamed:
+
+| Field on `door_cash` | Meaning |
+|---|---|
+| `collected_total` | Cash the delivery records say was collected at the door |
+| `handed_over_total` | Cash counted at the till when the driver handed it in; `null` until then |
+| `driver` | `{staff_id, name}` of the driver who handed it in; `null` until then |
+| `handed_over_at` | When it was handed in; `null` until then |
+
+- `expected` includes `handed_over_total`, not `collected_total`. Until the
+  handover, the amount is with the driver and in no drawer.
+- The driver's gap is `handed_over_total − collected_total`. The cashier's
+  `variance` stays `counted − expected`.
+- It stays with the shift that was open when the delivery was recorded,
+  even if that shift closes without a count.
+- Today's `door_cash.total` is kept as it is (it equals `collected_total`).
 
