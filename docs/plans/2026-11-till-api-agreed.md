@@ -188,3 +188,18 @@ shift past midnight; and more than one supplier.
    second supplier, more supplier links on products, a refund inside a
    shift, a sale with no person recorded, and a void after close. Then the
    untested shapes above get checked before the production key.
+
+**Owner's answers (2026-11-23):**
+
+1. **Accepted.** An empty `counted` means *not counted*, never 0, on any
+   shift (`auto_closed` included). Operations shows it as not counted and
+   leaves `variance` empty (ADR-0004).
+2. **Door cash belongs to the shift that was open when the delivery was
+   recorded,** even if that shift closes without a count. The driver, not
+   the cashier, answers for it. How the till should record that is open:
+   Operations' proposal is a driver handover at the till (see the plan,
+   P5-03).
+3. The owner is asking the till side for a field showing flagged
+   under-paid sales.
+4. The owner is asking the till side for more staging data.
+

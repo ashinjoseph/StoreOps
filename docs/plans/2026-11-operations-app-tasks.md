@@ -462,6 +462,10 @@ with the time fetched, and prefill the close for the cashier to confirm. A
 later difference between the till and the snapshot is flagged, never applied.
 Use the till's `expected`, which includes `door_cash`; store door cash as
 its own column. A shift belongs to the business day it opened.
+An empty `counted` (including on an `auto_closed` shift) is *not counted*:
+shown as such, `variance` left empty, never 0. Door cash belongs to the
+shift open when the delivery was recorded, and the driver answers for it,
+not the cashier (owner, Nov 23; how the till records it is still open).
 `staff_takings` rows with the nil uuid count toward no one's commission and
 are shown to the manager. Takings that don't add up to the sales total (the
 till's "To check" case) are stored and flagged, never rejected.
