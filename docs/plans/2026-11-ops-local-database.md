@@ -171,7 +171,22 @@ Operations reads the till through two settings, never a hard-coded address:
 | Once the till team runs its staging in Docker | The address of that setup | Its own staging key |
 | Production | `https://office.scarbromart.ca/ops/v1` | The production key, made by the owner |
 
-Changing between them is a settings change, not a code change. Unit tests
+Changing between them is a settings change, not a code change.
+
+**Where a till key is kept.** Never in the repo, the chat, a ticket, or the
+current app's `config` tab, which anyone with Sheet access can read.
+
+| Place | What goes there |
+|---|---|
+| The owner's password manager | Every key, with the date it expires (90 days after it was made). This is the copy the others are made from |
+| `ops/.dev.vars` (ignored by git) | The staging key, for `wrangler dev` and the retrieval check on a developer's machine |
+| Cloudflare Worker secret `TILL_API_KEY`, per environment | Staging key on the staging Worker; production key on production only |
+| The cloud session's network secret for the till's host | Only so Claude can run the retrieval check; entered in a secure form, injected by the proxy, never seen by Claude |
+| Apps Script **Script Properties** | Only if P1-03 is built on the current app: the production key, never in the `config` tab |
+
+Operations stores only the expiry date as a setting (`till_api_key_expires_on`),
+for the 14-day warning. A leaked key is revoked in the Office and replaced;
+that is all it takes. Unit tests
 never call a till: they use a fake built from the contract. Only the
 retrieval check (card P1-04) calls a real one. If the till team's Docker
 staging is reachable only on their own machine, Operations' cloud staging
