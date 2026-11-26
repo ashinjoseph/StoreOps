@@ -61,6 +61,7 @@ flowchart LR
 | know why something is the way it is | [Decisions (ADRs)](adr/README.md): 19 recorded decisions, plus 3 proposed |
 | see where it's going | [Migration plan](plans/2026-11-operations-app-migration.md): off Sheets to its own app, in small task cards (draft) |
 | set it up | [Setup guide](guides/setup.md) |
+| rehearse the move off Sheets | [Dry run](guides/cutover-dry-run.md): the real Sheet into a local database, with a report of every difference |
 | change it safely | [Testing](guides/testing.md) and [keeping the docs current](guides/docs-process.md) |
 | present it | [Showcase](showcase.md): a ten-minute tour for an interview or a management review |
 | find a module, RPC or column fast | [Code map](reference/code-map.md) and [schema](reference/schema.md), both generated from the code |

@@ -685,6 +685,11 @@ built.
 ### P4-04 · Dry run on a copy of production · T3 + owner · money
 Export production, import to staging, run P4-03, explain every difference in
 writing. Two people then use staging for a normal day beside the real app.
+**First, a local rehearsal that needs no hosting:**
+[docs/guides/cutover-dry-run.md](../guides/cutover-dry-run.md) takes the real
+Sheet through export, import and the check on the owner's own computer.
+Run end to end on the fictional data on Nov 26: clean result, a second
+import refused, and a planted one-cent change reported.
 **Done when:** the owner signs off the reconcile report.
 
 ### P4-05 · Cutover runbook, then the switch · T3 + owner · money
