@@ -39,7 +39,7 @@ hand one out.
 | P2-08b | UI served by the Worker; login round-trips | T2 | P2-08a, P2-07 | | done (the login screen's name list comes with P3-01) |
 | P2-09a | Sheet rows into the new database (fixture loader) | T2 | P2-02 | money | done |
 | P2-09 | Parity harness | T3 | P2-07, P2-09a | | done |
-| P2-09b | Parity fixture: a payroll admin and an inactive person | T2 | P2-09 | | in progress |
+| P2-09b | Parity fixture: a payroll admin and an inactive person | T2 | P2-09 | | done |
 | P2-10 | Staging deploy | T2 | P2-08b | security | todo |
 | P3-01 | Port Staff | T1 | P2-09 | | in progress |
 | P3-02 | ~~Port ProductTypes and ProductMaster~~ | | | | dropped |
@@ -48,7 +48,7 @@ hand one out.
 | P3-05 | Port the shift core: Attendance, TillSessions, Sales | T2 | P3-01 | money | todo |
 | P3-06 | Port CashHandling | T2 | P3-05 | money | todo |
 | P3-07 | Port Clover and Reconcile | T2 | P3-06, P3-08 | money | todo |
-| P3-08 | Port Notifier (WhatsApp) | T2 | P2-09 | security | todo |
+| P3-08 | Port Notifier (WhatsApp) | T2 | P2-09 | security | in progress |
 | P3-09 | Port Payments and Bonuses | T2 | P3-05 | money | todo |
 | P3-10 | Port CommissionRules, Commissions, weekly cron | T2 | P3-09 | money | todo |
 | P3-11 | Port the sales dashboard and insights | T2 | P3-05 | | todo |
