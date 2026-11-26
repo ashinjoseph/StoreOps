@@ -61,7 +61,7 @@ hand one out.
 | P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | done |
 | P4-01 | Sheet export tool | T2 | P0-03 | | done (not yet run on a real download) |
 | P4-02 | Import tool with a rejects file | T2 | P4-01, P2-02 | money | done (not yet run on real data) |
-| P4-03 | Reconcile report: Sheet against database | T2 | P4-02 | money | in progress |
+| P4-03 | Reconcile report: Sheet against database | T2 | P4-02 | money | done (not yet run on real data) |
 | P4-04 | Dry run on a copy of production | T3 + owner | P3-12, P4-03 | money | todo |
 | P4-05 | Cutover runbook, then the switch | T3 + owner | P4-04 | money | todo |
 | P4-06 | Nightly export to a Google Sheet | T2 | P4-05 | | todo |
@@ -654,6 +654,33 @@ the sum of every money column, Sheet beside database, with differences.
 one-cent change is reported. Optional: if the owner provides a one-off cstore
 ePOS export, a second report compares its card totals with the Sheet's
 cstore `card_total_sales` per day.
+**Done (Nov 26):**
+`npm --prefix ops run reconcile:import -- <export-dir> --import-report <import-report.json> [--out <dir>]`,
+with `OPS_DB_READ_URL` in the environment (the read-only role; never
+printed). It reads the export, the import's report and `rejects.csv`, and
+the database in one read-only snapshot, and exits 0 only when there is no
+unexplained difference. What it checks:
+- every row and every column the Sheet has, matched by id: money to the
+  cent, dates by their Toronto day, times to the instant, blank against
+  blank (a blank that became 0 is a difference even though no sum changes);
+- per table and per month: row counts, the sum of every money column
+  (added in whole cents, never as fractions), and the count of blanks;
+- the order of rows, for the tables that keep it;
+- nothing extra in the database; no secret setting loaded; a PIN hash set
+  for exactly the people who had a login code, and never the code itself;
+- the import's own report: every rejected or left-out row it lists must be
+  a real row of the export, and the totals must add up.
+It computes the Sheet's side with its own arithmetic, not the importer's
+code (a test forbids the import), so a mistake in the importer cannot
+cancel out. Rows the import rejected or left out on purpose are listed
+separately with the money they carry. The report shows sums per month and
+the size of a difference in cents; it never shows a name, a note, a pay
+rate or a row's figures.
+**Limits:** it compares the export with the database, not the live Sheet
+with the export (the export tool's first-run checks cover that); it cannot
+verify a PIN without the secret; and a row the import rejected is listed,
+not judged: the owner reads that list. The optional ePOS comparison is not
+built.
 
 ### P4-04 · Dry run on a copy of production · T3 + owner · money
 Export production, import to staging, run P4-03, explain every difference in
