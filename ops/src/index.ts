@@ -12,7 +12,7 @@ import rpcContractJson from "../contracts/rpc.json";
 import { connect } from "./db/client";
 import { notFound } from "./router";
 import { parseRpcContract, type RpcContract } from "./rpc/contract";
-import { handlers, resolveSession } from "./rpc/registry";
+import { ERROR_PREFIXED, handlers, resolveSession } from "./rpc/registry";
 import { createRpcRouter } from "./rpc/router";
 
 export interface Env {
@@ -62,6 +62,7 @@ function rpcRouter(env: Env): RpcHandle {
       contract,
       handlers,
       resolveSession,
+      errorPrefixed: ERROR_PREFIXED,
       env,
       openDb: async () => connect(connectionString(env)),
     });

@@ -34,6 +34,8 @@ export interface RpcRouterDeps {
   resolveSession: (db: Tx, token: unknown, now: Date) => Promise<Session>;
   /** The Worker's bindings, passed through to handlers. */
   env: Readonly<Record<string, unknown>>;
+  /** RPC names whose readable errors go out as "<name>: <message>", as their old functions wrapped them. */
+  errorPrefixed?: ReadonlySet<string>;
   /** Outbound HTTP handed to handlers as `ctx.fetch`. Default: the runtime's own `fetch`. */
   fetch?: typeof fetch;
   /** The clock, read once per call. Default: the real time (the only place it is read). */
@@ -190,7 +192,7 @@ export function createRpcRouter(deps: RpcRouterDeps): (request: Request) => Prom
       });
       return reply(200, body);
     } catch (err) {
-      if (isReadable(err)) return failure(200, err.message);
+      if (isReadable(err)) return failure(200, deps.errorPrefixed?.has(name) ? `${name}: ${err.message}` : err.message);
       return fault(name, err);
     } finally {
       await conn.close().catch(() => undefined);

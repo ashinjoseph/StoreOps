@@ -34,34 +34,30 @@ function pageRecord(r: BonusRecord) {
 
 /**
  * Admin or payroll admin: the bonuses waiting for approval, oldest first. The old function wrapped every
- * failure, a refusal included, as "rpcGetProposedBonuses: <message>"; only a failure inside the handler is
- * wrapped here (the router answers the session and role refusals itself, without the prefix).
+ * failure, a refusal included, as "rpcGetProposedBonuses: <message>": the router adds that prefix
+ * (registry.ts ERROR_PREFIXED), so nothing is wrapped here.
  */
 export const rpcGetProposedBonuses: RpcHandler = async (ctx) => {
-  try {
-    who(ctx);
-    const names = new Map((await staff.getAll(ctx.db)).map((s) => [s.staffId, s.name]));
-    return (await bonuses.getProposed(ctx.db)).map((b) => {
-      const at = bonuses.instantsOf(b);
-      return {
-        bonusId: b.bonusId,
-        staffId: b.staffId,
-        staffName: names.get(b.staffId) || b.staffId,
-        type: b.type,
-        amount: b.amount || 0,
-        reason: b.reason || "",
-        date: at.date,
-        status: b.status,
-        periodStart: at.periodStart,
-        periodEnd: at.periodEnd,
-        company: b.company || "",
-        sourceRunId: b.sourceRunId || "",
-        notes: b.notes || "",
-      };
-    });
-  } catch (e) {
-    throw new Error("rpcGetProposedBonuses: " + (e instanceof Error ? e.message : String(e)));
-  }
+  who(ctx);
+  const names = new Map((await staff.getAll(ctx.db)).map((s) => [s.staffId, s.name]));
+  return (await bonuses.getProposed(ctx.db)).map((b) => {
+    const at = bonuses.instantsOf(b);
+    return {
+      bonusId: b.bonusId,
+      staffId: b.staffId,
+      staffName: names.get(b.staffId) || b.staffId,
+      type: b.type,
+      amount: b.amount || 0,
+      reason: b.reason || "",
+      date: at.date,
+      status: b.status,
+      periodStart: at.periodStart,
+      periodEnd: at.periodEnd,
+      company: b.company || "",
+      sourceRunId: b.sourceRunId || "",
+      notes: b.notes || "",
+    };
+  });
 };
 
 /** Admin or payroll admin: a proposed bonus becomes pending. */

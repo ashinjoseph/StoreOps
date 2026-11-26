@@ -51,7 +51,7 @@ hand one out.
 | P3-06 | Port CashHandling | T2 | P3-05b | money | todo |
 | P3-07 | Port Clover and Reconcile | T2 | P3-06, P3-08 | money | todo |
 | P3-08 | Port Notifier (WhatsApp) | T2 | P2-09 | security | done |
-| P3-09a | Port Bonuses | T2 | P3-05a | money | in progress |
+| P3-09a | Port Bonuses | T2 | P3-05a | money | done |
 | P3-09b | Port Payments (pay, undo, owed, history) | T2 | P3-09a, P3-08 | money | todo |
 | P3-10 | Port CommissionRules, Commissions, weekly cron | T2 | P3-09a | money | todo |
 | P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | todo |

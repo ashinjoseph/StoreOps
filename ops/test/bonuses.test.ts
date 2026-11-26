@@ -183,8 +183,8 @@ describe("rpcGetProposedBonuses", () => {
     const out = await rpc(rpcGetProposedBonuses, ADMIN, []);
     expect(out.find((b: any) => b.bonusId === "B_P4").staffName).toBe("S_002");
   });
-  it("a failure inside is passed on with the old prefix, and no session is a failure", async () => {
-    await expect(rpc(rpcGetProposedBonuses, null, [])).rejects.toThrow("rpcGetProposedBonuses: NOT_LOGGED_IN");
+  it("no session is a failure; the handler adds no prefix (the router does, for the nine old RPCs that had one)", async () => {
+    await expect(rpc(rpcGetProposedBonuses, null, [])).rejects.toThrow(/^NOT_LOGGED_IN$/);
   });
   it("reads only: nothing is written", async () => {
     await rpc(rpcGetProposedBonuses, PAYROLL, []);
@@ -305,8 +305,8 @@ describe("rpcCreateBonus", () => {
     expect(a.bonusId).not.toBe(b.bonusId);
     expect(await count()).toBe(ROWS.length + 2);
   });
-  it("an unknown company is refused by the database, as a database error (the Sheet took any text; kept out of the page's reach)", async () => {
-    await expect(rpc(rpcCreateBonus, ADMIN, [{ staffId: "S_003", type: "bonus", amount: 5, reason: "r", company: "grocery" }])).rejects.toThrow(/check constraint/);
+  it("an unknown company is refused with a readable message before the insert (the Sheet took any text)", async () => {
+    await expect(rpc(rpcCreateBonus, ADMIN, [{ staffId: "S_003", type: "bonus", amount: 5, reason: "r", company: "grocery" }])).rejects.toThrow("Invalid company: grocery");
     expect(await count()).toBe(ROWS.length);
   });
 });
@@ -634,6 +634,30 @@ describe("two admins at once", () => {
     } finally {
       await a.close();
       await b.close();
+    }
+  });
+});
+
+describe("what the Sheet took and the database refuses (added in review)", () => {
+  it("an unreadable date and an unknown company are refused with a readable message, and nothing is written", async () => {
+    const tdb = await createTestDb();
+    const c = await connect(tdb.appUrl);
+    try {
+      await c.query("insert into ops.staff (staff_id, name, active, role) values ('S1', 'Asha Example', true, 'admin')");
+      const now = new Date(Date.UTC(2026, 10, 20, 15, 0, 0));
+      const base = { staffId: "S1", type: "bonus", amount: 10, reason: "test", actorId: "S1" };
+      await expect(bonuses.create(c, { ...base, date: new Date("not-a-date") }, now)).rejects.toThrow("Invalid date");
+      await expect(bonuses.create(c, { ...base, company: "grocery" }, now)).rejects.toThrow("Invalid company: grocery");
+      for (const err of [await bonuses.create(c, { ...base, date: new Date(NaN) }, now).catch((e: unknown) => e), await bonuses.create(c, { ...base, company: "grocery" }, now).catch((e: unknown) => e)]) {
+        expect(Object.getPrototypeOf(err)).toBe(Error.prototype); // a plain Error: the router shows it, not SERVER_ERROR
+      }
+      expect((await c.one<{ n: number }>("select count(*)::int as n from ops.bonuses")).n).toBe(0);
+      expect((await c.one<{ n: number }>("select count(*)::int as n from ops.audit_log")).n).toBe(0);
+      expect((await bonuses.create(c, { ...base, company: "vape" }, now)).company).toBe("vape");
+      expect((await bonuses.create(c, { ...base, company: "" }, now)).company).toBe("");
+    } finally {
+      await c.close();
+      await tdb.drop();
     }
   });
 });

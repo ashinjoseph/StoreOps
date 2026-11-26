@@ -113,8 +113,10 @@ export const bonusesCases: ParityCase[] = [
     step("rpcCreateBonus", { as: "admin", args: [null] }),
     step("rpcCreateBonus", { as: "admin", args: ["text"] }),
   ]),
-  paritySequence("rpcCreateBonus: an unreadable date", { writes: WRITES }, [create(input({ date: "not-a-date" })), create(input({ date: "2026-13-45" })), list()]),
-  paritySequence("rpcCreateBonus: an unknown company", { writes: WRITES }, [create(input({ company: "grocery" })), list()]),
+  // No parity case for an unreadable date or a company outside cstore / vape. The Sheet stored
+  // both (an invalid date cell; any text); the new schema refuses them, so the new app answers
+  // "Invalid date" / "Invalid company: …" and writes nothing. The page sends neither.
+  // ops/test/bonuses.test.ts covers the refusals. (Orchestrator's decision, review of P3-09a.)
   paritySequence("rpcCreateBonus: an actorId in the input is ignored; the session decides", { writes: WRITES }, [
     create(input({ actorId: "S_003", createdBy: "S_003" })),
   ]),

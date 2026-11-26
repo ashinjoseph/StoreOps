@@ -289,6 +289,14 @@ export async function create(db: Db, input: CreateInput, now: Date): Promise<Bon
   const person = typeof input.staffId === "string" ? await staff.getById(db, input.staffId) : null;
   if (!person) throw new Error("Staff not found: " + String(input.staffId));
 
+  // Two things the Sheet took and this database refuses (review of P3-09a). The old app stored an
+  // unreadable date and any text as a company; here the date column holds real dates only and the
+  // company is cstore, vape or blank. Refuse with a message the person can read, before the insert,
+  // rather than let the database fault through as SERVER_ERROR.
+  if (input.date instanceof Date && Number.isNaN(input.date.getTime())) throw new Error("Invalid date");
+  const company = String(input.company || "");
+  if (company !== "" && COMPANIES.indexOf(company) === -1) throw new Error("Invalid company: " + company);
+
   return writeRow(
     db,
     {

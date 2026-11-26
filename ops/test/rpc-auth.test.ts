@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setPin } from "../src/auth/pin";
 import { connect, type Db } from "../src/db/client";
 import { parseRpcContract } from "../src/rpc/contract";
-import { handlers, resolveSession } from "../src/rpc/registry";
+import { ERROR_PREFIXED, handlers, resolveSession } from "../src/rpc/registry";
 import { createRpcRouter } from "../src/rpc/router";
 import type { RpcHandlers } from "../src/rpc/types";
 import { createTestDb, type TestDb } from "./helpers/db";
@@ -23,6 +23,7 @@ function router(env: Record<string, unknown>, extra: RpcHandlers = {}, at = new 
     handlers: { ...handlers, ...extra },
     openDb: () => connect(testDb.appUrl),
     resolveSession,
+    errorPrefixed: ERROR_PREFIXED,
     env,
     now: () => at,
     log: (e) => logged.push(e),
@@ -98,5 +99,21 @@ describe("sign-in through the router", () => {
     const res = await call(router({ PIN_PEPPER: PEPPER }), unported.name, ["x"]);
     expect(res.status).toBe(501);
     expect(res.body.error?.message).toBe("NOT_PORTED");
+  });
+
+  it("the nine RPCs that wrapped their errors keep the old prefix, refusals included; a fault never carries it", async () => {
+    const r = router({ PIN_PEPPER: PEPPER }, {
+      rpcGetProposedBonuses: () => { throw new Error("something the person should read"); },
+      rpcGetPaymentHistory: () => { throw new TypeError("a bug"); },
+      rpcGetMe: () => { throw new Error("not one of the nine"); },
+    });
+    expect((await call(r, "rpcGetProposedBonuses", ["no-such-token"])).body).toEqual({ ok: false, error: { message: "rpcGetProposedBonuses: NOT_LOGGED_IN" } });
+    const employee = (await call(r, "rpcLogin", ["Ben Sample", "1357"])).body.result?.["token"] as string;
+    expect((await call(r, "rpcGetProposedBonuses", [employee])).body.error?.message).toBe("rpcGetProposedBonuses: FORBIDDEN: requires admin or payroll_admin, got employee");
+    expect((await call(r, "rpcGetMe", [employee])).body.error?.message).toBe("not one of the nine");
+    const fault = await call(r, "rpcGetPaymentHistory", [employee]);
+    expect(fault.status).toBe(500);
+    expect(fault.body.error?.message).toBe("SERVER_ERROR");
+    for (const name of ERROR_PREFIXED) expect(contract.get(name)?.migrate, name).toBe(true);
   });
 });

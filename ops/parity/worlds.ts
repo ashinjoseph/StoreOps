@@ -23,7 +23,7 @@ import { loadConfig } from "../src/lib/config";
 import { configKeySpec } from "../src/lib/config-keys";
 import type { SheetTab } from "../src/import/sheet-to-db";
 import { parseRpcContract, type RpcContract } from "../src/rpc/contract";
-import { handlers as registryHandlers, resolveSession } from "../src/rpc/registry";
+import { ERROR_PREFIXED, handlers as registryHandlers, resolveSession } from "../src/rpc/registry";
 import { createRpcRouter } from "../src/rpc/router";
 import type { RpcHandlers } from "../src/rpc/types";
 import { createTestDb, superuserUrl, TEST_PASSWORDS } from "../test/helpers/db";
@@ -297,6 +297,7 @@ export async function createWorlds(options: WorldOptions = {}): Promise<Worlds> 
       handlers,
       openDb: () => connect(appUrl),
       resolveSession,
+      errorPrefixed: ERROR_PREFIXED,
       env: newEnv(),
       fetch: outbound ? outbound.newFetch : guardedFetch,
       now: () => clock.now(),
