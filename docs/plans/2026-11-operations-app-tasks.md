@@ -21,23 +21,24 @@ hand one out.
 |---|---|:-:|---|---|---|
 | P0-01 | Owner answers decisions D1–D12 | owner | | | done (go-ahead Nov 26; unanswered rows use their defaults) |
 | P0-02 | Till API contract v1, from the owner | owner + T3 review | | security | done (1.1.0) |
-| P0-03 | Database schema contract | T3 | P0-01 | money | in progress |
+| P0-03 | Database schema contract | T3 | P0-01 | money | done |
 | P0-04 | RPC contract file | T1 | | | done |
 | P1-01 | Archive old audit-log rows (current app) | T2 | | | todo |
 | P1-02 | Till API built (till repository) | owner | P0-02 | security | staging done and checked (Nov 23); production key to come |
 | P1-03 | Vape close prefilled from the till (current app) | T2 | P1-02 | money | todo |
-| P1-04 | Till API retrieval check against staging | T1 | P0-02, P2-01 | security | in progress |
+| P1-04 | Till API retrieval check against staging | T1 | P0-02, P2-01 | security | built and tested on fixtures; a run against staging is still to do |
 | P2-01 | Scaffold `ops/` and its CI | T1 | P0-01 | | done |
-| P2-02 | Migrations runner and first migration | T1 | P2-01, P0-03 | | todo |
+| P2-02 | Migrations runner and first migration | T1 | P2-01, P0-03 | | in progress |
 | P2-03a | Money, date and ID helpers | T2 | P2-01 | money | done |
 | P2-03b | Database client and transactions | T2 | P2-02 | money | todo |
 | P2-04 | Audit log writer | T1 | P2-03b | | todo |
 | P2-05 | Config and secrets access | T1 | P2-03b | security | todo |
 | P2-06 | Login, sessions, lockout, roles | T2 | P2-04, P2-05 | security | todo |
 | P2-07 | RPC router | T2 | P2-06, P0-04 | security | todo |
-| P2-08 | UI served with the new transport | T2 | P2-07 | | todo |
+| P2-08a | UI copy and the new transport | T2 | P2-01 | | in progress |
+| P2-08b | UI served by the Worker; login round-trips | T2 | P2-08a, P2-07 | | todo |
 | P2-09 | Parity harness | T3 | P2-07 | | todo |
-| P2-10 | Staging deploy | T2 | P2-08 | security | todo |
+| P2-10 | Staging deploy | T2 | P2-08b | security | todo |
 | P3-01 | Port Staff | T1 | P2-09 | | todo |
 | P3-02 | ~~Port ProductTypes and ProductMaster~~ | | | | dropped |
 | P3-03 | ~~Product import by CSV upload~~ | | | | dropped |
@@ -255,7 +256,9 @@ the table for a secret key throws.
 **Read:** `src/Auth.gs`; `src/Staff.gs` (`verifyLoginCode_`);
 `docs/architecture/security.md`; ADR-0002; `tests/suites/rpc-guards.js`.
 **Make:** `ops/src/auth/login.ts`, `sessions.ts`, `roles.ts`: same rules as
-today. Store a hash of the token, not the token. PINs are stored hashed.
+today. Store a hash of the token, not the token. PINs are stored hashed:
+the contract has no PIN column, so this card adds one by migration
+(`staff.pin_hash`, a slow salted hash; never the PIN).
 **RPCs:** `rpcLogin`, `rpcLogout` (parity is added for these in P3-01, once
 the harness exists).
 **Done when:** tests cover: right PIN, wrong PIN and unknown name give the
@@ -266,8 +269,16 @@ wrong role; a role sent by the client being ignored.
 ### P2-07 · RPC router · T2 · security
 **Read:** `ops/contracts/rpc.json`; `src/WebApp.gs` lines for `_session` and
 three sample RPCs.
-**Make:** `ops/src/rpc/router.ts`: `POST /rpc/<name>` with a JSON array of
-arguments; looks the name up in the contract; applies the session and role
+**Wire format (fixed; P2-08a's transport speaks it):** `POST /rpc/<name>`,
+JSON body `{"args": [...]}` with the arguments exactly as the page passed
+them (the session token first, where the RPC takes one). Answer:
+`{"ok": true, "result": …}` (an undefined result is `null`), or
+`{"ok": false, "error": {"message": "…"}}` where the message is the thrown
+error's message, as `google.script.run`'s failure handler gets it today. A
+thrown RPC error is HTTP 200; a bad body is 400; an unknown name is 404; an
+RPC marked `migrate: false` in the contract is 404 with message
+`NOT_MIGRATED`.
+**Make:** `ops/src/rpc/router.ts`: that endpoint; looks the name up in the contract; applies the session and role
 rule from the contract before calling the handler; maps `NOT_LOGGED_IN` and
 `FORBIDDEN` to the same error text the UI checks for today. An RPC with no
 handler yet answers "not ported".
@@ -275,19 +286,27 @@ handler yet answers "not ported".
 the contract alone, with no handler code involved; an unknown name is a 404;
 dates in results arrive as ISO strings.
 
-### P2-08 · UI served with the new transport · T2
+### P2-08a · UI copy and the new transport · T2
+Split from P2-08 (Nov 26) so it can run before the router exists.
 **Read:** `scripts/docs/screenshots.js` (its `google.script.run` shim);
-in `src/Index.html` only the functions `call`, `cachedCall`, `handleRpcError`.
+in `src/Index.html` only the functions `call`, `cachedCall`, `handleRpcError`;
+`doGet` in `src/WebApp.gs` (what the template is given).
 **Make:** `ops/public/transport.js` giving the page a `google.script.run`
-that posts to `/rpc/<name>`; a build step that copies `src/Index.html` to
-`ops/public/` unchanged apart from loading the transport and removing the
-`shopping`, `suppliers` and `products` entries from `MORE_ITEMS`; the UI
-suites (`tests/suites/ui-*.js`, except `ui-picker` and `ui-products`)
-pointed at the copy as well.
+that speaks P2-07's wire format; a build step, runnable with Node built-ins
+only, that writes the page for the Worker from `src/Index.html`, unchanged
+apart from loading the transport, resolving the template tags, and removing
+the `shopping`, `suppliers` and `products` entries from `MORE_ITEMS`; the UI
+suites (`tests/suites/ui-*.js`, except `ui-picker` and `ui-products`) run
+against the built copy as well. The built page is generated, not committed.
+**Done when:** the UI suites pass against both copies; the built page's
+drawer has no Shopping List, Suppliers or Product Master entry; tests with a
+faked `fetch` show success, a thrown RPC error, a 404 and a network failure
+each reach the right handler.
+
+### P2-08b · UI served by the Worker; login round-trips · T2
+**Make:** the Worker serves the built page at `/` and its static files.
 **Done when:** the login screen loads from the Worker locally and a login
-round-trips; the UI suites pass against both copies; the copy's drawer has
-no Shopping List, Suppliers or Product Master entry.
-**Don't:** edit `src/Index.html` by hand in `ops/public/`; it is generated.
+round-trips through `/rpc/rpcLogin`.
 
 ### P2-09 · Parity harness · T3
 **Read:** `scripts/docs/runtime.js`, `scripts/docs/fixtures.js`; plan
@@ -373,6 +392,12 @@ deprecated.
 **Note:** the current app has no payroll suite. Write one first, against the
 old runtime, covering oldest-first, overpayment, the mismatch guard and undo;
 then port. Each payment is one transaction with a lock on the staff row.
+**Undo (found in the schema review):** today `Payments.undo` deletes the
+payment and its item rows and audits it. The new database refuses the app
+any delete on money tables. Proposed, pending the owner: a migration adds
+`voided_at`, `voided_by` and `void_reason` to `payments`; undo sets them,
+and every read leaves voided payments out, so each RPC answers as today and
+the record stays.
 
 ### P3-10 · CommissionRules, Commissions, weekly cron · T2 · money
 **Read:** `src/CommissionRules.gs`, `src/Commissions.gs`; ADRs 0011, 0013;
@@ -409,8 +434,17 @@ Export every tab, deprecated ones included: the export is also the archive.
 **Make:** `ops/tools/import.ts`: loads the export in foreign-key order inside
 one transaction, skipping the deprecated tabs listed in P0-03; blank becomes `NULL`; any row that fails goes to
 `rejects.csv` with its tab, row number and reason.
+From the schema review, the import must also: reject a figure that doesn't
+survive the round trip to 2 decimals (Postgres rounds silently); lower-case
+enum values such as `Closed` before insert, rejecting anything still
+outside the set; leave out secret config keys, `staff.login_code` and the
+seeded placeholder rule `CR_001` when it is inactive and unused; map
+`commission_runs.week_end` (stored as Sunday 23:59:59) to its Toronto date.
+Open, for the owner: an open till session holds 0, not blank, in its closing
+columns; the proposal is to import those as `NULL` for rows still open.
 **Done when:** the fixture imports with zero rejects; a workbook with a
-broken row produces exactly one reject and loads the rest.
+broken row produces exactly one reject and loads the rest; each rule above
+has a test.
 
 ### P4-03 · Reconcile report · T2 · money
 **Make:** `ops/tools/reconcile.ts`: per table and per month, row count and

@@ -12,10 +12,8 @@
  * Exit code: 0 no errors (warnings allowed), 1 errors, 2 usage.
  */
 import { pathToFileURL } from "node:url";
-// Node's type stripping needs the explicit ".ts"; tsconfig does not allow that extension.
-// @ts-ignore TS5097
+// Node's type stripping needs the explicit ".ts" (tsconfig: allowImportingTsExtensions).
 import { loadContract } from "../src/till/contract.ts";
-// @ts-ignore TS5097
 import { checkDailyRow, checkDailyRows, checkProducts, checkShift, type Difference } from "../src/till/rules.ts";
 
 export interface FetchResponse {
