@@ -52,8 +52,9 @@ hand one out.
 | P3-07 | Port Clover and Reconcile | T2 | P3-06, P3-08 | money | todo |
 | P3-08 | Port Notifier (WhatsApp) | T2 | P2-09 | security | done |
 | P3-09a | Port Bonuses | T2 | P3-05a | money | done |
-| P3-09b | Port Payments (pay, undo, owed, history) | T2 | P3-09a, P3-08 | money | todo |
-| P3-10 | Port CommissionRules, Commissions, weekly cron | T2 | P3-09a | money | todo |
+| P3-09b | Port Payments (pay, undo, owed, history) | T3 | P3-09a, P3-08 | money | in progress (undo built as a void, pending the owner's confirmation) |
+| P3-10a | Port CommissionRules | T2 | P3-09a | money | in progress |
+| P3-10b | Port the commission engine and the weekly cron | T2 | P3-10a, P3-05b | money | todo |
 | P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | todo |
 | P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | todo |
 | P4-01 | Sheet export tool | T2 | P0-03 | | todo |
