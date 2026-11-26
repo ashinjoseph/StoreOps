@@ -1,5 +1,6 @@
 // What the parity run prints.
 import { render } from "./compare";
+import { DAY_ONLY_KEYS, DAY_ONLY_RULE } from "./day-only";
 import type { GateResult } from "./gate";
 import { OUTBOUND_RULE, SECRETS_RULE } from "./http";
 import { SIGNED_OUT_RULE, type CaseResult } from "./run";
@@ -61,6 +62,7 @@ export function formatSummary(results: readonly CaseResult[]): string {
   lines.push(`equivalent, by rule (ops/parity/writes.ts EXPIRED_SESSIONS_RULE): ${EXPIRED_SESSIONS_RULE}`);
   lines.push(`equivalent, by rule (ops/parity/writes.ts VOIDED_PAYMENTS_RULE): ${VOIDED_PAYMENTS_RULE}`);
   lines.push(`dropped, by rule (ops/parity/old-world.ts SHEET_ROW_RULE): ${SHEET_ROW_RULE}`);
+  lines.push(`${DAY_ONLY_RULE} (ops/parity/day-only.ts DAY_ONLY_RULE):`, ...DAY_ONLY_KEYS.map((k) => `  ${k.key} — ${k.reason}`));
   lines.push(`never a pass, by rule (ops/parity/run.ts SIGNED_OUT_RULE): ${SIGNED_OUT_RULE}`);
   lines.push("normalised, by rule (ops/parity/compare.ts): session tokens; ids generated during a case (prefix and stamp kept, random part numbered)");
   lines.push(`outbound HTTP, by rule (ops/parity/http.ts): ${OUTBOUND_RULE.replace(/^outbound HTTP: /, "")}`);

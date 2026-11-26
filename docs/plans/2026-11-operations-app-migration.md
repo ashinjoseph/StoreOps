@@ -157,6 +157,8 @@ Found or decided while building the foundation. Each is covered by a test.
 | Audit and line-item ids end in 3 random characters and can repeat within a second | 10 random characters | The id is a primary key now; a repeat would fail the change itself |
 | A call that fails halfway keeps what it already wrote | One transaction per call (the sign-in renewal is saved first, on its own, as today) | Nothing is half-saved |
 | Undoing a payment deletes it and its lines (the audit log keeps a note) | The payment stays, marked voided with who, when and why; every screen leaves it out, as today | No money record is ever deleted (pending the owner's confirmation) |
+| A cash handover keeps the time of day it was dated | Only the day is kept (the page shows only the day); the moment it was recorded is kept in full | Nothing shown changes |
+| A handover can be recorded with any text as its method | Only cash, bank, e-transfer or other (what the page offers) | No unreadable methods in the record |
 | Two people opening the same till at the same moment can both succeed | One open at a time per till | A till never has two open sessions |
 | A count that isn't a number is stored as-is, and a close with no count shows variance 0, OK | Refused: "physicalCount is not a number" | A close can't look balanced without a count |
 | Any error text reaches the screen | Only messages meant for the person; faults show `SERVER_ERROR` and an id | No table names or values leak |

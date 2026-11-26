@@ -49,7 +49,7 @@ hand one out.
 | P3-05a | Port Attendance: schedule, hours, who am I | T2 | P3-01 | money | done |
 | P3-05b | Port the open and the close: TillSessions, Sales | T3 | P3-05a, P3-08 | money | done |
 | P3-05c | Port the shift state and bootstrap reads | T2 | P3-05b, P3-06 | money | todo |
-| P3-06 | Port CashHandling | T2 | P3-05b | money | in progress |
+| P3-06 | Port CashHandling | T2 | P3-05b | money | done |
 | P3-07 | Port Clover and Reconcile | T2 | P3-06, P3-08 | money | todo |
 | P3-08 | Port Notifier (WhatsApp) | T2 | P2-09 | security | done |
 | P3-09a | Port Bonuses | T2 | P3-05a | money | done |
@@ -402,9 +402,16 @@ time and use that token). A step called as a fixture person and answered
 nine dashboard cases had passed that way).
 
 Rows that the Sheet listed in the order they were appended are read
-`order by seq` (migrations 0004, 0005: `audit_log`, `payments`, `sales`).
+`order by seq` (migrations 0004 to 0006: `audit_log`, `payments`, `sales`,
+`cash_handovers`).
 A table that needs the same gets a `seq` column the same way; never order
 by Postgres's own row position (`ctid`, `xmin`).
+
+Where the schema stores a day and the Sheet held a date-time, the old RPC
+answers with a time of day the new one cannot have. Such a field is named
+in `ops/parity/day-only.ts` with its reason and is compared as its Toronto
+day on both sides (so far: `handedOn`). The orchestrator adds to that list,
+not a card.
 
 Five old RPCs return a `Date` (`rpcGetAllStaff` `startDate`; `rpcCreateBonus`,
 `rpcApproveBonus`, `rpcCancelBonus` and `rpcScheduleShift` date fields).

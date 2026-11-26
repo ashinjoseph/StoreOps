@@ -12,6 +12,7 @@ import { handlers as registry } from "../src/rpc/registry";
 import type { RpcHandler, RpcHandlers } from "../src/rpc/types";
 import { callersOf, resolveRefs, type ColumnExemption, type ParityCase, type ResultExemption, type Side } from "./case";
 import { MAX_DIFFS, Normaliser, diffOutcomes, pathMatcher, type Diff } from "./compare";
+import { dayOnly } from "./day-only";
 import { hasHandler } from "./gate";
 import { Outbound, diffOutbound, redact, type RequestView } from "./http";
 import type { Outcome, TransportFinding } from "./old-world";
@@ -239,8 +240,9 @@ export async function runCase(c: ParityCase, opts: { handlers?: RpcHandlers } = 
     const exempt = (p: string): boolean => matchers.some((m) => m(p));
     ran.steps.forEach((s, i) => {
       // The secret is never printed, wherever a side put it (SECRETS_RULE in http.ts).
-      const o = redact(norms.old.outcome(s.old), s.secret);
-      const n = redact(norms.new.outcome(s.new), s.secret);
+      // DAY_ONLY_RULE (day-only.ts): fields stored as a day are compared as that day.
+      const o = dayOnly(redact(norms.old.outcome(s.old), s.secret));
+      const n = dayOnly(redact(norms.new.outcome(s.new), s.secret));
       const sent = diffOutbound(s.outbound.old, s.outbound.new, s.secret);
       const found = [...diffOutcomes(o, n, exempt), ...sent.diffs];
       // SIGNED_OUT_RULE.

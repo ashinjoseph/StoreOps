@@ -16,6 +16,7 @@ import { translateTab } from "../src/import/sheet-to-db";
 import { maybeSecret, secret } from "../src/lib/config";
 import { directCase, parityCase, paritySequence, step, type CaseOptions, type DirectFn, type ParityCase } from "./case";
 import { casedRpcs } from "./covered";
+import { DAY_ONLY_KEYS, dayOnly } from "./day-only";
 import { Outbound } from "./http";
 import { takeNetworkLeaks } from "./network";
 import { formatCalls, formatResult, formatSummary } from "./report";
@@ -861,5 +862,39 @@ describe("undo: a voided payment on the new side equals a deleted one on the old
     expect(rule).toHaveLength(1);
     expect(rule[0]).toContain("deletes them on undo");
     expect(lines.filter((l) => l.includes("payments.voided_at, voided_by, void_reason"))).toHaveLength(1);
+  });
+});
+
+// DAY_ONLY_RULE (day-only.ts): fields whose column holds a day, not an instant.
+describe("fields stored as a day are compared as that day in Toronto", () => {
+  it("the same day at different times of day is equal; the rule names its fields", () => {
+    const old = { handovers: [{ handedOn: "2026-11-16T15:00:00.000Z", recordedAt: "2026-11-16T15:00:00.000Z" }] };
+    const neu = { handovers: [{ handedOn: "2026-11-16T05:00:00.000Z", recordedAt: "2026-11-16T15:00:00.000Z" }] };
+    expect(dayOnly(old)).toEqual(dayOnly(neu));
+    expect(dayOnly(old)).toEqual({ handovers: [{ handedOn: "<day 2026-11-16>", recordedAt: "2026-11-16T15:00:00.000Z" }] });
+    expect(DAY_ONLY_KEYS.map((k) => k.key)).toContain("handedOn");
+    for (const k of DAY_ONLY_KEYS) expect(k.reason.trim()).not.toBe("");
+  });
+  it("a different day is still a difference, and the day is Toronto's, not UTC's", () => {
+    // 03:00Z on the 17th is 22:00 on the 16th in Toronto.
+    expect(dayOnly({ handedOn: "2026-11-17T03:00:00.000Z" })).toEqual({ handedOn: "<day 2026-11-16>" });
+    expect(dayOnly({ handedOn: "2026-11-17T05:00:00.000Z" })).toEqual({ handedOn: "<day 2026-11-17>" });
+  });
+  it("a field the rule does not name keeps its time of day", () => {
+    expect(dayOnly({ recordedAt: "2026-11-16T15:00:00.000Z", when: "2026-11-16T05:00:00.000Z" })).toEqual({ recordedAt: "2026-11-16T15:00:00.000Z", when: "2026-11-16T05:00:00.000Z" });
+  });
+  it("null, a blank, a plain day and anything that is not an instant are left as they are (so null against a date is a difference)", () => {
+    const v = { handedOn: null, a: { handedOn: "" }, b: { handedOn: "2026-11-16" }, c: { handedOn: 5 }, d: { handedOn: "soon" } };
+    expect(dayOnly(v)).toEqual(v);
+  });
+  it("a case where the new side answers another day fails; the same day passes", async () => {
+    const c = parityCase("rpcGetCashHandoverHistory", { as: "admin", args: [3] });
+    const old = (await recordOld(c))[0] as { handovers: { handedOn: string }[] };
+    expect(old.handovers[0]!.handedOn).toMatch(/T15:00:00\.000Z$/); // the fixture's drops are at 10:00 Toronto
+    const at = (hoursOn: number) => ({ ...old, handovers: old.handovers.map((h) => ({ ...h, handedOn: new Date(Date.parse(h.handedOn) + hoursOn * 3600_000).toISOString() })) });
+    expect((await runCase(c, { handlers: { rpcGetCashHandoverHistory: returning(at(-10)) } })).status).toBe("pass"); // Toronto midnight
+    const r = await runCase(c, { handlers: { rpcGetCashHandoverHistory: returning(at(24)) } });
+    expect(r.status).toBe("fail");
+    expect(r.diffs[0]).toMatchObject({ path: "$.handovers[0].handedOn", old: '"<day 2026-11-16>"', new: '"<day 2026-11-17>"' });
   });
 });
