@@ -45,13 +45,15 @@ hand one out.
 | P3-02 | ~~Port ProductTypes and ProductMaster~~ | | | | dropped |
 | P3-03 | ~~Product import by CSV upload~~ | | | | dropped |
 | P3-04 | ~~Port ShoppingList~~ | | | | dropped |
-| P3-05 | Port the shift core: Attendance, TillSessions, Sales | T2 | P3-01 | money | todo |
-| P3-06 | Port CashHandling | T2 | P3-05 | money | todo |
+| P3-05a | Port Attendance: schedule, hours, who am I | T2 | P3-01 | money | in progress |
+| P3-05b | Port the open and the close: TillSessions, Sales | T2 | P3-05a, P3-08 | money | todo |
+| P3-05c | Port the shift state and bootstrap reads | T2 | P3-05b, P3-06 | money | todo |
+| P3-06 | Port CashHandling | T2 | P3-05b | money | todo |
 | P3-07 | Port Clover and Reconcile | T2 | P3-06, P3-08 | money | todo |
 | P3-08 | Port Notifier (WhatsApp) | T2 | P2-09 | security | in progress |
-| P3-09 | Port Payments and Bonuses | T2 | P3-05 | money | todo |
+| P3-09 | Port Payments and Bonuses | T2 | P3-05a | money | todo |
 | P3-10 | Port CommissionRules, Commissions, weekly cron | T2 | P3-09 | money | todo |
-| P3-11 | Port the sales dashboard and insights | T2 | P3-05 | | todo |
+| P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | todo |
 | P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | todo |
 | P4-01 | Sheet export tool | T2 | P0-03 | | todo |
 | P4-02 | Import tool with a rejects file | T2 | P4-01, P2-02 | money | todo |
@@ -386,7 +388,18 @@ Also add `rpcLogin` and `rpcLogout` from P2-06 to the parity list.
 Product master, product import and shopping list are deprecated (plan
 section 2, "Not migrated"). Not ported.
 
-### P3-05 · Shift core: Attendance, TillSessions, Sales · T2 · money
+### P3-05 · Shift core, in three cards (split Nov 26: about 2,000 lines of old code)
+- **P3-05a · Attendance:** `rpcGetMe`, `rpcGetWeekSchedule`, `rpcScheduleShift`,
+  `rpcCancelScheduledShift`, `rpcAdjustAttendanceHours`, `rpcEditAttendanceTimes`.
+- **P3-05b · The open and the close:** `rpcOpenShift`, `rpcCloseShift`, and
+  `rpcNotifyShiftOpen` (it reads the open session, so it lives here, on top of
+  P3-08's sender). The close is one transaction: session, sales row, attendance.
+- **P3-05c · Shift state:** `rpcGetMyShiftState`, `rpcGetBootstrap` (they also
+  read cash handling, so they follow P3-06).
+
+The notes below apply to whichever of the three touches that code.
+
+### P3-05 (original card) · Attendance, TillSessions, Sales · T2 · money
 **Read:** `src/Attendance.gs`, `src/TillSessions.gs`, `src/Sales.gs`
 (skip `getDashboard_` and `buildInsights_`); ADRs 0005, 0006, 0008;
 `tests/suites/lotto-payout.js`, `sales-cards.js`, `wiring.js`.
@@ -423,7 +436,7 @@ second sees the first.
 ### P3-08 · Notifier (WhatsApp) · T2 · security
 **Read:** `src/Notifier.gs`; `tests/suites/notifier.js`;
 `docs/guides/whatsapp-templates.md`.
-**RPCs:** `rpcNotifyShiftOpen`, `rpcCheckWhatsApp`.
+**RPCs:** `rpcCheckWhatsApp` (`rpcNotifyShiftOpen` moved to P3-05b: it reads the open session). The module also ports `sendOp` and `notify`, which the close, payments and commissions call.
 **Note:** the token comes from a Worker secret. No test may call Meta. Leave
 out the `shopping_list` message and its template key; the shopping list is
 deprecated (also drop it from the list `diagnose` checks).
