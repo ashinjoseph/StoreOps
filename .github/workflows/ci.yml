@@ -60,3 +60,6 @@ jobs:
 
       - name: Test
         run: npm --prefix ops test
+
+      - name: Parity (old and new answer the same)
+        run: npm --prefix ops run parity

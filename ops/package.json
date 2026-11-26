@@ -7,8 +7,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p parity",
     "test": "vitest run",
+    "parity": "node parity/cli.mjs",
     "build:ui": "node tools/build-ui.mjs",
     "dev": "node --env-file-if-exists=.dev.vars node_modules/wrangler/bin/wrangler.js dev",
     "pin:set": "node --env-file-if-exists=.dev.vars --import ./tools/ts-resolve.mjs --experimental-strip-types tools/set-pin.ts",
