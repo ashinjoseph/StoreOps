@@ -22,16 +22,17 @@ hand one out.
 | P0-01 | Owner answers decisions D1–D12 | owner | | | done (go-ahead Nov 26; unanswered rows use their defaults) |
 | P0-02 | Till API contract v1, from the owner | owner + T3 review | | security | done (1.1.0) |
 | P0-03 | Database schema contract | T3 | P0-01 | money | in progress |
-| P0-04 | RPC contract file | T1 | | | in progress |
+| P0-04 | RPC contract file | T1 | | | done |
 | P1-01 | Archive old audit-log rows (current app) | T2 | | | todo |
 | P1-02 | Till API built (till repository) | owner | P0-02 | security | staging done and checked (Nov 23); production key to come |
 | P1-03 | Vape close prefilled from the till (current app) | T2 | P1-02 | money | todo |
-| P1-04 | Till API retrieval check against staging | T1 | P0-02, P2-01 | security | todo |
-| P2-01 | Scaffold `ops/` and its CI | T1 | P0-01 | | in progress |
+| P1-04 | Till API retrieval check against staging | T1 | P0-02, P2-01 | security | in progress |
+| P2-01 | Scaffold `ops/` and its CI | T1 | P0-01 | | done |
 | P2-02 | Migrations runner and first migration | T1 | P2-01, P0-03 | | todo |
-| P2-03 | Database, money, date and ID helpers | T2 | P2-02 | money | todo |
-| P2-04 | Audit log writer | T1 | P2-03 | | todo |
-| P2-05 | Config and secrets access | T1 | P2-03 | security | todo |
+| P2-03a | Money, date and ID helpers | T2 | P2-01 | money | in progress |
+| P2-03b | Database client and transactions | T2 | P2-02 | money | todo |
+| P2-04 | Audit log writer | T1 | P2-03b | | todo |
+| P2-05 | Config and secrets access | T1 | P2-03b | security | todo |
 | P2-06 | Login, sessions, lockout, roles | T2 | P2-04, P2-05 | security | todo |
 | P2-07 | RPC router | T2 | P2-06, P0-04 | security | todo |
 | P2-08 | UI served with the new transport | T2 | P2-07 | | todo |
@@ -216,14 +217,24 @@ each test file its own database copied from a migrated `ops_template`.
 **Done when:** the checks at the end of the spec pass locally and in CI;
 `db:reset` twice in a row gives no error and every table from the contract.
 
-### P2-03 · Database, money, date and ID helpers · T2 · money
+### P2-03a · Money, date and ID helpers · T2 · money
+Split from P2-03 (Nov 26) so it can run before the database exists.
 **Read:** `src/Util.gs`; ADR-0004.
-**Make:** `ops/src/db/client.ts`, `ops/src/db/tx.ts` (run a function in one
-transaction; lock a row for update); `ops/src/lib/money.ts`, `dates.ts`,
-`ids.ts`: the same functions as `Util.gs`, same names where sensible.
+**Make:** `ops/src/lib/money.ts`, `dates.ts`, `ids.ts`: the same functions
+as `Util.gs`, same names where sensible.
 **Done when:** unit tests cover every exported function of `Util.gs` with the
-same inputs and outputs, including rounding at half cents, the Toronto
-business day across midnight and across a clock change, and both ID styles.
+same inputs and outputs, checked against the real `Util.gs` loaded in the
+test, including rounding at half cents, the Toronto business day across
+midnight and across a clock change, and both ID styles.
+
+### P2-03b · Database client and transactions · T2 · money
+**Read:** `docs/plans/2026-11-ops-local-database.md`.
+**Make:** `ops/src/db/client.ts`, `ops/src/db/tx.ts` (run a function in one
+transaction; lock a row for update). `numeric` comes back as a string from
+the driver: convert at this boundary, `NULL` stays `null`.
+**Done when:** tests show a rolled-back transaction leaves no row; two
+connections locking the same row, the second waits; a `NULL` money column
+reads as `null`, never 0.
 
 ### P2-04 · Audit log writer · T1
 **Read:** `src/AuditLog.gs`; ADR-0014.

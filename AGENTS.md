@@ -24,7 +24,7 @@ framework, no build step.
 | How the pieces fit | [docs/architecture/overview.md](docs/architecture/overview.md) |
 | Domain words (float, variance, lotto reserve, handover…) | [docs/context.md#glossary](docs/context.md#glossary) |
 | Machine-readable index of all docs | [llms.txt](llms.txt) |
-| The planned move off Sheets (draft, not started) | [docs/plans/2026-11-operations-app-migration.md](docs/plans/2026-11-operations-app-migration.md) and its [task cards](docs/plans/2026-11-operations-app-tasks.md) |
+| The move off Sheets (in progress: plan, then task cards with a ledger) | [docs/plans/2026-11-operations-app-migration.md](docs/plans/2026-11-operations-app-migration.md) and its [task cards](docs/plans/2026-11-operations-app-tasks.md) |
 
 ```
 src/                 everything that ships (clasp rootDir)
@@ -34,6 +34,8 @@ src/                 everything that ships (clasp rootDir)
   PublicSales.html   no-login sales page     (?v=sales)
   appsscript.json    manifest: V8, America/Toronto, webapp ANYONE_ANONYMOUS
 tests/suites/        Node test suites over the real src/ (npm test)
+ops/                 the Operations app being built to replace src/: a Cloudflare Worker over Postgres (not live; see the migration plan)
+  contracts/         frozen contracts: rpc.json (generated), till-api.v1.yaml (from the till side)
 scripts/docs/        runtime (src/ in Node), fixtures, screenshots, schema/code-map generators
 docs/                architecture, components, ADRs, guides, generated reference
 .github/workflows/   ci.yml (tests), test-deploy.yml (branch → test), deploy.yml (main → prod)
@@ -44,7 +46,8 @@ docs/                architecture, components, ADRs, guides, generated reference
 ```sh
 npm test                              # all suites; must be green before and after your change
 node tests/suites/run.js reconcile    # suites whose filename contains "reconcile"
-npm run docs:generate                 # regenerate schema.md, code-map.md and llms.txt (run after structural changes)
+npm run docs:generate                 # regenerate schema.md, code-map.md, llms.txt and ops/contracts/rpc.json (run after structural changes)
+npm --prefix ops ci && npm --prefix ops run typecheck && npm --prefix ops test   # the Operations app's own checks
 npm run docs:check                    # docs guard only
 npm run docs:screenshots -- <name>    # regenerate a screenshot (needs Playwright + Chromium)
 npm run docs:mermaid                  # render every diagram (needs: npm i --no-save mermaid@11)
