@@ -28,9 +28,9 @@ hand one out.
 | P1-03 | Vape close prefilled from the till (current app) | T2 | P1-02 | money | todo |
 | P1-04 | Till API retrieval check against staging | T1 | P0-02, P2-01 | security | built and tested on fixtures; a run against staging is still to do |
 | P2-01 | Scaffold `ops/` and its CI | T1 | P0-01 | | done |
-| P2-02 | Migrations runner and first migration | T1 | P2-01, P0-03 | | in progress |
+| P2-02 | Migrations runner and first migration | T1 | P2-01, P0-03 | | done |
 | P2-03a | Money, date and ID helpers | T2 | P2-01 | money | done |
-| P2-03b | Database client and transactions | T2 | P2-02 | money | todo |
+| P2-03b | Database client and transactions | T2 | P2-02 | money | in progress |
 | P2-04 | Audit log writer | T1 | P2-03b | | todo |
 | P2-05 | Config and secrets access | T1 | P2-03b | security | todo |
 | P2-06 | Login, sessions, lockout, roles | T2 | P2-04, P2-05 | security | todo |

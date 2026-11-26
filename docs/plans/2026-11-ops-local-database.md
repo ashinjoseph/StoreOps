@@ -192,6 +192,18 @@ retrieval check (card P1-04) calls a real one. If the till team's Docker
 staging is reachable only on their own machine, Operations' cloud staging
 can't call it; the retrieval check then runs from a machine that can.
 
+## Running the tests
+
+`npm --prefix ops test` needs `OPS_DB_SUPERUSER_URL`, a superuser connection
+to a Postgres on **this machine**; the Docker database's is in
+`ops/.env.example`. The tests refuse any other host, because once per run
+they drop and rebuild a template database (`ops_template`) and reset the
+three roles' passwords. They reset them to the same local-only values as
+`.env.example`, so the Docker database's logins keep working afterwards.
+Each test file gets its own database copied from the template
+(`createTestDb()` in `ops/test/helpers/db.ts`) and drops it at the end.
+Don't run two test runs against one server at the same moment.
+
 ## Checks
 
 The setup is done when:

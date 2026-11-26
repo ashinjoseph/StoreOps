@@ -13,11 +13,14 @@ import pg from "pg";
 
 export const TEMPLATE_DB = "ops_template";
 
-// Throwaway passwords for the three roles on the test server only.
+// The tests reset the three roles' passwords on the server they run against.
+// So they use the same local-only values as ops/.env.example (or the ones in
+// the environment): running the tests against the Docker database then leaves
+// its logins working for local development.
 export const TEST_PASSWORDS = {
-  owner: "test-owner-pw",
-  app: "test-app-pw",
-  read: "test-read-pw",
+  owner: process.env["OPS_OWNER_PASSWORD"] || "local-only-owner",
+  app: process.env["OPS_APP_PASSWORD"] || "local-only-app",
+  read: process.env["OPS_READ_PASSWORD"] || "local-only-read",
 } as const;
 
 export interface TestDb {
@@ -33,9 +36,32 @@ export const MISSING_URL_MESSAGE =
   "OPS_DB_SUPERUSER_URL is not set: start a database with `npm --prefix ops run db:up` and export " +
   "OPS_DB_SUPERUSER_URL=postgres://postgres:local-only-super@127.0.0.1:54329/ops (see ops/.env.example).";
 
+const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+
+/**
+ * The tests drop and recreate ops_template and reset the three roles'
+ * passwords server-wide. That must never happen to a real server, so the URL
+ * has to point at this machine. (CI's service container is 127.0.0.1 too.)
+ */
+export function assertLocalServer(url: string): void {
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    throw new Error("OPS_DB_SUPERUSER_URL is not a valid postgres:// URL.");
+  }
+  if (!LOCAL_HOSTS.has(host)) {
+    throw new Error(
+      `OPS_DB_SUPERUSER_URL points at "${host}". The tests reset role passwords and drop databases, ` +
+        "so they only run against a Postgres on this machine (127.0.0.1 or localhost).",
+    );
+  }
+}
+
 export function superuserUrl(): string {
   const url = process.env["OPS_DB_SUPERUSER_URL"];
   if (!url) throw new Error(MISSING_URL_MESSAGE);
+  assertLocalServer(url);
   return url;
 }
 
