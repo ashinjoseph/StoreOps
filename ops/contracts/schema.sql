@@ -13,10 +13,12 @@
 --  How to load
 --    1. ops/contracts/roles.sql, once, as a superuser (creates ops_owner,
 --       ops_app, ops_read and schema ops, and the default privileges).
---    2. This file, as ops_owner:
---         psql -v ON_ERROR_STOP=1 "postgres://ops_owner:…@host:port/ops" \
---              -f ops/contracts/schema.sql
---    It runs in one transaction and expects an empty schema ops.
+--    2. This file, as ops_owner, in ONE transaction, into an empty schema ops:
+--         psql -v ON_ERROR_STOP=1 --single-transaction \
+--              "postgres://ops_owner:…@host:port/ops" -f ops/contracts/schema.sql
+--       The migration runner does the same: it wraps each file in a
+--       transaction. The file is plain SQL with no psql meta-commands and no
+--       begin/commit of its own, so any driver can run it.
 --
 --  Conventions (each with its reason)
 --    - Money is numeric(12,2): the Sheet rounds with Util.roundMoney at every
@@ -81,9 +83,6 @@
 --    not imported, and whatsapp_template_shopping_list goes with the
 --    shopping list.
 -- ============================================================
-
-\set ON_ERROR_STOP on
-begin;
 
 set local search_path = ops;
 
@@ -443,5 +442,3 @@ revoke update, delete on ops.audit_log from ops_app;
 -- successful login remove them. Nothing else may be deleted by the app.
 grant delete on ops.sessions to ops_app;
 grant delete on ops.login_failures to ops_app;
-
-commit;

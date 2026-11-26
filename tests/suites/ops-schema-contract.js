@@ -166,15 +166,23 @@ t.ok('revoke update, delete on audit_log from ops_app',
   t.ok('no blanket grant on all tables', !/grant[^;]*on\s+all\s+tables/i.test(code));
 }
 
-t.section('roles.sql: passwords are psql variables, delete is not a default');
+t.section('roles.sql: passwords come from session settings, delete is not a default');
 const rolesCode = stripComments(rolesRaw);
 t.ok('no password literal', !/password\s+'[^']*'/i.test(rolesCode));
-['owner_password', 'app_password', 'read_password'].forEach(v =>
-  t.ok('uses :\'' + v + '\'', rolesCode.indexOf(":'" + v + "'") !== -1));
+['owner', 'app', 'read'].forEach(v =>
+  t.ok('reads the ops.' + v + '_password setting', /current_setting\(\s*'ops\.'/.test(rolesCode) && rolesRaw.indexOf('ops.' + v + '_password') !== -1));
 t.ok('default privileges grant select, insert, update to ops_app',
   /alter\s+default\s+privileges[\s\S]*?grant\s+select\s*,\s*insert\s*,\s*update\s+on\s+tables\s+to\s+ops_app/i.test(rolesCode));
 t.ok('no default delete for anyone',
   !/alter\s+default\s+privileges[^;]*grant[^;]*\bdelete\b/i.test(rolesCode));
+
+t.section('Both contract files are plain SQL: any driver or SQL editor can run them');
+[['roles.sql', rolesRaw], ['schema.sql', raw]].forEach(([name, text]) => {
+  const code = stripComments(text);
+  t.ok(name + ' has no psql meta-command (a line starting with a backslash)', !/^\s*\\/m.test(code));
+  t.ok(name + ' has no psql variable (:\'name\')', !/:'[a-z_]+'/.test(code));
+  t.ok(name + ' leaves the transaction to its caller (no begin/commit)', !/^\s*(begin|commit)\s*;/im.test(code));
+});
 
 t.section('Every operational table carries store_id');
 ['attendance', 'till_sessions', 'sales', 'validation_results', 'payments', 'bonuses',
