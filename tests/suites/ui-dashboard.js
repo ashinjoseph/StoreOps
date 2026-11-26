@@ -14,7 +14,8 @@ const vm = require('vm');
 const H = require('./_lib/harness');
 const t = H.suite('Sales tab — tiles and chart');
 
-const js = H.clientScript('Index.html');
+for (const [label, js] of H.uiScripts()) {
+t.section('Against ' + label);
 const NEEDED = ['esc', 'money', 'compactMoney', 'dayParts',
                 'chartScrollTarget_', 'renderSalesBody'];
 const lifted = NEEDED.map(n => H.fnSource(js, n)).join('\n\n');
@@ -159,5 +160,7 @@ t.section('No previous position is not the same as a visible selection');
 // First paint has nothing to preserve, so a selection must still be centred
 // rather than left wherever the track happens to open.
 t.eq('centred on first paint', target(1000, 40, 360, 2000, null), 840);
+
+}
 
 t.done();

@@ -9,6 +9,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "build:ui": "node tools/build-ui.mjs",
     "dev": "wrangler dev",
     "till:check": "node --experimental-strip-types tools/till-check.ts"
   },

@@ -10,7 +10,8 @@ const vm = require('vm');
 const H = require('./_lib/harness');
 const t = H.suite('Reconcile panel — history and today');
 
-const js = H.clientScript('Index.html');
+for (const [label, js] of H.uiScripts()) {
+t.section('Against ' + label);
 const NEEDED = ['esc', 'money', 'todayMidnight', 'isoDate', 'fmtWin_',
                 'pairVar_', 'signedMoney_', 'reconGroupDetail_', 'reconRow_',
                 'renderReconPanel', 'renderWhatsAppCheck_'];
@@ -86,5 +87,7 @@ t.ok('with Meta\'s reason', /Session has expired/.test(sheet));
 t.ok('and the fix', /permanent System User token/.test(sheet));
 t.ok('text from Meta is escaped, not rendered', sheet.indexOf('<b>') === -1);
 t.ok('a passing check shows no fix', (sheet.match(/wa-check-fix/g) || []).length === 1);
+
+}
 
 t.done();

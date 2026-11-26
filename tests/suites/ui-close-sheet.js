@@ -21,7 +21,8 @@ process.on('unhandledRejection', err => {
 });
 
 // ── Lift the client code ────────────────────────────────────
-const js = H.clientScript('Index.html');
+async function runAgainst(label, js) {
+t.section('Against ' + label);
 const NEEDED = ['esc', 'money', 'fmtDate', 'moneyInput', 'wireMoneyInputs', 'closeShiftForm'];
 const lifted = NEEDED.map(n => H.fnSource(js, n)).join('\n\n');
 
@@ -179,7 +180,7 @@ t.eq('cash sales strips the minus there', v2.dom.type('closeCash', '-300').value
 
 // ── The running sums ────────────────────────────────────────
 t.section('Expected cash is float + sales, and says when the reserve fed it');
-(async () => {
+{
   s = await settled(openClose({ company: 'cstore', openingFloat: 250, floatValue: 250 }));
   s.dom.type('closeCash', '450');
   s.dom.type('closeMiscCash', '0');
@@ -255,5 +256,10 @@ t.section('Expected cash is float + sales, and says when the reserve fed it');
   s.dom.type('closeCount', '700');
   t.eq('a full pot does not', s.dom.get('closeLottoNoteWrap').style.display, 'none');
 
+}
+}
+
+(async () => {
+  for (const [label, js] of H.uiScripts()) await runAgainst(label, js);
   t.done();
 })();

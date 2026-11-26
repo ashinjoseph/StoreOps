@@ -197,11 +197,30 @@ function load(files, extraGlobals) {
 }
 
 /** Lift the inline <script> out of an HTML file — the client code, as shipped. */
-function clientScript(file) {
-  const html = fs.readFileSync(path.join(SRC, file), 'utf8');
+function clientScriptFrom(html) {
   const m = /<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/.exec(html);
-  if (!m) throw new Error('no inline script in ' + file);
+  if (!m) throw new Error('no inline script in the page');
   return m[1];
+}
+
+function clientScript(file) {
+  return clientScriptFrom(fs.readFileSync(path.join(SRC, file), 'utf8'));
+}
+
+/**
+ * The page's inline script from each copy of the UI a suite should run
+ * against: src/Index.html and the Worker's build of it (ops/tools/build-ui.mjs).
+ * Returns [[label, script], ...]. Built in a child process so this stays
+ * synchronous and needs nothing installed.
+ */
+function uiScripts() {
+  const built = require('child_process').execFileSync(
+    process.execPath, [path.join(REPO, 'ops', 'tools', 'build-ui.mjs'), '--stdout'],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return [
+    ['src/Index.html', clientScript('Index.html')],
+    ['ops/public/index.html (built)', clientScriptFrom(built)],
+  ];
 }
 
 const read = file => fs.readFileSync(path.join(SRC, file), 'utf8');
@@ -270,6 +289,6 @@ function suite(title) {
 
 module.exports = {
   suite, sheets, setConfig, rowsOf, writes,
-  load, clientScript, read, fnSource, sandbox,
+  load, clientScript, clientScriptFrom, uiScripts, read, fnSource, sandbox,
   REPO, SRC,
 };
