@@ -48,7 +48,7 @@ hand one out.
 | P3-04 | ~~Port ShoppingList~~ | | | | dropped |
 | P3-05a | Port Attendance: schedule, hours, who am I | T2 | P3-01 | money | done |
 | P3-05b | Port the open and the close: TillSessions, Sales | T3 | P3-05a, P3-08 | money | done |
-| P3-05c | Port the shift state and bootstrap reads | T2 | P3-05b, P3-06 | money | in progress |
+| P3-05c | Port the shift state and bootstrap reads | T2 | P3-05b, P3-06 | money | done |
 | P3-06 | Port CashHandling | T2 | P3-05b | money | done |
 | P3-07 | Port Clover and Reconcile | T2 | P3-06, P3-08 | money | in progress |
 | P3-08 | Port Notifier (WhatsApp) | T2 | P2-09 | security | done |
@@ -436,7 +436,9 @@ section 2, "Not migrated"). Not ported.
   `rpcNotifyShiftOpen` (it reads the open session, so it lives here, on top of
   P3-08's sender). The close is one transaction: session, sales row, attendance.
 - **P3-05c · Shift state:** `rpcGetMyShiftState`, `rpcGetBootstrap` (they also
-  read cash handling, so they follow P3-06).
+  read cash handling, so they follow P3-06). Done Nov 26. Each makes 13 or 14
+  database statements per page load, whatever the amount of data; if the
+  first screen feels slow on staging (P2-10), this is the place to look.
 
 The notes below apply to whichever of the three touches that code.
 
