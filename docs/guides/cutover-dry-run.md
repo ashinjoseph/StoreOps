@@ -127,6 +127,43 @@ npm --prefix ops run dev
 Open the address it prints and sign in with your own name and PIN. You are
 looking at your real records in the new app, on your own computer.
 
+## 7. Use it as staging (the owner's choice, Nov 26)
+
+The same local setup is the staging environment for now: the app and the
+database both run on this computer, and other people reach it over the Wi-Fi.
+
+```sh
+npm --prefix ops run dev -- --ip 0.0.0.0
+```
+
+Find this computer's address on the network (for example `192.168.1.23`) and
+open `http://192.168.1.23:8787` on a phone on the same Wi-Fi. Each person
+signs in with their usual name and PIN.
+
+What to know before two people use it for a day beside the live app:
+
+- **It sends no WhatsApp messages and asks Clover nothing**, because the keys
+  are not on this computer. Leave them out of `ops/.dev.vars`. A close then
+  records "not sent" in the audit log, which is expected here. With the real
+  WhatsApp key in place, every staging close would message the real
+  recipients.
+- **Use a Wi-Fi you trust.** The address is plain `http`, so names and PINs
+  cross the network unencrypted. Do not open the port to the internet. If
+  someone needs it from outside, ask for a tunnel that gives `https` to be set
+  up first.
+- **The computer has to stay on and awake**, and the data is the real data.
+  It stays in Docker until `npm --prefix ops run db:reset`.
+- **Everything is entered twice** that day: once in the live app, once here.
+  The point is to compare what the two say at the end of the day.
+- **The Monday commission run does not fire by itself here.** Use "Run
+  engine" on the Commissions screen.
+- **To refresh the data**, start again from step 1 with a new download.
+  Anything entered on staging is lost, which is what you want.
+
+What this does not test is the hosted setup: the deployed app, the keys held
+by Cloudflare, the schedule, and the hosted database's connection limits and
+speed. One hosted rehearsal before production still covers those (card P2-10).
+
 ## What to send back
 
 - The table the export printed (step 2), and anything odd from the five checks.
@@ -141,6 +178,6 @@ database.
 - It compares the export with the database. Whether the export matches the
   live Sheet rests on the five checks in step 2.
 - It does not test the hosted setup (Cloudflare and the hosted database).
-  That is the staging step, P2-10.
+  That is the hosted rehearsal in card P2-10.
 - A time inside the repeated hour of the November clock change is read as the
   first of the two.

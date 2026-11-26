@@ -145,6 +145,12 @@ card's tier, each in its own git worktree, reviews the diff, and puts
 accepted cards on the working branch. A commit per card stands in for the
 pull request per card; merging to `main` still needs the owner.
 
+**Staging is local for now (owner, Nov 26).** The app and its database run on
+the owner's computer and are reached over the Wi-Fi
+([how](../guides/cutover-dry-run.md)). That is enough for the dry run on real
+data and the day of use beside the live app. A hosted rehearsal on the same
+kind of database as production is still needed before the switch.
+
 ### Built differently from today, on purpose (Nov 26)
 
 Found or decided while building the foundation. Each is covered by a test.

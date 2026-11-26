@@ -41,7 +41,7 @@ hand one out.
 | P2-09a | Sheet rows into the new database (fixture loader) | T2 | P2-02 | money | done |
 | P2-09 | Parity harness | T3 | P2-07, P2-09a | | done |
 | P2-09b | Parity fixture: a payroll admin and an inactive person | T2 | P2-09 | | done |
-| P2-10 | Staging deploy | T2 | P2-08b | security | todo |
+| P2-10 | Staging deploy | T2 | P2-08b | security | todo (staging runs locally for now; the hosted rehearsal is still needed before production) |
 | P3-01 | Port Staff | T1 | P2-09 | | done |
 | P3-02 | ~~Port ProductTypes and ProductMaster~~ | | | | dropped |
 | P3-03 | ~~Product import by CSV upload~~ | | | | dropped |
@@ -360,6 +360,15 @@ against a trivial ported handler, and deliberately breaking that handler
 makes it fail with a readable diff.
 
 ### P2-10 · Staging deploy · T2 · security
+**Owner's decision (Nov 26): staging runs locally for now.** The app and the
+database both run on the owner's computer, reached over the Wi-Fi; the steps
+are in [docs/guides/cutover-dry-run.md](../guides/cutover-dry-run.md),
+section 7. That covers the dry run on real data and the day of use beside
+the live app (P4-04). This card is not dropped: the hosted pieces it sets up
+(the deployed Worker, the secrets, the Monday schedule, the hosted database's
+connection limits and speed) are not exercised locally, so one hosted
+rehearsal on the same kind of database as production is still needed before
+the switch (P4-05).
 **Read:** `docs/plans/2026-11-ops-local-database.md` ("Flip to Supabase").
 **Needs from the owner:** a Cloudflare account; a fresh Supabase project in
 the slot freed from the till's staging, with the role script run and `ops`
