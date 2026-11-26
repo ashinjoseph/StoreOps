@@ -19,15 +19,15 @@ hand one out.
 
 | ID | Card | Tier | Needs | Flags | Status |
 |---|---|:-:|---|---|---|
-| P0-01 | Owner answers decisions D1–D12 | owner | | | todo |
+| P0-01 | Owner answers decisions D1–D12 | owner | | | done (go-ahead Nov 26; unanswered rows use their defaults) |
 | P0-02 | Till API contract v1, from the owner | owner + T3 review | | security | done (1.1.0) |
-| P0-03 | Database schema contract | T3 | P0-01 | money | todo |
-| P0-04 | RPC contract file | T1 | | | todo |
+| P0-03 | Database schema contract | T3 | P0-01 | money | in progress |
+| P0-04 | RPC contract file | T1 | | | in progress |
 | P1-01 | Archive old audit-log rows (current app) | T2 | | | todo |
-| P1-02 | Till API built (till repository) | owner | P0-02 | security | todo |
+| P1-02 | Till API built (till repository) | owner | P0-02 | security | staging done and checked (Nov 23); production key to come |
 | P1-03 | Vape close prefilled from the till (current app) | T2 | P1-02 | money | todo |
 | P1-04 | Till API retrieval check against staging | T1 | P0-02, P2-01 | security | todo |
-| P2-01 | Scaffold `ops/` and its CI | T1 | P0-01 | | todo |
+| P2-01 | Scaffold `ops/` and its CI | T1 | P0-01 | | in progress |
 | P2-02 | Migrations runner and first migration | T1 | P2-01, P0-03 | | todo |
 | P2-03 | Database, money, date and ID helpers | T2 | P2-02 | money | todo |
 | P2-04 | Audit log writer | T1 | P2-03 | | todo |

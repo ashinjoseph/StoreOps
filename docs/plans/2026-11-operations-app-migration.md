@@ -135,6 +135,16 @@ named in the last column.
 | D11 | Cutover | One switch on a quiet morning, after a full dry run, with the Sheet app kept read-only for 30 days as the way back. | P4-04, P4-05 |
 | D12 | Who orchestrates | A strong-model session hands out cards and reviews. The owner approves every merge to `main` and every production step. | section 5 |
 
+### Go-ahead (Nov 26)
+
+The owner asked for building to start on what is known, without waiting for
+the till side's remaining answers. Decisions with no answer above (D1, D4,
+D5, D8, D9, D11) stand at their proposed defaults. D12: the orchestrator is
+this repo's strong-model session; it hands each card to a sub-agent of the
+card's tier, each in its own git worktree, reviews the diff, and puts
+accepted cards on the working branch. A commit per card stands in for the
+pull request per card; merging to `main` still needs the owner.
+
 ### Answers (Nov 21)
 
 1. **Hosting moves from Netlify to Cloudflare; the database stays on
