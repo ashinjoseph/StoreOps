@@ -145,6 +145,19 @@ card's tier, each in its own git worktree, reviews the diff, and puts
 accepted cards on the working branch. A commit per card stands in for the
 pull request per card; merging to `main` still needs the owner.
 
+### Built differently from today, on purpose (Nov 26)
+
+Found or decided while building the foundation. Each is covered by a test.
+
+| Today | New app | Why |
+|---|---|---|
+| A person's role and active flag are fixed when they sign in | Read from the staff row on every call | A deactivation or role change applies at once (pending the owner's confirmation) |
+| The PIN is stored as typed in the staff sheet | Only a slow salted hash, mixed with a secret (`PIN_PEPPER`) held by Cloudflare | A copy of the database alone can't be used to try PINs |
+| Sign-in attempts sent at the same moment each get a guess before any is counted | One attempt at a time per name | The lockout limit holds under a burst (12 at once: 5 guesses, 7 refused) |
+| Audit and line-item ids end in 3 random characters and can repeat within a second | 10 random characters | The id is a primary key now; a repeat would fail the change itself |
+| A call that fails halfway keeps what it already wrote | One transaction per call | Nothing is half-saved |
+| Any error text reaches the screen | Only messages meant for the person; faults show `SERVER_ERROR` and an id | No table names or values leak |
+
 ### Answers (Nov 21)
 
 1. **Hosting moves from Netlify to Cloudflare; the database stays on

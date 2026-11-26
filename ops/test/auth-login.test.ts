@@ -8,6 +8,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { connect, type Db } from "../src/db/client";
+import { withTransaction } from "../src/db/tx";
 import * as pinModule from "../src/auth/pin";
 import { setPin } from "../src/auth/pin";
 import { login, logout, type LoginDeps } from "../src/auth/login";
@@ -342,7 +343,7 @@ describe("logout", () => {
     const w = await world();
     const { neu, old, now } = await w.both("Asha Example", "4821");
     const oldOut = w.oracle.Auth.logout(old.result["token"] as string);
-    const newOut = await logout({ db, config: w.config, pepper: PEPPER, now: new Date(now.getTime() + 1000) }, neu.result["token"] as string);
+    const newOut = await logout({ db, now: new Date(now.getTime() + 1000) }, neu.result["token"] as string);
     expect(newOut).toEqual(oldOut);
     const row = await db.one<{ actor_id: string; action: string; target_type: string; target_id: string; details: string | null }>(
       "select actor_id, action, target_type, target_id, details from ops.audit_log where action = 'login.logout'",
@@ -421,5 +422,42 @@ describe("no timing oracle in the code path", () => {
     expect(everything).not.toContain("4821");
     expect(everything).not.toContain(PEPPER);
     expect(Config).toBeDefined();
+  });
+});
+
+describe("attempts sent at the same moment (found in review; the old app had this gap)", () => {
+  it("twelve wrong PINs at once on twelve connections: five get a guess, seven are told they are locked", async () => {
+    await db.query("delete from ops.login_failures");
+    const config = await loadConfig(db);
+    const now = new Date(BASE + 400 * 24 * 60 * MIN);
+    const conns = await Promise.all(Array.from({ length: 12 }, () => connect(testDb.appUrl)));
+    try {
+      const results = await Promise.all(
+        conns.map((c) => withTransaction(c, (tx) => login({ db: tx, config, pepper: PEPPER, now }, "Ben Sample", "0000"))),
+      );
+      const errors = results.map((r) => (r.success ? "signed in" : r.error));
+      expect(errors.filter((e) => e === "Invalid name or code").length).toBe(5);
+      expect(errors.filter((e) => e.startsWith("Too many failed attempts")).length).toBe(7);
+      const n = await db.one<{ n: number }>("select count(*)::int as n from ops.login_failures where name_key = 'ben sample'");
+      expect(n.n).toBe(5);
+    } finally {
+      await Promise.all(conns.map((c) => c.close()));
+      await db.query("delete from ops.login_failures");
+    }
+  });
+
+  it("a name Postgres lower-cases differently from JavaScript still counts and locks", async () => {
+    await db.query("delete from ops.login_failures");
+    const config = await loadConfig(db);
+    const now = new Date(BASE + 401 * 24 * 60 * MIN);
+    const name = "İSTANBUL ÉMILE"; // U+0130 lower-cases to two characters in JavaScript
+    const seen: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      const r = await login({ db, config, pepper: PEPPER, now }, name, "0000");
+      seen.push(r.success ? "signed in" : r.error);
+    }
+    expect(seen.slice(0, 5)).toEqual(Array(5).fill("Invalid name or code"));
+    expect(seen[5]).toMatch(/^Too many failed attempts/);
+    await db.query("delete from ops.login_failures");
   });
 });

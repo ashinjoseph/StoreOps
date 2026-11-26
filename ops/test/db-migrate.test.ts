@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { migrate } from "../src/db/migrate";
+import { DEFAULT_MIGRATIONS_DIR, migrate, readMigrationFiles } from "../src/db/migrate";
 import { createEmptyDb, createTestDb, type TestDb } from "./helpers/db";
 
 const CONTRACT = new URL("../contracts/schema.sql", import.meta.url);
@@ -37,6 +37,12 @@ function tempMigrations(files: Record<string, string>): string {
   return dir;
 }
 const init = readFileSync(new URL("0001_init.sql", MIGRATIONS), "utf8");
+// The real migrations, however many there are by now: these tests must not
+// need editing each time a card adds one.
+const REAL = readMigrationFiles(DEFAULT_MIGRATIONS_DIR);
+const REAL_IDS = REAL.map((f) => f.id);
+const realFiles = (): Record<string, string> => Object.fromEntries(REAL.map((f) => [`${f.id}.sql`, f.sql]));
+const nextNumber = String(REAL.length + 1).padStart(4, "0");
 
 describe("migration files", () => {
   it("0001_init.sql is byte-for-byte the frozen contract", () => {
@@ -65,18 +71,19 @@ describe("migrate()", () => {
     for (const db of dbs) await db.drop();
   });
 
-  it("an empty database gets every contract table and one schema_migrations row", async () => {
+  it("an empty database gets every contract table and one schema_migrations row per migration", async () => {
     const db = await fresh();
     const result = await migrate(db.ownerUrl);
-    expect(result.applied).toEqual(["0001_init"]);
+    expect(result.applied).toEqual(REAL_IDS);
+    expect(REAL_IDS[0]).toBe("0001_init");
     const tables = (await tablesIn(db.ownerUrl)).filter((t) => t !== "schema_migrations");
     expect(tables).toEqual(contractTables);
     expect(contractTables.length).toBeGreaterThan(15);
     const recorded = await rows<{ version: number; name: string; checksum: string; applied_at: Date }>(
       db.ownerUrl,
-      "select version, name, checksum, applied_at from ops.schema_migrations",
+      "select version, name, checksum, applied_at from ops.schema_migrations order by version",
     );
-    expect(recorded).toHaveLength(1);
+    expect(recorded).toHaveLength(REAL.length);
     expect(recorded[0]).toMatchObject({ version: 1, name: "init" });
     expect(recorded[0]!.checksum).toMatch(/^[0-9a-f]{64}$/);
     expect(recorded[0]!.applied_at).toBeInstanceOf(Date);
@@ -110,8 +117,8 @@ describe("migrate()", () => {
   it("applies only the new file when one is added later", async () => {
     const db = await fresh();
     await migrate(db.ownerUrl);
-    const d = dir({ "0001_init.sql": init, "0002_extra.sql": "create table ops.later (id int);" });
-    expect((await migrate(db.ownerUrl, { dir: d })).applied).toEqual(["0002_extra"]);
+    const d = dir({ ...realFiles(), [`${nextNumber}_extra.sql`]: "create table ops.later (id int);" });
+    expect((await migrate(db.ownerUrl, { dir: d })).applied).toEqual([`${nextNumber}_extra`]);
   });
 
   it("a failing statement rolls the whole file back and leaves the first applied", async () => {
@@ -171,9 +178,9 @@ describe("test databases", () => {
     await b?.drop();
   });
 
-  it("start migrated, with one schema_migrations row", async () => {
+  it("start migrated, with one schema_migrations row per migration", async () => {
     const r = await rows<{ n: string }>(a.readUrl, "select count(*) as n from ops.schema_migrations");
-    expect(r[0]!.n).toBe("1");
+    expect(r[0]!.n).toBe(String(REAL.length));
   });
 
   it("don't see each other's rows", async () => {

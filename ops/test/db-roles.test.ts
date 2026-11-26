@@ -71,7 +71,7 @@ describe("ops_app", () => {
 
   it("can read schema_migrations but not write it", () =>
     as(db.appUrl, async (c) => {
-      expect((await c.query("select version from ops.schema_migrations")).rowCount).toBe(1);
+      expect((await c.query("select version from ops.schema_migrations")).rowCount).toBeGreaterThanOrEqual(1);
       await denied(c, "insert into ops.schema_migrations (version, name, checksum) values (99, 'x', 'y')");
       await denied(c, "update ops.schema_migrations set name = 'x'");
       await denied(c, "delete from ops.schema_migrations");
@@ -82,7 +82,7 @@ describe("ops_read", () => {
   it("can select but not insert", () =>
     as(db.readUrl, async (c) => {
       expect((await c.query("select count(*) from ops.staff")).rowCount).toBe(1);
-      expect((await c.query("select version from ops.schema_migrations")).rowCount).toBe(1);
+      expect((await c.query("select version from ops.schema_migrations")).rowCount).toBeGreaterThanOrEqual(1);
       await denied(c, "insert into ops.config (key, value) values ('k', 'v')");
     }));
 });

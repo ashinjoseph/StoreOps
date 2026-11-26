@@ -59,15 +59,32 @@ async function findByName(db: Db, trimmedName: string): Promise<StaffRow | null>
 // row's time, which gives the same lockout, the same window (fixed from the first failure of the
 // current run) and the same minutes arithmetic.
 
+// The failure key is the typed name lower-cased and trimmed BY POSTGRES, with the same expression
+// the table's CHECK uses. JavaScript's toLowerCase and Postgres's lower() disagree for some
+// characters (and, under a C locale, for every accented one): a key lower-cased in JavaScript
+// could be refused by the CHECK, and that name's failures would then never be counted.
+const KEY_SQL = "lower(btrim($1))";
+
+/**
+ * One sign-in attempt at a time per name. Without this, attempts sent at the same moment each
+ * read the failure count before any of them has added to it, and all get a guess: the limit
+ * would be "max fails plus however many requests arrive together". The lock is held until the
+ * call's transaction ends (the router wraps every call in one), so each attempt sees the ones
+ * before it. The old app had this gap. Outside a transaction the lock is released at once
+ * and protects nothing; that is safe, only weaker.
+ */
+const lockName = (db: Db, typed: string) =>
+  db.query(`select pg_advisory_xact_lock(hashtextextended('ops.login:' || ${KEY_SQL}, 0))`, [typed]);
+
 async function failureState(db: Db, key: string): Promise<{ count: number; firstFailAt: Date | null }> {
   const row = await db.one<{ n: number; first: Date | null }>(
-    "select count(*)::int as n, min(failed_at) as first from ops.login_failures where name_key = $1",
+    `select count(*)::int as n, min(failed_at) as first from ops.login_failures where name_key = ${KEY_SQL}`,
     [key],
   );
   return { count: row.n, firstFailAt: row.first };
 }
 
-const clearFailures = (db: Db, key: string) => db.query("delete from ops.login_failures where name_key = $1", [key]);
+const clearFailures = (db: Db, key: string) => db.query(`delete from ops.login_failures where name_key = ${KEY_SQL}`, [key]);
 
 async function checkLockout(db: Db, config: Config, key: string, now: Date): Promise<{ lockedOut: false } | { lockedOut: true; minutesRemaining: number }> {
   const { count, firstFailAt } = await failureState(db, key);
@@ -89,7 +106,7 @@ async function recordFailure(db: Db, config: Config, key: string, now: Date): Pr
   if (firstFailAt !== null && now.getTime() - firstFailAt.getTime() > lockoutMs) {
     await clearFailures(db, key); // the old window is over: start counting again
   }
-  await db.query("insert into ops.login_failures (name_key, failed_at) values ($1, $2)", [key, now]);
+  await db.query(`insert into ops.login_failures (name_key, failed_at) values (${KEY_SQL}, $2)`, [key, now]);
 }
 
 // ---- login ---------------------------------------------------------------------------------------
@@ -101,8 +118,10 @@ export async function login(deps: LoginDeps, name: string, code: string): Promis
   if (!trimmedName) return { success: false, error: "Name is required" };
   // DIFFERENCE 4: what goes into SQL text. A NUL never matches a staff name (the lookup uses trimmedName).
   const typed = trimmedName.replaceAll("\u0000", "�");
-  const key = typed.toLowerCase();
+  const key = typed; // lower-cased and trimmed in SQL (KEY_SQL), the same way the table's CHECK does
   const auditDeps = { now };
+
+  await lockName(db, typed);
 
   const lockoutCheck = await checkLockout(db, config, key, now);
   if (lockoutCheck.lockedOut) {
@@ -153,7 +172,7 @@ export async function login(deps: LoginDeps, name: string, code: string): Promis
 // ---- logout --------------------------------------------------------------------------------------
 
 /** Auth.logout_: no token is fine; the session goes; if it was a live one, audit it by token prefix only. */
-export async function logout(deps: LoginDeps, token: string): Promise<{ success: true }> {
+export async function logout(deps: Pick<LoginDeps, "db" | "now">, token: string): Promise<{ success: true }> {
   const { db, now } = deps;
   if (!token || typeof token !== "string") return { success: true };
   const hash = await hashToken(token);
