@@ -12,6 +12,7 @@ export function casedRpcs(cases: readonly ParityCase[], handlers: RpcHandlers = 
   const out = new Set<string>();
   for (const c of cases) {
     for (const s of c.steps) {
+      if (s.direct) continue; // a module function called directly is not an RPC, and covers none
       const byProbe = !hasHandler(handlers, s.rpc) && hasHandler(c.probes, s.rpc);
       if (!byProbe) out.add(s.rpc);
     }

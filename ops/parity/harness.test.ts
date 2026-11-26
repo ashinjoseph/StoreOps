@@ -13,7 +13,12 @@ import { parseRpcContract } from "../src/rpc/contract";
 import type { RpcContext, RpcHandler, RpcHandlers } from "../src/rpc/types";
 import { readContract } from "../src/import/load";
 import { translateTab } from "../src/import/sheet-to-db";
-import { parityCase, paritySequence, step, type ParityCase } from "./case";
+import { maybeSecret, secret } from "../src/lib/config";
+import { directCase, parityCase, paritySequence, step, type CaseOptions, type DirectFn, type ParityCase } from "./case";
+import { casedRpcs } from "./covered";
+import { Outbound } from "./http";
+import { takeNetworkLeaks } from "./network";
+import { formatCalls, formatResult, formatSummary } from "./report";
 import { PROBES } from "./probes";
 import { gate } from "./gate";
 import { closeWorlds, recordOld, runCase, type CaseResult } from "./run";
@@ -478,5 +483,287 @@ describe("the gate", () => {
 
   it("ignores handlers for RPCs the contract does not migrate, and rejects a case for an unknown RPC", () => {
     expect(() => gate({ contract, handlers, cased: ["rpcNoSuchThing"] })).toThrow(/rpcNoSuchThing/);
+  });
+});
+
+// ── Outbound HTTP, settings and secrets (card P3-08) ───────
+//
+// The real old Notifier.sendOp is the old side; the new side is a FAKE that sends the same two
+// requests the old one does (it reads its URL, recipients, template and token the way a port
+// would, so it is also a test that settings and the secret reach the new side). Each test makes
+// the fake wrong in one way and says where the harness must say so.
+
+const SECRET = "test-secret-one-0451";
+const WRONG = "test-wrong-token-9999";
+const SENT = { status: 200, body: { messages: [{ id: "wamid.TEST" }] } } as const;
+const OPEN_ARGS = ["shift_open", ["a", "b", "c"], "plain"];
+/** What the old sendOp answers for two recipients that both accepted. */
+const BOTH_SENT = { sent: true, sentCount: 2, total: 2, results: [{ to: "14165550100", sent: true }, { to: "14165550101", sent: true }] };
+
+interface Wrong {
+  /** The first request goes to this URL. */
+  url?: string;
+  /** The first request's second parameter says this. */
+  text?: string;
+  /** Post this many extra requests. */
+  extra?: number;
+  /** Leave out this many requests. */
+  fewer?: number;
+  /** The first request carries this token. */
+  token?: string;
+  noAuth?: boolean;
+  noContentType?: boolean;
+  method?: string;
+  /** Put the real token in the answer (a leak the report must not print). */
+  leak?: boolean;
+}
+
+/** A port of sendOp's request that is exactly right unless told to be wrong. */
+function sender(w: Wrong = {}): DirectFn {
+  return async (deps) => {
+    const url = deps.config.value("whatsapp_api_url");
+    const token = secret(deps.env, "whatsapp_api_token");
+    const lang = deps.config.value("whatsapp_template_lang", "en");
+    const name = deps.config.value("whatsapp_template_shift_open");
+    const to = deps.config.list("whatsapp_target_number");
+    const plan = [...to.slice(0, to.length - (w.fewer ?? 0)), ...Array.from({ length: w.extra ?? 0 }, () => to[0] as string)];
+    for (const [i, t] of plan.entries()) {
+      const first = i === 0;
+      const headers: Record<string, string> = {};
+      if (!(first && w.noAuth)) headers["Authorization"] = `Bearer ${first && w.token ? w.token : token}`;
+      if (!(first && w.noContentType)) headers["Content-Type"] = "application/json";
+      const texts = ["a", first && w.text ? w.text : "b", "c"];
+      // An unscripted request makes fetch throw; a real port would report it, this one carries on so only the request is judged.
+      await deps.fetch(first && w.url ? w.url : url, {
+        method: first && w.method ? w.method : "POST",
+        headers,
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: t,
+          type: "template",
+          template: { name, language: { code: lang }, components: [{ type: "body", parameters: texts.map((text) => ({ type: "text", text })) }] },
+        }),
+      }).catch(() => undefined);
+    }
+    return w.leak ? { ...BOTH_SENT, leaked: token } : BOTH_SENT;
+  };
+}
+
+const sendCase = (fn: DirectFn, extra: CaseOptions = {}): ParityCase =>
+  directCase("Notifier.sendOp", { old: "Notifier.sendOp", new: fn }, { args: OPEN_ARGS, http: [SENT, SENT], settings: { whatsapp_api_token: SECRET }, ...extra });
+
+describe("outbound HTTP: what each side sends is compared", () => {
+  it("a new side that sends exactly what the old one sends passes (and the harness saw both sides' two requests)", async () => {
+    const r = await runCase(sendCase(sender()));
+    expect(r.diffs).toEqual([]);
+    expect(r.status).toBe("pass");
+    const call = r.calls[0];
+    expect(call?.outbound.old.length).toBe(2);
+    expect(call?.outbound.new).toEqual(call?.outbound.old);
+    expect(call?.outbound.old[0]).toMatchObject({ method: "POST", authorization: "Bearer <secret>", contentType: "application/json" });
+  });
+
+  it.each([
+    ["a different URL", { url: "https://graph.facebook.com/v21.0/999999999999999/messages" }, ["call 1 Notifier.sendOp outbound[0].url"]],
+    ["a different body", { text: "B" }, ["call 1 Notifier.sendOp outbound[0].body.template.components[0].parameters[1].text"]],
+    ["a different method", { method: "PUT" }, ["call 1 Notifier.sendOp outbound[0].method"]],
+    ["one request too many", { extra: 1 }, ["call 1 Notifier.sendOp outbound[2]", "call 1 Notifier.sendOp outbound[2] (unscripted)"]],
+    ["one request too few", { fewer: 1 }, ["call 1 Notifier.sendOp outbound[1]"]],
+    ["the wrong token", { token: WRONG }, ["call 1 Notifier.sendOp outbound[0].authorization"]],
+    ["no Authorization header", { noAuth: true }, ["call 1 Notifier.sendOp outbound[0].authorization"]],
+    ["no content-type", { noContentType: true }, ["call 1 Notifier.sendOp outbound[0].contentType"]],
+  ] as [string, Wrong, string[]][])("%s is a difference at its own path", async (_name, wrong, paths) => {
+    const r = await runCase(sendCase(sender(wrong)));
+    expect(r.status).toBe("fail");
+    expect(pathsOf(r)).toEqual(paths);
+  });
+
+  it("shows the two sides of an authorization difference without printing either token", async () => {
+    const wrong = await runCase(sendCase(sender({ token: WRONG })));
+    expect(wrong.diffs[0]).toMatchObject({ old: '"Bearer <secret>"', new: '"Bearer <a different value>"' });
+    const none = await runCase(sendCase(sender({ noAuth: true })));
+    expect(none.diffs[0]).toMatchObject({ old: '"Bearer <secret>"', new: '"(none)"' });
+  });
+
+  it("an extra request is shown whole, at its index", async () => {
+    const r = await runCase(sendCase(sender({ extra: 1 })));
+    const extra = r.diffs.find((d) => d.path === "outbound[2]");
+    expect(extra).toMatchObject({ old: "(missing)" });
+    expect(extra?.new).toContain('"url":"https://graph.facebook.com/v21.0/100000000000001/messages"');
+  });
+
+  it("a request the case did not script fails the case, on both sides", async () => {
+    const r = await runCase(sendCase(sender(), { http: [SENT] }));
+    expect(r.status).toBe("fail");
+    const paths = r.diffs.map((d) => d.path);
+    expect(paths).toContain("outbound[1] (unscripted)");
+    expect(r.diffs.filter((d) => d.path === "outbound[1] (unscripted)").length).toBe(2); // one per side
+  });
+
+  it("a case with no script at all fails any request", async () => {
+    const r = await runCase(directCase("Notifier.sendOp", { old: "Notifier.sendOp", new: sender() }, { args: OPEN_ARGS, settings: { whatsapp_api_token: SECRET } }));
+    expect(r.status).toBe("fail");
+    expect(r.diffs.some((d) => d.path === "outbound[0] (unscripted)")).toBe(true);
+  });
+
+  it("a scripted reply the old side never asked for fails the case (the case is wrong)", async () => {
+    const r = await runCase(sendCase(sender(), { http: [SENT, SENT, SENT] }));
+    expect(r.status).toBe("fail");
+    expect(r.diffs.map((d) => d.path)).toEqual(["outbound (scripted replies)"]);
+    expect(r.diffs[0]?.old).toBe("1 scripted reply the old side never asked for");
+  });
+
+  it("a scripted failure is delivered to both sides: a thrown message, and an error status", async () => {
+    // The old sendOp reports each; a new side that sends the same requests and answers the same text passes.
+    const old = await recordOld(sendCase(sender(), { http: [{ throws: "Address unavailable" }, { status: 400, body: { error: { message: "(#133010) Account not registered" } } }] }));
+    expect(old[0]).toEqual({
+      sent: false,
+      sentCount: 0,
+      total: 2,
+      results: [
+        { to: "14165550100", sent: false, reason: "exception", detail: "Address unavailable" },
+        { to: "14165550101", sent: false, reason: "http_400", detail: "(#133010) Account not registered" },
+      ],
+    });
+    // The new side gets the same two replies: the first request throws, the second answers 400.
+    const seen: DirectFn = async (deps) => {
+      const out: unknown[] = [];
+      for (const t of deps.config.list("whatsapp_target_number")) {
+        try {
+          out.push((await deps.fetch(deps.config.value("whatsapp_api_url"), { method: "POST", body: JSON.stringify({ to: t }) })).status);
+        } catch (e) {
+          out.push((e as Error).message);
+        }
+      }
+      return out;
+    };
+    const r = await runCase(sendCase(seen, { http: [{ throws: "Address unavailable" }, { status: 400, body: { error: { message: "x" } } }] }));
+    expect(r.calls[0]?.new).toEqual({ kind: "ok", value: ["Address unavailable", 400] });
+  });
+
+  it("the RPC path is compared too: a handler's ctx.fetch is the new side's outbound", async () => {
+    const c = parityCase("rpcCheckWhatsApp", { as: "admin", http: [{ status: 200, body: {} }] });
+    const [answer] = await recordOld(c);
+    const handler = (url: string): RpcHandler => async (ctx) => {
+      await ctx.fetch(url, { method: "GET", headers: { Authorization: `Bearer ${secret(ctx.env, "whatsapp_api_token")}` } });
+      return structuredClone(answer);
+    };
+    const right = "https://graph.facebook.com/v21.0/100000000000001?fields=verified_name,display_phone_number,quality_rating";
+    expect((await runCase(c, { handlers: { rpcCheckWhatsApp: handler(right) } })).status).toBe("pass");
+    const r = await runCase(c, { handlers: { rpcCheckWhatsApp: handler(right.replace("v21.0", "v22.0")) } });
+    expect(pathsOf(r)).toEqual(["call 1 rpcCheckWhatsApp outbound[0].url"]);
+  });
+});
+
+describe("the secret is mirrored, and never printed", () => {
+  it("the new side holds the token the old config tab holds (the fake reads it from env); a blank one gives the new side none", async () => {
+    expect((await runCase(sendCase(sender()))).status).toBe("pass"); // would throw MissingSecretError if env were not mirrored
+    const blank = directCase("Notifier.sendOp", { old: "Notifier.sendOp", new: (deps) => (maybeSecret(deps.env, "whatsapp_api_token") === null ? { sent: false, reason: "not_configured" } : "a token was mirrored") }, { args: OPEN_ARGS, settings: { whatsapp_api_token: "" } });
+    const r = await runCase(blank);
+    expect(r.diffs).toEqual([]);
+    expect(r.status).toBe("pass");
+  });
+
+  it("a setting is set on both sides from one declaration", async () => {
+    const c = sendCase(sender(), { settings: { whatsapp_api_token: SECRET, whatsapp_template_shift_open: "custom_open", whatsapp_target_number: "14165550102", whatsapp_template_lang: "en_GB" }, http: [SENT] });
+    const r = await runCase(c);
+    expect(r.diffs.every((d) => d.path.startsWith("$"))).toBe(true); // only the fake's ANSWER (the two-recipient one) differs: the requests agree
+    expect(r.calls[0]?.outbound.old.length).toBe(1);
+    expect(r.calls[0]?.outbound.new).toEqual(r.calls[0]?.outbound.old);
+    expect(r.calls[0]?.outbound.old[0]).toMatchObject({ body: { to: "14165550102", template: { name: "custom_open", language: { code: "en_GB" } } } });
+  });
+
+  it("settings are refused when they name no config key, a real-looking number, or a real-looking secret", () => {
+    expect(() => directCase("x", { old: "x", new: () => null }, { settings: { not_a_key: "1" } })).toThrow(/not a config key/);
+    expect(() => directCase("x", { old: "x", new: () => null }, { settings: { whatsapp_target_number: "14165551234" } })).toThrow(/not a fictional number/);
+    expect(() => directCase("x", { old: "x", new: () => null }, { settings: { whatsapp_api_token: "EAAG-looks-real" } })).toThrow(/invented/);
+    expect(() => directCase("x", { old: "x", new: () => null }, { settings: { whatsapp_target_number: "14165550100, 14165550199", whatsapp_api_token: "fictional-x" } })).not.toThrow();
+  });
+
+  it("the secret appears nowhere in any report text, even when the new side leaks it or sends the wrong one", async () => {
+    const results = [
+      await runCase(sendCase(sender({ leak: true }))),
+      await runCase(sendCase(sender({ token: WRONG }))),
+      await runCase(sendCase(sender({ noAuth: true, extra: 1 }))),
+      await runCase(sendCase(() => {
+        throw new Error(`boom ${SECRET}`);
+      })),
+      await runCase(sendCase(sender(), { http: [SENT] })),
+    ];
+    // The leak is a difference (the old answer has no `leaked`), shown with the secret replaced.
+    expect(results[0]?.diffs[0]).toMatchObject({ path: "$.leaked", new: '"<secret>"' });
+    const text = [...results.map((r) => formatResult(r) + formatCalls(r) + JSON.stringify(r)), formatSummary(results)].join("\n");
+    expect(text).not.toContain(SECRET);
+    expect(text).not.toContain(WRONG);
+    expect(text).toContain("<secret>");
+  });
+
+  it("the run's rules say how outbound HTTP is compared and how secrets are mirrored, once each", async () => {
+    const lines = formatSummary([await runCase(sendCase(sender()))]).split("\n");
+    expect(lines.filter((l) => l.startsWith("outbound HTTP, by rule")).length).toBe(1);
+    const secrets = lines.filter((l) => l.startsWith("secrets, by rule"));
+    expect(secrets.length).toBe(1);
+    expect(secrets[0]).toContain("WHATSAPP_API_TOKEN");
+    expect(secrets[0]).toContain("whatsapp_api_token");
+    expect(lines).toContain("exemptions declared by cases (0):");
+  });
+});
+
+describe("nothing reaches a real network", () => {
+  it("a new side that calls the global fetch is caught (and the guard answers for it)", async () => {
+    takeNetworkLeaks();
+    const r = await runCase(
+      sendCase(async () => {
+        await fetch("https://graph.facebook.com/v21.0/100000000000001/messages", { method: "POST" });
+        return BOTH_SENT;
+      }),
+    );
+    expect(r.status).toBe("fail"); // the fetch threw inside the fake: an error where the old side answered
+    const leaks = takeNetworkLeaks();
+    expect(leaks.length).toBe(1);
+    expect(leaks[0]).toContain("global fetch(https://graph.facebook.com/v21.0/100000000000001/messages)");
+  });
+
+  it("the old runtime's own UrlFetchApp is never reached by a step (outside a step it is a guard that counts)", async () => {
+    takeNetworkLeaks();
+    const w = await createWorlds();
+    try {
+      const reach = (): unknown => w.old.run(() => (globalThis as unknown as { UrlFetchApp: { fetch(u: string): unknown } }).UrlFetchApp.fetch("https://graph.facebook.com/x"));
+      expect(reach).toThrow(/UrlFetchApp was reached/);
+      expect(takeNetworkLeaks()).toEqual(["old UrlFetchApp.fetch(https://graph.facebook.com/x)"]);
+      // A call made with a script is answered from it and leaves nothing.
+      const o = new Outbound([SENT]);
+      w.old.run(() => (globalThis as unknown as { UrlFetchApp: { fetch(u: string): unknown } }).UrlFetchApp.fetch("https://graph.facebook.com/x"), o);
+      expect(o.requests.length).toBe(1);
+      expect(takeNetworkLeaks()).toEqual([]);
+    } finally {
+      await w.close();
+    }
+  });
+
+  it("every step of every case above made no real request", () => {
+    expect(takeNetworkLeaks()).toEqual([]);
+  });
+});
+
+describe("direct calls", () => {
+  it("count towards no RPC's coverage", () => {
+    expect(casedRpcs([sendCase(sender())], {})).toEqual([]);
+  });
+
+  it("have no session: `as` is refused", () => {
+    expect(() => directCase("x", { old: "x", new: () => null }, { as: "admin" })).toThrow(/direct call/);
+    expect(() => paritySequence("t", {}, [{ ...step("x", { as: "admin" }), direct: { old: "x", new: () => null } }])).toThrow(/direct call/);
+  });
+
+  it("an old function that does not exist is an error answer, not a crash", async () => {
+    const r = await runCase(directCase("Notifier.nope", { old: "Notifier.nope", new: () => null }));
+    expect(r.status).toBe("fail");
+    expect(r.diffs[0]?.old).toContain("the old server has no function Notifier.nope");
+  });
+
+  it("a new side that throws is that message, compared like an RPC's", async () => {
+    const r = await runCase(directCase("Notifier.sendOp", { old: "Notifier.sendOp", new: () => { throw new Error("nope"); } }, { args: ["shift_open", [], ""], http: [SENT, SENT] }));
+    expect(r.diffs[0]?.new).toContain('(error) "nope"');
   });
 });

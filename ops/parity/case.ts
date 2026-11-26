@@ -16,14 +16,39 @@
 // token. For an RPC without a session (rpcLogin, rpcLogout), `as` is not used;
 // tokenOf(who), nameOf(who) and codeOf(who) put fixture values into `args`.
 //
+// Outbound HTTP and settings (card P3-08):
+//
+//   parityCase("rpcCheckWhatsApp", { as: "admin",
+//     settings: { notifier_enabled: "TRUE", whatsapp_api_token: "test-token-1" },
+//     http: [{ status: 200, body: { verified_name: "Fictional Mart" } }] })
+//
+// `http` scripts the replies to the call's outbound requests (see http.ts): the
+// same replies, in order, for both sides. `settings` sets config rows on BOTH sides
+// from this one declaration, before the pair is used: the old `config` tab's row
+// and the new `config` table's row. A secret key (whatsapp_api_token) is set in
+// the old tab only, and mirrored into the new side's binding (SECRETS_RULE). A case
+// with `settings` gets a pair of its own. A phone number must be fictional (555-01xx).
+//
+// A module function with no RPC of its own is compared with directCase/directStep:
+//
+//   directCase("Notifier.sendOp", { old: "Notifier.sendOp", new: (deps, ...a) => sendOp(deps, ...a) }, { args: [...], http: [...] })
+//
+// the old side calls `api.Notifier.sendOp(...args)`; the new side is called with the
+// dependencies a handler would be given (config, env, fetch, db, now), inside a
+// transaction, as the router would. These never count towards the gate's coverage.
+//
 // `writes` absent: the case only reads, and may share a pair of worlds with
 // other read cases. `writes` present (even []): the case gets a fresh pair,
 // and those tables are compared row by row after the last step. Either way,
 // any other table that changes on either side fails the case.
 import { readFileSync } from "node:fs";
 import { parseRpcContract } from "../src/rpc/contract";
+import type { Tx } from "../src/db/tx";
+import type { Config } from "../src/lib/config";
+import { configKeySpec } from "../src/lib/config-keys";
 import type { RpcHandlers } from "../src/rpc/types";
 import type { Duration } from "./clock";
+import type { HttpReply } from "./http";
 import { schema } from "./writes";
 
 const contract = parseRpcContract(JSON.parse(readFileSync(new URL("../contracts/rpc.json", import.meta.url), "utf8")));
@@ -58,10 +83,31 @@ export interface StepSpec {
   at?: Date | string;
   /** Move the clock forward before this step. */
   advance?: Duration;
+  /** The replies to this step's outbound requests, in order, the same on both sides. Absent: any outbound request fails the case. */
+  http?: readonly HttpReply[];
+}
+
+/** What a module function is given on the new side: what a handler gets from its context. */
+export interface DirectDeps {
+  config: Config;
+  env: Readonly<Record<string, unknown>>;
+  fetch: typeof fetch;
+  db: Tx;
+  now: Date;
+}
+export type DirectFn = (deps: DirectDeps, ...args: unknown[]) => unknown;
+
+/** A function of the old app and its port, called with no RPC and no session. */
+export interface DirectCall {
+  /** A dotted path into the old server's globals: "Notifier.sendOp". */
+  old: string;
+  new: DirectFn;
 }
 
 export interface Step extends StepSpec {
+  /** The RPC's name, or for a direct step the label shown in reports. */
   readonly rpc: string;
+  readonly direct?: DirectCall;
 }
 
 /** A path in each result that may differ, and why. */
@@ -79,6 +125,8 @@ export type Exemption = ResultExemption | ColumnExemption;
 
 export interface CaseOptions extends StepSpec {
   title?: string;
+  /** Config rows to set on both sides before the case (see the header). */
+  settings?: Readonly<Record<string, string>>;
   /** The tables this case changes (see the header). Absent: read-only. */
   writes?: readonly string[];
   exempt?: readonly Exemption[];
@@ -96,6 +144,8 @@ export interface ParityCase {
   readonly writes: readonly string[] | null;
   readonly exempt: readonly Exemption[];
   readonly probes: RpcHandlers;
+  /** Null: the fixture's own settings. */
+  readonly settings: Readonly<Record<string, string>> | null;
 }
 
 // ── References ─────────────────────────────────────────────
@@ -174,7 +224,30 @@ function checkExemptions(list: readonly Exemption[]): void {
   }
 }
 
+/** A recipient is fictional: 1 + area code + 555-01xx. */
+const FICTIONAL_NUMBER = /^1\d{3}55501\d\d$/;
+
+function checkSettings(settings: Readonly<Record<string, string>>, title: string): void {
+  for (const [key, value] of Object.entries(settings)) {
+    const spec = configKeySpec(key);
+    if (!spec) throw new Error(`parity case "${title}": settings names ${key}, which is not a config key (ops/src/lib/config-keys.ts)`);
+    if (typeof value !== "string") throw new Error(`parity case "${title}": settings ${key} must be text (a blank is "")`);
+    if (key === "whatsapp_target_number") {
+      for (const n of value.split(/[,;\s]+/).filter(Boolean)) {
+        if (!FICTIONAL_NUMBER.test(n)) throw new Error(`parity case "${title}": ${n} is not a fictional number (use 1 + an area code + 55501xx, e.g. 14165550100)`);
+      }
+    }
+    if (spec.kind === "secret" && value !== "" && !/^(test|fictional)-/.test(value)) {
+      throw new Error(`parity case "${title}": a secret in settings must look invented: start it with "test-" or "fictional-"`);
+    }
+  }
+}
+
 function checkStep(s: Step, title: string): void {
+  if (s.direct) {
+    if (s.as !== undefined) throw new Error(`parity case "${title}": ${s.rpc} is a direct call; it has no session, so no \`as\``);
+    return;
+  }
   const entry = contract.get(s.rpc);
   if (!entry) throw new Error(`parity case "${title}": ${s.rpc} is not in ops/contracts/rpc.json`);
   if (!entry.migrate) throw new Error(`parity case "${title}": ${s.rpc} is marked migrate: false`);
@@ -190,22 +263,34 @@ function make(title: string, spec: CaseOptions, steps: readonly Step[]): ParityC
   if (steps.length === 0) throw new Error(`parity case "${title}": no steps`);
   const exempt = spec.exempt ?? [];
   checkExemptions(exempt);
+  if (spec.settings) checkSettings(spec.settings, title);
   for (const t of spec.writes ?? []) {
     if (!schema.tables[t] && !schema.leftTabs.has(t)) throw new Error(`parity case "${title}": writes names ${t}, which is neither a table of the schema nor a tab of the old app`);
   }
   const full = steps.map((s) => {
-    const merged: Step = { ...s, ...(s.as === undefined && spec.as !== undefined && contract.get(s.rpc)?.needs_session ? { as: spec.as } : {}) };
+    const merged: Step = { ...s, ...(s.as === undefined && spec.as !== undefined && !s.direct && contract.get(s.rpc)?.needs_session ? { as: spec.as } : {}) };
     checkStep(merged, title);
     return merged;
   });
-  return Object.freeze({ title, steps: full, writes: spec.writes === undefined ? null : [...spec.writes], exempt: [...exempt], probes: spec.probes ?? {} });
+  return Object.freeze({ title, steps: full, writes: spec.writes === undefined ? null : [...spec.writes], exempt: [...exempt], probes: spec.probes ?? {}, settings: spec.settings ? { ...spec.settings } : null });
 }
 
 /** One call, compared. */
 export function parityCase(rpc: string, spec: CaseOptions = {}): ParityCase {
-  const { title, writes, exempt, probes, ...stepSpec } = spec;
+  const { title, writes, exempt, probes, settings, ...stepSpec } = spec;
   const who = typeof spec.as === "string" ? ` as ${spec.as}` : "";
-  return make(title ?? `${rpc}${who}`, { ...(writes !== undefined ? { writes } : {}), ...(exempt ? { exempt } : {}), ...(probes ? { probes } : {}) }, [step(rpc, stepSpec)]);
+  return make(title ?? `${rpc}${who}`, { ...(writes !== undefined ? { writes } : {}), ...(exempt ? { exempt } : {}), ...(probes ? { probes } : {}), ...(settings ? { settings } : {}) }, [step(rpc, stepSpec)]);
+}
+
+/** One step that calls a module function directly on both sides (see the header). */
+export function directStep(label: string, call: DirectCall, spec: StepSpec = {}): Step {
+  return { rpc: label, direct: call, ...spec };
+}
+
+/** One direct call, compared. */
+export function directCase(label: string, call: DirectCall, spec: CaseOptions = {}): ParityCase {
+  const { title, writes, exempt, probes, settings, ...stepSpec } = spec;
+  return make(title ?? label, { ...(writes !== undefined ? { writes } : {}), ...(exempt ? { exempt } : {}), ...(probes ? { probes } : {}), ...(settings ? { settings } : {}) }, [directStep(label, call, stepSpec)]);
 }
 
 /** Several calls in order on the same pair, each compared. `spec.as` is the default caller for steps that need one. */

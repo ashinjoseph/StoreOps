@@ -2,6 +2,7 @@
 import type { ParityCase } from "../case";
 import { attendanceCases } from "./attendance";
 import { authCases } from "./auth";
+import { notifierCases } from "./notifier";
 import { staffCases } from "./staff";
 
-export const allCases: readonly ParityCase[] = [...authCases, ...staffCases, ...attendanceCases];
+export const allCases: readonly ParityCase[] = [...authCases, ...staffCases, ...attendanceCases, ...notifierCases];

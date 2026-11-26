@@ -1,6 +1,7 @@
 // What the parity run prints.
 import { render } from "./compare";
 import type { GateResult } from "./gate";
+import { OUTBOUND_RULE, SECRETS_RULE } from "./http";
 import type { CaseResult } from "./run";
 import { EXPIRED_SESSIONS_RULE, NEW_ONLY_COLUMNS } from "./writes";
 import { SHEET_ROW_RULE } from "./old-world";
@@ -9,7 +10,11 @@ import { pairTimings } from "./worlds";
 /** Every call of a case with both sides' (normalised) answers: PARITY_VERBOSE=1. */
 export function formatCalls(r: CaseResult): string {
   const show = (o: CaseResult["calls"][number]["old"]): string => (o.kind === "ok" ? render(o.value) : o.kind === "error" ? `(error) ${JSON.stringify(o.message)}` : "(not ported)");
-  return [`${r.status.toUpperCase()}  ${r.title}`, ...r.calls.map((c) => `  ${c.step}. ${c.rpc}\n      old: ${show(c.old)}\n      new: ${show(c.new)}`)].join("\n");
+  const sent = (xs: CaseResult["calls"][number]["outbound"]["old"]): string => (xs.length === 0 ? "(nothing)" : xs.map((x) => `${x.method} ${x.url} ${x.authorization}`).join("; "));
+  return [
+    `${r.status.toUpperCase()}  ${r.title}`,
+    ...r.calls.map((c) => `  ${c.step}. ${c.rpc}\n      old: ${show(c.old)}\n      new: ${show(c.new)}\n      old sent: ${sent(c.outbound.old)}\n      new sent: ${sent(c.outbound.new)}`),
+  ].join("\n");
 }
 
 /** One case, for a failing assertion's message. */
@@ -56,6 +61,8 @@ export function formatSummary(results: readonly CaseResult[]): string {
   lines.push(`equivalent, by rule (ops/parity/writes.ts EXPIRED_SESSIONS_RULE): ${EXPIRED_SESSIONS_RULE}`);
   lines.push(`dropped, by rule (ops/parity/old-world.ts SHEET_ROW_RULE): ${SHEET_ROW_RULE}`);
   lines.push("normalised, by rule (ops/parity/compare.ts): session tokens; ids generated during a case (prefix and stamp kept, random part numbered)");
+  lines.push(`outbound HTTP, by rule (ops/parity/http.ts): ${OUTBOUND_RULE.replace(/^outbound HTTP: /, "")}`);
+  lines.push(`secrets, by rule (ops/parity/http.ts): ${SECRETS_RULE.replace(/^secrets are /, "")}`);
 
   const probes = [...new Set(results.flatMap((r) => r.probesUsed))];
   if (probes.length) lines.push(`probes standing in for unported RPCs (ops/parity/probes.ts): ${probes.join(", ")}`);

@@ -12,6 +12,7 @@ import { handlers } from "../src/rpc/registry";
 import { allCases } from "./cases/index";
 import { casedRpcs } from "./covered";
 import { gate } from "./gate";
+import { takeNetworkLeaks } from "./network";
 import { formatCalls, formatGate, formatResult, formatSummary } from "./report";
 import { closeWorlds, runCase, type CaseResult } from "./run";
 
@@ -40,6 +41,12 @@ describe("parity: old and new answer the same", () => {
       expect(r.status, formatResult(r)).toBe("pass");
     });
   }
+});
+
+describe("parity: nothing left the process", () => {
+  it("neither the real fetch nor the old runtime's own UrlFetchApp was reached by any case", () => {
+    expect(takeNetworkLeaks()).toEqual([]);
+  });
 });
 
 describe("parity: the gate", () => {

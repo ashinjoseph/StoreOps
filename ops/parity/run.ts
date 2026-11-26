@@ -6,12 +6,14 @@
 //
 // Order: sign in every caller the case names (both sides), fingerprint both
 // sides, run the steps (each one: old, then new, on the same clock), fingerprint
-// again, then normalise and compare the answers, then the declared tables.
+// again, then normalise and compare the answers and the outbound requests each
+// side made (http.ts), then the declared tables.
 import { handlers as registry } from "../src/rpc/registry";
 import type { RpcHandler, RpcHandlers } from "../src/rpc/types";
 import { callersOf, resolveRefs, type ColumnExemption, type ParityCase, type ResultExemption, type Side } from "./case";
 import { MAX_DIFFS, Normaliser, diffOutcomes, pathMatcher, type Diff } from "./compare";
 import { hasHandler } from "./gate";
+import { Outbound, diffOutbound, redact, type RequestView } from "./http";
 import type { Outcome, TransportFinding } from "./old-world";
 import { compareTables, snapshotNew, snapshotOld, undeclaredChanges, type SideSnapshot } from "./writes";
 import { contract, createWorlds, dropTemplates, type Worlds } from "./worlds";
@@ -25,6 +27,8 @@ export interface CallResult {
   total: number;
   old: Outcome;
   new: Outcome;
+  /** What each side sent out during this call, as compared (the secret shown as <secret>). */
+  outbound: { old: RequestView[]; new: RequestView[] };
 }
 
 export interface CaseResult {
@@ -88,13 +92,14 @@ interface Executed {
   freshPairMs: number | null;
   /** Both sides, after the callers signed in and before the first step. */
   before: { old: SideSnapshot; new: SideSnapshot };
-  steps: { rpc: string; old: Outcome; new: Outcome; findings: TransportFinding[]; faults: object[] }[];
+  steps: { rpc: string; old: Outcome; new: Outcome; findings: TransportFinding[]; faults: object[]; outbound: { old: Outbound; new: Outbound }; secret: string | null }[];
 }
 
 async function execute(c: ParityCase, handlers: RpcHandlers, newSide: boolean): Promise<Executed> {
-  const fresh = c.writes !== null;
+  // A case that writes, or sets settings, has a pair of its own.
+  const fresh = c.writes !== null || c.settings !== null;
   const t0 = performance.now();
-  const worlds = fresh ? await createWorlds() : await sharedWorlds();
+  const worlds = fresh ? await createWorlds({ settings: c.settings }) : await sharedWorlds();
   const freshPairMs = fresh ? performance.now() - t0 : null;
   try {
     return await steps(c, handlers, newSide, worlds, fresh, freshPairMs);
@@ -126,7 +131,7 @@ async function steps(c: ParityCase, handlers: RpcHandlers, newSide: boolean, wor
   for (const s of c.steps) {
     if (s.at !== undefined) worlds.clock.set(s.at);
     if (s.advance !== undefined) worlds.clock.advance(s.advance);
-    const needsSession = contract.get(s.rpc)?.needs_session === true;
+    const needsSession = s.direct === undefined && contract.get(s.rpc)?.needs_session === true;
     const argsFor = (x: Side): unknown[] => {
       const rest = resolveRefs(s.args ?? [], x) as unknown[];
       let all = rest;
@@ -138,11 +143,17 @@ async function steps(c: ParityCase, handlers: RpcHandlers, newSide: boolean, wor
       return JSON.parse(JSON.stringify(all)) as unknown[];
     };
     const findings: TransportFinding[] = [];
-    const o = worlds.old.call(s.rpc, argsFor(sides.old), findings);
-    const n = newSide ? await worlds.callNew(handlers, s.rpc, argsFor(sides.new)) : { outcome: { kind: "not_ported" } as Outcome, faults: [] };
+    // The same script for both sides; each side records what it sends and gets the replies in order.
+    const outbound = { old: new Outbound(s.http ?? []), new: new Outbound(s.http ?? []) };
+    const o = s.direct ? worlds.old.callPath(s.direct.old, argsFor(sides.old), findings, outbound.old) : worlds.old.call(s.rpc, argsFor(sides.old), findings, outbound.old);
+    const n = !newSide
+      ? { outcome: { kind: "not_ported" } as Outcome, faults: [] }
+      : s.direct
+        ? await worlds.callNewDirect(s.direct.new, argsFor(sides.new), outbound.new)
+        : await worlds.callNew(handlers, s.rpc, argsFor(sides.new), outbound.new);
     results.old.push(o.kind === "ok" ? o.value : null);
     results.new.push(n.outcome.kind === "ok" ? n.outcome.value : null);
-    ran.push({ rpc: s.rpc, old: o, new: n.outcome, findings, faults: n.faults });
+    ran.push({ rpc: s.rpc, old: o, new: n.outcome, findings, faults: n.faults, outbound, secret: worlds.mirroredToken() });
   }
   return { worlds, fresh, freshPairMs, before, steps: ran };
 }
@@ -179,7 +190,7 @@ export async function runCase(c: ParityCase, opts: { handlers?: RpcHandlers } = 
     undeclared: [],
     exemptions: c.exempt.map((e) => (isResultExemption(e) ? { where: "result", path: e.path, reason: e.reason } : { where: `table ${e.table}`, path: e.column, reason: e.reason })),
     findings: [],
-    notPorted: [...new Set(c.steps.map((s) => s.rpc).filter((r) => !hasHandler(handlers, r)))],
+    notPorted: [...new Set(c.steps.filter((s) => !s.direct).map((s) => s.rpc).filter((r) => !hasHandler(handlers, r)))],
     notCompared: [],
     faults: [],
     probesUsed,
@@ -211,16 +222,18 @@ export async function runCase(c: ParityCase, opts: { handlers?: RpcHandlers } = 
     const matchers = c.exempt.filter(isResultExemption).map((e) => pathMatcher(e.path));
     const exempt = (p: string): boolean => matchers.some((m) => m(p));
     ran.steps.forEach((s, i) => {
-      const o = norms.old.outcome(s.old);
-      const n = norms.new.outcome(s.new);
-      const found = diffOutcomes(o, n, exempt);
+      // The secret is never printed, wherever a side put it (SECRETS_RULE in http.ts).
+      const o = redact(norms.old.outcome(s.old), s.secret);
+      const n = redact(norms.new.outcome(s.new), s.secret);
+      const sent = diffOutbound(s.outbound.old, s.outbound.new, s.secret);
+      const found = [...diffOutcomes(o, n, exempt), ...sent.diffs];
       const where = `call ${i + 1} ${s.rpc}`;
       const listed = found.slice(0, MAX_DIFFS).map((d) => ({ where, ...d }));
-      result.calls.push({ step: i + 1, rpc: s.rpc, diffs: listed, total: found.length, old: o, new: n });
+      result.calls.push({ step: i + 1, rpc: s.rpc, diffs: listed, total: found.length, old: o, new: n, outbound: { old: sent.old, new: sent.new } });
       result.diffs.push(...listed);
       result.hidden += found.length - listed.length;
       result.findings.push(...s.findings.map((f) => ({ ...f, step: i + 1, rpc: s.rpc })));
-      result.faults.push(...s.faults);
+      result.faults.push(...redact(s.faults, s.secret));
       if (s.new.kind === "not_ported" && !result.notPorted.includes(s.rpc)) result.notPorted.push(s.rpc);
     });
 

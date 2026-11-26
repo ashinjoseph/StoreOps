@@ -13,6 +13,8 @@ import { createHash } from "node:crypto";
 import type { SheetTab } from "../src/import/sheet-to-db";
 import { bootFixture } from "../test/helpers/fixture";
 import { FrozenClock, frozenDate } from "./clock";
+import type { Outbound } from "./http";
+import { guardedUrlFetchApp } from "./network";
 
 /** The page's view of an answer: an answer, a thrown message, or (new side only) no handler. */
 export type Outcome = { kind: "ok"; value: unknown } | { kind: "error"; message: string } | { kind: "not_ported" };
@@ -126,6 +128,10 @@ export class OldWorld {
       clock.set(caseTime);
     }
     for (const k of Object.keys(api)) if (api[k] !== undefined) globals[k] = api[k];
+    // The runtime's own UrlFetchApp answers 200 to anything. A parity run must never get an answer
+    // it did not script: outside a case step this is a guard that throws and counts (http.ts), and
+    // a step swaps in the case's scripted one (run(), below).
+    globals["UrlFetchApp"] = guardedUrlFetchApp;
     // runtime.js's getUuid stub counts 1, 2, 3... across the whole process, so every old token
     // starts "00000000" and the audit row of a logout (token.substring(0, 8) + "...") could not
     // tell two sessions apart. Apps Script's real getUuid is random; this one is distinct per
@@ -170,12 +176,17 @@ export class OldWorld {
     }
   }
 
-  /** Run `fn` synchronously as this world: its services, the frozen Date, its random sequence. */
-  run<T>(fn: () => T): T {
+  /**
+   * Run `fn` synchronously as this world: its services, the frozen Date, its random sequence.
+   * `outbound` is what UrlFetchApp records and answers from for this run; without it, any
+   * outbound request reaches the guard and fails loudly.
+   */
+  run<T>(fn: () => T, outbound?: Outbound): T {
     const saved = snapshotGlobals(Object.keys(this.globals));
     const realDate = g["Date"];
     const realRandom = Math.random;
     for (const [k, v] of Object.entries(this.globals)) g[k] = v;
+    if (outbound) g["UrlFetchApp"] = { fetch: outbound.oldFetch };
     g["Date"] = this.frozen;
     Math.random = () => (((this.draw++ * 7919) % 46656) + 0.5) / 46656;
     try {
@@ -194,16 +205,61 @@ export class OldWorld {
    * back what the page would receive: a thrown error as its message, an answer
    * as google.script.run delivers it (see pageView).
    */
-  call(rpc: string, args: readonly unknown[], findings: TransportFinding[] = []): Outcome {
+  call(rpc: string, args: readonly unknown[], findings: TransportFinding[] = [], outbound?: Outbound): Outcome {
     const fn = this.api[rpc];
     if (typeof fn !== "function") return { kind: "error", message: `the old server has no function ${rpc}` };
     let value: unknown;
     try {
-      value = this.run(() => (fn as OldFn)(...args));
+      value = this.run(() => (fn as OldFn)(...args), outbound);
     } catch (err) {
       return { kind: "error", message: err instanceof Error ? err.message : String(err) };
     }
     return { kind: "ok", value: pageView(value, findings) };
+  }
+
+  /** A module function with no RPC ("Notifier.sendOp"), called as `api.Notifier.sendOp(...args)`; answered as `call` answers. */
+  callPath(path: string, args: readonly unknown[], findings: TransportFinding[] = [], outbound?: Outbound): Outcome {
+    const parts = path.split(".");
+    let owner: unknown = this.api;
+    for (const part of parts.slice(0, -1)) owner = owner !== null && typeof owner === "object" ? (owner as Record<string, unknown>)[part] : undefined;
+    const fn = owner !== null && typeof owner === "object" ? (owner as Record<string, unknown>)[parts[parts.length - 1] as string] : undefined;
+    if (typeof fn !== "function") return { kind: "error", message: `the old server has no function ${path}` };
+    let value: unknown;
+    try {
+      value = this.run(() => (fn as OldFn).apply(owner, [...args]), outbound);
+    } catch (err) {
+      return { kind: "error", message: err instanceof Error ? err.message : String(err) };
+    }
+    return { kind: "ok", value: pageView(value, findings) };
+  }
+
+  /** What the `config` tab holds for a key, as text ("" for a blank cell), or null when there is no such row. */
+  configValue(key: string): string | null {
+    const row = this.rows("config").find((r) => r[0] === key);
+    return row === undefined ? null : String(row[1] ?? "");
+  }
+
+  /** Set a row of the `config` tab (appended when the key has none), as the fixture's own setConfig does. */
+  setConfig(key: string, value: string): void {
+    interface Writable {
+      getRange(row: number, col: number, rows: number, cols: number): { getValues(): unknown[][]; setValue(v: unknown): void; setValues(v: unknown[][]): void };
+      getLastRow(): number;
+      getLastColumn(): number;
+    }
+    this.run(() => {
+      const sh = this.spreadsheet().getSheetByName("config") as unknown as Writable | null;
+      if (!sh) throw new Error("harness: the old spreadsheet has no config tab");
+      const last = sh.getLastRow();
+      const vals = last >= 3 ? sh.getRange(3, 1, last - 2, 2).getValues() : [];
+      const at = vals.findIndex((r) => r[0] === key);
+      if (at >= 0) {
+        sh.getRange(3 + at, 2, 1, 1).setValue(value);
+        return;
+      }
+      const header = sh.getRange(2, 1, 1, sh.getLastColumn()).getValues()[0] ?? [];
+      const row = header.map((h) => (h === "key" ? key : h === "value" ? value : h === "description" ? "parity settings" : ""));
+      sh.getRange(Math.max(last, 2) + 1, 1, 1, row.length).setValues([row]);
+    });
   }
 
   /** The old token for a fixture person, signing them in on first use (with their own login code). */
