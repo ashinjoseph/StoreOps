@@ -6,11 +6,15 @@ import type { Session } from "../auth/types";
 import type { Tx } from "../db/tx";
 import { loadConfig } from "../lib/config";
 import { rpcLogin, rpcLogout } from "./handlers/auth";
+import { rpcGetActiveStaffForLogin, rpcGetAllStaff, rpcGetStaffDirectory } from "./handlers/staff";
 import type { RpcHandlers } from "./types";
 
 export const handlers: RpcHandlers = {
   rpcLogin,
   rpcLogout,
+  rpcGetActiveStaffForLogin,
+  rpcGetStaffDirectory,
+  rpcGetAllStaff,
 };
 
 /** What the router calls for every RPC the contract marks `needs_session`. Throws Error("NOT_LOGGED_IN"). */
