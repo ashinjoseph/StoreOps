@@ -12,3 +12,4 @@ desktop.ini
 *.swp
 .dev.vars
 .dev.vars.*
+.claude/worktrees/
