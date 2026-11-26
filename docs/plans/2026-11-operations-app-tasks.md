@@ -46,7 +46,7 @@ hand one out.
 | P3-03 | ~~Product import by CSV upload~~ | | | | dropped |
 | P3-04 | ~~Port ShoppingList~~ | | | | dropped |
 | P3-05a | Port Attendance: schedule, hours, who am I | T2 | P3-01 | money | done |
-| P3-05b | Port the open and the close: TillSessions, Sales | T2 | P3-05a, P3-08 | money | todo |
+| P3-05b | Port the open and the close: TillSessions, Sales | T3 | P3-05a, P3-08 | money | in progress |
 | P3-05c | Port the shift state and bootstrap reads | T2 | P3-05b, P3-06 | money | todo |
 | P3-06 | Port CashHandling | T2 | P3-05b | money | todo |
 | P3-07 | Port Clover and Reconcile | T2 | P3-06, P3-08 | money | todo |
