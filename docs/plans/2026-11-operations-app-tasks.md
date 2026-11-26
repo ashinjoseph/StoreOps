@@ -32,9 +32,9 @@ hand one out.
 | P2-03a | Money, date and ID helpers | T2 | P2-01 | money | done |
 | P2-03b | Database client and transactions | T2 | P2-02 | money | done |
 | P2-04 | Audit log writer | T1 | P2-03b | | done |
-| P2-05 | Config and secrets access | T1 | P2-03b | security | in progress |
-| P2-06 | Login, sessions, lockout, roles | T2 | P2-04, P2-05 | security | todo |
-| P2-07 | RPC router | T2 | P2-06, P0-04 | security | todo |
+| P2-05 | Config and secrets access | T1 | P2-03b | security | done |
+| P2-06 | Login, sessions, lockout, roles | T2 | P2-04, P2-05 | security | in progress |
+| P2-07 | RPC router | T2 | P2-05, P0-04 | security | in progress |
 | P2-08a | UI copy and the new transport | T2 | P2-01 | | done |
 | P2-08b | UI served by the Worker; login round-trips | T2 | P2-08a, P2-07 | | todo |
 | P2-09a | Sheet rows into the new database (fixture loader) | T2 | P2-02 | money | done |
@@ -374,6 +374,11 @@ section 2, "Not migrated"). Not ported.
 `rpcCancelScheduledShift`, `rpcAdjustAttendanceHours`, `rpcEditAttendanceTimes`.
 **Note:** the three modules call each other; port them together. The close
 is one transaction: session, sales row, attendance.
+Settings read oddly here (found by P2-05; keep the behaviour): the opening
+floats and `lotto_reserve_default` use `Number(x) || 0`, so read them with
+`config.value` and that expression, not `config.number`; `<company>_card_split`
+is true unless the trimmed, lower-cased value is `false`, and `Sales.gs`
+defaults it to true for both companies while `Setup.gs` says false for cstore.
 
 ### P3-06 · CashHandling · T2 · money
 **Read:** `src/CashHandling.gs`; `tests/suites/cash-handling.js`,
@@ -381,6 +386,8 @@ is one transaction: session, sales row, attendance.
 **RPCs:** `rpcGetCashPosition`, `rpcRecordCashHandover`,
 `rpcVoidCashHandover`, `rpcGetCashOutstandingFor`, `rpcGetCashHandoverHistory`.
 **Note:** `record` runs in one transaction and locks the cashier's row first.
+`cash_handover_stale_days` treats a negative or zero as 7 (its own rule,
+not `config.number`).
 Item ids written in a loop must not collide (the old `newId` can repeat
 within a second, and the new table has a primary key): give each item a
 suffix that includes its position in the batch.
@@ -398,7 +405,7 @@ second sees the first.
 **RPCs:** `rpcNotifyShiftOpen`, `rpcCheckWhatsApp`.
 **Note:** the token comes from a Worker secret. No test may call Meta. Leave
 out the `shopping_list` message and its template key; the shopping list is
-deprecated.
+deprecated (also drop it from the list `diagnose` checks).
 
 ### P3-09 · Payments and Bonuses · T2 · money
 **Read:** `src/Payments.gs`, `src/Bonuses.gs`; ADR-0011;
@@ -455,7 +462,9 @@ From the schema review, the import must also: reject a figure that doesn't
 survive the round trip to 2 decimals (Postgres rounds silently); lower-case
 enum values such as `Closed` before insert, rejecting anything still
 outside the set; leave out secret config keys, `staff.login_code` and the
-seeded placeholder rule `CR_001` when it is inactive and unused; map
+seeded placeholder rule `CR_001` when it is inactive and unused; turn each
+`staff.login_code` into `staff.pin_hash` with P2-06's hashing (the plaintext
+never reaches the database); map
 `commission_runs.week_end` (stored as Sunday 23:59:59) to its Toronto date.
 Duplicate item ids (found by P2-09a): `payment_items` and
 `cash_handover_items` can hold two rows with the same `item_id`, because the
