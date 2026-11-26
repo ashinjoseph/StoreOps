@@ -1,0 +1,25 @@
+{
+  "store_id": "5b0a1c52-7d3e-4c1f-9a10-0a1b2c3d4e01",
+  "staff": [
+    {
+      "staff_id": "11111111-aaaa-4aaa-8aaa-000000000001",
+      "display_name": "Testa Fictional",
+      "role": "owner",
+      "active": true,
+      "all_stores": true,
+      "store_ids": [],
+      "has_pin": true
+    },
+    {
+      "staff_id": "11111111-aaaa-4aaa-8aaa-000000000002",
+      "display_name": "Pat Invented",
+      "role": "cashier",
+      "active": true,
+      "all_stores": false,
+      "store_ids": [
+        "5b0a1c52-7d3e-4c1f-9a10-0a1b2c3d4e01"
+      ],
+      "has_pin": false
+    }
+  ]
+}

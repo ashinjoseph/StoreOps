@@ -1,0 +1,12 @@
+{
+  "stores": [
+    {
+      "store_id": "5b0a1c52-7d3e-4c1f-9a10-0a1b2c3d4e01",
+      "code": "FIC1",
+      "name": "Fictional Corner Store",
+      "active": true,
+      "company_id": "5b0a1c52-7d3e-4c1f-9a10-0a1b2c3d4e02",
+      "company_code": "vape"
+    }
+  ]
+}

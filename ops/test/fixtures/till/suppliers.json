@@ -1,0 +1,10 @@
+{
+  "store_id": "5b0a1c52-7d3e-4c1f-9a10-0a1b2c3d4e01",
+  "suppliers": [
+    {
+      "vendor": "ACME",
+      "name": "Acme Wholesale (fictional)",
+      "active": true
+    }
+  ]
+}

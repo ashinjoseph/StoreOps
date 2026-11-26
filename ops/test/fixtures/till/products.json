@@ -1,0 +1,35 @@
+{
+  "store_id": "5b0a1c52-7d3e-4c1f-9a10-0a1b2c3d4e01",
+  "products": [
+    {
+      "sku": "YV-10001",
+      "name": "Mango Ice 10ml",
+      "product": "Fictional Juice",
+      "barcode": "0123456789012",
+      "barcode_aliases": [],
+      "active": true,
+      "sku_pending": false,
+      "suppliers": [
+        {
+          "vendor": "ACME",
+          "their_code": "AC-77",
+          "their_name": "Mango Ice",
+          "pieces": 10,
+          "preferred": true
+        }
+      ]
+    },
+    {
+      "sku": "TMP-0001",
+      "name": "Berry Blast 10ml",
+      "product": "Fictional Juice",
+      "barcode": null,
+      "barcode_aliases": [
+        "0123456789029"
+      ],
+      "active": false,
+      "sku_pending": true,
+      "suppliers": []
+    }
+  ]
+}
