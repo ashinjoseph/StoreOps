@@ -8,6 +8,7 @@ import { loadConfig } from "../lib/config";
 import { rpcAdjustAttendanceHours, rpcCancelScheduledShift, rpcEditAttendanceTimes, rpcGetWeekSchedule, rpcScheduleShift } from "./handlers/attendance";
 import { rpcGetMe, rpcLogin, rpcLogout } from "./handlers/auth";
 import { rpcApproveBonus, rpcCancelBonus, rpcCreateBonus, rpcGetProposedBonuses } from "./handlers/bonuses";
+import { rpcCreateCommissionRule, rpcGetCommissionRules, rpcUpdateCommissionRule } from "./handlers/commission-rules";
 import { rpcCheckWhatsApp } from "./handlers/notifier";
 import { rpcGetActiveStaffForLogin, rpcGetAllStaff, rpcGetStaffDirectory } from "./handlers/staff";
 import type { RpcHandlers } from "./types";
@@ -29,6 +30,9 @@ export const handlers: RpcHandlers = {
   rpcApproveBonus,
   rpcCancelBonus,
   rpcCreateBonus,
+  rpcGetCommissionRules,
+  rpcCreateCommissionRule,
+  rpcUpdateCommissionRule,
 };
 
 /** What the router calls for every RPC the contract marks `needs_session`. Throws Error("NOT_LOGGED_IN"). */
