@@ -2,3 +2,28 @@ name = "storeops-ops"
 main = "src/index.ts"
 compatibility_date = "2026-11-01"
 compatibility_flags = ["nodejs_compat"]
+
+# The page (public/index.html, built from src/Index.html) must exist before
+# `dev` and `deploy`.
+[build]
+command = "npm run build:ui"
+
+# Static assets: the built page and transport.js.
+# run_worker_first = true sends EVERY request to the Worker, which adds the
+# security headers and then asks ASSETS for the file. (A path list such as
+# ["/rpc/*", "/health"] would let the page and script bypass the Worker and go
+# out without those headers.)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+# The database connection. The id is a placeholder: card P2-10 (staging)
+# creates the Hyperdrive config and sets it. Locally, wrangler reads the
+# connection string from the environment variable
+# CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
+# (WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE is the deprecated
+# spelling of the same thing). Nothing secret belongs in this file.
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "REPLACE_IN_P2-10"

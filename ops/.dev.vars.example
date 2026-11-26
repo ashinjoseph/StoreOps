@@ -1,0 +1,6 @@
+# Copy to ops/.dev.vars (ignored by git) for `npm run dev` and `npm run pin:set`.
+# Fake, local-only values: they match ops/.env.example and the Docker database.
+PIN_PEPPER=local-only-pepper-not-a-secret
+OPS_DB_APP_URL=postgres://ops_app:local-only-app@127.0.0.1:54329/ops
+# wrangler dev gives the Worker its HYPERDRIVE binding from this variable.
+CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://ops_app:local-only-app@127.0.0.1:54329/ops
