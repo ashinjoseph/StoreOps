@@ -37,7 +37,8 @@ hand one out.
 | P2-07 | RPC router | T2 | P2-06, P0-04 | security | todo |
 | P2-08a | UI copy and the new transport | T2 | P2-01 | | done |
 | P2-08b | UI served by the Worker; login round-trips | T2 | P2-08a, P2-07 | | todo |
-| P2-09 | Parity harness | T3 | P2-07 | | todo |
+| P2-09a | Sheet rows into the new database (fixture loader) | T2 | P2-02 | money | in progress |
+| P2-09 | Parity harness | T3 | P2-07, P2-09a | | todo |
 | P2-10 | Staging deploy | T2 | P2-08b | security | todo |
 | P3-01 | Port Staff | T1 | P2-09 | | todo |
 | P3-02 | ~~Port ProductTypes and ProductMaster~~ | | | | dropped |
@@ -307,6 +308,19 @@ each reach the right handler.
 **Make:** the Worker serves the built page at `/` and its static files.
 **Done when:** the login screen loads from the Worker locally and a login
 round-trips through `/rpc/rpcLogin`.
+
+### P2-09a · Sheet rows into the new database · T2 · money
+Added Nov 26: the part of the parity harness that doesn't need the router,
+and the same translation the production import (P4-02) will use.
+**Make:** `ops/src/import/sheet-to-db.ts` (Sheet cells to contract rows, by
+header name; blank stays `NULL`; a row that doesn't fit is a reject with its
+tab, row and column but never its value); `ops/src/import/load.ts`;
+`ops/test/helpers/fixture.ts` (`loadFixture(db)`: the old runtime's fictional
+data, loaded into a test database).
+**Done when:** the whole fixture loads with zero rejects; per table, row
+counts match the Sheet; per money column, sums match to the cent and blank
+counts equal `NULL` counts; a tampered fixture gives exactly the planted
+rejects.
 
 ### P2-09 · Parity harness · T3
 **Read:** `scripts/docs/runtime.js`, `scripts/docs/fixtures.js`; plan
