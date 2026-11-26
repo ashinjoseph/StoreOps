@@ -41,7 +41,7 @@ hand one out.
 | P2-09 | Parity harness | T3 | P2-07, P2-09a | | done |
 | P2-09b | Parity fixture: a payroll admin and an inactive person | T2 | P2-09 | | in progress |
 | P2-10 | Staging deploy | T2 | P2-08b | security | todo |
-| P3-01 | Port Staff | T1 | P2-09 | | todo |
+| P3-01 | Port Staff | T1 | P2-09 | | in progress |
 | P3-02 | ~~Port ProductTypes and ProductMaster~~ | | | | dropped |
 | P3-03 | ~~Product import by CSV upload~~ | | | | dropped |
 | P3-04 | ~~Port ShoppingList~~ | | | | dropped |
