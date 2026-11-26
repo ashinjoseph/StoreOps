@@ -36,7 +36,7 @@ hand one out.
 | P2-06 | Login, sessions, lockout, roles | T2 | P2-04, P2-05 | security | done |
 | P2-07 | RPC router | T2 | P2-05, P0-04 | security | done |
 | P2-08a | UI copy and the new transport | T2 | P2-01 | | done |
-| P2-08b | UI served by the Worker; login round-trips | T2 | P2-08a, P2-07 | | todo |
+| P2-08b | UI served by the Worker; login round-trips | T2 | P2-08a, P2-07 | | done (the login screen's name list comes with P3-01) |
 | P2-09a | Sheet rows into the new database (fixture loader) | T2 | P2-02 | money | done |
 | P2-09 | Parity harness | T3 | P2-07, P2-09a | | todo |
 | P2-10 | Staging deploy | T2 | P2-08b | security | todo |

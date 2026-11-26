@@ -14,3 +14,5 @@ desktop.ini
 .dev.vars.*
 .claude/worktrees/
 ops/public/index.html
+!.dev.vars.example
+.wrangler/
