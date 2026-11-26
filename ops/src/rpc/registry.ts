@@ -13,6 +13,7 @@ import { rpcGetCashHandoverHistory, rpcGetCashOutstandingFor, rpcGetCashPosition
 import { rpcCreateCommissionRule, rpcGetCommissionRules, rpcUpdateCommissionRule } from "./handlers/commission-rules";
 import { rpcGetCommissionRuns, rpcRunCommissionEngine } from "./handlers/commissions";
 import { rpcCheckWhatsApp } from "./handlers/notifier";
+import { rpcGetReconciliation, rpcReconcileDay } from "./handlers/reconcile";
 import { rpcGetSalesDashboard } from "./handlers/sales-dashboard";
 import { rpcCloseShift, rpcNotifyShiftOpen, rpcOpenShift } from "./handlers/shifts";
 import { rpcGetMyOwedSummary, rpcGetOwedSummary, rpcGetPaymentHistory, rpcGetPayrollOverview, rpcPayBonus, rpcPayShifts, rpcUndoPayment } from "./handlers/payments";
@@ -59,6 +60,8 @@ export const handlers: RpcHandlers = {
   rpcGetCashHandoverHistory,
   rpcGetBootstrap,
   rpcGetMyShiftState,
+  rpcReconcileDay,
+  rpcGetReconciliation,
 };
 
 /** What the router calls for every RPC the contract marks `needs_session`. Throws Error("NOT_LOGGED_IN"). */

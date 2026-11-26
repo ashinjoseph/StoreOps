@@ -14,7 +14,7 @@ import { callersOf, resolveRefs, type ColumnExemption, type ParityCase, type Res
 import { MAX_DIFFS, Normaliser, diffOutcomes, pathMatcher, type Diff } from "./compare";
 import { dayOnly } from "./day-only";
 import { hasHandler } from "./gate";
-import { Outbound, diffOutbound, redact, type RequestView } from "./http";
+import { Outbound, diffOutbound, redact, type RequestView, type Secret } from "./http";
 import type { Outcome, TransportFinding } from "./old-world";
 import { compareTables, snapshotNew, snapshotOld, undeclaredChanges, type SideSnapshot } from "./writes";
 import { contract, createWorlds, dropTemplates, type Worlds } from "./worlds";
@@ -106,7 +106,7 @@ interface Executed {
   freshPairMs: number | null;
   /** Both sides, after the callers signed in and before the first step. */
   before: { old: SideSnapshot; new: SideSnapshot };
-  steps: { rpc: string; old: Outcome; new: Outcome; findings: TransportFinding[]; faults: object[]; outbound: { old: Outbound; new: Outbound }; secret: string | null }[];
+  steps: { rpc: string; old: Outcome; new: Outcome; findings: TransportFinding[]; faults: object[]; outbound: { old: Outbound; new: Outbound }; secret: Secret[] }[];
 }
 
 async function execute(c: ParityCase, handlers: RpcHandlers, newSide: boolean): Promise<Executed> {
@@ -170,7 +170,7 @@ async function steps(c: ParityCase, handlers: RpcHandlers, newSide: boolean, wor
         : await worlds.callNew(handlers, s.rpc, argsFor(sides.new), outbound.new);
     results.old.push(o.kind === "ok" ? o.value : null);
     results.new.push(n.outcome.kind === "ok" ? n.outcome.value : null);
-    ran.push({ rpc: s.rpc, old: o, new: n.outcome, findings, faults: n.faults, outbound, secret: worlds.mirroredToken() });
+    ran.push({ rpc: s.rpc, old: o, new: n.outcome, findings, faults: n.faults, outbound, secret: worlds.mirroredSecrets() });
   }
   return { worlds, fresh, freshPairMs, before, steps: ran };
 }

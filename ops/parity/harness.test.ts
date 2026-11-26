@@ -17,7 +17,7 @@ import { maybeSecret, secret } from "../src/lib/config";
 import { directCase, parityCase, paritySequence, step, type CaseOptions, type DirectFn, type ParityCase } from "./case";
 import { casedRpcs } from "./covered";
 import { DAY_ONLY_KEYS, dayOnly } from "./day-only";
-import { Outbound } from "./http";
+import { Outbound, redact, viewOf } from "./http";
 import { takeNetworkLeaks } from "./network";
 import { formatCalls, formatResult, formatSummary } from "./report";
 import { PROBES } from "./probes";
@@ -896,5 +896,36 @@ describe("fields stored as a day are compared as that day in Toronto", () => {
     const r = await runCase(c, { handlers: { rpcGetCashHandoverHistory: returning(at(24)) } });
     expect(r.status).toBe("fail");
     expect(r.diffs[0]).toMatchObject({ path: "$.handovers[0].handedOn", old: '"<day 2026-11-16>"', new: '"<day 2026-11-17>"' });
+  });
+});
+
+// SECRETS_RULE (http.ts), widened Nov 26 for Clover: the reconcile's three "through the RPC" cases
+// failed because only the WhatsApp token reached the new side.
+describe("every secret the old app keeps in its config tab is mirrored to the new side's bindings, each under its own label", () => {
+  it("the two Clover tokens reach the new side, and each is shown by name, never printed", async () => {
+    const w = await createWorlds({ settings: { clover_cstore_token: "tok-cstore-000111", clover_vape_token: "tok-vape-000222", whatsapp_api_token: "tok-wa-000333" } });
+    try {
+      const r = await w.callNewDirect((deps) => ({ c: deps.env["CLOVER_CSTORE_TOKEN"], v: deps.env["CLOVER_VAPE_TOKEN"], wa: deps.env["WHATSAPP_API_TOKEN"] }), []);
+      expect(r.outcome).toEqual({ kind: "ok", value: { c: "tok-cstore-000111", v: "tok-vape-000222", wa: "tok-wa-000333" } });
+      const shown = redact({ a: "Bearer tok-cstore-000111", b: ["x tok-vape-000222 y"], "tok-wa-000333": 1 }, w.mirroredSecrets());
+      expect(shown).toEqual({ a: "Bearer <secret:clover_cstore_token>", b: ["x <secret:clover_vape_token> y"], "<secret>": 1 });
+      const view = (token: string) => viewOf({ method: "GET", url: "https://api.clover.com/v3/x", headers: { authorization: `Bearer ${token}` }, body: undefined } as never, w.mirroredSecrets()).authorization;
+      // The wrong till's token is a visible difference, not "a secret is a secret".
+      expect(view("tok-cstore-000111")).toBe("Bearer <secret:clover_cstore_token>");
+      expect(view("tok-vape-000222")).toBe("Bearer <secret:clover_vape_token>");
+      expect(view("tok-wa-000333")).toBe("Bearer <secret>");
+      expect(view("something-else")).toBe("Bearer <a different value>");
+    } finally {
+      await w.close();
+    }
+  });
+  it("a blank token is not bound", async () => {
+    const w = await createWorlds({ settings: { clover_cstore_token: "", clover_vape_token: "tok-vape-000222" } });
+    try {
+      const r = await w.callNewDirect((deps) => Object.keys(deps.env).filter((k) => k.startsWith("CLOVER_")), []);
+      expect(r.outcome).toEqual({ kind: "ok", value: ["CLOVER_VAPE_TOKEN"] });
+    } finally {
+      await w.close();
+    }
   });
 });

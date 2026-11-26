@@ -188,7 +188,7 @@ function seed(api, ss) {
       cashier_debit: money(vCard - vCard * 0.62), clover_debit: money(vCard - vCard * 0.62),
       cashier_card: vCard, clover_card: money(vCard + cloverVar), card_variance: cloverVar,
       cash_counted: money(100 + vp.cash), cash_variance: 0,
-      status: Math.abs(cloverVar) > 1 ? 'INVESTIGATE' : 'OK', mode: 'auto',
+      status: Math.abs(cloverVar) > 1 ? 'investigate' : 'OK', mode: 'auto',
       session_ids: 'VAP-' + ymd + '-' + vp.staff, validated_at: vp.end, validated_by: 'SYSTEM',
       cash_sales: money(vp.cash),
     });

@@ -30,7 +30,7 @@ import { createTestDb, superuserUrl, TEST_PASSWORDS } from "../test/helpers/db";
 import { loadFixture } from "../test/helpers/fixture";
 import type { DirectFn } from "./case";
 import { CASE_START_AT, FIXTURE_BOOT_AT, FrozenClock } from "./clock";
-import type { Outbound } from "./http";
+import type { Outbound, Secret } from "./http";
 import { guardedFetch } from "./network";
 import { OldWorld, type FixturePerson, type Outcome } from "./old-world";
 import { snapshotNew, snapshotOld } from "./writes";
@@ -90,8 +90,10 @@ export interface Worlds {
    * given (settings, env, fetch, db, now), as the router would. A throw is the outcome's message.
    */
   callNewDirect(fn: DirectFn, args: readonly unknown[], outbound?: Outbound): Promise<NewCall>;
-  /** The secret both sides hold (SECRETS_RULE in http.ts): the old config tab's whatsapp_api_token, or null when blank. */
+  /** The WhatsApp secret both sides hold (SECRETS_RULE in http.ts): the old config tab's whatsapp_api_token, or null when blank. */
   mirroredToken(): string | null;
+  /** Every secret both sides hold, with the label it is shown under (SECRETS_RULE). */
+  mirroredSecrets(): Secret[];
   /** Every row of a table on the new side. */
   newRows(table: string): Promise<Record<string, unknown>[]>;
   close(): Promise<void>;
@@ -256,9 +258,24 @@ export async function createWorlds(options: WorldOptions = {}): Promise<Worlds> 
     const v = old.configValue("whatsapp_api_token");
     return v === null || v === "" ? null : v;
   };
+  /** The old config tab's secret keys, and how each is shown. The binding is the key in capitals. */
+  const MIRRORED: readonly { key: string; label: string }[] = [
+    { key: "whatsapp_api_token", label: "<secret>" },
+    { key: "clover_cstore_token", label: "<secret:clover_cstore_token>" },
+    { key: "clover_vape_token", label: "<secret:clover_vape_token>" },
+  ];
+  const mirroredSecrets = (): Secret[] =>
+    MIRRORED.flatMap(({ key, label }) => {
+      const v = old.configValue(key);
+      return v === null || v === "" ? [] : [{ label, value: v }];
+    });
   const newEnv = (): Record<string, unknown> => {
-    const token = mirroredToken();
-    return { PIN_PEPPER: PARITY_PEPPER, ...(token !== null ? { WHATSAPP_API_TOKEN: token } : {}) };
+    const env: Record<string, unknown> = { PIN_PEPPER: PARITY_PEPPER };
+    for (const { key } of MIRRORED) {
+      const v = old.configValue(key);
+      if (v !== null && v !== "") env[key.toUpperCase()] = v;
+    }
+    return env;
   };
 
   /** Run `fn` with the real global fetch replaced by the guard (a handler that uses it instead of ctx.fetch is caught). */
@@ -339,6 +356,7 @@ export async function createWorlds(options: WorldOptions = {}): Promise<Worlds> 
     callNew,
     callNewDirect,
     mirroredToken,
+    mirroredSecrets,
     async newRows(table) {
       if (!/^[a-z_]+$/.test(table)) throw new Error(`unsafe table name: ${table}`);
       const db = await connect(appUrl);

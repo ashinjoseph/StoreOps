@@ -50,7 +50,16 @@ export const OUTBOUND_RULE =
   "outbound HTTP: each side's requests are recorded and answered from the case's `http` script (the same replies, in order); compared: count, order, method, URL, body (JSON parsed, then compared exactly), content-type, and authorization as Bearer + the one secret. An unscripted request, or a scripted reply the old side never asked for, fails the case. Nothing reaches a real host.";
 
 export const SECRETS_RULE =
-  "secrets are mirrored, not shared through the table: the old app reads whatsapp_api_token from its config tab, the new app from the WHATSAPP_API_TOKEN binding; before every call the harness sets the binding from the old tab's value (blank: no binding), so both sides hold one secret. It is shown as <secret> and is never printed.";
+  "secrets are mirrored, not shared through the table: the old app reads whatsapp_api_token, clover_cstore_token and clover_vape_token from its config tab, the new app from the WHATSAPP_API_TOKEN, CLOVER_CSTORE_TOKEN and CLOVER_VAPE_TOKEN bindings; before every call the harness sets each binding from the old tab's value (blank: no binding), so both sides hold the same secrets. The WhatsApp token is shown as <secret>, a Clover token as <secret:its key> (so the wrong till's token is a difference), and none is ever printed.";
+
+/** A secret both sides hold, and how it is shown. */
+export interface Secret {
+  label: string;
+  value: string;
+}
+/** One secret (shown as <secret>), a list, or none. */
+export type Secrets = string | null | readonly Secret[];
+const listOf = (s: Secrets): readonly Secret[] => (s === null ? [] : typeof s === "string" ? [{ label: "<secret>", value: s }] : s).filter((x) => x.value !== "");
 
 const UNSCRIPTED = "parity: an outbound request the case did not script";
 
@@ -121,21 +130,24 @@ export class Outbound {
 // ── Views and the comparison ───────────────────────────────
 
 /** `value` with every occurrence of the secret replaced, at any depth. */
-export function redact<T>(value: T, secret: string | null): T {
-  if (secret === null || secret === "") return value;
+export function redact<T>(value: T, secret: Secrets): T {
+  const secrets = listOf(secret);
+  if (secrets.length === 0) return value;
+  const text = (s: string): string => secrets.reduce((t, x) => (t.includes(x.value) ? t.split(x.value).join(x.label) : t), s);
   const walk = (v: unknown): unknown => {
-    if (typeof v === "string") return v.includes(secret) ? v.split(secret).join("<secret>") : v;
+    if (typeof v === "string") return text(v);
     if (Array.isArray(v)) return v.map(walk);
-    if (v !== null && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k.includes(secret) ? k.split(secret).join("<secret>") : k, walk(x)]));
+    if (v !== null && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [text(k), walk(x)]));
     return v;
   };
   return walk(value) as T;
 }
 
 /** "Bearer <secret>" when it is the secret; anything else says what it is without printing it. */
-function authorizationView(value: string | undefined, secret: string | null): string {
+function authorizationView(value: string | undefined, secret: Secrets): string {
   if (value === undefined) return "(none)";
-  if (secret !== null && value === `Bearer ${secret}`) return "Bearer <secret>";
+  const held = listOf(secret).find((x) => value === `Bearer ${x.value}`);
+  if (held) return `Bearer ${held.label}`;
   if (value.startsWith("Bearer ")) return "Bearer <a different value>";
   return "(another scheme)";
 }
@@ -149,7 +161,7 @@ function bodyView(text: string | null): unknown {
   }
 }
 
-export function viewOf(r: RecordedRequest, secret: string | null): RequestView {
+export function viewOf(r: RecordedRequest, secret: Secrets): RequestView {
   return redact(
     {
       method: r.method,
@@ -168,7 +180,7 @@ export interface OutboundComparison {
   diffs: { path: string; old: string; new: string }[];
 }
 
-export function diffOutbound(o: Outbound, n: Outbound, secret: string | null): OutboundComparison {
+export function diffOutbound(o: Outbound, n: Outbound, secret: Secrets): OutboundComparison {
   const old = o.requests.map((r) => viewOf(r, secret));
   const now = n.requests.map((r) => viewOf(r, secret));
   const diffs: { path: string; old: string; new: string }[] = [];

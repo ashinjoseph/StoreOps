@@ -161,6 +161,9 @@ Found or decided while building the foundation. Each is covered by a test.
 | A handover can be recorded with any text as its method | Only cash, bank, e-transfer or other (what the page offers) | No unreadable methods in the record |
 | The weekly commission run is an Apps Script trigger installed from the Sheet's menu, at the hour in `commission_run_hour` | A Cloudflare schedule, Mondays 09:00 Toronto, fixed in the app's config; a failed run is logged and recorded as failed | Nothing to install by hand; the old trigger is removed at cutover |
 | A commission run that fails halfway keeps the bonuses it had proposed | The whole run is kept or none of it; two runs of one week cannot overlap | No half-proposed week |
+| The Clover token is sent to whatever address the `clover_base_url` setting holds | Only to Clover's own API hosts; any other address counts as Clover not set up (the report still goes out) | Changing one setting can't send the token elsewhere |
+| A Clover request has no time limit of its own | 10 seconds, then the day is recorded as not verified by Clover | A hung request can't hang a reconcile |
+| Two reconciles of one day at the same moment can both write rows | One at a time per day | No doubled rows |
 | Two people opening the same till at the same moment can both succeed | One open at a time per till | A till never has two open sessions |
 | A count that isn't a number is stored as-is, and a close with no count shows variance 0, OK | Refused: "physicalCount is not a number" | A close can't look balanced without a count |
 | Any error text reaches the screen | Only messages meant for the person; faults show `SERVER_ERROR` and an id | No table names or values leak |
