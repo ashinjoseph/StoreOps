@@ -56,8 +56,8 @@ export function companiesOf(raw: string | null): string[] {
 
 /**
  * Validate a token and renew it (rolling), as Auth.validate_ does. Throws
- * `new Error("NOT_LOGGED_IN")` for a missing, unknown or expired token (an
- * expired row is deleted), and for a staff row that is missing or inactive.
+ * `new Error("NOT_LOGGED_IN")` for a missing, unknown or expired token (the
+ * expired row is left for `purgeExpired`), and for a staff row that is missing or inactive.
  * Renewal: only when LESS than half the window remains, to `now + window`.
  */
 export async function validateSession(db: Db, token: string, config: Config, now: Date): Promise<Session> {
@@ -74,8 +74,10 @@ export async function validateSession(db: Db, token: string, config: Config, now
 
   let expiresAt = row.expires_at.getTime();
   if (now.getTime() > expiresAt) {
-    // Auth.gs:150: strictly past expiry; the row goes.
-    await db.query("delete from ops.sessions where token_hash = $1", [hash]);
+    // Auth.gs:150: strictly past expiry. The old code also deleted the session here. This one
+    // does not: the call is about to fail with NOT_LOGGED_IN, the router rolls a failed call
+    // back, and the delete would be undone with it. An expired row is refused every time and
+    // is removed by purgeExpired (found by the parity harness, card P2-09).
     throw new Error(NOT_LOGGED_IN);
   }
   // New: read from the staff row each time (see the header). A deactivated person is signed out.

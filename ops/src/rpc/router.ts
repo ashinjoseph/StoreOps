@@ -34,6 +34,8 @@ export interface RpcRouterDeps {
   resolveSession: (db: Tx, token: unknown, now: Date) => Promise<Session>;
   /** The Worker's bindings, passed through to handlers. */
   env: Readonly<Record<string, unknown>>;
+  /** Outbound HTTP handed to handlers as `ctx.fetch`. Default: the runtime's own `fetch`. */
+  fetch?: typeof fetch;
   /** The clock, read once per call. Default: the real time (the only place it is read). */
   now?: () => Date;
   /** Receives one entry per fault. Default: console.error. */
@@ -175,6 +177,7 @@ export function createRpcRouter(deps: RpcRouterDeps): (request: Request) => Prom
           session,
           config: () => (config ??= loadConfig(tx)),
           env: deps.env,
+          fetch: deps.fetch ?? ((input, init) => fetch(input, init)),
           now,
         };
         const rest = entry.needs_session ? args.slice(1) : args;

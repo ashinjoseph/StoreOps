@@ -2,7 +2,7 @@
 import { render } from "./compare";
 import type { GateResult } from "./gate";
 import type { CaseResult } from "./run";
-import { NEW_ONLY_COLUMNS } from "./writes";
+import { EXPIRED_SESSIONS_RULE, NEW_ONLY_COLUMNS } from "./writes";
 import { pairTimings } from "./worlds";
 
 /** Every call of a case with both sides' (normalised) answers: PARITY_VERBOSE=1. */
@@ -52,6 +52,7 @@ export function formatSummary(results: readonly CaseResult[]): string {
   const exemptions = results.flatMap((r) => r.exemptions.map((e) => `  ${r.title}: ${e.where} ${e.path} — ${e.reason}`));
   lines.push(`exemptions declared by cases (${exemptions.length}):`, ...(exemptions.length ? exemptions : ["  (none)"]));
   lines.push("never compared, by rule (ops/parity/writes.ts NEW_ONLY_COLUMNS):", ...NEW_ONLY_COLUMNS.map((c) => `  ${c.table}.${c.column} — ${c.reason}`));
+  lines.push(`equivalent, by rule (ops/parity/writes.ts EXPIRED_SESSIONS_RULE): ${EXPIRED_SESSIONS_RULE}`);
   lines.push("normalised, by rule (ops/parity/compare.ts): session tokens; ids generated during a case (prefix and stamp kept, random part numbered)");
 
   const probes = [...new Set(results.flatMap((r) => r.probesUsed))];

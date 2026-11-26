@@ -232,6 +232,7 @@ export async function runCase(c: ParityCase, opts: { handlers?: RpcHandlers } = 
         appUrl: w.appUrl,
         norms,
         newTokens,
+        now: w.clock.now(),
         exempt: (table, column) => columnExempt.some((e) => e.table === table && e.column === column),
       });
       result.diffs.push(...tables.diffs);

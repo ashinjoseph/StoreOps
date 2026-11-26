@@ -38,7 +38,8 @@ hand one out.
 | P2-08a | UI copy and the new transport | T2 | P2-01 | | done |
 | P2-08b | UI served by the Worker; login round-trips | T2 | P2-08a, P2-07 | | done (the login screen's name list comes with P3-01) |
 | P2-09a | Sheet rows into the new database (fixture loader) | T2 | P2-02 | money | done |
-| P2-09 | Parity harness | T3 | P2-07, P2-09a | | todo |
+| P2-09 | Parity harness | T3 | P2-07, P2-09a | | done |
+| P2-09b | Parity fixture: a payroll admin and an inactive person | T2 | P2-09 | | in progress |
 | P2-10 | Staging deploy | T2 | P2-08b | security | todo |
 | P3-01 | Port Staff | T1 | P2-09 | | todo |
 | P3-02 | ~~Port ProductTypes and ProductMaster~~ | | | | dropped |
@@ -349,11 +350,31 @@ paid service this turned on and its expected cost.
 
 ## Phase 3 — Port, module by module
 
-Every card in this phase has the same shape. **Make:** `ops/src/modules/<name>.ts`,
-`ops/src/rpc/<area>.ts`, tests in `ops/test/`, and the RPC names added to the
-parity list. **Done when:** typecheck and tests pass; parity passes for the
-RPCs named; the matching suite in `tests/suites/` has been ported assertion
-for assertion (list any you could not port, and why).
+Every card in this phase has the same shape. **Make:** `ops/src/modules/<name>.ts`
+(functions that take a `Db`), `ops/src/rpc/handlers/<area>.ts` (one
+`RpcHandler` per RPC, registered in `ops/src/rpc/registry.ts`), tests in
+`ops/test/`, and parity cases in `ops/parity/cases/<area>.ts` (added to
+`cases/index.ts`). **Done when:** typecheck and tests pass;
+`npm --prefix ops run parity -- <the RPCs named>` passes with no exemption
+the orchestrator hasn't agreed; the matching suite in `tests/suites/` has
+been ported assertion for assertion (list any you could not port, and why).
+
+A parity case is a few lines:
+```ts
+parityCase("rpcGetCashPosition", { as: "manager" }),
+paritySequence("a handover shows in the history", { as: "S_003", writes: ["cash_handovers", "cash_handover_items", "audit_log"] }, [
+  step("rpcRecordCashHandover", { args: [{ /* input */ }] }),
+  step("rpcGetCashHandoverHistory", { args: [20, "S_003"] }),
+]),
+```
+A write case declares every table it changes; a table changed and not
+declared fails the case. A handler with no parity case fails the run.
+
+Five old RPCs return a `Date` (`rpcGetAllStaff` `startDate`; `rpcCreateBonus`,
+`rpcApproveBonus`, `rpcCancelBonus` and `rpcScheduleShift` date fields).
+`google.script.run` can't carry one, so the page gets `null` there today, and
+the harness compares against that. Return `null` in those fields and list
+them in the report; whether to send the real date is the owner's call later.
 
 ### P3-01 · Staff · T1
 **Read:** `src/Staff.gs`.

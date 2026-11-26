@@ -18,6 +18,8 @@ export interface RpcContext {
   config(): Promise<Config>;
   /** The Worker's bindings (secrets live here; see lib/config.ts `secret`). */
   env: Readonly<Record<string, unknown>>;
+  /** Outbound HTTP (WhatsApp, Clover, the till). Use this, never the global `fetch`, so tests and the parity harness can see and fake every call. */
+  fetch: typeof fetch;
   /** The instant the call started. Use this, never `new Date()`, so tests and the parity harness can pin it. */
   now: Date;
 }

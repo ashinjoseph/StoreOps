@@ -112,16 +112,19 @@ describe("validateSession", () => {
     expect(NOT_LOGGED_IN).toBe("NOT_LOGGED_IN");
   });
 
-  it("an expired token throws and its row is deleted; exactly at expiry is still valid (Auth.gs:150 is a strict >)", async () => {
+  it("an expired token throws every time and its row waits for purgeExpired; exactly at expiry is still valid (Auth.gs:150 is a strict >)", async () => {
     const { token, expiresAt } = await createSession(db, "S1", CONFIG, T0);
     const other = await createSession(db, "S2", CONFIG, T0);
     const atEdge = await createSession(db, "S1", CONFIG, T0);
     expect(await validateSession(db, atEdge.token, CONFIG, new Date(expiresAt))).toMatchObject({ staffId: "S1" });
     await destroySession(db, atEdge.token);
     expect(await messageOf(validateSession(db, token, CONFIG, new Date(expiresAt + 1)))).toBe(NOT_LOGGED_IN);
-    expect(await countRows()).toBe(1);
-    expect(await messageOf(validateSession(db, token, CONFIG, T0))).toBe(NOT_LOGGED_IN); // gone for good
-    expect(await validateSession(db, other.token, CONFIG, T0)).toMatchObject({ staffId: "S2" });
+    // Not deleted here: a failed call is rolled back by the router, so a delete would be undone.
+    expect(await countRows()).toBe(2);
+    expect(await messageOf(validateSession(db, token, CONFIG, new Date(expiresAt + 3_600_000)))).toBe(NOT_LOGGED_IN); // refused every time
+    expect(await validateSession(db, other.token, CONFIG, T0)).toMatchObject({ staffId: "S2" }); // another person's is untouched
+    expect(await purgeExpired(db, new Date(expiresAt + 1))).toBe(2); // both were made at T0, so both are past their end now
+    expect(await countRows()).toBe(0);
   });
 
   it("rolling renewal: more than half the window left changes nothing; less than half renews to now + window", async () => {

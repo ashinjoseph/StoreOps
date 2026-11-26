@@ -37,6 +37,17 @@ export const NEW_ONLY_COLUMNS: readonly { table: string; column: string; reason:
   { table: "login_failures", column: "failure_id, failed_at (per row)", reason: "the old app keeps one {count, firstFailAt, lastFailAt} per name; both sides are compared in that form" },
 ];
 
+/**
+ * A session past its end is the same as no session, on both sides. Stated once, here.
+ * Neither app will accept it. The old app happens to delete it when it is next
+ * looked at; the new one refuses it and leaves the row for `purgeExpired` (a
+ * delete followed by NOT_LOGGED_IN would be rolled back with the rest of the
+ * call). So the comparison drops expired sessions from both sides before it
+ * compares, using the case's clock. This is printed with every run.
+ */
+export const EXPIRED_SESSIONS_RULE = "sessions past their expiry are left out on both sides: neither app accepts one; the old deletes it when next looked at, the new leaves it for purgeExpired";
+const live = (now: Date) => (r: { expires_at: unknown }): boolean => typeof r.expires_at !== "string" || Date.parse(r.expires_at) >= now.getTime();
+
 const excluded = (table: string, column: string): boolean => column === "store_id" || (table === "staff" && column === "pin_hash");
 
 const SESSION_PREFIX = "session:";
@@ -122,7 +133,7 @@ interface View {
   problems: string[];
 }
 
-function oldView(old: OldWorld, table: string): View | null {
+function oldView(old: OldWorld, table: string, now: Date): View | null {
   if (table === "sessions") {
     const props = old.properties();
     const rows = Object.keys(props)
@@ -130,7 +141,8 @@ function oldView(old: OldWorld, table: string): View | null {
       .map((k) => {
         const s = JSON.parse(props[k] as string) as { staffId?: unknown; expiresAt?: unknown };
         return { token: k.slice(SESSION_PREFIX.length), staff_id: s.staffId ?? null, expires_at: typeof s.expiresAt === "number" ? new Date(s.expiresAt).toISOString() : null };
-      });
+      })
+      .filter(live(now));
     return { key: "token", rows, problems: [] };
   }
   if (table === "login_failures") {
@@ -153,7 +165,7 @@ function oldView(old: OldWorld, table: string): View | null {
   return { key: pk, rows: r.rows, problems: r.rejects.map((x) => `sheet row ${x.row}, ${x.column}: ${x.reason}`) };
 }
 
-async function newView(appUrl: string, table: string, tokens: readonly string[]): Promise<View | null> {
+async function newView(appUrl: string, table: string, tokens: readonly string[], now: Date): Promise<View | null> {
   const t = schema.tables[table];
   if (!t) return null;
   const db = await connect(appUrl);
@@ -163,10 +175,12 @@ async function newView(appUrl: string, table: string, tokens: readonly string[])
       const rows = await db.query<{ token_hash: Uint8Array; staff_id: string; expires_at: Date }>("select token_hash, staff_id, expires_at from ops.sessions");
       return {
         key: "token",
-        rows: rows.map((r) => {
-          const hex = Buffer.from(r.token_hash).toString("hex");
-          return { token: byHash.get(hex) ?? `(a session whose token the harness never saw: ${hex.slice(0, 8)})`, staff_id: r.staff_id, expires_at: r.expires_at.toISOString() };
-        }),
+        rows: rows
+          .map((r) => {
+            const hex = Buffer.from(r.token_hash).toString("hex");
+            return { token: byHash.get(hex) ?? `(a session whose token the harness never saw: ${hex.slice(0, 8)})`, staff_id: r.staff_id, expires_at: r.expires_at.toISOString() };
+          })
+          .filter(live(now)),
         problems: [],
       };
     }
@@ -276,12 +290,14 @@ export async function compareTables(opts: {
   norms: { old: Normaliser; new: Normaliser };
   /** Raw tokens seen on the new side (to key its sessions). */
   newTokens: readonly string[];
+  /** The case's clock at comparison time (see EXPIRED_SESSIONS_RULE). */
+  now: Date;
   exempt: (table: string, column: string) => boolean;
 }): Promise<TableComparison> {
   const out: TableComparison = { diffs: [], hidden: 0, notCompared: [] };
   for (const table of opts.tables) {
-    const o = oldView(opts.old, table);
-    const n = await newView(opts.appUrl, table, opts.newTokens);
+    const o = oldView(opts.old, table, opts.now);
+    const n = await newView(opts.appUrl, table, opts.newTokens, opts.now);
     if (o === null || n === null) {
       out.notCompared.push(`${table}: ${o === null ? "the old app has no such tab" : "the new schema has no such table"}`);
       continue;
