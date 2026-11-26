@@ -21,6 +21,9 @@ const tabsOf = js => {
   return (m[1].match(/\{ tab: '([a-z]+)'/g) || []).map(s => /'([a-z]+)'/.exec(s)[1]);
 };
 const tabOfLine = l => { const m = /\{ tab: '([a-z]+)'/.exec(l); return m && m[1]; };
+// A line of the warm-up list after sign-in: ['rpcName', [state.token, ...], TTL_X],  or jobs.push([...]).
+const warmOfLine = l => { const m = /^\s*(?:jobs\.push\()?\['(rpc[A-Za-z]+)',\s*\[state\.token/.exec(l); return m && m[1]; };
+const warmOf = js => js.split('\n').map(warmOfLine).filter(Boolean);
 
 (async () => {
   const { buildUi } = await import(BUILD);
@@ -43,17 +46,36 @@ const tabOfLine = l => { const m = /\{ tab: '([a-z]+)'/.exec(l); return m && m[1
   t.section('Nothing else in the script changes');
   const a = scriptOf(SRC_HTML).split('\n');
   const b = scriptOf(out).split('\n');
-  t.eq('three lines are gone', a.length - b.length, 3);
+  t.eq('five lines are gone', a.length - b.length, 5);
   const removed = [];
   let j = 0;
   a.forEach(line => { if (b[j] === line) j++; else removed.push(line); });
   t.eq('the scripts match once those lines are removed', j, b.length);
-  t.eq('the removed lines are the three entries', removed.map(tabOfLine), GONE);
+  t.eq('the removed lines are the two warm-up calls and the three entries',
+    removed.map(l => tabOfLine(l) || warmOfLine(l)), ['rpcGetShoppingList', 'rpcGetSuppliers'].concat(GONE));
+
+  // Found by loading the built page in a browser (Nov 26): after sign-in the page warms its cache
+  // with a list of reads, and two of them belong to screens that are not moving. Each answered
+  // 404 NOT_MIGRATED on every load.
+  t.section('The warm-up after sign-in asks only for what the new app has');
+  const contract = JSON.parse(fs.readFileSync(path.join(H.REPO, 'ops', 'contracts', 'rpc.json'), 'utf8'));
+  const migrated = {};
+  contract.rpcs.forEach(r => { migrated[r.name] = r.migrate === true; });
+  const warmBefore = warmOf(scriptOf(SRC_HTML));
+  const warmAfter = warmOf(scriptOf(out));
+  t.ok('the source warms the two deprecated reads', ['rpcGetShoppingList', 'rpcGetSuppliers'].every(n => warmBefore.indexOf(n) !== -1));
+  t.ok('the warm-up list was found (at least ten reads)', warmAfter.length >= 10);
+  t.eq('every read the built page warms is one the new app migrates', warmAfter.filter(n => migrated[n] !== true), []);
+  t.eq('every other warm-up read survives, in order', warmAfter, warmBefore.filter(n => migrated[n] === true));
 
   t.section('The build fails loudly');
   for (const tab of GONE) {
     const mutated = SRC_HTML.split('\n').filter(l => tabOfLine(l) !== tab).join('\n');
     t.throws('without the ' + tab + ' entry', () => buildUi({ write: false, source: mutated }), tab);
+  }
+  for (const name of ['rpcGetShoppingList', 'rpcGetSuppliers']) {
+    const mutated = SRC_HTML.split('\n').filter(l => warmOfLine(l) !== name).join('\n');
+    t.throws('without the ' + name + ' warm-up line', () => buildUi({ write: false, source: mutated }), name);
   }
   t.throws('with a duplicated entry',
     () => buildUi({ write: false, source: SRC_HTML.replace(/(\n    \{ tab: 'products'[^\n]*)/, '$1$1') }), 'products');

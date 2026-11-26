@@ -9,7 +9,9 @@
 //   1. /transport.js is loaded before the page's own script;
 //   2. the shopping, suppliers and products entries leave MORE_ITEMS
 //      (those screens are not being moved);
-//   3. Apps Script template tags are resolved. src/Index.html has none today
+//   3. the two reads of those screens leave the warm-up list the page runs
+//      after sign-in (they would answer 404 NOT_MIGRATED on every load);
+//   4. Apps Script template tags are resolved. src/Index.html has none today
 //      (doGet serves it with no injected values); the build still refuses to
 //      emit any "<?", because the Apps Script template engine opens a
 //      scriptlet on "<?" even inside a JS string or comment.
@@ -22,6 +24,8 @@ const SRC = resolve(HERE, "../../src/Index.html");
 const OUT = resolve(HERE, "../public/index.html");
 
 export const REMOVED_TABS = ["shopping", "suppliers", "products"];
+/** Reads the page warms after sign-in that belong to those screens. */
+export const REMOVED_WARMUPS = ["rpcGetShoppingList", "rpcGetSuppliers"];
 const TRANSPORT_TAG = '<script src="/transport.js"></script>';
 
 function removeMoreItems(source) {
@@ -45,6 +49,20 @@ function removeMoreItems(source) {
   return lines.join("\n");
 }
 
+/** Drop each removed read's line from the warm-up list: `['rpcName', [state.token], TTL_X],`. */
+function removeWarmups(source) {
+  const lines = source.split("\n");
+  for (const name of REMOVED_WARMUPS) {
+    const hits = [];
+    lines.forEach((l, i) => {
+      if (new RegExp(`^\\s*\\['${name}',\\s*\\[state\\.token[^\\]]*\\],\\s*TTL_[A-Z]+\\],\\s*(//.*)?$`).test(l)) hits.push(i);
+    });
+    if (hits.length !== 1) throw new Error(`build-ui: expected exactly one warm-up line for ${name}, found ${hits.length}`);
+    lines.splice(hits[0], 1);
+  }
+  return lines.join("\n");
+}
+
 function addTransport(html) {
   // The page's own script is the first <script> without a src.
   const m = /^([ \t]*)<script(?![^>]*\bsrc=)[^>]*>/m.exec(html);
@@ -58,7 +76,7 @@ function addTransport(html) {
  */
 export function buildUi({ write = false, source } = {}) {
   const input = source ?? readFileSync(SRC, "utf8");
-  const html = addTransport(removeMoreItems(input));
+  const html = addTransport(removeWarmups(removeMoreItems(input)));
   const left = html.indexOf("<?");
   if (left !== -1) {
     const line = html.slice(0, left).split("\n").length;
