@@ -37,7 +37,7 @@ hand one out.
 | P2-07 | RPC router | T2 | P2-06, P0-04 | security | todo |
 | P2-08a | UI copy and the new transport | T2 | P2-01 | | done |
 | P2-08b | UI served by the Worker; login round-trips | T2 | P2-08a, P2-07 | | todo |
-| P2-09a | Sheet rows into the new database (fixture loader) | T2 | P2-02 | money | in progress |
+| P2-09a | Sheet rows into the new database (fixture loader) | T2 | P2-02 | money | done |
 | P2-09 | Parity harness | T3 | P2-07, P2-09a | | todo |
 | P2-10 | Staging deploy | T2 | P2-08b | security | todo |
 | P3-01 | Port Staff | T1 | P2-09 | | todo |
@@ -381,6 +381,9 @@ is one transaction: session, sales row, attendance.
 **RPCs:** `rpcGetCashPosition`, `rpcRecordCashHandover`,
 `rpcVoidCashHandover`, `rpcGetCashOutstandingFor`, `rpcGetCashHandoverHistory`.
 **Note:** `record` runs in one transaction and locks the cashier's row first.
+Item ids written in a loop must not collide (the old `newId` can repeat
+within a second, and the new table has a primary key): give each item a
+suffix that includes its position in the batch.
 Add a test where two handovers for the same person run at once and the
 second sees the first.
 
@@ -411,7 +414,7 @@ payment and its item rows and audits it. The new database refuses the app
 any delete on money tables. Proposed, pending the owner: a migration adds
 `voided_at`, `voided_by` and `void_reason` to `payments`; undo sets them,
 and every read leaves voided payments out, so each RPC answers as today and
-the record stays.
+the record stays. Item ids written in a loop must not collide (see P3-06).
 
 ### P3-10 · CommissionRules, Commissions, weekly cron · T2 · money
 **Read:** `src/CommissionRules.gs`, `src/Commissions.gs`; ADRs 0011, 0013;
@@ -454,6 +457,12 @@ enum values such as `Closed` before insert, rejecting anything still
 outside the set; leave out secret config keys, `staff.login_code` and the
 seeded placeholder rule `CR_001` when it is inactive and unused; map
 `commission_runs.week_end` (stored as Sunday 23:59:59) to its Toronto date.
+Duplicate item ids (found by P2-09a): `payment_items` and
+`cash_handover_items` can hold two rows with the same `item_id`, because the
+old id is a one-second stamp plus three random characters and a payment
+writes many items at once. A duplicate there is never rejected (it is
+money): the later row is re-keyed (`<id>-d2`, `-d3`…), loaded, and listed
+in the report. Build on `ops/src/import/sheet-to-db.ts` and `load.ts`.
 Open, for the owner: an open till session holds 0, not blank, in its closing
 columns; the proposal is to import those as `NULL` for rows still open.
 **Done when:** the fixture imports with zero rejects; a workbook with a
