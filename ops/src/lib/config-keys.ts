@@ -1,0 +1,81 @@
+// The config registry: every key of the Sheet's `config` tab (src/Setup.gs,
+// configDefaults_()) that a module being moved still uses, written out by hand.
+//
+//   default  exactly as Setup.gs has it (always text: the table stores text).
+//   kind     "setting" lives in the config table; "secret" lives in a Worker
+//            secret binding and is never read from, or stored in, the table.
+//   read     how call sites parse the stored text: "text" as is, "number"
+//            `Number(v) || default`, "boolean" case-insensitive 'true',
+//            "list" split on commas, semicolons and spaces.
+//
+// A key is a secret when its name ends in _token, _key or _secret or contains
+// "password", or when its value is a credential by its description. No key is
+// a secret by description alone: the Clover merchant ids and the WhatsApp API
+// URL (it holds a phone-number id) are identifiers, not credentials.
+//
+// Left out on purpose (areas not being moved; plan "Not migrated"):
+//   whatsapp_template_shopping_list   the shopping-list message.
+//
+// test/config.test.ts compares this file with Setup.gs, so a key added there
+// fails a test until it is added here or listed as left out.
+
+export type ConfigKind = "setting" | "secret";
+export type ConfigRead = "text" | "number" | "boolean" | "list";
+
+export interface ConfigKeySpec {
+  readonly kind: ConfigKind;
+  readonly read: ConfigRead;
+  readonly default: string;
+}
+
+const setting = (read: ConfigRead, def: string): ConfigKeySpec => ({ kind: "setting", read, default: def });
+const credential: ConfigKeySpec = { kind: "secret", read: "text", default: "" };
+
+export const CONFIG_KEYS = {
+  cstore_default_opening_float: setting("number", "250"),
+  vape_default_opening_float: setting("number", "100"),
+  lotto_reserve_default: setting("number", "500"),
+  variance_ok_threshold: setting("number", "1"),
+  variance_minor_threshold: setting("number", "30"),
+  cstore_business_name: setting("text", "Scarbro Mart"),
+  vape_business_name: setting("text", "YV Vape Shop"),
+  session_hours: setting("number", "24"),
+  login_max_fails: setting("number", "5"),
+  login_lockout_mins: setting("number", "60"),
+  commission_run_day: setting("number", "1"),
+  commission_run_hour: setting("number", "9"),
+  notifier_enabled: setting("boolean", "false"),
+  whatsapp_target_number: setting("list", ""),
+  whatsapp_api_url: setting("text", ""),
+  whatsapp_api_token: credential,
+  whatsapp_template_name: setting("text", ""),
+  whatsapp_template_lang: setting("text", "en"),
+  whatsapp_template_shift_open: setting("text", ""),
+  whatsapp_template_shift_close: setting("text", ""),
+  clover_enabled: setting("boolean", "false"),
+  clover_base_url: setting("text", "https://api.clover.com"),
+  clover_cstore_merchant_id: setting("text", ""),
+  clover_cstore_token: credential,
+  clover_vape_merchant_id: setting("text", ""),
+  clover_vape_token: credential,
+  card_variance_threshold: setting("number", "1"),
+  cstore_card_split: setting("boolean", "false"),
+  vape_card_split: setting("boolean", "true"),
+  cstore_epos_from: setting("text", ""),
+  whatsapp_template_shift_close_cstore: setting("text", ""),
+  whatsapp_template_shift_close_vape: setting("text", ""),
+  cash_manager_staff_id: setting("text", ""),
+  cash_handover_stale_days: setting("number", "7"),
+  public_report_url: setting("text", ""),
+  // Setup.gs uses Session.getScriptTimeZone(); the manifest (src/appsscript.json) sets this zone.
+  timezone: setting("text", "America/Toronto"),
+} as const satisfies Record<string, ConfigKeySpec>;
+
+export type ConfigKey = keyof typeof CONFIG_KEYS;
+
+/** The spec for a registered key, or undefined. Own properties only: "toString" is not a key. */
+export function configKeySpec(key: string): ConfigKeySpec | undefined {
+  return Object.prototype.hasOwnProperty.call(CONFIG_KEYS, key) ? (CONFIG_KEYS as Record<string, ConfigKeySpec>)[key] : undefined;
+}
+
+export const SECRET_KEYS: readonly ConfigKey[] = (Object.keys(CONFIG_KEYS) as ConfigKey[]).filter((key) => CONFIG_KEYS[key].kind === "secret");
