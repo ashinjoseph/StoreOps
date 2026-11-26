@@ -11,9 +11,13 @@ import * as audit from "../src/lib/audit";
 import { newId } from "../src/lib/ids";
 import { parseRpcContract } from "../src/rpc/contract";
 import type { RpcContext, RpcHandler, RpcHandlers } from "../src/rpc/types";
+import { readContract } from "../src/import/load";
+import { translateTab } from "../src/import/sheet-to-db";
 import { parityCase, paritySequence, step, type ParityCase } from "./case";
+import { PROBES } from "./probes";
 import { gate } from "./gate";
 import { closeWorlds, recordOld, runCase, type CaseResult } from "./run";
+import { PARITY_EXTRA_PEOPLE } from "./old-world";
 import { createWorlds } from "./worlds";
 
 const contract = parseRpcContract(JSON.parse(readFileSync(new URL("../contracts/rpc.json", import.meta.url), "utf8")));
@@ -385,6 +389,72 @@ describe("the worlds", () => {
     } finally {
       await a.close();
       await b.close();
+    }
+  });
+});
+
+describe("the fixture people", () => {
+  let w: Awaited<ReturnType<typeof createWorlds>>;
+  beforeAll(async () => {
+    w = await createWorlds();
+  });
+  afterAll(async () => {
+    await w.close();
+  });
+
+  it("each of the four roles resolves to an active person with that role and a login code", () => {
+    for (const role of ["admin", "manager", "employee", "payroll_admin"]) {
+      const p = w.old.person(role);
+      expect({ role: p.role, active: p.active, hasCode: p.code !== "" }).toEqual({ role, active: true, hasCode: true });
+    }
+    expect(w.old.person("payroll_admin").staffId).toBe(PARITY_EXTRA_PEOPLE[0]?.staffId);
+  });
+
+  it("an inactive person is never picked by role, but can be named by id", () => {
+    const inactive = PARITY_EXTRA_PEOPLE.find((p) => !p.active);
+    expect(inactive).toBeDefined();
+    expect(w.old.person("employee").staffId).not.toBe(inactive?.staffId);
+    const byId = w.old.person(inactive?.staffId ?? "");
+    expect(byId).toMatchObject({ role: "employee", active: false, name: inactive?.name });
+    expect(byId.code).not.toBe("");
+  });
+
+  it("an unknown role or id is a clear error", () => {
+    expect(() => w.old.person("owner")).toThrow(/no staff id owner and no active owner/);
+    expect(() => w.old.person("S_999")).toThrow(/no staff id S_999/);
+  });
+
+  it("as: <an inactive id> is refused by the harness, saying to call rpcLogin as a step", async () => {
+    const id = PARITY_EXTRA_PEOPLE.find((p) => !p.active)?.staffId ?? "";
+    const c = parityCase("rpcGetMe", { as: id, writes: [], probes: { rpcGetMe: PROBES.rpcGetMe } });
+    await expect(runCase(c)).rejects.toThrow(/inactive.*rpcLogin/s);
+    await expect(w.signIn(id)).rejects.toThrow(/inactive.*rpcLogin/s);
+  });
+
+  it("the two added people are on both sides with equal rows", async () => {
+    const tab = w.old.tab("staff");
+    const translated = translateTab("staff", tab.header, tab.rows, { contract: readContract() });
+    if (translated.status !== "ok") throw new Error("staff tab did not translate");
+    const plain = (k: string, v: unknown): unknown => (v instanceof Date ? v.toISOString() : k === "hourly_rate" && v !== null ? Number(v) : v);
+    const newRows = await w.newRows("staff");
+    for (const person of PARITY_EXTRA_PEOPLE) {
+      const o = translated.rows.find((r) => r["staff_id"] === person.staffId);
+      const n = newRows.find((r) => r["staff_id"] === person.staffId);
+      expect(o, `old ${person.staffId}`).toBeDefined();
+      expect(n, `new ${person.staffId}`).toBeDefined();
+      for (const [k, v] of Object.entries(o as Record<string, unknown>)) expect(plain(k, (n as Record<string, unknown>)[k]), `${person.staffId}.${k}`).toEqual(plain(k, v));
+      expect(o).toMatchObject({ name: person.name, role: person.role, active: person.active });
+    }
+    expect(translated.rows.length).toBe(newRows.length);
+  });
+
+  it("the extra people own no shifts, sales, payments or bonuses", () => {
+    const ids = PARITY_EXTRA_PEOPLE.map((p) => p.staffId);
+    for (const tabName of w.old.tabNames()) {
+      if (tabName === "staff") continue;
+      const tab = w.old.tab(tabName);
+      const cols = tab.header.map((h, i) => (/staff_id|created_by|recorded_by|actor_id|paid_to/.test(String(h)) ? i : -1)).filter((i) => i >= 0);
+      for (const r of tab.rows) for (const i of cols) expect(ids, `${tabName} mentions an extra person`).not.toContain(String(r[i] ?? "").trim());
     }
   });
 });

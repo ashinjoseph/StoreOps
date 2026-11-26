@@ -5,9 +5,10 @@
 //
 // Who signs in comes from the fixture (scripts/docs/fixtures.js), never typed
 // here: nameOf("manager") / codeOf("manager") are that person's name and login
-// code as the old staff tab holds them. The fixture has one admin, one manager
-// and three employees, all active. It has NO payroll_admin and NO inactive
-// person, so those two cases cannot be written against it.
+// code as the old staff tab holds them. The docs fixture has one admin, one
+// manager and three employees, all active; the harness adds a payroll admin
+// (nameOf("payroll_admin")) and an inactive employee (named by id, S_007; a role
+// never picks an inactive person) to its own worlds (PARITY_EXTRA_PEOPLE).
 //
 // The follow-up call that proves a token is alive or dead is rpcGetMe, which is
 // not ported yet: the new side answers it with PROBES.rpcGetMe (probes.ts), a
@@ -19,6 +20,8 @@ import { PROBES } from "../probes";
 const SIGN_IN = ["audit_log", "sessions"];
 const FAILED = ["audit_log", "login_failures"];
 const probes = { rpcGetMe: PROBES.rpcGetMe };
+/** The harness-added inactive employee, named by id: a role never picks an inactive person. */
+const INACTIVE = "S_007";
 
 const loginAs = (role: string): ParityCase =>
   paritySequence(`rpcLogin: the right PIN signs in a ${role}, and the token opens a session call`, { writes: SIGN_IN, probes }, [
@@ -30,6 +33,23 @@ export const authCases: ParityCase[] = [
   loginAs("admin"),
   loginAs("manager"),
   loginAs("employee"),
+  loginAs("payroll_admin"),
+
+  paritySequence("rpcLogin: an inactive person with the right PIN is refused and not counted", { writes: ["audit_log", "login_failures", "sessions"], probes }, [
+    step("rpcLogin", { args: [nameOf(INACTIVE), codeOf(INACTIVE)] }),
+    step("rpcGetMe", { as: { token: resultOf(1, "$.token") } }),
+    // Still not counted: the answer stays the same however often it is asked.
+    step("rpcLogin", { args: [nameOf(INACTIVE), codeOf(INACTIVE)], advance: { minutes: 1 } }),
+  ]),
+  paritySequence("rpcLogin: an inactive person with a wrong PIN, five times, is told inactive each time and is never locked", { writes: ["audit_log", "login_failures", "sessions"], probes }, [
+    step("rpcLogin", { args: [nameOf(INACTIVE), "0000"] }),
+    step("rpcLogin", { args: [nameOf(INACTIVE), "0001"], advance: { minutes: 1 } }),
+    step("rpcLogin", { args: [nameOf(INACTIVE), "0002"], advance: { minutes: 1 } }),
+    step("rpcLogin", { args: [nameOf(INACTIVE), "0003"], advance: { minutes: 1 } }),
+    step("rpcLogin", { args: [nameOf(INACTIVE), "0004"], advance: { minutes: 1 } }),
+    step("rpcLogin", { args: [nameOf(INACTIVE), codeOf(INACTIVE)], advance: { minutes: 1 } }),
+  ]),
+  paritySequence("rpcGetMe: a payroll admin's session names them and their role", { writes: SIGN_IN, probes }, [step("rpcGetMe", { as: "payroll_admin" })]),
 
   paritySequence("rpcLogin: a wrong PIN is refused, and gives no session", { writes: FAILED, probes }, [
     step("rpcLogin", { args: [nameOf("employee"), "0000"] }),

@@ -32,6 +32,29 @@ export interface FixturePerson {
   code: string;
 }
 
+/**
+ * Two people the parity worlds add to the old `staff` tab, after the docs
+ * fixture has seeded it and before the sheets are copied into Postgres.
+ *
+ * Why: the docs fixture (scripts/docs/fixtures.js) has one admin, one manager
+ * and three employees, all active. Nobody is a payroll admin and nobody is
+ * inactive, so the rules that depend on either (the role gates, "Account is
+ * inactive", a staff list that filters on `active`) could not be compared. The
+ * docs fixture is deliberately NOT touched: it also feeds the screenshots, and
+ * they must not change. Both sides get these two from the same source, the old
+ * sheet, written through the old app's own Staff.create.
+ *
+ * Neither owns a shift, a sale, a payment or a bonus: only a staff row. The
+ * ids continue the fixture's sequence (S_001..S_005); Staff.create picks the
+ * next one, and the boot checks it picked these. A case names them by role
+ * (`payroll_admin`) or, for the inactive person, by id (a role means "an
+ * active person with that role").
+ */
+export const PARITY_EXTRA_PEOPLE: readonly (FixturePerson & { hourlyRate: number; startDaysBeforeBoot: number; notes: string })[] = Object.freeze([
+  { staffId: "S_006", name: "Amara Whitfield", role: "payroll_admin", active: true, code: "6666", hourlyRate: 21.5, startDaysBeforeBoot: 90, notes: "Payroll administrator" },
+  { staffId: "S_007", name: "Lucas Bergstrom", role: "employee", active: false, code: "7777", hourlyRate: 17.2, startDaysBeforeBoot: 60, notes: "Left the store" },
+]);
+
 // The Apps Script services runtime.js installs on `global` (installServices).
 const SERVICE_GLOBALS = [
   "SpreadsheetApp",
@@ -107,13 +130,13 @@ export class OldWorld {
     // starts "00000000" and the audit row of a logout (token.substring(0, 8) + "...") could not
     // tell two sessions apart. Apps Script's real getUuid is random; this one is distinct per
     // world and per call (and repeatable), so a token prefix names one session, as it does live.
-    const world = ++worldSeq;
+    const worldNo = ++worldSeq;
     let uuids = 0;
     const utilities = globals["Utilities"] as Record<string, unknown>;
     globals["Utilities"] = {
       ...utilities,
       getUuid: () => {
-        const h = createHash("sha256").update(`parity-world-${world}-uuid-${++uuids}`).digest("hex");
+        const h = createHash("sha256").update(`parity-world-${worldNo}-uuid-${++uuids}`).digest("hex");
         return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
       },
     };
@@ -122,7 +145,29 @@ export class OldWorld {
     // failure count) is removed here so both worlds start without them, as a migration would.
     const props = (globals["PropertiesService"] as { getScriptProperties(): OldProperties & { deleteProperty(k: string): void } }).getScriptProperties();
     for (const k of Object.keys(props.getProperties())) if (k.startsWith("session:") || k.startsWith("loginFails:")) props.deleteProperty(k);
-    return new OldWorld(api, globals, clock);
+    const world = new OldWorld(api, globals, clock);
+    world.addExtraPeople(bootAt);
+    return world;
+  }
+
+  /** Append PARITY_EXTRA_PEOPLE to the staff tab through Staff.create, as the old app would, at the boot instant. */
+  private addExtraPeople(bootAt: Date): void {
+    const caseTime = this.clock.now();
+    this.clock.set(bootAt);
+    try {
+      this.run(() => {
+        const staff = this.api["Staff"] as { create(input: Record<string, unknown>): { staffId: string } };
+        for (const p of PARITY_EXTRA_PEOPLE) {
+          const start = new Date();
+          start.setDate(start.getDate() - p.startDaysBeforeBoot);
+          start.setHours(0, 0, 0, 0);
+          const made = staff.create({ name: p.name, hourlyRate: p.hourlyRate, active: p.active, role: p.role, loginCode: p.code, companiesAuthorized: ["cstore", "vape"], startDate: start, notes: p.notes });
+          if (made.staffId !== p.staffId) throw new Error(`harness: Staff.create gave ${p.name} ${made.staffId}, expected ${p.staffId}`);
+        }
+      });
+    } finally {
+      this.clock.set(caseTime);
+    }
   }
 
   /** Run `fn` synchronously as this world: its services, the frozen Date, its random sequence. */
@@ -164,6 +209,9 @@ export class OldWorld {
   /** The old token for a fixture person, signing them in on first use (with their own login code). */
   signIn(who: string | FixturePerson): string {
     const person = typeof who === "string" ? this.person(who) : who;
+    if (!person.active) {
+      throw new Error(`harness: ${person.staffId} (${person.name}) is inactive and cannot be signed in as a caller; call rpcLogin as a step instead (nameOf/codeOf name them)`);
+    }
     const have = this.tokens.get(person.staffId);
     if (have !== undefined) return have;
     const out = this.call("rpcLogin", [person.name, person.code]);
@@ -195,8 +243,9 @@ export class OldWorld {
   }
 
   /**
-   * A role ("manager": the first active person with that role and a login code,
-   * in staff-id order) or a staff id ("S_003").
+   * A role ("manager": the first ACTIVE person with that role and a login code,
+   * in staff-id order; an inactive person is never picked by a role) or a staff
+   * id ("S_003"; any person, active or not).
    */
   person(who: string): FixturePerson {
     const all = this.people();
