@@ -33,6 +33,7 @@ shared globals, which hid at least one ordering-dependent pass.
 | `link` | the dashboard link on the close message — appended view, or no link at all |
 | `lotto-payout` | netting, reserve-fed-to-till derived from two counts, no double-counted top-up |
 | `notifier` | the wire payload, flattening, and what a Meta rejection reports back |
+| `ops-schema-contract` | the Postgres contract covers every migrated tab and column, leaves out the deprecated ones by name, no money default, append-only audit grants |
 | `parity` | the app and the public page rendering one payload the same way |
 | `perf` | the dashboard read path, counted |
 | `public-chart` | bar labels, proportional heights, and opening on the newest day |
