@@ -8,10 +8,15 @@
 // Order of a call:
 //   1. method, path, body size and JSON shape      -> 405 / 400 / 404   (no database yet)
 //   2. contract lookup                              -> 404 / 404 NOT_MIGRATED / 501 NOT_PORTED
-//   3. one connection, one transaction for the rest; the connection is always closed
-//   4. session (when the contract says so), then role check
-//   5. the handler, with the token taken off the front of the arguments
+//   3. one connection for the rest; it is always closed
+//   4. session (when the contract says so) in a transaction of its own, then the role check
+//   5. the handler in one transaction, with the token taken off the front of the arguments
 //   6. returned -> commit -> 200; threw -> roll back -> error answer
+//
+// Why the session has its own transaction: resolving it may renew the sign-in, and the old app
+// kept that renewal when the call was then refused (a float mismatch, FORBIDDEN, anything). If
+// it shared the handler's transaction, every refused call would undo it (found by the parity
+// harness, card P3-05b). Nothing a handler writes is ever kept from a call that failed.
 //
 // What the page may read: a plain `Error` (thrown by a handler, by
 // resolveSession or by the role check) is a message for the person and goes
@@ -30,7 +35,7 @@ export interface RpcRouterDeps {
   handlers: RpcHandlers;
   /** One connection per call; the router closes it. */
   openDb: () => Promise<Db & { close(): Promise<void> }>;
-  /** Throws Error(NOT_LOGGED_IN) for a missing, unknown or expired token. Runs inside the call's transaction. */
+  /** Throws Error(NOT_LOGGED_IN) for a missing, unknown or expired token. Runs in its own transaction, committed before the handler's begins. */
   resolveSession: (db: Tx, token: unknown, now: Date) => Promise<Session>;
   /** The Worker's bindings, passed through to handlers. */
   env: Readonly<Record<string, unknown>>;
@@ -161,17 +166,17 @@ export function createRpcRouter(deps: RpcRouterDeps): (request: Request) => Prom
     }
     try {
       const now = clock();
-      const body = await withTransaction(conn, async (tx) => {
-        // 4. Session, then the contract's role rule: no handler code has run yet.
-        let session: Session | null = null;
-        if (entry.needs_session) {
-          session = await deps.resolveSession(tx, args[0], now);
-          if (typeof session !== "object" || session === null) throw new TypeError("resolveSession returned no session");
-          if (entry.roles !== null && !entry.roles.includes(session.role)) {
-            throw new Error(`FORBIDDEN: requires ${entry.roles.join(" or ")}, got ${session.role}`);
-          }
+      // 4. Session, committed on its own, then the contract's role rule: no handler code has run yet.
+      let session: Session | null = null;
+      if (entry.needs_session) {
+        session = await withTransaction(conn, (tx) => deps.resolveSession(tx, args[0], now));
+        if (typeof session !== "object" || session === null) throw new TypeError("resolveSession returned no session");
+        if (entry.roles !== null && !entry.roles.includes(session.role)) {
+          throw new Error(`FORBIDDEN: requires ${entry.roles.join(" or ")}, got ${session.role}`);
         }
+      }
 
+      const body = await withTransaction(conn, async (tx) => {
         // 5. The handler gets the arguments without the token.
         let config: Promise<Config> | undefined;
         const ctx: RpcContext = {

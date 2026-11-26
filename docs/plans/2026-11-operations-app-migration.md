@@ -155,7 +155,9 @@ Found or decided while building the foundation. Each is covered by a test.
 | The PIN is stored as typed in the staff sheet | Only a slow salted hash, mixed with a secret (`PIN_PEPPER`) held by Cloudflare | A copy of the database alone can't be used to try PINs |
 | Sign-in attempts sent at the same moment each get a guess before any is counted | One attempt at a time per name | The lockout limit holds under a burst (12 at once: 5 guesses, 7 refused) |
 | Audit and line-item ids end in 3 random characters and can repeat within a second | 10 random characters | The id is a primary key now; a repeat would fail the change itself |
-| A call that fails halfway keeps what it already wrote | One transaction per call | Nothing is half-saved |
+| A call that fails halfway keeps what it already wrote | One transaction per call (the sign-in renewal is saved first, on its own, as today) | Nothing is half-saved |
+| Two people opening the same till at the same moment can both succeed | One open at a time per till | A till never has two open sessions |
+| A count that isn't a number is stored as-is, and a close with no count shows variance 0, OK | Refused: "physicalCount is not a number" | A close can't look balanced without a count |
 | Any error text reaches the screen | Only messages meant for the person; faults show `SERVER_ERROR` and an id | No table names or values leak |
 | The WhatsApp token is posted to whatever address the `whatsapp_api_url` setting holds | Only to `https://graph.facebook.com`; any other address counts as not set up | Changing one setting can't send the token to someone else's server |
 | A WhatsApp send has no time limit of its own | 10 seconds, then reported as a failed send | A hung request can't hang a close |

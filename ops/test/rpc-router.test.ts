@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { connect, DbError, ValueError, type Db } from "../src/db/client";
 import { ROLES, type Role, type Session } from "../src/auth/types";
 import { parseRpcContract, type RpcContract } from "../src/rpc/contract";
-import { createRpcRouter } from "../src/rpc/router";
+import { createRpcRouter, type RpcRouterDeps } from "../src/rpc/router";
 import type { RpcContext, RpcHandler } from "../src/rpc/types";
 import { createTestDb, type TestDb } from "./helpers/db";
 
@@ -53,7 +53,7 @@ interface Rig {
   queries: string[];
 }
 /** Handlers by name. Every call gets the shared real connection, wrapped to count opens, closes and queries. */
-function rig(handlers: Record<string, RpcHandler>, over: { openDb?: () => Promise<Conn>; now?: () => Date } = {}): Rig {
+function rig(handlers: Record<string, RpcHandler>, over: { openDb?: () => Promise<Conn>; now?: () => Date; resolveSession?: RpcRouterDeps["resolveSession"] } = {}): Rig {
   let opened = 0;
   let closed = 0;
   const logs: object[] = [];
@@ -79,7 +79,7 @@ function rig(handlers: Record<string, RpcHandler>, over: { openDb?: () => Promis
     contract,
     handlers,
     openDb,
-    resolveSession: fakeResolve,
+    resolveSession: over.resolveSession ?? fakeResolve,
     env: { SOME_BINDING: "x" },
     now: over.now ?? (() => FIXED),
     log: (e) => logs.push(e),
@@ -416,7 +416,77 @@ describe("a name is only ever looked up, never executed", () => {
 
 // ---- transactions ------------------------------------------------------------
 
-describe("one transaction per call", () => {
+// The old app wrote a sign-in renewal before the call did anything else, and nothing undid it when
+// the call was then refused. So what resolveSession writes is kept whatever the handler does.
+describe("the sign-in step is kept even when the call is refused", () => {
+  /** A resolveSession that writes a row, standing in for the renewal. */
+  const resolving = (id: string, role: Role): RpcRouterDeps["resolveSession"] => async (db) => {
+    await insertStaff(db, id);
+    return sessionFor(role);
+  };
+
+  it("the handler refuses with a plain Error: its own row is gone, the sign-in step's row stays", async () => {
+    const [seen, handlers] = [nextId(), nextId()];
+    const r = rig(
+      {
+        rpcGetMe: async (ctx) => {
+          await insertStaff(ctx.db, handlers);
+          throw new Error("Till is already open");
+        },
+      },
+      { resolveSession: resolving(seen, "admin") },
+    );
+    const out = await call(r, "rpcGetMe", ["tok"]);
+    expect(out.body).toEqual({ ok: false, error: { message: "Till is already open" } });
+    expect(await exists(handlers)).toBe(false);
+    expect(await exists(seen)).toBe(true);
+  });
+
+  it("the role rule refuses: the sign-in step's row stays and no handler ran", async () => {
+    const seen = nextId();
+    const handler = vi.fn(async () => "ran");
+    const r = rig({ rpcGetAllStaff: handler }, { resolveSession: resolving(seen, "employee") });
+    const out = await call(r, "rpcGetAllStaff", ["tok"]);
+    expect(out.body.error.message).toMatch(/^FORBIDDEN: requires /);
+    expect(handler).not.toHaveBeenCalled();
+    expect(await exists(seen)).toBe(true);
+  });
+
+  it("the handler faults: 500, its own row is gone, the sign-in step's row stays", async () => {
+    const [seen, handlers] = [nextId(), nextId()];
+    const r = rig(
+      {
+        rpcGetMe: async (ctx) => {
+          await insertStaff(ctx.db, handlers);
+          throw new TypeError("a bug");
+        },
+      },
+      { resolveSession: resolving(seen, "admin") },
+    );
+    const out = await call(r, "rpcGetMe", ["tok"]);
+    expect(out.status).toBe(500);
+    expect(await exists(handlers)).toBe(false);
+    expect(await exists(seen)).toBe(true);
+  });
+
+  it("the sign-in step itself refuses: nothing it wrote is kept", async () => {
+    const seen = nextId();
+    const r = rig(
+      { rpcGetMe: async () => "ran" },
+      {
+        resolveSession: async (db) => {
+          await insertStaff(db, seen);
+          throw new Error(NOT_LOGGED_IN);
+        },
+      },
+    );
+    const out = await call(r, "rpcGetMe", ["tok"]);
+    expect(out.body).toEqual({ ok: false, error: { message: NOT_LOGGED_IN } });
+    expect(await exists(seen)).toBe(false);
+  });
+});
+
+describe("one transaction per call (after the sign-in step, which has its own: see above)", () => {
   it("a handler that inserts and returns: the row is committed and visible on another connection", async () => {
     const id = nextId();
     const r = rig({ rpcGetMe: async (ctx) => (await insertStaff(ctx.db, id), { saved: id }) });
@@ -492,28 +562,6 @@ describe("one transaction per call", () => {
     const out = await call(r, "rpcGetMe", ["tok-admin"]);
     expect(out.status).toBe(500);
     expect(out.body.error.message).toBe("SERVER_ERROR");
-    expect(await exists(id)).toBe(false);
-  });
-
-  it("resolveSession runs inside the same transaction (a rolled-back call leaves nothing, even from it)", async () => {
-    const id = nextId();
-    const router = createRpcRouter({
-      contract,
-      handlers: {
-        rpcGetMe: () => {
-          throw new Error("nope");
-        },
-      },
-      openDb: async () => ({ ...shared, close: async () => undefined }),
-      resolveSession: async (db, token) => {
-        await insertStaff(db, id);
-        return SESSIONS.get(String(token))!;
-      },
-      env: {},
-      log: () => undefined,
-    });
-    const res = await router(post("rpcGetMe", '{"args":["tok-admin"]}'));
-    expect(((await res.json()) as any).error.message).toBe("nope");
     expect(await exists(id)).toBe(false);
   });
 });

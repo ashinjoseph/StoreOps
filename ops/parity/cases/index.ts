@@ -5,6 +5,7 @@ import { authCases } from "./auth";
 import { bonusesCases } from "./bonuses";
 import { commissionRulesCases } from "./commission-rules";
 import { notifierCases } from "./notifier";
+import { shiftCases } from "./shifts";
 import { staffCases } from "./staff";
 
-export const allCases: readonly ParityCase[] = [...authCases, ...staffCases, ...attendanceCases, ...notifierCases, ...bonusesCases, ...commissionRulesCases];
+export const allCases: readonly ParityCase[] = [...authCases, ...staffCases, ...attendanceCases, ...notifierCases, ...bonusesCases, ...commissionRulesCases, ...shiftCases];

@@ -477,3 +477,112 @@ export async function weekSchedule(db: Db, weekStartStr: unknown, now: Date) {
     cells,
   };
 }
+
+// ── The till open and close (card P3-05b) ──────────────────
+//
+// openOrPromote and complete are called by modules/till-sessions.ts, inside the open's and the
+// close's transaction: the port of Attendance.openOrPromote_ and Attendance.complete_. complete
+// reads the day's till sessions itself (one query on ops.till_sessions), not through
+// modules/till-sessions.ts, so the two modules do not import each other.
+
+/**
+ * Get or create the day for (date, staff) when a till opens: no row → a new one in progress from
+ * `now` (hours and rate written as 0, not blank, as before); scheduled → promoted to in progress
+ * from `now`; in progress → returned unchanged; worked or cancelled → refused. (Attendance.openOrPromote)
+ */
+export async function openOrPromote(db: Tx, staffId: string, dateObj: Date, actorId: string, now: Date): Promise<AttendanceRecord> {
+  if (!staffId) throw new Error("staffId required");
+  if (!dateObj) throw new Error("date required");
+  if (!actorId) throw new Error("actorId required");
+
+  const person = typeof staffId === "string" ? await staff.getById(db, staffId) : null;
+  if (!person) throw new Error("Staff not found: " + String(staffId));
+  if (Number.isNaN(dateObj.getTime())) throw new Error("Invalid date");
+
+  const id = attendanceId(dateObj, staffId);
+  await lockRow(db, "attendance", id);
+  const existing = await getById(db, id);
+
+  if (existing) {
+    if (existing.status === "worked") {
+      throw new Error("Attendance for " + staffId + " on " + formatDate(dateObj) + " is already completed (status=worked). Cannot reopen.");
+    }
+    if (existing.status === "cancelled") {
+      throw new Error("Attendance for " + staffId + " on " + formatDate(dateObj) + " is cancelled. Uncancel before opening.");
+    }
+    if (existing.status === "in_progress") return existing;
+    // scheduled → promote
+    await db.query("update ops.attendance set status = 'in_progress', actual_start = $2, modified_by = $3, modified_at = $4 where attendance_id = $1", [id, now, actorId, now]);
+    await audit.write(
+      db,
+      { actorId, action: "attendance.promote", targetType: "attendance", targetId: id, before: { status: "scheduled" }, after: { status: "in_progress", actualStart: now } },
+      { now },
+    );
+    return mustGet(db, id);
+  }
+
+  // hours_worked and rate_at_attendance are written as 0, not blank: what the old code wrote.
+  await db.query(
+    `insert into ops.attendance (attendance_id, staff_id, date, scheduled_start, scheduled_end, actual_start, actual_end,
+       hours_worked, rate_at_attendance, status, notes, created_by, created_at, modified_by, modified_at, hours_basis)
+     values ($1, $2, $3, null, null, $4, null, 0, 0, 'in_progress', null, $5, $6, null, null, null)`,
+    [id, staffId, formatDate(dateObj), now, actorId, now],
+  );
+  await audit.write(
+    db,
+    { actorId, action: "attendance.open", targetType: "attendance", targetId: id, after: { staffId, date: formatDate(dateObj), status: "in_progress", actualStart: now } },
+    { now },
+  );
+  return mustGet(db, id);
+}
+
+/**
+ * Complete a day when its last till session closes: hours from the day's actual start (else the
+ * earliest session start) to the latest session end, rounded; the person's rate snapshotted; status
+ * worked. A worked or cancelled day is returned unchanged. (Attendance.complete)
+ */
+export async function complete(db: Tx, id: string, now: Date, actorId: string): Promise<AttendanceRecord> {
+  if (typeof id === "string") await lockRow(db, "attendance", id);
+  const existing = await mustGet(db, id);
+  if (existing.status === "worked") return existing;
+  if (existing.status === "cancelled") return existing;
+
+  const rows = await db.query<{ status: string | null; start_time: Date | null; end_time: Date | null }>(
+    "select status, start_time, end_time from ops.till_sessions where attendance_id = $1",
+    [id],
+  );
+  const sessions = rows.filter((s) => {
+    const st = trimmed(s.status) || "open";
+    return st === "closed" || st === "validated";
+  });
+  if (sessions.length === 0) throw new Error("Cannot complete: no closed till_sessions for " + id);
+
+  const allStarts = sessions.map((s) => s.start_time).filter((d): d is Date => d instanceof Date);
+  const allEnds = sessions.map((s) => s.end_time).filter((d): d is Date => d instanceof Date);
+  if (allStarts.length === 0 || allEnds.length === 0) throw new Error("Cannot compute hours: missing till_session start/end times");
+
+  const dayStart = existing.actualStart || new Date(Math.min(...allStarts.map((d) => d.getTime())));
+  const dayEnd = new Date(Math.max(...allEnds.map((d) => d.getTime())));
+  const hours = roundMoney(diffHours(dayStart, dayEnd));
+
+  const person = await staff.getById(db, existing.staffId);
+  const rate = person ? person.hourlyRate : 0;
+
+  await db.query(
+    "update ops.attendance set actual_end = $2, hours_worked = $3, rate_at_attendance = $4, status = 'worked', modified_by = $5, modified_at = $6 where attendance_id = $1",
+    [id, dayEnd, hours, rate, actorId, now],
+  );
+  await audit.write(
+    db,
+    {
+      actorId,
+      action: "attendance.complete",
+      targetType: "attendance",
+      targetId: id,
+      before: { status: existing.status, hoursWorked: existing.hoursWorked },
+      after: { status: "worked", hoursWorked: hours, rate },
+    },
+    { now },
+  );
+  return mustGet(db, id);
+}
