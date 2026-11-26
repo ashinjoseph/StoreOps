@@ -194,6 +194,10 @@ describe("enum columns", () => {
   it.each<[string, string, unknown, unknown]>([
     ["till_sessions", "status", "Closed", "closed"],
     ["till_sessions", "status", "CLOSED", "closed"],
+    ["till_sessions", "status", "  Closed\t", "closed"],
+    ["till_sessions", "status", "   ", "REJECT"],
+    ["till_sessions", "variance_status", "  ", null],
+    ["till_sessions", "variance_status", " Pending_Validation ", "pending_validation"],
     ["till_sessions", "status", "validated", "validated"],
     ["till_sessions", "status", "bogus", "REJECT"],
     ["till_sessions", "status", "", "REJECT"],
@@ -263,6 +267,27 @@ describe("rows", () => {
     expect(r.read).toBe(4);
   });
 
+  it("a row with a blank key but other values is a reject, never skipped: it may be money", () => {
+    const header = ["sales_id", "session_id", "staff_id", "company", "date", "cash_sales"];
+    const rows = [
+      ["SAL1", "C1", "S_001", "cstore", "2026-03-02", 10],
+      ["", "C2", "S_001", "cstore", "2026-03-03", 55555.55],
+      ["  ", "", "", "", "", ""],
+      ["", "", "", "", "", 0],
+    ];
+    const r = translateTab("sales", header, rows, opts());
+    if (r.status !== "ok") throw new Error("expected ok");
+    expect(r.rows.map((x) => x["sales_id"])).toEqual(["SAL1"]);
+    expect(r.skipped).toBe(1); // only the row with nothing in it
+    expect(r.rejects.map(({ tab, row, column }) => ({ tab, row, column }))).toEqual([
+      { tab: "sales", row: 4, column: "sales_id" },
+      { tab: "sales", row: 6, column: "sales_id" },
+    ]);
+    expect(r.rejectedRows).toBe(2);
+    expect(r.rows.length + r.skipped + r.rejectedRows + r.leftOut).toBe(r.read);
+    expect(JSON.stringify(r.rejects)).not.toContain("55555");
+  });
+
   it("a reject carries tab, Sheet row number and column, never the value; the row is left out whole", () => {
     const SECRET = 987654.321;
     const header = ["sales_id", "session_id", "staff_id", "company", "date", "cash_sales", "misc_notes"];
@@ -324,7 +349,7 @@ describe("rows", () => {
 
 describe("what the contract leaves out", () => {
   it("a left-out tab is an explicit not-migrated result, not an error", () => {
-    for (const tab of ["suppliers", "shopping_list", "product_master", "_pm_beer_staging", "pos_extracted", "clover_batches"]) {
+    for (const tab of ["suppliers", "shopping_list", "product_master", "_pm_beer_staging", "pos_extracted", "clover_batches", "order_catalog", "product_beer_detail", "product_cigarettes_detail", "product_vape_detail", "_pm_cig_staging", "_pm_vape_staging", "_pm_other_staging"]) {
       const r = translateTab(tab, ["a"], [["x"], ["y"]], opts());
       expect(r.status).toBe("not_migrated");
       expect(r.rows).toEqual([]);

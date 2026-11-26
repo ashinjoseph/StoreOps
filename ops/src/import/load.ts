@@ -20,6 +20,13 @@ import {
 
 export type { SheetTab };
 
+/** What a `prepare` hook sees: every tab translated, before anything is written. It may change them in place. */
+export interface PrepareContext {
+  translated: Map<string, TranslatedTab>;
+  tabs: readonly SheetTab[];
+  contract: Contract;
+}
+
 export interface LoadOptions {
   /** Default: ops/contracts/schema.sql, read from disk. */
   contract?: Contract;
@@ -27,6 +34,20 @@ export interface LoadOptions {
   faithful?: boolean;
   /** Most rows in one INSERT. Default: as many as fit in 60,000 parameters, at most 1000. */
   batchRows?: number;
+  /**
+   * Columns the database has that schema.sql does not (added by migrations), per table, that the
+   * translated rows may carry. Rows are inserted with the contract's columns and these; any
+   * other column of the database is left to its default.
+   */
+  extraColumns?: Readonly<Record<string, readonly string[]>>;
+  /** Run after every tab is translated and before the transaction begins. The import tool's rules go here. */
+  prepare?: (ctx: PrepareContext) => void | Promise<void>;
+  /** Run inside the transaction, right after it begins, on the same connection. Throw to refuse: nothing is kept. */
+  afterBegin?: (db: pg.Client) => Promise<void>;
+  /** Run inside the transaction after the last insert, before the decision to commit. Throw to roll back. */
+  beforeFinish?: (db: pg.Client, result: LoadResult) => Promise<void>;
+  /** "commit" (the default), "rollback" (a dry run: everything is done, nothing is kept), or a decision made from the result. */
+  finish?: "commit" | "rollback" | ((result: LoadResult) => "commit" | "rollback");
 }
 
 export interface TableCounts {
@@ -102,15 +123,29 @@ function columnOf(table: Table, e: PgError): string {
   return "(row)";
 }
 
+/** Why the database refused a row: the kind of fault, and for a missing parent, the parent's table and column (never its value). */
+function reasonOf(contract: Contract, table: Table, column: string, e: PgError): string {
+  if (e.code === "23503") {
+    const parentName = table.columns.find((c) => c.name === column)?.references;
+    const parent = parentName ? contract.tables[parentName] : undefined;
+    const pk = parent?.columns.find((c) => c.primaryKey)?.name;
+    if (parent && pk) return `its ${column} refers to a row of ${parent.name}.${pk} that was rejected or is missing`;
+  }
+  return REASONS[e.code] ?? `refused by the database (${e.code})`;
+}
+
 async function insertTable(
   db: pg.Client,
+  contract: Contract,
   table: Table,
   tab: TranslatedTab,
   batchRows: number | undefined,
+  extra: readonly string[],
 ): Promise<{ inserted: number; rejects: Reject[] }> {
   const first = tab.rows[0];
   if (!first) return { inserted: 0, rejects: [] };
-  const cols = table.columns.filter((c) => c.name in first).map((c) => c.name);
+  // Names written into SQL come only from the contract (and the caller's own extra list), never from a row.
+  const cols = [...table.columns.map((c) => c.name), ...extra.filter((n) => /^[a-z_]+$/.test(n))].filter((c) => c in first);
   const quoted = cols.map((c) => `"${c}"`).join(", ");
   const perBatch = Math.max(1, Math.min(batchRows ?? 1000, Math.floor(60000 / cols.length)));
   const items = tab.rows.map((row, i) => ({ row, rowNo: tab.rowNumbers[i] as number }));
@@ -130,7 +165,11 @@ async function insertTable(
       await db.query("rollback to savepoint import_batch");
       await db.query("release savepoint import_batch");
       const e = asPgError(err);
-      if (!isRowError(e)) throw err;
+      if (!isRowError(e)) {
+        // A fault of the connection or the grants, not of a row: it ends the import. Say which table (a permission error does not).
+        if (typeof err === "object" && err !== null) (err as Record<string, unknown>)["importTable"] ??= table.name;
+        throw err;
+      }
       return e;
     }
   };
@@ -145,7 +184,8 @@ async function insertTable(
     }
     if (chunk.length === 1) {
       const one = chunk[0] as (typeof items)[number];
-      rejects.push({ tab: tab.tab, row: one.rowNo, column: columnOf(table, err), reason: REASONS[err.code] ?? `refused by the database (${err.code})` });
+      const column = columnOf(table, err);
+      rejects.push({ tab: tab.tab, row: one.rowNo, column, reason: reasonOf(contract, table, column, err) });
       return;
     }
     const mid = chunk.length >> 1;
@@ -180,24 +220,34 @@ export async function loadTabs(db: pg.Client, tabs: readonly SheetTab[], options
       continue;
     }
     translated.set(t.tab, r);
+  }
+  await options.prepare?.({ translated, tabs, contract });
+  for (const [name, r] of translated) {
     rejects.push(...r.rejects);
     headerIssues.push(...r.headerIssues);
-    counts[t.tab] = { read: r.read, inserted: 0, skipped: r.skipped, rejected: r.rejectedRows, leftOut: r.leftOut };
+    counts[name] = { read: r.read, inserted: 0, skipped: r.skipped, rejected: r.rejectedRows, leftOut: r.leftOut };
   }
 
   await db.query("begin");
   try {
+    // A deferrable foreign key (bonuses.source_run_id) would otherwise fail the whole commit for one
+    // bad row. Checked at each statement, a missing parent is that row's reject like any other.
+    await db.query("set constraints all immediate");
+    await options.afterBegin?.(db);
     for (const name of foreignKeyOrder(contract)) {
       const tab = translated.get(name);
       const table = contract.tables[name];
       if (!tab || !table) continue;
-      const res = await insertTable(db, table, tab, options.batchRows);
+      const res = await insertTable(db, contract, table, tab, options.batchRows, options.extraColumns?.[name] ?? []);
       const c = counts[name] as TableCounts;
       c.inserted = res.inserted;
       c.rejected += res.rejects.length;
       rejects.push(...res.rejects);
     }
-    await db.query("commit");
+    const result: LoadResult = { counts, rejects, headerIssues };
+    await options.beforeFinish?.(db, result);
+    const how = typeof options.finish === "function" ? options.finish(result) : (options.finish ?? "commit");
+    await db.query(how === "commit" ? "commit" : "rollback");
   } catch (err) {
     await db.query("rollback");
     throw err;

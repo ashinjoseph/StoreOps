@@ -60,7 +60,7 @@ hand one out.
 | P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | done |
 | P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | todo |
 | P4-01 | Sheet export tool | T2 | P0-03 | | done (not yet run on a real download) |
-| P4-02 | Import tool with a rejects file | T2 | P4-01, P2-02 | money | in progress |
+| P4-02 | Import tool with a rejects file | T2 | P4-01, P2-02 | money | done (not yet run on real data) |
 | P4-03 | Reconcile report: Sheet against database | T2 | P4-02 | money | todo |
 | P4-04 | Dry run on a copy of production | T3 + owner | P3-12, P4-03 | money | todo |
 | P4-05 | Cutover runbook, then the switch | T3 + owner | P4-04 | money | todo |
@@ -592,6 +592,35 @@ columns; the proposal is to import those as `NULL` for rows still open.
 **Done when:** the fixture imports with zero rejects; a workbook with a
 broken row produces exactly one reject and loads the rest; each rule above
 has a test.
+**Done (Nov 26):**
+`npm --prefix ops run import:sheet -- <export-dir> [--dry-run] [--report <dir>] [--accept-rejects <n>] [--open-sessions-blank]`,
+with `OPS_DB_APP_URL` and `PIN_PEPPER` in the environment (never printed; it
+reads no `.dev.vars`, so a stray local file cannot supply a fake pepper at
+cutover). It runs as `ops_app`, which cannot delete. How it behaves:
+- It checks every tab file against the manifest's checksum, that every
+  migration is applied, and that every table it loads is empty; otherwise it
+  refuses. It never deletes or truncates.
+- One transaction, each tab top to bottom (so `seq` is the Sheet's order).
+- **It commits only when the number of rejects equals `--accept-rejects`
+  (default 0).** Otherwise it rolls back, writes `rejects.csv` and
+  `import-report.json`, and exits 1: the database stays empty and the run
+  can be repeated. `--dry-run` always rolls back.
+- The reports hold tab, Sheet row, column and reason; never a cell value.
+- A row with no id but other cells is a reject (it used to be skipped).
+- Duplicate ids are re-keyed (`-d2`, `-d3`…) in `payment_items`,
+  `cash_handover_items` and, by a ruling on landing, `audit_log` (same kind
+  of id, four rows per close, nothing refers to them). A duplicate id in any
+  other table rejects the later row: those rows have children.
+- `PIN_PEPPER` must be the Worker's real secret, or nobody can sign in.
+**For the dry run on real data (P4-04), expect rejects from:** figures with
+more decimals than cents; text in a number or date column; a time typed
+into `scheduled_start`/`scheduled_end` (they are text `HH:MM`); a status or
+method outside the allowed words; rows pointing at a deleted person or
+shift (each takes its children with it); duplicate ids in `bonuses`,
+`payments`, `cash_handovers`, `validation_results`; a sales row with both
+card shapes filled; a row with no id. An error cell (`#REF!`) in a loaded
+tab, or an unknown tab, stops the import. A login code stored as a number
+loses its leading zeros (`0123` reads as `123`) and is counted in the report.
 
 ### P4-03 · Reconcile report · T2 · money
 **Make:** `ops/tools/reconcile.ts`: per table and per month, row count and

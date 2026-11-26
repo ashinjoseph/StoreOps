@@ -10,6 +10,7 @@
 // The rule is "copy what the Sheet holds". A cell is converted to the
 // column's type or the row is rejected; nothing is repaired, defaulted or
 // rounded. A blank is NULL, never 0 (ADR-0004).
+import { configKeySpec } from "../lib/config-keys";
 import { formatDate } from "../lib/dates";
 
 // ── The contract, parsed ─────────────────────────────────────
@@ -190,7 +191,7 @@ export interface TranslatedTab {
   headerIssues: HeaderIssue[];
   /** Rows handed in. read = rows.length + skipped + rejectedRows + leftOut. */
   read: number;
-  /** Rows with a blank primary key (empty trailing rows). */
+  /** Rows with nothing in them (empty trailing rows). A row with a blank key but other cells is a reject. */
   skipped: number;
   /** Rows left out because of at least one reject. */
   rejectedRows: number;
@@ -226,10 +227,14 @@ const isBlank = (v: unknown): boolean => v === "" || v === null || v === undefin
 /** Blank reads as "not active" in the old code (Staff.gs, CommissionRules.gs), and the contract says so. */
 const BLANK_IS_FALSE = new Set(["staff.active", "commission_rules.active"]);
 
-/** Config rows the contract does not import: secrets, and the shopping list's template (the shopping list is deprecated). */
+/**
+ * Config rows the contract does not import: secrets (by name, and every key the config
+ * registry marks as a credential), and the shopping list's template (the shopping list is
+ * deprecated).
+ */
 export function configKeyLeftOut(key: string): boolean {
   const k = key.trim().toLowerCase();
-  return /_token$|_secret$|_api_key$|password/.test(k) || k === "whatsapp_template_shopping_list";
+  return /_token$|_secret$|_api_key$|password/.test(k) || configKeySpec(k)?.kind === "secret" || k === "whatsapp_template_shopping_list";
 }
 
 /** An id: a primary key, a *_id column, or an actor column (*_by). Trimmed of surrounding spaces, nothing else. */
@@ -301,6 +306,9 @@ function textCell(col: Column, cell: unknown): Cell {
   else return bad("not text");
   if (isIdColumn(col)) s = s.trim();
   if (col.enumValues) {
+    // The Sheet's own validation is advisory and the old code read these columns
+    // case-insensitively ("Closed"): trim, compare without case, store the contract's spelling.
+    s = s.trim();
     const hit = col.enumValues.find((v) => v.toLowerCase() === s.toLowerCase());
     if (hit === undefined) return bad(`not one of: ${col.enumValues.join(", ")}`);
     return ok(hit);
@@ -309,7 +317,8 @@ function textCell(col: Column, cell: unknown): Cell {
 }
 
 function translateCell(table: Table, col: Column, cell: unknown): Cell {
-  const isBlankCell = isBlank(cell) || (isIdColumn(col) && typeof cell === "string" && cell.trim() === "");
+  const isBlankCell =
+    isBlank(cell) || ((isIdColumn(col) || col.enumValues !== undefined) && typeof cell === "string" && cell.trim() === "");
   if (isBlankCell) {
     if (col.type === "boolean" && BLANK_IS_FALSE.has(`${table.name}.${col.name}`)) return ok(false);
     if (col.notNull) {
@@ -391,7 +400,14 @@ export function translateTab(tab: string, header: readonly unknown[], rows: read
     const rowNo = firstRow + i;
     const key = cells[pkAt];
     if (isBlank(key) || (typeof key === "string" && key.trim() === "")) {
-      skipped++;
+      // An empty trailing row is skipped. A row with no key that holds anything else may be money:
+      // it is a reject, so that it is seen, never a quiet skip.
+      const empty = cells.every((c) => isBlank(c) || (typeof c === "string" && c.trim() === ""));
+      if (empty) skipped++;
+      else {
+        rejects.push({ tab, row: rowNo, column: pk.name, reason: "blank key, but the row holds other values" });
+        rejectedRows++;
+      }
       return;
     }
     if (tab === "config" && keyAt !== undefined && configKeyLeftOut(String(cells[keyAt] ?? ""))) {
