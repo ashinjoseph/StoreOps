@@ -92,7 +92,10 @@ describe("sign-in through the router", () => {
   });
 
   it("an RPC with no handler yet answers NOT_PORTED", async () => {
-    const res = await call(router({ PIN_PEPPER: PEPPER }), "rpcGetAllStaff", ["x"]);
+    // Whichever contract entry is still unported: this test must not need editing each time a card ports one.
+    const unported = contract.entries.find((e) => e.migrate && !Object.hasOwn(handlers, e.name));
+    if (unported === undefined) return; // everything is ported: nothing left to answer NOT_PORTED
+    const res = await call(router({ PIN_PEPPER: PEPPER }), unported.name, ["x"]);
     expect(res.status).toBe(501);
     expect(res.body.error?.message).toBe("NOT_PORTED");
   });
