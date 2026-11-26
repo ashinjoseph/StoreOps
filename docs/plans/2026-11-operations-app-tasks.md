@@ -58,7 +58,7 @@ hand one out.
 | P3-10b | Port the commission engine and the weekly cron | T2 | P3-10a, P3-05b | money | done |
 | P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | done |
 | P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | todo |
-| P4-01 | Sheet export tool | T2 | P0-03 | | in progress |
+| P4-01 | Sheet export tool | T2 | P0-03 | | done (not yet run on a real download) |
 | P4-02 | Import tool with a rejects file | T2 | P4-01, P2-02 | money | todo |
 | P4-03 | Reconcile report: Sheet against database | T2 | P4-02 | money | todo |
 | P4-04 | Dry run on a copy of production | T3 + owner | P3-12, P4-03 | money | todo |
@@ -533,6 +533,24 @@ inlined and `<` escaped. No RPC is reachable without a session.
 workbook, values exactly as stored (blank stays blank, dates as dates).
 Export every tab, deprecated ones included: the export is also the archive.
 **Done when:** run on the fixture workbook, row counts match the workbook.
+**Done (Nov 26):** `npm --prefix ops run export:sheet -- <workbook.xlsx> <out-dir>`
+writes one JSON file per tab and a `manifest.json` with checksums. It reads
+the .xlsx with Node's built-ins only (no new dependency), prints counts and
+never a cell value, and refuses anything it cannot read in full. A date
+cell is a wall-clock time in Toronto and becomes that instant; a blank
+stays blank. The fixture workbook reads back cell for cell and loads into
+the database exactly as the fixture itself does.
+**Not yet verified: a real Google download** (only workbooks written by
+the tests). On the owner's first real export, check:
+1. it completes, and the tab count and each tab's row count match the Sheet
+   (hidden tabs included);
+2. date columns arrive as dates, not plain numbers (the tool's table shows
+   a `dates` count per tab);
+3. no tab shows `errors` or unexpected `formulas`;
+4. a few known cells by eye: a date, a time, a blank, a figure with cents,
+   an id with leading zeros.
+One limit, by nature: a time inside the repeated hour of the November clock
+change is read as the first of the two.
 
 ### P4-02 · Import tool with a rejects file · T2 · money
 **Read:** `ops/contracts/schema.sql`; ADR-0004.
