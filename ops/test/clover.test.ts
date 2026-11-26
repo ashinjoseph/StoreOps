@@ -245,3 +245,43 @@ describe("getCardTotals", () => {
     expect(net.seen[0]!.signal?.aborted).toBe(true);
   });
 });
+
+// Card P3-07b: a reconcile asks Clover inside a database transaction that also holds the day's
+// lock, so all its Clover requests together get one time budget.
+describe("a time budget across the pages of one reconcile (card P3-07b)", () => {
+  const full = (): Reply => page(Array.from({ length: clover.PAGE_SIZE }, () => pay(100, "credit")));
+
+  it("no request at all when nothing is left; reported the way a failed request is", async () => {
+    const f = fakeFetch([page([pay(100, "credit")])]);
+    const r = await clover.getCardTotals({ fetch: f.fetch, budget: { remainingMs: () => 0 } }, merchant(), START, END);
+    expect(r).toEqual({ ok: false, error: "exception", detail: "Clover took too long: this reconcile's time for Clover is used up" });
+    expect(f.seen).toHaveLength(0);
+  });
+
+  it("stops between pages: one page fetched, then the budget is gone", async () => {
+    let left = 5_000;
+    const queue: Reply[] = [full(), page([pay(100, "credit")])];
+    const base = fakeFetch(queue);
+    const fetchThenSpend = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const resp = await base.fetch(input, init);
+      left = 0; // the first page used all the time there was
+      return resp;
+    }) as typeof fetch;
+    const r = await clover.getCardTotals({ fetch: fetchThenSpend, budget: { remainingMs: () => left } }, merchant(), START, END);
+    expect(r).toMatchObject({ ok: false, error: "exception" });
+    expect(base.seen).toHaveLength(1);
+  });
+
+  it("a request gets no longer than what is left of the budget", async () => {
+    const f = fakeFetch([{ hang: true }]);
+    const started = Date.now();
+    const r = await clover.getCardTotals({ fetch: f.fetch, budget: { remainingMs: () => 60 } }, merchant(), START, END);
+    expect(r).toMatchObject({ ok: false, error: "exception" });
+    expect(Date.now() - started).toBeLessThan(2_000); // not the 10-second limit
+  });
+
+  it("without a budget nothing changes", async () => {
+    const f = fakeFetch([page([pay(100, "credit")])]);
+    expect(await clover.getCardTotals({ fetch: f.fetch }, merchant(), START, END)).toMatchObject({ ok: true, total: 1 });
+  });
+});

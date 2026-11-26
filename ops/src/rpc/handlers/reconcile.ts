@@ -22,7 +22,10 @@ function who(ctx: RpcContext): Session {
 /** Reconcile today: the shift that just closed (auto), or the whole day with force (manual). */
 export const rpcReconcileDay: RpcHandler = async (ctx, force) => {
   const session = who(ctx);
-  const r = await reconcile.reconcileDay(ctx.db, { config: await ctx.config(), env: ctx.env, fetch: ctx.fetch, now: ctx.now }, session.staffId, force === true ? "manual" : "auto");
+  // How long this call has run, for the module's time budget for Clover (card P3-07b).
+  const began = performance.now();
+  const elapsedMs = (): number => performance.now() - began;
+  const r = await reconcile.reconcileDay(ctx.db, { config: await ctx.config(), env: ctx.env, fetch: ctx.fetch, now: ctx.now, elapsedMs }, session.staffId, force === true ? "manual" : "auto");
   return JSON.parse(JSON.stringify(r || {})) as unknown;
 };
 

@@ -61,7 +61,22 @@ export interface ReconcileDeps {
   now: Date;
   /** The random part of the row ids (tests pin it). Default: crypto. */
   random?: () => number;
+  /**
+   * Milliseconds since this reconcile's call began (the RPC handler supplies it). With it, all of
+   * the reconcile's Clover requests together get CLOVER_BUDGET_MS; without it there is no budget.
+   * A duration, not a date: every date still comes from `now`.
+   */
+  elapsedMs?: () => number;
 }
+
+/**
+ * All of one reconcile's Clover requests together (card P3-07b). A reconcile asks Clover inside
+ * the call's transaction, which also holds the day's lock; without a budget, 50 pages per merchant
+ * at 10 seconds each could hold both for many minutes. Past the budget the remaining tills are
+ * recorded `clover_unavailable` (not verified), exactly as when a request fails, and the report
+ * still goes out.
+ */
+export const CLOVER_BUDGET_MS = 25_000;
 
 export type Mode = "auto" | "manual";
 
@@ -356,6 +371,9 @@ export async function reconcileDay(db: Tx, deps: ReconcileDeps, actorId: string 
   }
 
   const cloverOn = clover.isEnabled(config);
+  // One budget for every Clover request of this reconcile (CLOVER_BUDGET_MS), when the caller measures time.
+  const elapsed = deps.elapsedMs;
+  const cloverBudget = elapsed ? { remainingMs: (): number => CLOVER_BUDGET_MS - elapsed() } : null;
   for (const g of groups.values()) {
     // Fall back to the day if a session is missing a timestamp.
     const startMs = Number.isFinite(g.startMs) ? g.startMs : today.getTime();
@@ -366,7 +384,7 @@ export async function reconcileDay(db: Tx, deps: ReconcileDeps, actorId: string 
     const cashierCard = roundMoney(cashierCredit + cashierDebit + g.cashierCardOnly);
     const cardSplit = !g.anyUnsplit;
 
-    const totals: clover.CardTotals = cloverOn ? await clover.getCardTotals({ fetch: deps.fetch }, g.merchant, startMs, endMs) : { ok: false, error: "disabled" };
+    const totals: clover.CardTotals = cloverOn ? await clover.getCardTotals({ fetch: deps.fetch, ...(cloverBudget ? { budget: cloverBudget } : {}) }, g.merchant, startMs, endMs) : { ok: false, error: "disabled" };
 
     // "Not configured" is not "unavailable"; switched off is the same as not configured.
     const cloverNA = !totals.ok && (totals.error === "not_configured" || totals.error === "disabled");

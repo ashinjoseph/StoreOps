@@ -51,7 +51,7 @@ hand one out.
 | P3-05c | Port the shift state and bootstrap reads | T2 | P3-05b, P3-06 | money | done |
 | P3-06 | Port CashHandling | T2 | P3-05b | money | done |
 | P3-07 | Port Clover and Reconcile | T2 | P3-06, P3-08 | money | done |
-| P3-07b | Give a reconcile a time budget | T1 | P3-07 | money | todo |
+| P3-07b | Give a reconcile a time budget | T1 | P3-07 | money | done |
 | P3-08 | Port Notifier (WhatsApp) | T2 | P2-09 | security | done |
 | P3-09a | Port Bonuses | T2 | P3-05a | money | done |
 | P3-09b | Port Payments (pay, undo, owed, history) | T3 | P3-09a, P3-08 | money | done (undo is a void; the owner has still to confirm that) |
@@ -489,6 +489,12 @@ failed request is today), checked before each request; the WhatsApp sends
 keep their own limit.
 **Done when:** a test with a Clover stub that answers slowly ends within the
 budget, records `clover_unavailable`, and still sends the report.
+**Done (Nov 26):** all of one reconcile's Clover requests share 25 seconds.
+With nothing left no request starts, and a request gets no longer than what
+is left. Out of time is a failed request: the till is recorded
+`clover_unavailable` with its Clover figures blank (never partial totals),
+and the WhatsApp report still goes. Worst case for the transaction is now
+about 25 seconds for Clover plus 10 seconds per WhatsApp recipient.
 
 ### P3-08 · Notifier (WhatsApp) · T2 · security
 **Read:** `src/Notifier.gs`; `tests/suites/notifier.js`;

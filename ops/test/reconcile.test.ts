@@ -953,3 +953,35 @@ describe("rpcReconcileDay", () => {
     await expect(call(true, null)).rejects.toThrow("NOT_LOGGED_IN");
   });
 });
+
+// Card P3-07b: one time budget for all of a reconcile's Clover requests.
+describe("a reconcile whose time for Clover is used up (card P3-07b)", () => {
+  const withClock = async (n: Net, elapsedMs: () => number): Promise<any> =>
+    withTransaction(db, async (tx) => reconcile.reconcileDay(tx, { config: await loadConfig(tx), env: ENV, fetch: n.fetch, now: NOW, elapsedMs }, "S_004", "manual"));
+
+  it("asks Clover nothing, records the day as not verified by Clover, and still sends the report", async () => {
+    await VAP();
+    await saleSplit("VAP-1", "vape", 51, 1, 50);
+    const n = net([VAPE_OK]);
+    const res = await withClock(n, () => reconcile.CLOVER_BUDGET_MS + 1);
+    expect(n.clover()).toHaveLength(0);
+    expect(res.merchants[0].status).toBe("clover_unavailable");
+    expect(res.merchants[0].cloverNA).toBe(false);
+    expect(res.merchants[0].cloverCard).toBeNull(); // not measured is not zero
+    expect(n.messages().length).toBeGreaterThan(0);
+    expect((await rows()).map((r) => r.status)).toEqual(["clover_unavailable"]);
+  });
+
+  it("with time left, Clover is asked as before", async () => {
+    await VAP();
+    await saleSplit("VAP-1", "vape", 51, 1, 50);
+    const n = net([VAPE_OK]);
+    const res = await withClock(n, () => 10);
+    expect(n.clover()).toHaveLength(1);
+    expect(res.merchants[0].status).toBe("OK");
+  });
+
+  it("the budget is 25 seconds", () => {
+    expect(reconcile.CLOVER_BUDGET_MS).toBe(25_000);
+  });
+});

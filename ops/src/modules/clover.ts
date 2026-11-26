@@ -54,7 +54,16 @@ export interface CloverDeps {
   fetch: typeof fetch;
   /** Tests only: a shorter limit than REQUEST_TIMEOUT_MS. */
   timeoutMs?: number;
+  /**
+   * Time left for Clover in the piece of work this request belongs to (card P3-07b). When given:
+   * no request is started with nothing left, and a request gets no longer than what is left.
+   * A reconcile asks Clover inside a transaction that holds the day's lock; this bounds it.
+   */
+  budget?: { remainingMs(): number };
 }
+
+/** What a request refused for lack of time answers with: a failure, like any failed request. */
+export const OUT_OF_TIME = "Clover took too long: this reconcile's time for Clover is used up";
 
 /** `raw === true || String(raw).toLowerCase() === 'true'` (Clover.gs isEnabled_). */
 export function isEnabled(config: Config): boolean {
@@ -111,7 +120,8 @@ function scrub(text: string, secret: string): string {
  * limit is ignored, so a fetch that never looks at its signal still cannot hang the reconcile.
  */
 async function get(deps: CloverDeps, url: string, token: string): Promise<{ code: number; text: string }> {
-  const ms = deps.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const most = deps.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const ms = deps.budget ? Math.max(1, Math.min(most, Math.floor(deps.budget.remainingMs()))) : most;
   const signal = AbortSignal.timeout(ms);
   const limit = new Promise<never>((_resolve, reject) => {
     const fail = (): void => reject(new Error(`timed out after ${ms / 1000} seconds`));
@@ -165,6 +175,8 @@ export async function getCardTotals(deps: CloverDeps, merchant: Merchant | null 
         offset;
       // DELIBERATE ADDITION (see the header): the token is only ever sent to Clover.
       if (!isCloverUrl(url)) return { ok: false, error: "not_configured" };
+      // Never partial totals: out of time is a failed request, and the day is "not verified".
+      if (deps.budget && deps.budget.remainingMs() <= 0) return { ok: false, error: "exception", detail: OUT_OF_TIME };
       const resp = await get(deps, url, token);
       const code = resp.code;
       if (code < 200 || code >= 300) {
