@@ -58,10 +58,10 @@ hand one out.
 | P3-10a | Port CommissionRules | T2 | P3-09a | money | done |
 | P3-10b | Port the commission engine and the weekly cron | T2 | P3-10a, P3-05b | money | done |
 | P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | done |
-| P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | todo |
+| P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | in progress |
 | P4-01 | Sheet export tool | T2 | P0-03 | | done (not yet run on a real download) |
 | P4-02 | Import tool with a rejects file | T2 | P4-01, P2-02 | money | done (not yet run on real data) |
-| P4-03 | Reconcile report: Sheet against database | T2 | P4-02 | money | todo |
+| P4-03 | Reconcile report: Sheet against database | T2 | P4-02 | money | in progress |
 | P4-04 | Dry run on a copy of production | T3 + owner | P3-12, P4-03 | money | todo |
 | P4-05 | Cutover runbook, then the switch | T3 + owner | P4-04 | money | todo |
 | P4-06 | Nightly export to a Google Sheet | T2 | P4-05 | | todo |
