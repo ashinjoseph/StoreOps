@@ -51,8 +51,9 @@ hand one out.
 | P3-06 | Port CashHandling | T2 | P3-05b | money | todo |
 | P3-07 | Port Clover and Reconcile | T2 | P3-06, P3-08 | money | todo |
 | P3-08 | Port Notifier (WhatsApp) | T2 | P2-09 | security | in progress |
-| P3-09 | Port Payments and Bonuses | T2 | P3-05a | money | todo |
-| P3-10 | Port CommissionRules, Commissions, weekly cron | T2 | P3-09 | money | todo |
+| P3-09a | Port Bonuses | T2 | P3-05a | money | in progress |
+| P3-09b | Port Payments (pay, undo, owed, history) | T2 | P3-09a, P3-08 | money | todo |
+| P3-10 | Port CommissionRules, Commissions, weekly cron | T2 | P3-09a | money | todo |
 | P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | todo |
 | P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | todo |
 | P4-01 | Sheet export tool | T2 | P0-03 | | todo |
@@ -441,7 +442,13 @@ second sees the first.
 out the `shopping_list` message and its template key; the shopping list is
 deprecated (also drop it from the list `diagnose` checks).
 
-### P3-09 · Payments and Bonuses · T2 · money
+### P3-09 · Payments and Bonuses, in two cards (split Nov 26: about 1,000 lines of old code)
+- **P3-09a · Bonuses:** `rpcGetProposedBonuses`, `rpcApproveBonus`, `rpcCancelBonus`, `rpcCreateBonus`.
+- **P3-09b · Payments:** `rpcGetPayrollOverview`, `rpcGetOwedSummary`, `rpcGetMyOwedSummary`,
+  `rpcPayShifts`, `rpcPayBonus`, `rpcUndoPayment`, `rpcGetPaymentHistory`. It calls Bonuses and
+  the Notifier, so it follows both.
+
+### P3-09 (original card) · Payments and Bonuses · T2 · money
 **Read:** `src/Payments.gs`, `src/Bonuses.gs`; ADR-0011;
 `docs/components/payroll.md`.
 **RPCs:** `rpcGetPayrollOverview`, `rpcGetOwedSummary`, `rpcGetMyOwedSummary`,
