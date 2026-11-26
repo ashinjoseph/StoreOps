@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:17-alpine        # set the major version to the Supabase project's (see "Version check")
+    ports: ["127.0.0.1:54329:5432"]  # this machine only; 54329 avoids clashing with another Postgres
+    environment:
+      POSTGRES_DB: ops
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${OPS_DB_SUPERUSER_PASSWORD}
+      OPS_OWNER_PASSWORD: ${OPS_OWNER_PASSWORD}
+      OPS_APP_PASSWORD: ${OPS_APP_PASSWORD}
+      OPS_READ_PASSWORD: ${OPS_READ_PASSWORD}
+    command: ["postgres", "-c", "timezone=UTC"]   # as on Supabase; business days are worked out in code
+    volumes:
+      - ops-pgdata:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+      - ../contracts:/contracts:ro                # the frozen role script, mounted, not copied
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "ops"]
+      interval: 2s
+      retries: 30
+volumes:
+  ops-pgdata:

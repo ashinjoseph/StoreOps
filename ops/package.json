@@ -11,16 +11,26 @@
     "test": "vitest run",
     "build:ui": "node tools/build-ui.mjs",
     "dev": "wrangler dev",
-    "till:check": "node --experimental-strip-types tools/till-check.ts"
+    "till:check": "node --experimental-strip-types tools/till-check.ts",
+    "db:up": "docker compose --env-file .env -f db/compose.yml up -d --wait",
+    "db:down": "docker compose --env-file .env -f db/compose.yml down",
+    "db:reset": "docker compose --env-file .env -f db/compose.yml down -v && npm run db:up && npm run db:migrate && npm run db:seed",
+    "db:migrate": "node --env-file-if-exists=.env --experimental-strip-types tools/db-migrate.ts",
+    "db:psql": "docker compose --env-file .env -f db/compose.yml exec db sh -c \"PGPASSWORD=\\\"\\$OPS_APP_PASSWORD\\\" psql -U ops_app -d ops\"",
+    "db:seed": "echo \"no seed data yet (a later card adds it)\""
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261125.1",
     "@types/node": "^22.20.7",
+    "@types/pg": "^8.23.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "typescript": "^7.0.2",
     "vitest": "^5.1.2",
     "wrangler": "^4.168.0",
     "yaml": "^2.9.1"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
   }
 }
