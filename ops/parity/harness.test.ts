@@ -281,7 +281,7 @@ function bonusFake(o: BonusFakeOptions = {}): RpcHandler {
       createdBy: actorId,
       createdAt: null, // a Date in the old answer
       notes: "",
-      _rowIndex: made.rowIndex,
+      // No _rowIndex: the old record's Sheet row number is dropped from the old side by rule (SHEET_ROW_RULE).
     };
   };
 }

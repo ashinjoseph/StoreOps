@@ -19,7 +19,7 @@
 // ONE KNOWN DIFFERENCE (card P3-08: "drop shopping_list from the list diagnose checks"): the old
 // setup check's "templates" detail lists shopping_list among the templates that are not set. The new
 // module does not know the shopping list, so every rpcCheckWhatsApp case differs from the old one
-// at $.checks[4].detail and nowhere else. No exemption is declared for it: see the card's report.
+// at $.checks[4].detail and nowhere else: see TEMPLATES_SENTENCE below.
 import { directCase, parityCase, type DirectCall, type ParityCase } from "../case";
 import type { HttpReply } from "../http";
 import { notify, sendOp, type NotifyPayload, type OpKey } from "../../src/modules/notifier";
@@ -49,12 +49,20 @@ const HEALTHY: HttpReply = { status: 200, body: { verified_name: "Fictional Mart
 // ── rpcCheckWhatsApp ───────────────────────────────────────
 
 /** An admin runs the check against the fixture's own settings, with Meta answering `reply`. */
+/**
+ * The one agreed difference in this area (orchestrator, review of P3-08). The old setup check's
+ * "templates" sentence lists the shopping_list template among those not set; the shopping list is
+ * not being moved, so the new sentence does not mention it. Every other check, and every other
+ * field of this one, is still compared; ops/test/notifier.test.ts pins the new sentence's wording.
+ */
+const TEMPLATES_SENTENCE = [{ path: "$.checks[4].detail", reason: "the old sentence names the shopping_list template, which is not being moved (decision: Not migrated, Nov 21)" }];
+
 const check = (title: string, reply: HttpReply[], settings?: Record<string, string>): ParityCase =>
-  parityCase("rpcCheckWhatsApp", { as: "admin", title: `rpcCheckWhatsApp: ${title}`, http: reply, ...(settings ? { settings } : {}) });
+  parityCase("rpcCheckWhatsApp", { as: "admin", title: `rpcCheckWhatsApp: ${title}`, http: reply, exempt: TEMPLATES_SENTENCE, ...(settings ? { settings } : {}) });
 
 const checkCases: ParityCase[] = [
   // Who may ask (the contract: admin, manager, payroll_admin), with Meta healthy; the refusal text is compared.
-  ...ROLES.map((role) => parityCase("rpcCheckWhatsApp", { as: role, title: `rpcCheckWhatsApp as ${role}: Meta healthy`, ...(role === "employee" ? {} : { http: [HEALTHY] }) })),
+  ...ROLES.map((role) => parityCase("rpcCheckWhatsApp", { as: role, title: `rpcCheckWhatsApp as ${role}: Meta healthy`, exempt: TEMPLATES_SENTENCE, ...(role === "employee" ? {} : { http: [HEALTHY] }) })),
   parityCase("rpcCheckWhatsApp", { as: null, title: "rpcCheckWhatsApp: no token is refused" }),
 
   // The states a person meets.

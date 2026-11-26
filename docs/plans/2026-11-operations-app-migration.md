@@ -157,6 +157,8 @@ Found or decided while building the foundation. Each is covered by a test.
 | Audit and line-item ids end in 3 random characters and can repeat within a second | 10 random characters | The id is a primary key now; a repeat would fail the change itself |
 | A call that fails halfway keeps what it already wrote | One transaction per call | Nothing is half-saved |
 | Any error text reaches the screen | Only messages meant for the person; faults show `SERVER_ERROR` and an id | No table names or values leak |
+| The WhatsApp token is posted to whatever address the `whatsapp_api_url` setting holds | Only to `https://graph.facebook.com`; any other address counts as not set up | Changing one setting can't send the token to someone else's server |
+| A WhatsApp send has no time limit of its own | 10 seconds, then reported as a failed send | A hung request can't hang a close |
 
 ### Answers (Nov 21)
 

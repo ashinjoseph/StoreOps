@@ -167,11 +167,25 @@ const recipients = (deps: NotifierDeps): string[] => deps.config.list("whatsapp_
  * The shared send loop. `buildPayload(to)` is the Cloud API JSON body for one recipient; each is
  * POSTed in turn. Never throws for a send failure.
  */
+/** https://graph.facebook.com/… and nothing else: the only place the WhatsApp token may be sent. */
+export function isMetaUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && u.hostname === "graph.facebook.com" && u.username === "" && u.password === "" && (u.port === "" || u.port === "443");
+  } catch {
+    return false;
+  }
+}
+
 async function dispatch(deps: NotifierDeps, buildPayload: (to: string) => unknown): Promise<SendResult> {
   if (!isEnabled(deps)) return { sent: false, reason: "disabled" };
   const url = deps.config.value("whatsapp_api_url", "");
   const secret = token(deps);
   if (!url || !secret) return { sent: false, reason: "not_configured" };
+  // DELIBERATE ADDITION (review of P3-08): the token is only ever sent to Meta. The old code
+  // posted it to whatever whatsapp_api_url held, so anyone able to change that one setting could
+  // have had the token delivered to a server of their own. Any other address counts as not set up.
+  if (!isMetaUrl(url)) return { sent: false, reason: "not_configured" };
   const to = recipients(deps);
   if (to.length === 0) return { sent: false, reason: "not_configured" };
 

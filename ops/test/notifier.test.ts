@@ -592,3 +592,23 @@ describe("notify", () => {
     expect(summarize("something.else", {})).toBe("Event: something.else");
   });
 });
+
+describe("the token only ever goes to Meta (added in review)", () => {
+  it("isMetaUrl accepts https://graph.facebook.com and nothing else", async () => {
+    const { isMetaUrl } = await import("../src/modules/notifier");
+    expect(isMetaUrl("https://graph.facebook.com/v21.0/100000000000001/messages")).toBe(true);
+    for (const bad of [
+      "http://graph.facebook.com/v21.0/1/messages",
+      "https://graph.facebook.com.evil.example/v21.0/1/messages",
+      "https://evil.example/graph.facebook.com/v21.0/1/messages",
+      "https://user:pw@graph.facebook.com/v21.0/1/messages",
+      "https://graph.facebook.com:8443/v21.0/1/messages",
+      "https://graph.facebook.com@evil.example/v21.0/1/messages",
+      "//graph.facebook.com/x",
+      "not a url",
+      "",
+    ]) {
+      expect(isMetaUrl(bad), bad).toBe(false);
+    }
+  });
+});
