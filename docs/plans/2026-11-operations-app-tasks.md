@@ -34,7 +34,7 @@ hand one out.
 | P2-04 | Audit log writer | T1 | P2-03b | | done |
 | P2-05 | Config and secrets access | T1 | P2-03b | security | done |
 | P2-06 | Login, sessions, lockout, roles | T2 | P2-04, P2-05 | security | in progress |
-| P2-07 | RPC router | T2 | P2-05, P0-04 | security | in progress |
+| P2-07 | RPC router | T2 | P2-05, P0-04 | security | done |
 | P2-08a | UI copy and the new transport | T2 | P2-01 | | done |
 | P2-08b | UI served by the Worker; login round-trips | T2 | P2-08a, P2-07 | | todo |
 | P2-09a | Sheet rows into the new database (fixture loader) | T2 | P2-02 | money | done |
