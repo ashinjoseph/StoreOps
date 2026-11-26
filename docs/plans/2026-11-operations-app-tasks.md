@@ -56,7 +56,7 @@ hand one out.
 | P3-09b | Port Payments (pay, undo, owed, history) | T3 | P3-09a, P3-08 | money | done (undo is a void; the owner has still to confirm that) |
 | P3-10a | Port CommissionRules | T2 | P3-09a | money | done |
 | P3-10b | Port the commission engine and the weekly cron | T2 | P3-10a, P3-05b | money | in progress |
-| P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | in progress |
+| P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | done |
 | P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | todo |
 | P4-01 | Sheet export tool | T2 | P0-03 | | in progress |
 | P4-02 | Import tool with a rejects file | T2 | P4-01, P2-02 | money | todo |
@@ -392,6 +392,19 @@ paritySequence("a handover shows in the history", { as: "S_003", writes: ["cash_
 ```
 A write case declares every table it changes; a table changed and not
 declared fails the case. A handler with no parity case fails the run.
+
+A sign-in lasts 24 hours and the harness signs each caller in when the case
+starts. A case that moves the clock further than that must keep its callers
+signed in (call `rpcGetMe` as them along the way, or `rpcLogin` at the new
+time and use that token). A step called as a fixture person and answered
+`NOT_LOGGED_IN` on both sides fails the case unless it says
+`expect: "signed_out"`: two equal refusals compare nothing (found Nov 26:
+nine dashboard cases had passed that way).
+
+Rows that the Sheet listed in the order they were appended are read
+`order by seq` (migrations 0004, 0005: `audit_log`, `payments`, `sales`).
+A table that needs the same gets a `seq` column the same way; never order
+by Postgres's own row position (`ctid`, `xmin`).
 
 Five old RPCs return a `Date` (`rpcGetAllStaff` `startDate`; `rpcCreateBonus`,
 `rpcApproveBonus`, `rpcCancelBonus` and `rpcScheduleShift` date fields).

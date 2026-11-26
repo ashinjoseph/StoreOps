@@ -71,6 +71,19 @@ export async function closeWorlds(): Promise<void> {
   await dropTemplates();
 }
 
+/**
+ * Two equal refusals compare nothing. Stated once, here; printed with every run.
+ * A step called as a fixture person (`as: "manager"`, `as: "S_003"`), whom the harness signed in,
+ * and answered NOT_LOGGED_IN on BOTH sides, fails the case: the caller's sign-in had run out
+ * (the clock was moved past it), so the answers the case was written to compare were never
+ * produced. A step that is about exactly that says `expect: "signed_out"`, and then both sides
+ * MUST answer NOT_LOGGED_IN. Steps with no token (`as: null`) or a token from an earlier step
+ * (`as: { token }`) are not touched: there the refusal is the answer under test.
+ */
+export const SIGNED_OUT_RULE =
+  'a step called as a fixture person and answered NOT_LOGGED_IN on both sides fails the case unless it says expect: "signed_out" (and with that, both sides must answer NOT_LOGGED_IN)';
+const signedOut = (o: Outcome): boolean => o.kind === "error" && /(^|: )NOT_LOGGED_IN$/.test(o.message);
+
 const isResultExemption = (e: ResultExemption | ColumnExemption): e is ResultExemption => "path" in e;
 
 /** Strings under a key named `token`, walking keys in sorted order. */
@@ -96,8 +109,11 @@ interface Executed {
 }
 
 async function execute(c: ParityCase, handlers: RpcHandlers, newSide: boolean): Promise<Executed> {
-  // A case that writes, or sets settings, has a pair of its own.
-  const fresh = c.writes !== null || c.settings !== null;
+  // A case that writes, sets settings or moves the clock has a pair of its own. The clock: a
+  // sign-in that runs out is deleted by the old app when next looked at, and the harness signs
+  // each person in once per pair, so on the shared pair every later case would meet a caller the
+  // old side no longer knows.
+  const fresh = c.writes !== null || c.settings !== null || c.steps.some((s) => s.at !== undefined || s.advance !== undefined);
   const t0 = performance.now();
   const worlds = fresh ? await createWorlds({ settings: c.settings }) : await sharedWorlds();
   const freshPairMs = fresh ? performance.now() - t0 : null;
@@ -227,6 +243,15 @@ export async function runCase(c: ParityCase, opts: { handlers?: RpcHandlers } = 
       const n = redact(norms.new.outcome(s.new), s.secret);
       const sent = diffOutbound(s.outbound.old, s.outbound.new, s.secret);
       const found = [...diffOutcomes(o, n, exempt), ...sent.diffs];
+      // SIGNED_OUT_RULE.
+      const spec = c.steps[i]!;
+      const bothOut = signedOut(s.old) && signedOut(s.new);
+      if (spec.expect === "signed_out" && !bothOut) {
+        found.push({ path: "(caller)", old: `expected NOT_LOGGED_IN (expect: "signed_out"); answered ${s.old.kind}`, new: `expected NOT_LOGGED_IN; answered ${s.new.kind}` });
+      } else if (spec.expect !== "signed_out" && bothOut && typeof spec.as === "string") {
+        const why = `NOT_LOGGED_IN: ${spec.as}'s sign-in had run out before this step, so nothing was compared (sign in again in the case, or say expect: "signed_out")`;
+        found.push({ path: "(caller)", old: why, new: why });
+      }
       const where = `call ${i + 1} ${s.rpc}`;
       const listed = found.slice(0, MAX_DIFFS).map((d) => ({ where, ...d }));
       result.calls.push({ step: i + 1, rpc: s.rpc, diffs: listed, total: found.length, old: o, new: n, outbound: { old: sent.old, new: sent.new } });

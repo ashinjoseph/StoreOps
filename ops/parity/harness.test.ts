@@ -181,6 +181,42 @@ describe("reads: the comparison", () => {
   });
 });
 
+// SIGNED_OUT_RULE (run.ts). Found Nov 26: cases that moved the clock a day on and then asked for the
+// dashboard "as manager" compared NOT_LOGGED_IN with NOT_LOGGED_IN and passed, comparing nothing.
+describe("a caller whose sign-in has run out is never a silent pass", () => {
+  const answered = { rpcGetCashPosition: returning({ holders: [] }) };
+  const late = (spec: object) => paritySequence("the cash position a day and a half later", { writes: ["sessions"] }, [step("rpcGetCashPosition", { as: "manager", advance: { hours: 36 }, ...spec })]);
+
+  it("both sides refusing a signed-in fixture person as NOT_LOGGED_IN fails the case and says why", async () => {
+    const r = await runCase(late({}), { handlers: answered });
+    expect(r.calls[0]!.old).toEqual({ kind: "error", message: "NOT_LOGGED_IN" });
+    expect(r.calls[0]!.new).toEqual({ kind: "error", message: "NOT_LOGGED_IN" });
+    expect(r.status).toBe("fail");
+    expect(r.diffs).toHaveLength(1);
+    expect(r.diffs[0]).toMatchObject({ where: "call 1 rpcGetCashPosition", path: "(caller)" });
+    expect(r.diffs[0]!.old).toMatch(/sign-in had run out/);
+  });
+
+  it("the same step marked expect: \"signed_out\" passes: the case is about being signed out", async () => {
+    const r = await runCase(late({ expect: "signed_out" }), { handlers: answered });
+    expect(r.diffs).toEqual([]);
+    expect(r.status).toBe("pass");
+  });
+
+  it("a step marked expect: \"signed_out\" that is answered fails", async () => {
+    const old = (await recordOld(parityCase("rpcGetCashPosition", { as: "manager" })))[0];
+    const r = await runCase(paritySequence("answered", {}, [step("rpcGetCashPosition", { as: "manager", expect: "signed_out" })]), { handlers: { rpcGetCashPosition: returning(old) } });
+    expect(r.status).toBe("fail");
+    expect(r.diffs[0]).toMatchObject({ path: "(caller)" });
+  });
+
+  it("a call with no token (as: null) refused on both sides is an ordinary pass", async () => {
+    const r = await runCase(parityCase("rpcGetCashPosition", { as: null }), { handlers: answered });
+    expect(r.diffs).toEqual([]);
+    expect(r.status).toBe("pass");
+  });
+});
+
 describe("exemptions", () => {
   it("an exemption without a reason is refused when the case is written", () => {
     expect(() => parityCase("rpcGetMe", { as: "manager", exempt: [{ path: "$.name", reason: "" }] })).toThrow(/reason/);

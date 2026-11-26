@@ -14,8 +14,8 @@
 // the old code rounded, so the database never rounds (numeric(12,2) rounds half away from zero;
 // roundMoney(1.005) is 1).
 //
-// Order: the Sheet listed rows in the order they were appended (the order of the closes). There
-// is no such column here; lists are `order by date, sales_id`. Nothing in this module depends on it.
+// Order: the Sheet listed rows in the order they were appended (the order of the closes). That
+// is sales.seq here (migration 0005), and every list is in that order.
 import type { Db } from "../db/client";
 import * as audit from "../lib/audit";
 import type { Config } from "../lib/config";
@@ -69,7 +69,7 @@ interface SalesRow {
 
 const COLUMNS =
   "sales_id, session_id, staff_id, company, date, cash_sales, credit_card_sales, debit_card_sales, cashback_paid, hst_collected, bottle_deposit, round_off, misc_cash_sales, misc_credit_sales, misc_debit_sales, misc_notes, card_total_sales, misc_card_sales";
-const ORDER = `order by date nulls last, sales_id collate "C"`;
+const ORDER = "order by seq";
 const trimmed = (v: string | null): string => (v || "").toString().trim();
 const num0 = (v: number | null): number => Number(v) || 0;
 /** Sales.gs numOrNull_: a blank cell (NULL here) is null. */

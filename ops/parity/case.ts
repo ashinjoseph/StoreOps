@@ -85,6 +85,12 @@ export interface StepSpec {
   advance?: Duration;
   /** The replies to this step's outbound requests, in order, the same on both sides. Absent: any outbound request fails the case. */
   http?: readonly HttpReply[];
+  /**
+   * "signed_out": this step is ABOUT the caller's sign-in having run out, so both sides must answer
+   * NOT_LOGGED_IN. Without it, a fixture person refused as NOT_LOGGED_IN on both sides fails the
+   * case (SIGNED_OUT_RULE in run.ts): two equal refusals compare nothing.
+   */
+  expect?: "signed_out";
 }
 
 /** What a module function is given on the new side: what a handler gets from its context. */
