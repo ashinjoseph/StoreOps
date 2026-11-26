@@ -15,6 +15,13 @@ export function cryptoRandom(): number {
 export interface IdDeps {
   now?: Date;
   random?: () => number;
+  /**
+   * How many random base-36 characters end the id. Default 3, the old shape.
+   * Three repeat within a second often enough to matter where the table has a
+   * primary key and several ids are made at once (audit rows, payment items):
+   * those callers ask for 10.
+   */
+  chars?: number;
 }
 
 /**
@@ -23,7 +30,7 @@ export interface IdDeps {
  */
 export function newId(prefix: string, deps: IdDeps = {}): string {
   const stamp = formatDateTimeStamp(deps.now ?? new Date());
-  const rand = (deps.random ?? cryptoRandom)().toString(36).substring(2, 5);
+  const rand = (deps.random ?? cryptoRandom)().toString(36).substring(2, 2 + (deps.chars ?? 3));
   return prefix + "_" + stamp + "_" + rand;
 }
 

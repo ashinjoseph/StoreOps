@@ -112,3 +112,11 @@ describe("newLoginCode matches Util.newLoginCode", () => {
     expect(newLoginCode(0)).toMatch(/^\d{4}$/);
   });
 });
+
+describe("newId with more random characters", () => {
+  it("keeps the old three by default and takes up to the number asked", () => {
+    const deps = { now: new Date(Date.UTC(2026, 5, 15, 16, 0, 0)), random: () => 0.123456789 };
+    expect(newId("LOG", deps)).toBe("LOG_20260615_120000_4fz");
+    expect(newId("LOG", { ...deps, chars: 10 })).toBe("LOG_20260615_120000_4fzzzxjylr");
+  });
+});

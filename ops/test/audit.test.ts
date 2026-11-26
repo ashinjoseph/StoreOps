@@ -112,9 +112,9 @@ describe("write: the pinned row", () => {
       { actorId: "S1", action: "till.open", targetType: "session", targetId: "T1", before: { float: 150 }, after: null, details: "opened" },
       PINNED,
     );
-    expect(id).toBe("LOG_20260615_120000_4fz");
+    expect(id).toBe("LOG_20260615_120000_4fzzzxjylr");
     expect(await rowOf(other, id)).toEqual({
-      log_id: "LOG_20260615_120000_4fz",
+      log_id: "LOG_20260615_120000_4fzzzxjylr",
       timestamp: NOW,
       actor_id: "S1",
       action: "till.open",
@@ -306,5 +306,27 @@ describe("recent", () => {
     // limit 1 reads 4 rows (X1, T4, T3, P1). T1 is older than that, so it is not found.
     expect(ids(await recent(r, 1, { targetId: "T1" }))).toEqual([]);
     expect(ids(await recent(r, 1, { actorId: "S1" }))).toEqual(["T4"]);
+  });
+});
+
+describe("log ids cannot collide (the old three random characters could)", () => {
+  it("5,000 rows written in the same second all get different ids, in three statements", async () => {
+    const calls: string[] = [];
+    const counting: Db = {
+      query: (t, p) => {
+        calls.push(t);
+        return db.query(t, p);
+      },
+      one: (t, p) => db.one(t, p),
+      maybeOne: (t, p) => db.maybeOne(t, p),
+    };
+    const sameSecond = new RealDate(NOW_MS + 7 * 86_400_000);
+    const entries = Array.from({ length: 5000 }, (_, i) => ({ action: "bulk.test", targetId: `N${i}` }));
+    const ids = await writeMany(counting, entries, { now: sameSecond });
+    expect(new Set(ids).size).toBe(5000);
+    expect(calls.length).toBe(3);
+    const stored = await other.one<{ n: number }>("select count(*)::int as n from ops.audit_log where action = 'bulk.test'");
+    expect(stored.n).toBe(5000);
+    expect(ids[0]).toMatch(/^LOG_\d{8}_\d{6}_[0-9a-z]{8,10}$/);
   });
 });

@@ -6,7 +6,11 @@
 // or remove a row (ops/contracts/roles.sql), so there is no update or delete here.
 //
 // What is stored, as the old toRow_ wrote it:
-//   - log_id: newId("LOG"), i.e. LOG_<yyyyMMdd>_<HHmmss>_<xxx> in Toronto time.
+//   - log_id: LOG_<yyyyMMdd>_<HHmmss>_<random> in Toronto time, like the old
+//     newId("LOG") but with 10 random characters, not 3. The old three repeat
+//     within a second (several audit rows are written per close); the Sheet held
+//     such duplicates silently, but log_id is a primary key here, and a repeat
+//     would fail the whole change being audited.
 //   - timestamp: the instant the entry was written.
 //   - actor_id, target_type, target_id, action, details: a falsy value (`x || ''`)
 //     is a blank cell, stored as NULL; a truthy one is stored as its text. The one
@@ -69,6 +73,10 @@ type Params = [
 
 const COLUMNS = `log_id, "timestamp", actor_id, action, target_type, target_id, "before", "after", details`;
 const WIDTH = 9;
+/** Random characters in a log id (see the header). */
+const ID_CHARS = 10;
+/** Rows per insert statement: 9 parameters each, well under Postgres's 65,535 a statement. */
+const BATCH = 2000;
 
 /** Old `x || ''`, then a cell: a falsy value is blank; a truthy one is its text. */
 function textOrNull(v: unknown): string | null {
@@ -85,7 +93,7 @@ function jsonOrNull(v: unknown): string | null {
 function toRow(entry: AuditEntry, deps: AuditDeps): Params {
   const now = deps.now ?? new Date();
   return [
-    newId("LOG", { now, random: deps.random }),
+    newId("LOG", { now, random: deps.random, chars: ID_CHARS }),
     now,
     textOrNull(entry.actorId),
     entry.action || "",
@@ -105,14 +113,18 @@ export async function write(db: Db, entry: AuditEntry, deps: AuditDeps = {}): Pr
 }
 
 /**
- * Append many rows in ONE insert statement (a bulk import logs a row per product;
- * one statement each is what the old code's batching was for). Returns the ids in order.
+ * Append many rows in one insert statement per 2,000 rows (a bulk write logs a
+ * row per item; a statement each is what the old code's batching avoided).
+ * Returns the ids in order.
  */
 export async function writeMany(db: Db, entries: readonly AuditEntry[], deps: AuditDeps = {}): Promise<string[]> {
   if (entries.length === 0) return [];
   const rows = entries.map((e) => toRow(e, deps));
-  const values = rows.map((_, i) => `(${placeholders(i * WIDTH)})`).join(", ");
-  await db.query(`insert into ops.audit_log (${COLUMNS}) values ${values}`, rows.flat());
+  for (let at = 0; at < rows.length; at += BATCH) {
+    const batch = rows.slice(at, at + BATCH);
+    const values = batch.map((_, i) => `(${placeholders(i * WIDTH)})`).join(", ");
+    await db.query(`insert into ops.audit_log (${COLUMNS}) values ${values}`, batch.flat());
+  }
   return rows.map((r) => r[0]);
 }
 
