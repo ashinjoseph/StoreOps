@@ -54,6 +54,40 @@ function suitesLoading(file) {
 
 const esc = s => String(s).replace(/\|/g, '\\|');
 
+// Every rpc* endpoint in src/WebApp.gs, in source order. Each has the raw
+// parameter text (`params`), the printed roles (`who`), the roles as an array
+// (`roles`, null when there is no Auth.require), whether it reaches
+// _session (`needsSession`), and the modules its code calls (`calls`).
+function parseRpcs() {
+  const web = read(path.join(SRC, 'WebApp.gs'));
+  const re = /^function (rpc[A-Za-z0-9_]*)\s*\(([^)]*)\)/gm;
+  const rpcs = [];
+  let m;
+  // An RPC that hands off to a private helper (`return _rpcX(token)`) is
+  // guarded inside the helper, so read one level of helpers too.
+  const helper = name => {
+    const i = web.search(new RegExp('^function ' + name.replace('$', '\\$') + '\\s*\\(', 'm'));
+    return i === -1 ? '' : body(web, i);
+  };
+  while ((m = re.exec(web))) {
+    let b = body(web, m.index);
+    (b.match(/\b_[A-Za-z]\w*(?=\()/g) || []).forEach(h => { if (h !== '_session') b += helper(h); });
+    const req = /Auth\.require\(session,\s*\[([^\]]*)\]/.exec(b);
+    let who;
+    if (req) who = req[1].replace(/['"\s]/g, '').split(',').join(', ');
+    else if (/_session\(|Auth\.validate\(/.test(b)) who = 'any signed-in';
+    else who = '**no session check**';
+    const calls = modNames.filter(o => o !== 'Util' && o !== 'WebApp' &&
+      new RegExp('\\b' + o + '\\.[a-zA-Z]').test(b) && o !== 'Auth');
+    rpcs.push({
+      name: m[1], params: m[2].replace(/\s+/g, ' ').trim(), who, calls,
+      roles: req ? req[1].replace(/['"\s]/g, '').split(',').filter(Boolean) : null,
+      needsSession: /_session\(/.test(b),
+    });
+  }
+  return rpcs;
+}
+
 function build() {
   const { api } = R.boot();
   const L = [
@@ -124,28 +158,7 @@ function build() {
   });
 
   // ── RPCs ──────────────────────────────────────────────────
-  const web = read(path.join(SRC, 'WebApp.gs'));
-  const re = /^function (rpc[A-Za-z0-9_]*)\s*\(([^)]*)\)/gm;
-  const rpcs = [];
-  let m;
-  // An RPC that hands off to a private helper (`return _rpcX(token)`) is
-  // guarded inside the helper, so read one level of helpers too.
-  const helper = name => {
-    const i = web.search(new RegExp('^function ' + name.replace('$', '\\$') + '\\s*\\(', 'm'));
-    return i === -1 ? '' : body(web, i);
-  };
-  while ((m = re.exec(web))) {
-    let b = body(web, m.index);
-    (b.match(/\b_[A-Za-z]\w*(?=\()/g) || []).forEach(h => { if (h !== '_session') b += helper(h); });
-    const req = /Auth\.require\(session,\s*\[([^\]]*)\]/.exec(b);
-    let who;
-    if (req) who = req[1].replace(/['"\s]/g, '').split(',').join(', ');
-    else if (/_session\(|Auth\.validate\(/.test(b)) who = 'any signed-in';
-    else who = '**no session check**';
-    const calls = modNames.filter(o => o !== 'Util' && o !== 'WebApp' &&
-      new RegExp('\\b' + o + '\\.[a-zA-Z]').test(b) && o !== 'Auth');
-    rpcs.push({ name: m[1], params: m[2].replace(/\s+/g, ' ').trim(), who, calls });
-  }
+  const rpcs = parseRpcs();
   L.push('', '## RPC endpoints', '',
     'Called from the browser as `google.script.run.<name>(...)` (wrapped by `call` /',
     '`cachedCall` in `Index.html`). Every endpoint takes the session token first and',
@@ -194,4 +207,4 @@ if (require.main === module) {
     console.log('wrote ' + path.relative(process.cwd(), OUT));
   }
 }
-module.exports = { build, OUT };
+module.exports = { build, parseRpcs, OUT };

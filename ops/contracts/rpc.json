@@ -1,0 +1,891 @@
+{
+  "generated_from": "src/WebApp.gs",
+  "count": 62,
+  "migrate_count": 41,
+  "rpcs": [
+    {
+      "name": "rpcGetActiveStaffForLogin",
+      "params": [],
+      "roles": null,
+      "needs_session": false,
+      "modules": [
+        "Staff"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcLogin",
+      "params": [
+        "name",
+        "code"
+      ],
+      "roles": null,
+      "needs_session": false,
+      "modules": [],
+      "migrate": true
+    },
+    {
+      "name": "rpcLogout",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": false,
+      "modules": [],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetMe",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetBootstrap",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "Attendance",
+        "CashHandling",
+        "Sales",
+        "TillSessions"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetStaffDirectory",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "Staff"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetMyOwedSummary",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "Payments",
+        "Staff"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetMyShiftState",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "Attendance",
+        "CashHandling",
+        "Sales",
+        "TillSessions"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcOpenShift",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "TillSessions"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcNotifyShiftOpen",
+      "params": [
+        "token",
+        "company"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "AuditLog",
+        "Notifier"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcCheckWhatsApp",
+      "params": [
+        "token"
+      ],
+      "roles": [
+        "admin",
+        "manager",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Notifier"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcCloseShift",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "TillSessions"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetWeekSchedule",
+      "params": [
+        "token",
+        "weekStartStr"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "Attendance",
+        "Staff"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcScheduleShift",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": [
+        "admin",
+        "manager"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Attendance"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcCancelScheduledShift",
+      "params": [
+        "token",
+        "attendanceId",
+        "reason"
+      ],
+      "roles": [
+        "admin",
+        "manager"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Attendance"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcAdjustAttendanceHours",
+      "params": [
+        "token",
+        "attendanceId",
+        "basis"
+      ],
+      "roles": [
+        "admin",
+        "manager"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Attendance"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcEditAttendanceTimes",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Attendance"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetPayrollOverview",
+      "params": [
+        "token"
+      ],
+      "roles": [
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Payments",
+        "Staff"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetOwedSummary",
+      "params": [
+        "token",
+        "staffId"
+      ],
+      "roles": [
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Payments"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcPayShifts",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": [
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Payments"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcPayBonus",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": [
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Payments"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcUndoPayment",
+      "params": [
+        "token",
+        "paymentId"
+      ],
+      "roles": [
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Payments"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetProposedBonuses",
+      "params": [
+        "token"
+      ],
+      "roles": [
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Bonuses",
+        "Staff"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcApproveBonus",
+      "params": [
+        "token",
+        "bonusId"
+      ],
+      "roles": [
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Bonuses"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcCancelBonus",
+      "params": [
+        "token",
+        "bonusId",
+        "reason"
+      ],
+      "roles": [
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Bonuses"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcCreateBonus",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Bonuses"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetSalesDashboard",
+      "params": [
+        "token",
+        "filters"
+      ],
+      "roles": [
+        "admin",
+        "manager",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Sales"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcReconcileDay",
+      "params": [
+        "token",
+        "force"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "Reconcile"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetReconciliation",
+      "params": [
+        "token",
+        "limit"
+      ],
+      "roles": [
+        "admin",
+        "manager",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Reconcile"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetCashPosition",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "CashHandling"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcRecordCashHandover",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "CashHandling"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcVoidCashHandover",
+      "params": [
+        "token",
+        "handoverId"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "CashHandling"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetCashOutstandingFor",
+      "params": [
+        "token",
+        "staffId"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "CashHandling"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetCashHandoverHistory",
+      "params": [
+        "token",
+        "limit",
+        "staffId"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "CashHandling"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetPaymentHistory",
+      "params": [
+        "token",
+        "limit"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "Payments",
+        "Staff"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetCommissionRuns",
+      "params": [
+        "token",
+        "limit"
+      ],
+      "roles": [
+        "admin",
+        "manager",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Commissions",
+        "Staff"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcRunCommissionEngine",
+      "params": [
+        "token",
+        "force"
+      ],
+      "roles": [
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Commissions"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetCommissionRules",
+      "params": [
+        "token"
+      ],
+      "roles": [
+        "admin",
+        "manager",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "CommissionRules"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcCreateCommissionRule",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": [
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "CommissionRules"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcUpdateCommissionRule",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": [
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "CommissionRules"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetAllStaff",
+      "params": [
+        "token"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "Staff"
+      ],
+      "migrate": true
+    },
+    {
+      "name": "rpcGetSuppliers",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "Suppliers"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcGetOrderCatalog",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "OrderCatalog"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcAddCatalogItem",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "OrderCatalog"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcGetShoppingList",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ShoppingList",
+        "Staff"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcSetShoppingItemBought",
+      "params": [
+        "token",
+        "entryId",
+        "bought"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ShoppingList"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcClearShoppingList",
+      "params": [
+        "token"
+      ],
+      "roles": [
+        "manager",
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "ShoppingList"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcAddToShoppingList",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ShoppingList"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcRemoveShoppingListEntry",
+      "params": [
+        "token",
+        "entryId"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ShoppingList"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcEditShoppingListEntry",
+      "params": [
+        "token",
+        "entryId",
+        "patch"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ShoppingList"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcGenerateShoppingList",
+      "params": [
+        "token"
+      ],
+      "roles": [
+        "manager",
+        "admin",
+        "payroll_admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "ShoppingList"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcGetProductMaster",
+      "params": [
+        "token",
+        "filter"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ProductMaster"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcGetProductsForPicker",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ProductMaster"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcSearchProducts",
+      "params": [
+        "token",
+        "query",
+        "opts"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ProductMaster"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcGetProduct",
+      "params": [
+        "token",
+        "productId"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ProductMaster"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcGetProductCategories",
+      "params": [
+        "token"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ProductMaster"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcGetProductTypeSchema",
+      "params": [
+        "token",
+        "category"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ProductTypes"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcCreateProduct",
+      "params": [
+        "token",
+        "input"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ProductMaster"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcUpdateProduct",
+      "params": [
+        "token",
+        "productId",
+        "patch"
+      ],
+      "roles": null,
+      "needs_session": true,
+      "modules": [
+        "ProductMaster"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcDeactivateProduct",
+      "params": [
+        "token",
+        "productId"
+      ],
+      "roles": [
+        "admin",
+        "manager"
+      ],
+      "needs_session": true,
+      "modules": [
+        "ProductMaster"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcReactivateProduct",
+      "params": [
+        "token",
+        "productId"
+      ],
+      "roles": [
+        "admin",
+        "manager"
+      ],
+      "needs_session": true,
+      "modules": [
+        "ProductMaster"
+      ],
+      "migrate": false
+    },
+    {
+      "name": "rpcImportProductMasterFromStaging",
+      "params": [
+        "token",
+        "opts"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "needs_session": true,
+      "modules": [
+        "ProductMaster"
+      ],
+      "migrate": false
+    }
+  ]
+}

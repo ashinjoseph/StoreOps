@@ -58,6 +58,15 @@ t.section('The code map and llms.txt are generated, and current');
        fs.existsSync(Ll.OUT) && read(Ll.OUT) === Ll.build());
 }
 
+t.section('The RPC contract is generated, and current');
+{
+  const RC = path.join(ROOT, 'ops', 'contracts', 'rpc.json');
+  t.ok('ops/contracts/rpc.json exists (npm run docs:rpc)', fs.existsSync(RC));
+  const Gen = require(path.join(ROOT, 'scripts', 'docs', 'rpc-contract.js'));
+  t.ok('ops/contracts/rpc.json is current (npm run docs:rpc)',
+       fs.existsSync(Gen.OUT) && read(Gen.OUT) === Gen.build());
+}
+
 t.section('Every doc an agent might need is reachable from llms.txt');
 {
   const idx = read(path.join(ROOT, 'llms.txt'));
