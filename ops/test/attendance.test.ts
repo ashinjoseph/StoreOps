@@ -108,7 +108,7 @@ async function rpc(handler: (ctx: RpcContext, ...a: unknown[]) => unknown, who: 
   return withTransaction(db, async (tx) => handler({ db: tx, session: who, config: () => Promise.reject(new Error("no config")), env: {}, fetch, now }, ...args));
 }
 const row = (id: string) => db.one<any>("select * from ops.attendance where attendance_id = $1", [id]);
-const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after", details, "timestamp" from ops.audit_log order by "timestamp", target_id, log_id`);
+const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after", details, "timestamp" from ops.audit_log order by seq`);
 
 describe("reads", () => {
   it("getById returns the old record shape: trimmed text, blank times null, blank hours and rate 0", async () => {

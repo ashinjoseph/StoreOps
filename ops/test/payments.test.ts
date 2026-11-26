@@ -120,7 +120,7 @@ async function rpc(handler: (ctx: RpcContext, ...a: unknown[]) => unknown, who: 
   return withTransaction(db, async (tx) => handler(ctxOf(tx, who, now), ...args));
 }
 const inTx = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => withTransaction(db, fn);
-const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after", details from ops.audit_log order by "timestamp", log_id`);
+const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after", details from ops.audit_log order by seq`);
 const owedOf = async (staffId: string) => payments.getOwedSummary(db, staffId);
 
 /** A Db that counts its statements. */

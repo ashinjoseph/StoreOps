@@ -45,10 +45,8 @@
 //
 // Order. The old lists sorted by the paidOn instant, newest first, and kept the Sheet's order among
 // equal instants (an array sort is stable). Here the instant is rebuilt from the payment id's stamp
-// (instantOf), and "the Sheet's order" is the order the rows were written: the transaction that
-// wrote the row (xmin), then its place in the table (ctid) for rows one transaction wrote (the
-// import). A payment row is never updated except to void it, and a voided row is never read, so
-// neither value moves for a row that is read. An item list is in its payment's walk order: shift
+// (instantOf), and "the Sheet's order" is the order the rows were written: the `seq` column, which
+// the database numbers as each row is inserted (migration 0004). An item list is in its payment's walk order: shift
 // items oldest day first (an attendance id holds its day), then the id.
 import type { Db } from "../db/client";
 import { lockRow, type Tx } from "../db/tx";
@@ -145,7 +143,7 @@ export interface OwedSummary {
 
 /** Payments that stand: not voided. With the order the rows were written (see the header). */
 const LIVE_PAYMENTS = `(select p.payment_id, p.staff_id, p.paid_on, p.total_amount, p.method, p.recorded_by, p.notes,
-                               p.xmin::text::bigint as written_tx, p.ctid as written_at
+                               p.seq
                           from ops.payments p
                          where p.voided_at is null)`;
 /** Items of payments that stand. */
@@ -155,7 +153,7 @@ const LIVE_ITEMS = `(select i.item_id, i.payment_id, i.item_type, i.ref_id, i.am
                       where p.voided_at is null)`;
 
 const P_COLUMNS = "payment_id, staff_id, paid_on, total_amount, method, recorded_by, notes";
-const P_ORDER = "order by written_tx, written_at";
+const P_ORDER = "order by seq";
 const I_COLUMNS = "item_id, payment_id, item_type, ref_id, amount, notes";
 const I_ORDER = `order by ref_id collate "C", item_id collate "C"`;
 

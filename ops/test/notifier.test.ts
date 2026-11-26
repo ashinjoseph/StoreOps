@@ -563,7 +563,7 @@ describe("notify", () => {
     await testDb?.drop();
   });
   const rows = (): Promise<{ actor_id: string | null; action: string; target_type: string | null; target_id: string | null; details: string | null }[]> =>
-    db.query("select actor_id, action, target_type, target_id, details from ops.audit_log order by \"timestamp\", log_id");
+    db.query("select actor_id, action, target_type, target_id, details from ops.audit_log order by seq");
 
   it("always logs, sends nothing, and says why it dispatched nothing", async () => {
     const off = rig({ notifier_enabled: "false" }, undefined, db);

@@ -143,19 +143,19 @@ function placeholders(offset: number): string {
 export async function recent(db: Db, limit?: number, filters: AuditFilters = {}): Promise<AuditRecord[]> {
   const n = limit || 50;
   return db.query<AuditRecord>(
-    `select * from (
-       select log_id as "logId", "timestamp" as "timestamp", actor_id as "actorId", action,
+    `select "logId", "timestamp", "actorId", action, "targetType", "targetId", "before", "after", details from (
+       select seq, log_id as "logId", "timestamp" as "timestamp", actor_id as "actorId", action,
               target_type as "targetType", target_id as "targetId",
               "before" as "before", "after" as "after", details
          from ops.audit_log
-        order by "timestamp" desc, log_id desc
+        order by seq desc
         limit $1
      ) w
      where ($2::text is null or "actorId" = $2)
        and ($3::text is null or action = $3)
        and ($4::text is null or "targetType" = $4)
        and ($5::text is null or "targetId" = $5)
-     order by "timestamp" desc, "logId" desc
+     order by seq desc
      limit $6`,
     [n * 4, filters.actorId || null, filters.action || null, filters.targetType || null, filters.targetId || null, n],
   );

@@ -45,7 +45,7 @@ beforeEach(async () => {
 
 const write = (input: sales.SalesInput, actor: string | null = "S_1") => withTransaction(db, (tx) => sales.write(tx, input, actor, NOW));
 const raw = (id: string) => db.one<any>("select * from ops.sales where sales_id = $1", [id]);
-const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after" from ops.audit_log order by log_id`);
+const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after" from ops.audit_log order by seq`);
 
 describe("write: the card shape comes from what was sent, and the other shape is blank", () => {
   it("a split close (no card total sent) stores credit/debit, card total blank", async () => {

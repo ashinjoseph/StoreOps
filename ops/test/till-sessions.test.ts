@@ -87,7 +87,7 @@ const close = (input: ts.CloseInput, now = CLOSE_AT) => withTransaction(db, asyn
 const sessRow = (id: string) => db.one<any>("select * from ops.till_sessions where session_id = $1", [id]);
 const salesRow = (id: string) => db.maybeOne<any>("select * from ops.sales where session_id = $1", [id]);
 const attRow = (id: string) => db.one<any>("select * from ops.attendance where attendance_id = $1", [id]);
-const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after", details from ops.audit_log order by "timestamp", log_id`);
+const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after", details from ops.audit_log order by seq`);
 const count = async (table: string) => (await db.one<{ n: number }>(`select count(*)::int as n from ops.${table}`)).n;
 
 /** A closed cstore session with a reserve count, written straight in: history, not a close under test. */

@@ -32,7 +32,7 @@ hand one out.
 | P2-03a | Money, date and ID helpers | T2 | P2-01 | money | done |
 | P2-03b | Database client and transactions | T2 | P2-02 | money | done |
 | P2-04 | Audit log writer | T1 | P2-03b | | done |
-| P2-04b | Audit log and payments keep the order rows were written in | T1 | P3-09b (migration number) | | in progress |
+| P2-04b | Audit log and payments keep the order rows were written in | T1 | P3-09b (migration number) | | done |
 | P2-05 | Config and secrets access | T1 | P2-03b | security | done |
 | P2-06 | Login, sessions, lockout, roles | T2 | P2-04, P2-05 | security | done |
 | P2-07 | RPC router | T2 | P2-05, P0-04 | security | done |
@@ -251,7 +251,7 @@ targetId, before, after, details})`, usable inside a transaction.
 **Done when:** tests show a row is written; an update or delete on
 `audit_log` is refused by the database.
 
-### P2-04b · Audit log keeps the order rows were written in · T1
+### P2-04b · Audit log and payments keep the order rows were written in · T1
 Found Nov 26: the Sheet kept audit rows in the order they were appended. The
 new table has no such order: rows written in the same second sort by a random
 id suffix, so "what happened first" within one change can't be told (a test
@@ -263,6 +263,11 @@ tests that read audit rows order by it.
 **Done when:** a test writes 1,000 rows in one statement and in ten
 transactions and reads them back in exactly the order written; parity and
 the suites pass.
+**Done (Nov 26):** migration `0004_written_order.sql` adds `seq` to
+`audit_log` and to `payments` (the Payments port had ordered same-second
+payments by Postgres's internal row position, which a dump and restore, such
+as the move to Supabase, would not keep). The log reader returns the newest
+rows by `seq`, as the Sheet's last rows read upwards.
 
 ### P2-05 · Config and secrets access · T1 · security
 **Read:** `docs/reference/schema.md` (the config section).

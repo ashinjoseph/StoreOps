@@ -123,6 +123,7 @@ describe("write: the pinned row", () => {
       before: '{"float":150}',
       after: null,
       details: "opened",
+      seq: expect.anything(), // the written order, numbered by the database (migration 0004)
     });
   });
 
@@ -328,5 +329,39 @@ describe("log ids cannot collide (the old three random characters could)", () =>
     const stored = await other.one<{ n: number }>("select count(*)::int as n from ops.audit_log where action = 'bulk.test'");
     expect(stored.n).toBe(5000);
     expect(ids[0]).toMatch(/^LOG_\d{8}_\d{6}_[0-9a-z]{8,10}$/);
+  });
+});
+
+// The Sheet kept audit rows in the order they were appended. A table has no such order, and rows
+// written in the same second sort by a random id suffix, so migration 0004 adds `seq` (card P2-04b).
+describe("the log keeps the order rows were written in", () => {
+  let odb: TestDb;
+  let o: Db & { close(): Promise<void> };
+  beforeAll(async () => {
+    odb = await createTestDb();
+    o = await connect(odb.appUrl);
+  });
+  afterAll(async () => {
+    await o?.close();
+    await odb?.drop();
+  });
+  const written = async () => (await o.query<{ target_id: string }>("select target_id from ops.audit_log order by seq")).map((x) => x.target_id);
+  const entry = (i: number): AuditEntry => ({ actorId: "S1", action: "order.test", targetType: "row", targetId: `R${String(i).padStart(4, "0")}` });
+
+  it("1,000 rows in one statement, then ten rows in ten transactions, all in the same second: read back exactly as written", async () => {
+    const batch = Array.from({ length: 1000 }, (_, i) => entry(i));
+    await writeMany(o, batch, { now: NOW });
+    for (let i = 1000; i < 1010; i++) await withTransaction(o, (tx) => write(tx, entry(i), { now: NOW }));
+    expect(await written()).toEqual(Array.from({ length: 1010 }, (_, i) => entry(i).targetId));
+  });
+
+  it("recent() returns rows of the same second newest-written first, as the Sheet's last rows read upwards", async () => {
+    expect((await recent(o, 5)).map((x) => x.targetId)).toEqual(["R1009", "R1008", "R1007", "R1006", "R1005"]);
+  });
+
+  it("the app cannot choose a row's place: seq is always generated", async () => {
+    await expect(
+      o.query(`insert into ops.audit_log (log_id, "timestamp", action, seq) values ('L_forced', $1, 'x', 1)`, [NOW]),
+    ).rejects.toBeInstanceOf(DbError);
   });
 });
