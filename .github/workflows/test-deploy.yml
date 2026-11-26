@@ -3,6 +3,9 @@ name: Push to Test Apps Script
 on:
   push:
     branches: [claude/branch-divergence-merge-analysis-p4lsfm]
+    paths:
+      - 'src/**'
+      - '.github/workflows/test-deploy.yml'
   workflow_dispatch:
 
 jobs:

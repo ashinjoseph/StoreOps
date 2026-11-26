@@ -20,3 +20,43 @@ jobs:
 
       - name: Run every suite
         run: node tests/suites/run.js
+
+  # The Operations app under ops/ (Cloudflare Worker + Postgres). Nothing
+  # uses the database yet; the service container is here for later cards.
+  ops:
+    runs-on: ubuntu-latest
+    env:
+      OPS_DB_SUPERUSER_URL: postgres://postgres:ci-throwaway-password@127.0.0.1:5432/ops
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: ops
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-throwaway-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ops"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ops/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: ops
+
+      - name: Typecheck
+        run: npm --prefix ops run typecheck
+
+      - name: Test
+        run: npm --prefix ops test
