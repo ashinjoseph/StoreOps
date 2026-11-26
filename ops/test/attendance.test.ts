@@ -14,10 +14,10 @@ import {
   rpcAdjustAttendanceHours,
   rpcCancelScheduledShift,
   rpcEditAttendanceTimes,
-  rpcGetMe,
   rpcGetWeekSchedule,
   rpcScheduleShift,
 } from "../src/rpc/handlers/attendance";
+import { rpcGetMe } from "../src/rpc/handlers/auth";
 import type { RpcContext } from "../src/rpc/types";
 import { createTestDb, type TestDb } from "./helpers/db";
 

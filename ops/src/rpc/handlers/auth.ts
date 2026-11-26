@@ -1,4 +1,4 @@
-// rpcLogin and rpcLogout: the two calls that run without a session.
+// rpcLogin and rpcLogout, the two calls that run without a session, and rpcGetMe.
 import { login, logout } from "../../auth/login";
 import { MissingSecretError } from "../../lib/config";
 import type { RpcHandler } from "../types";
@@ -18,3 +18,10 @@ export const rpcLogin: RpcHandler = async (ctx, name, code) =>
   login({ db: ctx.db, config: await ctx.config(), pepper: pinPepper(ctx.env), now: ctx.now }, name as string, code as string);
 
 export const rpcLogout: RpcHandler = (ctx, token) => logout({ db: ctx.db, now: ctx.now }, token as string);
+
+/** Any signed-in person: who they are, from the session and nothing else. */
+export const rpcGetMe: RpcHandler = (ctx) => {
+  const s = ctx.session;
+  if (s === null) throw new Error("NOT_LOGGED_IN");
+  return { staffId: s.staffId, name: s.name, role: s.role, companiesAuthorized: s.companiesAuthorized };
+};

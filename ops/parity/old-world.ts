@@ -309,6 +309,17 @@ function restoreGlobals(saved: Record<string, unknown>): void {
 }
 
 /**
+ * `_rowIndex` is the Sheet row an old record was read from. Several old write
+ * RPCs return the whole record, so it leaks into their answers. It has no
+ * meaning outside a Sheet, nothing in the page reads it (src/Index.html never
+ * mentions it), and the new app has no such thing. Stated once, here, and
+ * printed with every run: the old side's `_rowIndex` keys are dropped before
+ * comparing. A new-side answer that contains one still fails, as an added key.
+ */
+export const SHEET_ROW_KEY = "_rowIndex";
+export const SHEET_ROW_RULE = "`_rowIndex` (the Sheet row number some old records carry) is dropped from the old side's answers: the page never reads it and the new app has no Sheet rows";
+
+/**
  * What the page receives from an old RPC. google.script.run cannot carry a
  * Date (AGENTS.md, "Gotchas": it arrives as null), so a Date becomes null here
  * and is recorded as a finding; then the value goes through
@@ -328,7 +339,10 @@ export function pageView(value: unknown, findings: TransportFinding[] = []): unk
     if (Array.isArray(v)) return v.map((x, i) => walk(x, `${path}[${i}]`, true));
     if (v !== null && typeof v === "object") {
       const out: Record<string, unknown> = {};
-      for (const [k, x] of Object.entries(v)) out[k] = walk(x, `${path}${keyPath(k)}`, false);
+      for (const [k, x] of Object.entries(v)) {
+        if (k === SHEET_ROW_KEY) continue; // see SHEET_ROW_RULE
+        out[k] = walk(x, `${path}${keyPath(k)}`, false);
+      }
       return out;
     }
     return v;

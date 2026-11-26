@@ -125,8 +125,11 @@ export const attendanceCases: ParityCase[] = [
   parityCase("rpcScheduleShift", { as: "manager", args: [{ staffId: 3, date: NEXT_MON }], title: "rpcScheduleShift: a number is not a staff id" }),
   parityCase("rpcScheduleShift", { as: "manager", args: [{ staffId: "S_003", scheduledStart: "09:00" }], title: "rpcScheduleShift: no date is refused" }),
   parityCase("rpcScheduleShift", { as: "manager", args: [{ staffId: "S_003", date: "" }], title: "rpcScheduleShift: a blank date is refused" }),
-  parityCase("rpcScheduleShift", { as: "manager", args: [{ staffId: "S_003", date: "next tuesday" }], title: "rpcScheduleShift: a malformed date is refused" }),
-  parityCase("rpcScheduleShift", { as: "manager", args: [{ staffId: "S_003", date: "2026-13-45" }], title: "rpcScheduleShift: an impossible date is refused" }),
+  // No parity case for an unreadable date ("next tuesday", "2026-13-45"). The old answer
+  // there comes from the Node stub of Utilities.formatDate, which prints "NaN" where Apps
+  // Script would throw; the old runtime then stores a junk row (A_NaNNaNNaN_…). That is not
+  // behaviour to match. The new app refuses with "Invalid date" and writes nothing:
+  // ops/test/attendance.test.ts covers it. (Orchestrator's decision, review of P3-05a.)
   parityCase("rpcScheduleShift", { as: "manager", args: [], title: "rpcScheduleShift: no input object at all" }),
   parityCase("rpcScheduleShift", { as: "manager", args: [null], title: "rpcScheduleShift: a null input object" }),
   parityCase("rpcScheduleShift", { as: "manager", args: ["S_003"], title: "rpcScheduleShift: a string instead of an input object" }),

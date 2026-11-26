@@ -5,8 +5,8 @@ import { validateSession } from "../auth/sessions";
 import type { Session } from "../auth/types";
 import type { Tx } from "../db/tx";
 import { loadConfig } from "../lib/config";
-import { rpcAdjustAttendanceHours, rpcCancelScheduledShift, rpcEditAttendanceTimes, rpcGetMe, rpcGetWeekSchedule, rpcScheduleShift } from "./handlers/attendance";
-import { rpcLogin, rpcLogout } from "./handlers/auth";
+import { rpcAdjustAttendanceHours, rpcCancelScheduledShift, rpcEditAttendanceTimes, rpcGetWeekSchedule, rpcScheduleShift } from "./handlers/attendance";
+import { rpcGetMe, rpcLogin, rpcLogout } from "./handlers/auth";
 import { rpcGetActiveStaffForLogin, rpcGetAllStaff, rpcGetStaffDirectory } from "./handlers/staff";
 import type { RpcHandlers } from "./types";
 

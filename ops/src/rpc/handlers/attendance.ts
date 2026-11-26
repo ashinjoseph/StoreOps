@@ -1,10 +1,7 @@
-// The six RPCs of Schedule and attendance (card P3-05a). Thin: each calls the module and shapes
+// The five RPCs of Schedule and attendance (card P3-05a; rpcGetMe is in handlers/auth.ts). Thin: each calls the module and shapes
 // the answer the way the old rpc* function in WebApp.gs did. Who may call is the contract's
 // `roles`, applied by the router before these run; identity is ctx.session, never an argument
 // (an `actorId` in the page's input is ignored, as the old RPCs built their own).
-//
-// rpcGetMe lives here, not in handlers/auth.ts, because this card may add files but not edit
-// the sign-in card's.
 import * as attendance from "../../modules/attendance";
 import type { AttendanceRecord } from "../../modules/attendance";
 import type { RpcContext, RpcHandler } from "../types";
@@ -32,13 +29,6 @@ function field(input: unknown, key: string): unknown {
 function pageRecord(r: AttendanceRecord) {
   return { ...r, date: null, actualStart: null, actualEnd: null, createdAt: null, modifiedAt: null };
 }
-
-/** Any signed-in person: who they are. */
-export const rpcGetMe: RpcHandler = (ctx) => {
-  const s = ctx.session;
-  if (s === null) throw new Error("NOT_LOGGED_IN");
-  return { staffId: s.staffId, name: s.name, role: s.role, companiesAuthorized: s.companiesAuthorized };
-};
 
 /** Any signed-in person: the week's grid. */
 export const rpcGetWeekSchedule: RpcHandler = (ctx, weekStartStr) => {
