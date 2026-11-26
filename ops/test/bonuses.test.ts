@@ -107,7 +107,7 @@ async function rpc(handler: (ctx: RpcContext, ...a: unknown[]) => unknown, who: 
 const inTx = <T>(fn: (tx: Parameters<Parameters<typeof withTransaction>[1]>[0]) => Promise<T>): Promise<T> => withTransaction(db, fn);
 const row = (id: string) => db.one<any>("select * from ops.bonuses where bonus_id = $1", [id]);
 const count = async () => (await db.one<{ n: number }>("select count(*)::int as n from ops.bonuses")).n;
-const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after", details, "timestamp" from ops.audit_log order by log_id`);
+const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after", details, "timestamp" from ops.audit_log order by "timestamp", target_id, log_id`);
 
 describe("reads", () => {
   it("getById returns the old record shape: trimmed text, blanks as '', dates as days", async () => {

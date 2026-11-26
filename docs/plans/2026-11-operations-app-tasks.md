@@ -32,6 +32,7 @@ hand one out.
 | P2-03a | Money, date and ID helpers | T2 | P2-01 | money | done |
 | P2-03b | Database client and transactions | T2 | P2-02 | money | done |
 | P2-04 | Audit log writer | T1 | P2-03b | | done |
+| P2-04b | Audit log keeps the order rows were written in | T1 | P3-09b (migration number) | | todo |
 | P2-05 | Config and secrets access | T1 | P2-03b | security | done |
 | P2-06 | Login, sessions, lockout, roles | T2 | P2-04, P2-05 | security | done |
 | P2-07 | RPC router | T2 | P2-05, P0-04 | security | done |
@@ -53,7 +54,7 @@ hand one out.
 | P3-08 | Port Notifier (WhatsApp) | T2 | P2-09 | security | done |
 | P3-09a | Port Bonuses | T2 | P3-05a | money | done |
 | P3-09b | Port Payments (pay, undo, owed, history) | T3 | P3-09a, P3-08 | money | in progress (undo built as a void, pending the owner's confirmation) |
-| P3-10a | Port CommissionRules | T2 | P3-09a | money | in progress |
+| P3-10a | Port CommissionRules | T2 | P3-09a | money | done |
 | P3-10b | Port the commission engine and the weekly cron | T2 | P3-10a, P3-05b | money | todo |
 | P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | todo |
 | P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | todo |
@@ -249,6 +250,19 @@ reads as `null`, never 0.
 targetId, before, after, details})`, usable inside a transaction.
 **Done when:** tests show a row is written; an update or delete on
 `audit_log` is refused by the database.
+
+### P2-04b · Audit log keeps the order rows were written in · T1
+Found Nov 26: the Sheet kept audit rows in the order they were appended. The
+new table has no such order: rows written in the same second sort by a random
+id suffix, so "what happened first" within one change can't be told (a test
+that assumed otherwise failed one run in three).
+**Make:** a migration adding `seq bigint generated always as identity` to
+`ops.audit_log`; `audit.recent` and anything else that lists audit rows
+orders by it; the parity harness lists `audit_log.seq` as a new-only column;
+tests that read audit rows order by it.
+**Done when:** a test writes 1,000 rows in one statement and in ten
+transactions and reads them back in exactly the order written; parity and
+the suites pass.
 
 ### P2-05 · Config and secrets access · T1 · security
 **Read:** `docs/reference/schema.md` (the config section).

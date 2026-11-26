@@ -110,7 +110,10 @@ async function rpc(handler: (ctx: RpcContext, ...a: unknown[]) => unknown, who: 
 const inTx = <T>(fn: (tx: Parameters<Parameters<typeof withTransaction>[1]>[0]) => Promise<T>): Promise<T> => withTransaction(db, fn);
 const row = (id: string) => db.one<any>("select * from ops.commission_rules where rule_id = $1", [id]);
 const count = async () => (await db.one<{ n: number }>("select count(*)::int as n from ops.commission_rules")).n;
-const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after", details, "timestamp" from ops.audit_log order by log_id`);
+// Not `order by log_id`: two rows written in the same second have random id suffixes, so that
+// order changed from run to run (this test failed about one run in three). Until audit_log gets
+// an insertion-order column (card P2-04b), order by something the test controls.
+const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after", details, "timestamp" from ops.audit_log order by "timestamp", target_id, log_id`);
 const create = (input: Record<string, unknown>, now = NOW) => inTx((tx) => rules.create(tx, { actorId: "S_001", ...input }, now));
 const update = (input: Record<string, unknown>, now = NOW) => inTx((tx) => rules.update(tx, { actorId: "S_001", ...input }, now));
 
