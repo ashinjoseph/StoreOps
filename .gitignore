@@ -14,5 +14,6 @@ desktop.ini
 .dev.vars.*
 .claude/worktrees/
 ops/public/index.html
+ops/src/public/templates.generated.ts
 !.dev.vars.example
 .wrangler/

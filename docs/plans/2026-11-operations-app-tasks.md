@@ -58,7 +58,7 @@ hand one out.
 | P3-10a | Port CommissionRules | T2 | P3-09a | money | done |
 | P3-10b | Port the commission engine and the weekly cron | T2 | P3-10a, P3-05b | money | done |
 | P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | done |
-| P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | in progress |
+| P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | done |
 | P4-01 | Sheet export tool | T2 | P0-03 | | done (not yet run on a real download) |
 | P4-02 | Import tool with a rejects file | T2 | P4-01, P2-02 | money | done (not yet run on real data) |
 | P4-03 | Reconcile report: Sheet against database | T2 | P4-02 | money | in progress |
@@ -547,6 +547,25 @@ functions, `inlineJson_`); ADR-0003; `tests/suites/public-*.js`,
 **Make:** `GET /?v=sales` and `GET /?v=recon` served with the payload
 inlined and `<` escaped. No RPC is reachable without a session.
 **Done when (extra):** the hostile-note test from `public-inline.js` passes.
+**Done (Nov 26).** `/?v=recon` and `/?v=sales` are served by the Worker: no
+session, one read-only transaction, the payload inlined with `<` escaped,
+no caching, not indexable, not frameable, and a content policy that lets the
+page load nothing and call nothing. The payload is the current one, field
+for field. After changing `src/Public*.html`, run
+`npm --prefix ops run build:ui` (typecheck, test and parity do it too).
+**What these pages show to anyone with the link, today and in the new app**
+(for the owner to confirm; nothing was added or removed):
+- the 7-day report names each person holding cash, with the amount and how
+  long; names the cash manager; lists each handover with who gave, who
+  received, who recorded it, the amount and the typed note; and shows the
+  note a cashier typed with a lotto count;
+- the sales page shows totals only: no names, ids or notes.
+**Kept as it is, and wrong:** each lotto count is shown under the day before
+its close (the old code reads the day as UTC). Fix after cutover, in both
+the page's eyes at once.
+**Not built:** a limit on how often the pages can be requested. Each 7-day
+report costs about 11 database queries with nobody signed in; a Cloudflare
+rate rule on `/` with `v` set belongs in P2-10 (staging).
 
 ## Phase 4 — Data and cutover
 

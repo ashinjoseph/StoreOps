@@ -3,8 +3,11 @@
 // ============================================================
 //  ops/tools/build-ui.mjs makes ops/public/index.html from src/Index.html:
 //  the transport script goes in, the three screens that are not moving leave
-//  the More drawer, and nothing else changes. These assertions build in
-//  memory and compare the result with the source.
+//  the More drawer, and nothing else changes. It also makes
+//  ops/src/public/templates.generated.ts from src/Public.html and
+//  src/PublicSales.html: each split at its one payload tag, nothing else
+//  changed. These assertions build in memory and compare the result with the
+//  source.
 // ============================================================
 const fs = require('fs');
 const path = require('path');
@@ -86,6 +89,47 @@ const warmOf = js => js.split('\n').map(warmOfLine).filter(Boolean);
 
   t.section('Deterministic');
   t.ok('building twice gives the same bytes', buildUi({ write: false }) === buildUi({ write: false }));
+
+  // ── The two public templates (?v=recon, ?v=sales) ──────────
+  // Built into ops/src/public/templates.generated.ts, a module the Worker imports (never a static
+  // asset: that would be served raw, with the tag in it and no payload), each split at its one
+  // payload tag. The Apps Script rule holds for the build too: one force-print tag, no other "<?".
+  const { buildPublicTemplates, splitPublicTemplate, PAYLOAD_TAG } = await import(BUILD);
+  const SOURCES = {
+    recon: fs.readFileSync(path.join(H.SRC, 'Public.html'), 'utf8'),
+    sales: fs.readFileSync(path.join(H.SRC, 'PublicSales.html'), 'utf8'),
+  };
+  const built = buildPublicTemplates({ write: false });
+  ['recon', 'sales'].forEach(view => {
+    const src = SOURCES[view];
+    const tpl = built[view];
+    t.section('Public template: ' + view);
+    t.eq('the tag is the force-print form', PAYLOAD_TAG, '<?!= payload ?>');
+    t.ok('the source has it exactly once', src.split(PAYLOAD_TAG).length === 2);
+    t.ok('before + tag + after is the source, byte for byte', tpl.before + PAYLOAD_TAG + tpl.after === src);
+    t.ok('no "<?" or "?>" is left in either half', [tpl.before, tpl.after].every(s => s.indexOf('<?') === -1 && s.indexOf('?>') === -1));
+    t.ok('the payload is the value of var DATA', /var DATA = $/.test(tpl.before) && tpl.after.charAt(0) === ';');
+    t.ok('inside the one inline script', /<script>[^<]*$/.test(tpl.before.slice(tpl.before.lastIndexOf('<script>'))) && /^[\s\S]*?<\/script>/.test(tpl.after));
+    t.eq('one <script> in the page', (src.match(/<script\b/gi) || []).length, 1);
+    t.ok('the module carries both halves as they are',
+      built.module.indexOf(JSON.stringify(tpl.before).slice(1, -1)) !== -1 && built.module.indexOf(JSON.stringify(tpl.after).slice(1, -1)) !== -1);
+    t.eq('and names its source', tpl.source, view === 'recon' ? 'src/Public.html' : 'src/PublicSales.html');
+
+    t.section('Public template ' + view + ': the build fails loudly');
+    const withSrc = s => () => buildPublicTemplates({ write: false, sources: { [view]: s } });
+    t.throws('with another "<?" in a comment', withSrc(src.replace('<script>', '<script>\n// a scriptlet opens on <? even here')), '<?');
+    t.throws('with the escaping form instead', withSrc(src.replace(PAYLOAD_TAG, '<?= payload ?>')), 'payload');
+    t.throws('with the tag twice', withSrc(src.replace(PAYLOAD_TAG, PAYLOAD_TAG + '; var B = ' + PAYLOAD_TAG)), 'exactly one');
+    t.throws('with no tag at all', withSrc(src.replace(PAYLOAD_TAG, '{}')), 'exactly one');
+    t.throws('with a stray "?>"', withSrc(src.replace('</body>', '?></body>')), '?>');
+    t.throws('with a script from elsewhere', withSrc(src.replace('</head>', '<script src="https://cdn.example.test/x.js"></script></head>')), 'script');
+    t.throws('with a second inline script', withSrc(src.replace('</body>', '<script>var x = 1;</script></body>')), 'script');
+    t.throws('with the tag outside the script', withSrc(src.replace('var DATA = ' + PAYLOAD_TAG + ';', 'var DATA = null;').replace('</body>', PAYLOAD_TAG + '</body>')), 'script');
+    t.throws('with the tag not as the value of var DATA', withSrc(src.replace('var DATA = ' + PAYLOAD_TAG + ';', 'var DATA = (' + PAYLOAD_TAG + ');')), 'var DATA');
+    t.throws('splitting directly works the same way', () => splitPublicTemplate('x.html', '<p><?= x ?></p>'), 'exactly one');
+  });
+  t.section('Public templates: deterministic');
+  t.ok('building twice gives the same module', buildPublicTemplates({ write: false }).module === buildPublicTemplates({ write: false }).module);
 
   t.done();
 })().catch(e => { console.log('  ✗ suite threw: ' + (e && e.stack || e)); process.exit(1); });

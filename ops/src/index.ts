@@ -1,16 +1,21 @@
-// The Worker's entry. One fetch handler, three destinations:
+// The Worker's entry. One fetch handler, four destinations:
 //
-//   /health          the service and one trivial database query
-//   /rpc/*           the RPC router (contract, handlers, a real database connection)
-//   everything else  the static assets: the built page and its script
+//   GET|HEAD /?v=recon, /?v=sales   the two public pages (public/pages.ts): no session, the payload
+//                                   built in one read-only transaction and inlined (ADR-0003)
+//   /health                         the service and one trivial database query
+//   /rpc/*                          the RPC router (contract, handlers, a real database connection)
+//   everything else                 the static assets: the built page and its script (so / with any
+//                                   other v, or none, is the app page, as before)
 //
 // Every answer leaves with the same security headers, whoever produced it.
 // The page is never framed (the old app had to allow framing because Apps
 // Script wraps it in an iframe; this one does not). There is deliberately no
-// script-src policy yet: the page is one large inline script.
+// script-src policy for the app page yet: it is one large inline script. The
+// public pages carry their own policy (one script, by hash; see secure()).
 import rpcContractJson from "../contracts/rpc.json";
 import { runWeeklyCommissions } from "./cron";
 import { connect } from "./db/client";
+import { handlePublic, publicView } from "./public/pages";
 import { notFound } from "./router";
 import { parseRpcContract, type RpcContract } from "./rpc/contract";
 import { ERROR_PREFIXED, handlers, resolveSession } from "./rpc/registry";
@@ -119,10 +124,15 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
   ["content-security-policy", "frame-ancestors 'none'"],
 ];
 
-/** A copy of `res` with the security headers set (a response from another handler may have immutable headers). */
-function secure(res: Response, path: string): Response {
+/**
+ * A copy of `res` with the security headers set (a response from another handler may have immutable headers).
+ * `policy.csp` replaces the default content-security-policy for this one response (the public pages:
+ * their one inline script, by hash); it is never taken from the response itself.
+ */
+function secure(res: Response, path: string, policy: { csp?: string } = {}): Response {
   const headers = new Headers(res.headers);
   for (const [name, value] of SECURITY_HEADERS) headers.set(name, value);
+  if (policy.csp !== undefined) headers.set("content-security-policy", policy.csp);
   const isPage = path === "/" || path.endsWith(".html") || (headers.get("content-type") ?? "").toLowerCase().includes("text/html");
   if (isPage) headers.set("cache-control", "no-store");
   else if (path === "/transport.js" && !headers.has("cache-control")) headers.set("cache-control", "public, max-age=300");
@@ -142,7 +152,16 @@ async function route(request: Request, env: Env): Promise<Response> {
 
 export default {
   async fetch(request: Request, env: Env, _ctx?: unknown): Promise<Response> {
-    return secure(await route(request, env), new URL(request.url).pathname);
+    const path = new URL(request.url).pathname;
+    if (publicView(request) !== null) {
+      const { response, csp } = await handlePublic(request, env, {
+        openDb: async () => connect(connectionString(env)),
+        now: () => new Date(),
+        log: (entry) => console.error(entry),
+      });
+      return secure(response, path, { csp });
+    }
+    return secure(await route(request, env), path);
   },
   /**
    * The Monday commission cron (wrangler.toml [triggers]). It is scheduled for both UTC hours that can be

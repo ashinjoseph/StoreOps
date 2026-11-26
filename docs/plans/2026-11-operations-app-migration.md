@@ -164,6 +164,8 @@ Found or decided while building the foundation. Each is covered by a test.
 | The Clover token is sent to whatever address the `clover_base_url` setting holds | Only to Clover's own API hosts; any other address counts as Clover not set up (the report still goes out) | Changing one setting can't send the token elsewhere |
 | A Clover request has no time limit of its own | 10 seconds each and 25 seconds for a whole reconcile, then the day is recorded as not verified by Clover | A slow Clover can't hold up closes |
 | Two reconciles of one day at the same moment can both write rows | One at a time per day | No doubled rows |
+| A public report page that fails in one section shows that section's error text | Shows "not available" and logs the error | No table or setting names on a public page |
+| The public pages can be framed by any site and cached by anything in between | Not frameable, not cached, not indexed, and unable to load or call anything | A public page of takings stays where it was sent |
 | Two people opening the same till at the same moment can both succeed | One open at a time per till | A till never has two open sessions |
 | A count that isn't a number is stored as-is, and a close with no count shows variance 0, OK | Refused: "physicalCount is not a number" | A close can't look balanced without a count |
 | Any error text reaches the screen | Only messages meant for the person; faults show `SERVER_ERROR` and an id | No table names or values leak |

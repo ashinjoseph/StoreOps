@@ -7,8 +7,11 @@
     "node": ">=22"
   },
   "scripts": {
+    "pretypecheck": "npm run build:ui",
     "typecheck": "tsc --noEmit && tsc --noEmit -p parity",
+    "pretest": "npm run build:ui",
     "test": "vitest run",
+    "preparity": "npm run build:ui",
     "parity": "node parity/cli.mjs",
     "build:ui": "node tools/build-ui.mjs",
     "dev": "node --env-file-if-exists=.dev.vars node_modules/wrangler/bin/wrangler.js dev",
