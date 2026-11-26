@@ -19,7 +19,10 @@ export interface IdDeps {
    * How many random base-36 characters end the id. Default 3, the old shape.
    * Three repeat within a second often enough to matter where the table has a
    * primary key and several ids are made at once (audit rows, payment items):
-   * those callers ask for 10.
+   * those callers ask for 10. When given, the id always ends in exactly that
+   * many: a float's base-36 text is sometimes short (0.5 is "0.i"), so a short
+   * draw is topped up from further draws. The default three is left as the old
+   * code had it, short draws included.
    */
   chars?: number;
 }
@@ -30,7 +33,12 @@ export interface IdDeps {
  */
 export function newId(prefix: string, deps: IdDeps = {}): string {
   const stamp = formatDateTimeStamp(deps.now ?? new Date());
-  const rand = (deps.random ?? cryptoRandom)().toString(36).substring(2, 2 + (deps.chars ?? 3));
+  const random = deps.random ?? cryptoRandom;
+  let rand = random().toString(36).substring(2, 2 + (deps.chars ?? 3));
+  if (deps.chars !== undefined) {
+    // A draw of exactly 0 has no digits after the point: it counts as one "0", so this always ends.
+    while (rand.length < deps.chars) rand = (rand + (random().toString(36).substring(2) || "0")).substring(0, deps.chars);
+  }
   return prefix + "_" + stamp + "_" + rand;
 }
 

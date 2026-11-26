@@ -120,3 +120,34 @@ describe("newId with more random characters", () => {
     expect(newId("LOG", { ...deps, chars: 10 })).toBe("LOG_20260615_120000_4fzzzxjylr");
   });
 });
+
+// Found Nov 26: a float's base-36 text is sometimes short (0.5 is "0.i"), so about 1 id in 130
+// asked for 10 random characters came out with 9. Harmless for uniqueness, but the length
+// varied, and tests that pin the shape failed about once in a hundred runs.
+describe("newId always gives the number of random characters asked for", () => {
+  const tail = (id: string): string => id.slice(id.lastIndexOf("_") + 1);
+  it("200,000 ids asked for 10 all end in exactly 10 base-36 characters", () => {
+    const now = new Date("2026-06-15T16:00:00Z");
+    for (let i = 0; i < 200_000; i++) {
+      const t = tail(newId("X", { now, chars: 10 }));
+      if (!/^[a-z0-9]{10}$/.test(t)) throw new Error(`short or odd tail: ${JSON.stringify(t)}`);
+    }
+  });
+  it("a draw with a short expansion is topped up from further draws, in order", () => {
+    const draws = [0.5, 0.25, 0.123456789];
+    let i = 0;
+    const id = newId("X", { now: new Date("2026-06-15T16:00:00Z"), chars: 10, random: () => draws[i++ % draws.length] as number });
+    expect(tail(id)).toBe(("i" + "9" + (0.123456789).toString(36).substring(2)).slice(0, 10));
+  });
+  it("a draw long enough is used alone, as before (pinned ids do not change)", () => {
+    expect(tail(newId("X", { now: new Date("2026-06-15T16:00:00Z"), chars: 10, random: () => 0.123456789 }))).toBe("4fzzzxjylr");
+    expect(tail(newId("X", { now: new Date("2026-06-15T16:00:00Z"), random: () => 0.123456789 }))).toBe("4fz");
+  });
+  it("a random source that keeps returning 0 still ends (zeros), and never loops for ever", () => {
+    expect(tail(newId("X", { now: new Date("2026-06-15T16:00:00Z"), chars: 10, random: () => 0 }))).toBe("0000000000");
+  });
+  it("the old three-character shape may still be shorter than three, as the old code's was", () => {
+    // Util.newId: Math.random().toString(36).substring(2, 5). 0.5 gives "i". Kept for the default.
+    expect(tail(newId("X", { now: new Date("2026-06-15T16:00:00Z"), random: () => 0.5 }))).toBe("i");
+  });
+});
