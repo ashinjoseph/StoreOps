@@ -49,16 +49,16 @@ hand one out.
 | P3-05a | Port Attendance: schedule, hours, who am I | T2 | P3-01 | money | done |
 | P3-05b | Port the open and the close: TillSessions, Sales | T3 | P3-05a, P3-08 | money | done |
 | P3-05c | Port the shift state and bootstrap reads | T2 | P3-05b, P3-06 | money | todo |
-| P3-06 | Port CashHandling | T2 | P3-05b | money | todo |
+| P3-06 | Port CashHandling | T2 | P3-05b | money | in progress |
 | P3-07 | Port Clover and Reconcile | T2 | P3-06, P3-08 | money | todo |
 | P3-08 | Port Notifier (WhatsApp) | T2 | P2-09 | security | done |
 | P3-09a | Port Bonuses | T2 | P3-05a | money | done |
 | P3-09b | Port Payments (pay, undo, owed, history) | T3 | P3-09a, P3-08 | money | done (undo is a void; the owner has still to confirm that) |
 | P3-10a | Port CommissionRules | T2 | P3-09a | money | done |
-| P3-10b | Port the commission engine and the weekly cron | T2 | P3-10a, P3-05b | money | todo |
-| P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | todo |
+| P3-10b | Port the commission engine and the weekly cron | T2 | P3-10a, P3-05b | money | in progress |
+| P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | in progress |
 | P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | todo |
-| P4-01 | Sheet export tool | T2 | P0-03 | | todo |
+| P4-01 | Sheet export tool | T2 | P0-03 | | in progress |
 | P4-02 | Import tool with a rejects file | T2 | P4-01, P2-02 | money | todo |
 | P4-03 | Reconcile report: Sheet against database | T2 | P4-02 | money | todo |
 | P4-04 | Dry run on a copy of production | T3 + owner | P3-12, P4-03 | money | todo |
