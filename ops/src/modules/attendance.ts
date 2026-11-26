@@ -33,6 +33,7 @@ import * as audit from "../lib/audit";
 import { addDays, diffHours, endOfDay, formatDate, getMondayOf, parseDate, wallClock } from "../lib/dates";
 import { attendanceId } from "../lib/ids";
 import { roundMoney } from "../lib/money";
+import * as payments from "./payments";
 import * as staff from "./staff";
 
 export interface AttendanceRecord {
@@ -156,10 +157,12 @@ export async function getForDateRange(db: Db, startDate: Date | string, endDate:
   return rows.map(toRecord);
 }
 
-/** What has been paid against one day through payment items of type shift, rounded. (Payments.getAttendancePaidAmounts, for one id) */
+/**
+ * What has been paid against one day through payment items of type shift, rounded; a voided
+ * payment's items count for nothing. (`Payments.getAttendancePaidAmounts([id])[id] || 0`)
+ */
 export async function paidAmount(db: Db, id: string): Promise<number> {
-  const row = await db.one<{ total: number }>("select coalesce(sum(amount), 0) as total from ops.payment_items where item_type = 'shift' and ref_id = $1", [id]);
-  return roundMoney(row.total);
+  return (await payments.getAttendancePaidAmounts(db, [id]))[id] || 0;
 }
 
 // ── Hours ──────────────────────────────────────────────────

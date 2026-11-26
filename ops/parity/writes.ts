@@ -35,6 +35,7 @@ export const NEW_ONLY_COLUMNS: readonly { table: string; column: string; reason:
   { table: "staff", column: "pin_hash", reason: "the new app's PIN hash; the Sheet's plain login_code is deliberately not loaded" },
   { table: "sessions", column: "token_hash, created_at, last_seen_at", reason: "the old session (a script property) records only the person and the expiry; rows are keyed by the token instead" },
   { table: "login_failures", column: "failure_id, failed_at (per row)", reason: "the old app keeps one {count, firstFailAt, lastFailAt} per name; both sides are compared in that form" },
+  { table: "payments", column: "voided_at, voided_by, void_reason", reason: "the new app voids a payment where the old one deleted it (VOIDED_PAYMENTS_RULE); the Sheet has no such columns" },
 ];
 
 /**
@@ -48,7 +49,21 @@ export const NEW_ONLY_COLUMNS: readonly { table: string; column: string; reason:
 export const EXPIRED_SESSIONS_RULE = "sessions past their expiry are left out on both sides: neither app accepts one; the old deletes it when next looked at, the new leaves it for purgeExpired";
 const live = (now: Date) => (r: { expires_at: unknown }): boolean => typeof r.expires_at !== "string" || Date.parse(r.expires_at) >= now.getTime();
 
-const excluded = (table: string, column: string): boolean => column === "store_id" || (table === "staff" && column === "pin_hash");
+/**
+ * An undone payment is the same as no payment, on both sides. Stated once, here.
+ * The old app deletes the payment row and its item rows; the new one may not delete
+ * money (AGENTS.md hard rule 9), so it sets voided_at / voided_by / void_reason and
+ * keeps the rows, and every read leaves them out. So the comparison leaves out, on
+ * the new side only, every payment with a voided_at and every item of such a
+ * payment, before it compares; a payment the old side deleted and the new side did
+ * not void, or one the new side voided and the old side kept, is still a
+ * difference. This is printed with every run.
+ */
+export const VOIDED_PAYMENTS_RULE =
+  "a payment voided on the new side, and every item of a voided payment, are left out of the new side's payments and payment_items: the old app deletes them on undo; the void columns are new-only";
+const VOID_COLUMNS = new Set(["voided_at", "voided_by", "void_reason"]);
+
+const excluded = (table: string, column: string): boolean => column === "store_id" || (table === "staff" && column === "pin_hash") || (table === "payments" && VOID_COLUMNS.has(column));
 
 const SESSION_PREFIX = "session:";
 const FAIL_PREFIX = "loginFails:";
@@ -196,6 +211,12 @@ async function newView(appUrl: string, table: string, tokens: readonly string[],
     }
     if (table === "stores" || table === "staff_stores") return null;
     const pk = t.columns.find((c) => c.primaryKey)?.name as string;
+    // VOIDED_PAYMENTS_RULE: what the old side deleted is left out here.
+    if (table === "payments") return { key: pk, rows: await db.query<Record<string, unknown>>("select * from ops.payments where voided_at is null"), problems: [] };
+    if (table === "payment_items") {
+      const rows = await db.query<Record<string, unknown>>("select i.* from ops.payment_items i join ops.payments p on p.payment_id = i.payment_id where p.voided_at is null");
+      return { key: pk, rows, problems: [] };
+    }
     return { key: pk, rows: await db.query<Record<string, unknown>>(`select * from ops."${table}"`), problems: [] };
   } finally {
     await db.close();

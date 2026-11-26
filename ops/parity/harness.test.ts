@@ -767,3 +767,63 @@ describe("direct calls", () => {
     expect(r.diffs[0]?.new).toContain('(error) "nope"');
   });
 });
+
+// ── Undo: a void on the new side is a delete on the old (VOIDED_PAYMENTS_RULE) ──
+
+const OLD_PAYMENT = "P_20261120_093000_8lu"; // the fixture's payment of S_003's shifts up to 2026-11-09: 110 items
+
+/**
+ * A port of rpcUndoPayment for one shift payment (no bonus items), exactly right unless told
+ * otherwise: it voids the payment, keeps it and its items, and writes the old audit row.
+ */
+function undoFake(o: { skipVoid?: boolean } = {}): RpcHandler {
+  return async (ctx, paymentId) => {
+    const actorId = ctx.session?.staffId as string;
+    const p = await ctx.db.maybeOne<{ staff_id: string; total_amount: number }>("select staff_id, total_amount from ops.payments where payment_id = $1 and voided_at is null", [paymentId]);
+    if (!p) throw new Error("Payment not found: " + String(paymentId));
+    const n = await ctx.db.one<{ n: number }>("select count(*)::int as n from ops.payment_items where payment_id = $1", [paymentId]);
+    if (!o.skipVoid) await ctx.db.query("update ops.payments set voided_at = $2, voided_by = $3 where payment_id = $1", [paymentId, ctx.now, actorId]);
+    await audit.write(ctx.db, { actorId, action: "payment.undo", targetType: "payments", targetId: paymentId as string, before: { staffId: p.staff_id, amount: p.total_amount, itemCount: n.n } }, { now: ctx.now });
+    return { success: true, removedPaymentId: paymentId, removedItemCount: n.n };
+  };
+}
+
+describe("undo: a voided payment on the new side equals a deleted one on the old", () => {
+  const undoCase = parityCase("rpcUndoPayment", { as: "admin", args: [OLD_PAYMENT], writes: ["payments", "payment_items", "audit_log"] });
+
+  it("(a) voiding the payment the old side deleted passes: the payment, its 110 items and the void columns are left out", async () => {
+    const r = await runCase(undoCase, { handlers: { rpcUndoPayment: undoFake() } });
+    expect(r.diffs).toEqual([]);
+    expect(r.status).toBe("pass");
+  });
+
+  it("(b) a payment that should have been voided and was not still fails, with its items", async () => {
+    const r = await runCase(undoCase, { handlers: { rpcUndoPayment: undoFake({ skipVoid: true }) } });
+    expect(r.status).toBe("fail");
+    expect(r.diffs.filter((d) => d.where === "table payments")).toEqual([expect.objectContaining({ path: `[${OLD_PAYMENT}]`, old: "(missing)" })]);
+    expect(r.diffs.filter((d) => d.where === "table payment_items").length + r.hidden).toBeGreaterThanOrEqual(110);
+  });
+
+  it("(c) a payment voided when the old side kept it fails", async () => {
+    const c = parityCase("rpcCreateBonus", { as: "admin", args: [BONUS_INPUT], writes: ["bonuses", "audit_log", "payments", "payment_items"] });
+    const voidsToo: RpcHandler = async (ctx, ...args) => {
+      const out = await bonusFake()(ctx, ...args);
+      await ctx.db.query("update ops.payments set voided_at = $2, voided_by = $3 where payment_id = $1", [OLD_PAYMENT, ctx.now, "S_001"]);
+      return out;
+    };
+    const r = await runCase(c, withBonus(voidsToo));
+    expect(r.status).toBe("fail");
+    const pays = r.diffs.filter((d) => d.where === "table payments");
+    expect(pays).toHaveLength(1);
+    expect(pays[0]).toMatchObject({ path: `[${OLD_PAYMENT}]`, new: "(missing)" });
+    expect(r.diffs.some((d) => d.where === "table payment_items" && d.new === "(missing)")).toBe(true);
+  });
+
+  it("the run's rules state the void rule once, and the void columns as new-only", async () => {
+    const lines = formatSummary([await runCase(undoCase, { handlers: { rpcUndoPayment: undoFake() } })]).split("\n");
+    const rule = lines.filter((l) => l.startsWith("equivalent, by rule (ops/parity/writes.ts VOIDED_PAYMENTS_RULE)"));
+    expect(rule).toHaveLength(1);
+    expect(rule[0]).toContain("deletes them on undo");
+    expect(lines.filter((l) => l.includes("payments.voided_at, voided_by, void_reason"))).toHaveLength(1);
+  });
+});
