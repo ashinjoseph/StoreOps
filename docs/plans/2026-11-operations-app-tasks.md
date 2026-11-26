@@ -55,7 +55,7 @@ hand one out.
 | P3-09a | Port Bonuses | T2 | P3-05a | money | done |
 | P3-09b | Port Payments (pay, undo, owed, history) | T3 | P3-09a, P3-08 | money | done (undo is a void; the owner has still to confirm that) |
 | P3-10a | Port CommissionRules | T2 | P3-09a | money | done |
-| P3-10b | Port the commission engine and the weekly cron | T2 | P3-10a, P3-05b | money | in progress |
+| P3-10b | Port the commission engine and the weekly cron | T2 | P3-10a, P3-05b | money | done |
 | P3-11 | Port the sales dashboard and insights | T2 | P3-05b | | done |
 | P3-12 | Port PublicReport and the public pages | T2 | P3-07, P3-11 | security | todo |
 | P4-01 | Sheet export tool | T2 | P0-03 | | in progress |
@@ -402,15 +402,15 @@ time and use that token). A step called as a fixture person and answered
 nine dashboard cases had passed that way).
 
 Rows that the Sheet listed in the order they were appended are read
-`order by seq` (migrations 0004 to 0006: `audit_log`, `payments`, `sales`,
-`cash_handovers`).
+`order by seq` (migrations 0004 to 0007: `audit_log`, `payments`, `sales`,
+`cash_handovers`, `commission_runs`).
 A table that needs the same gets a `seq` column the same way; never order
 by Postgres's own row position (`ctid`, `xmin`).
 
 Where the schema stores a day and the Sheet held a date-time, the old RPC
 answers with a time of day the new one cannot have. Such a field is named
 in `ops/parity/day-only.ts` with its reason and is compared as its Toronto
-day on both sides (so far: `handedOn`). The orchestrator adds to that list,
+day on both sides (so far: `handedOn`, `weekEnd`, `periodEnd`). The orchestrator adds to that list,
 not a card.
 
 Five old RPCs return a `Date` (`rpcGetAllStaff` `startDate`; `rpcCreateBonus`,

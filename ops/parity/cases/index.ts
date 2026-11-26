@@ -6,9 +6,10 @@ import { bonusesCases } from "./bonuses";
 import { cashHandlingCases } from "./cash-handling";
 import { commissionRulesCases } from "./commission-rules";
 import { paymentsCases } from "./payments";
+import { commissionCases } from "./commissions";
 import { notifierCases } from "./notifier";
 import { salesDashboardCases } from "./sales-dashboard";
 import { shiftCases } from "./shifts";
 import { staffCases } from "./staff";
 
-export const allCases: readonly ParityCase[] = [...authCases, ...staffCases, ...attendanceCases, ...notifierCases, ...bonusesCases, ...commissionRulesCases, ...shiftCases, ...paymentsCases, ...salesDashboardCases, ...cashHandlingCases];
+export const allCases: readonly ParityCase[] = [...authCases, ...staffCases, ...attendanceCases, ...notifierCases, ...bonusesCases, ...commissionRulesCases, ...shiftCases, ...paymentsCases, ...salesDashboardCases, ...cashHandlingCases, ...commissionCases];

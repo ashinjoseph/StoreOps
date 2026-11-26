@@ -159,6 +159,8 @@ Found or decided while building the foundation. Each is covered by a test.
 | Undoing a payment deletes it and its lines (the audit log keeps a note) | The payment stays, marked voided with who, when and why; every screen leaves it out, as today | No money record is ever deleted (pending the owner's confirmation) |
 | A cash handover keeps the time of day it was dated | Only the day is kept (the page shows only the day); the moment it was recorded is kept in full | Nothing shown changes |
 | A handover can be recorded with any text as its method | Only cash, bank, e-transfer or other (what the page offers) | No unreadable methods in the record |
+| The weekly commission run is an Apps Script trigger installed from the Sheet's menu, at the hour in `commission_run_hour` | A Cloudflare schedule, Mondays 09:00 Toronto, fixed in the app's config; a failed run is logged and recorded as failed | Nothing to install by hand; the old trigger is removed at cutover |
+| A commission run that fails halfway keeps the bonuses it had proposed | The whole run is kept or none of it; two runs of one week cannot overlap | No half-proposed week |
 | Two people opening the same till at the same moment can both succeed | One open at a time per till | A till never has two open sessions |
 | A count that isn't a number is stored as-is, and a close with no count shows variance 0, OK | Refused: "physicalCount is not a number" | A close can't look balanced without a count |
 | Any error text reaches the screen | Only messages meant for the person; faults show `SERVER_ERROR` and an id | No table names or values leak |

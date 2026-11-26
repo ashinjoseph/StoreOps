@@ -9,6 +9,7 @@
 // Script wraps it in an iframe; this one does not). There is deliberately no
 // script-src policy yet: the page is one large inline script.
 import rpcContractJson from "../contracts/rpc.json";
+import { runWeeklyCommissions } from "./cron";
 import { connect } from "./db/client";
 import { notFound } from "./router";
 import { parseRpcContract, type RpcContract } from "./rpc/contract";
@@ -142,5 +143,19 @@ async function route(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env, _ctx?: unknown): Promise<Response> {
     return secure(await route(request, env), new URL(request.url).pathname);
+  },
+  /**
+   * The Monday commission cron (wrangler.toml [triggers]). It is scheduled for both UTC hours that can be
+   * 09:00 in Toronto; runWeeklyCommissions does nothing unless this one is. It throws when the run fails,
+   * so Cloudflare records the failure.
+   */
+  async scheduled(controller: { scheduledTime: number; cron?: string }, env: Env, _ctx?: unknown): Promise<void> {
+    await runWeeklyCommissions({
+      openDb: async () => connect(connectionString(env)),
+      now: () => new Date(controller.scheduledTime),
+      env,
+      fetch: (input, init) => fetch(input, init),
+      log: (entry) => console.error(entry),
+    });
   },
 };

@@ -27,3 +27,10 @@ run_worker_first = true
 [[hyperdrive]]
 binding = "HYPERDRIVE"
 id = "REPLACE_IN_P2-10"
+
+# The weekly commission run (src/cron.ts): Mondays at 09:00 in Toronto. A cron has no time zone, and
+# Toronto's 09:00 is 13:00 UTC in summer time and 14:00 UTC in winter time, so both fire and the handler
+# runs only the one that is 09:00 there. Keep this list equal to CRON_SCHEDULES in src/cron.ts (a test
+# checks it).
+[triggers]
+crons = ["0 13 * * 1", "0 14 * * 1"]

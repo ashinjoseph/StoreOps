@@ -10,6 +10,7 @@ import { rpcGetMe, rpcLogin, rpcLogout } from "./handlers/auth";
 import { rpcApproveBonus, rpcCancelBonus, rpcCreateBonus, rpcGetProposedBonuses } from "./handlers/bonuses";
 import { rpcGetCashHandoverHistory, rpcGetCashOutstandingFor, rpcGetCashPosition, rpcRecordCashHandover, rpcVoidCashHandover } from "./handlers/cash-handling";
 import { rpcCreateCommissionRule, rpcGetCommissionRules, rpcUpdateCommissionRule } from "./handlers/commission-rules";
+import { rpcGetCommissionRuns, rpcRunCommissionEngine } from "./handlers/commissions";
 import { rpcCheckWhatsApp } from "./handlers/notifier";
 import { rpcGetSalesDashboard } from "./handlers/sales-dashboard";
 import { rpcCloseShift, rpcNotifyShiftOpen, rpcOpenShift } from "./handlers/shifts";
@@ -37,6 +38,8 @@ export const handlers: RpcHandlers = {
   rpcGetCommissionRules,
   rpcCreateCommissionRule,
   rpcUpdateCommissionRule,
+  rpcGetCommissionRuns,
+  rpcRunCommissionEngine,
   rpcOpenShift,
   rpcCloseShift,
   rpcNotifyShiftOpen,
@@ -75,5 +78,6 @@ export const ERROR_PREFIXED: ReadonlySet<string> = new Set([
   "rpcPayShifts",
   "rpcPayBonus",
   "rpcGetProposedBonuses",
+  "rpcGetCommissionRuns",
   "rpcGetPaymentHistory",
 ]);

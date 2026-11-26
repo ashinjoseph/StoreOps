@@ -35,7 +35,7 @@ export const NEW_ONLY_COLUMNS: readonly { table: string; column: string; reason:
   { table: "staff", column: "pin_hash", reason: "the new app's PIN hash; the Sheet's plain login_code is deliberately not loaded" },
   { table: "sessions", column: "token_hash, created_at, last_seen_at", reason: "the old session (a script property) records only the person and the expiry; rows are keyed by the token instead" },
   { table: "login_failures", column: "failure_id, failed_at (per row)", reason: "the old app keeps one {count, firstFailAt, lastFailAt} per name; both sides are compared in that form" },
-  { table: "audit_log, payments, sales, cash_handovers", column: "seq", reason: "the order rows were written in, numbered by the database (migrations 0004 to 0006); the Sheet has it as the row's position, which the comparison does not use either" },
+  { table: "audit_log, payments, sales, cash_handovers, commission_runs", column: "seq", reason: "the order rows were written in, numbered by the database (migrations 0004 to 0007); the Sheet has it as the row's position, which the comparison does not use either" },
   { table: "payments", column: "voided_at, voided_by, void_reason", reason: "the new app voids a payment where the old one deleted it (VOIDED_PAYMENTS_RULE); the Sheet has no such columns" },
 ];
 
@@ -64,7 +64,7 @@ export const VOIDED_PAYMENTS_RULE =
   "a payment voided on the new side, and every item of a voided payment, are left out of the new side's payments and payment_items: the old app deletes them on undo; the void columns are new-only";
 const VOID_COLUMNS = new Set(["voided_at", "voided_by", "void_reason"]);
 /** Tables with a `seq` column (migration 0004): new-only, never compared. */
-const WRITTEN_ORDER = new Set(["audit_log", "payments", "sales", "cash_handovers"]);
+const WRITTEN_ORDER = new Set(["audit_log", "payments", "sales", "cash_handovers", "commission_runs"]);
 
 const excluded = (table: string, column: string): boolean => column === "store_id" || (table === "staff" && column === "pin_hash") || (table === "payments" && VOID_COLUMNS.has(column)) || (WRITTEN_ORDER.has(table) && column === "seq");
 

@@ -14,6 +14,14 @@ export const DAY_ONLY_KEYS: readonly { key: string; reason: string }[] = [
     key: "handedOn",
     reason: "cash_handovers.handed_on is a date. The old record keeps a time of day (the moment recorded when the page sent no date, 10:00 for the fixture's weekly drops); the new side answers Toronto midnight of the same day",
   },
+  {
+    key: "weekEnd",
+    reason: "commission_runs.week_end is a date. The old engine writes the week's last millisecond (Sunday 23:59:59.999) and the fixture's own rows hold 23:59:59.000; the new side answers 23:59:59.000 of the same day",
+  },
+  {
+    key: "periodEnd",
+    reason: "bonuses.period_end is a date. A commission's period end is the run's week end, with the same .999 against .000",
+  },
 ];
 
 export const DAY_ONLY_RULE = `compared as the day in Toronto, not the instant: ${DAY_ONLY_KEYS.map((k) => k.key).join(", ")} (the column holds a day; a different day is still a difference)`;
