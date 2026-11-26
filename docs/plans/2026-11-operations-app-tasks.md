@@ -30,9 +30,9 @@ hand one out.
 | P2-01 | Scaffold `ops/` and its CI | T1 | P0-01 | | done |
 | P2-02 | Migrations runner and first migration | T1 | P2-01, P0-03 | | done |
 | P2-03a | Money, date and ID helpers | T2 | P2-01 | money | done |
-| P2-03b | Database client and transactions | T2 | P2-02 | money | in progress |
-| P2-04 | Audit log writer | T1 | P2-03b | | todo |
-| P2-05 | Config and secrets access | T1 | P2-03b | security | todo |
+| P2-03b | Database client and transactions | T2 | P2-02 | money | done |
+| P2-04 | Audit log writer | T1 | P2-03b | | in progress |
+| P2-05 | Config and secrets access | T1 | P2-03b | security | in progress |
 | P2-06 | Login, sessions, lockout, roles | T2 | P2-04, P2-05 | security | todo |
 | P2-07 | RPC router | T2 | P2-06, P0-04 | security | todo |
 | P2-08a | UI copy and the new transport | T2 | P2-01 | | done |
