@@ -45,7 +45,7 @@ and two sales rows with no session.
 
 | # | Ability | Today | Card |
 |---|---|---|---|
-| 1 | Add a person, change their details, deactivate them, set or reset a PIN | Typed into the `staff` tab. The code has a `create` function no screen calls | P4-11 |
+| 1 | Add a person, change their details, deactivate them, set or reset a PIN | Typed into the `staff` tab. The code has a `create` function no screen calls | P4-11 (done) |
 | 2 | Change a setting | Typed into the `config` tab | P4-09 (done) |
 | 3 | Correct a day's schedule after the fact | Typed into the `attendance` tab | P4-10 (done) |
 | 4 | Correct a closed till: a mistyped count, cash or card figure, or note | Typed into `till_sessions` and `sales`. The code has an `edit` function no screen calls, and it covers only the float, the count and the note | P4-12 |

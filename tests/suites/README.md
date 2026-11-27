@@ -55,6 +55,7 @@ shared globals, which hid at least one ordering-dependent pass.
 | `ui-products` | no cost is "no cost recorded", not a 100% margin; margin sort |
 | `ui-recon` | reconcile history shows "not verified", never a $0 measurement |
 | `ui-schedule-corrections` | "Correct this day" only for an admin in the Operations app, today or earlier; Toronto instants across both clock changes; the Apps Script cell sheet unchanged |
+| `ui-staff-admin` | the Staff screen: `opsOnly`, offered to admin and manager only; a manager's sheet has no rate, role, email or notes; a blank rate is "no rate set", never $0.00; the PIN goes only to `call`, never to the read cache, a toast or storage; the raise preview and the after-save words |
 | `wiring` | every close-sheet field, from the browser's payload to the ledger |
 
 One suite from the lost set is **not** rebuilt: `realdata`, which read the live

@@ -4,6 +4,11 @@
     { "name": "rpcGetSettings", "params": ["token"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcUpdateSetting", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcGetAttendanceDay", "params": ["token", "staffId", "date"], "roles": ["admin"], "needs_session": true },
-    { "name": "rpcCorrectAttendance", "params": ["token", "input"], "roles": ["admin"], "needs_session": true }
+    { "name": "rpcCorrectAttendance", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcGetStaffAdmin", "params": ["token"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcCreateStaff", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcUpdateStaff", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcPreviewRateChange", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcSetStaffPin", "params": ["token", "input"], "roles": ["admin"], "needs_session": true }
   ]
 }

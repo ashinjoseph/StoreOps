@@ -1274,6 +1274,7 @@
     <div class="view" id="view-commissions"></div>
     <div class="view" id="view-rules"></div>
     <div class="view" id="view-settings"></div>
+    <div class="view" id="view-staff"></div>
     <div class="view" id="view-shopping"></div>
     <div class="view" id="view-suppliers"></div>
     <div class="view" id="view-products"></div>
@@ -1716,7 +1717,7 @@
 
   // Tabs accessed only via the "More" drawer (no direct bottom-bar button).
   // Every role gets the More drawer; History/Shopping/Suppliers live there for all.
-  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon', 'settings'];
+  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon', 'settings', 'staff'];
 
   // Items shown in the "More" drawer, with role visibility.
   const ALL_ROLES = ['admin', 'manager', 'payroll_admin', 'employee'];
@@ -1732,6 +1733,7 @@
     { tab: 'commissions', icon: '🎯', label: 'Commissions',      meta: 'Run engine, approve runs',        roles: ['admin', 'manager', 'payroll_admin'] },
     { tab: 'rules',       icon: '⚙️', label: 'Commission Rules', meta: 'Create & manage commission rules', roles: ['admin', 'payroll_admin'] },
     { tab: 'settings',    icon: '🛠️', label: 'Settings',         meta: 'Floats, limits, messages, Clover', roles: ['admin'], opsOnly: true },
+    { tab: 'staff',       icon: '👥', label: 'Staff',            meta: 'Add people, PINs, roles, pay rates', roles: ['admin', 'manager'], opsOnly: true },
   ];
 
   // A screen that only the Operations app has is listed with `opsOnly: true` (ADR-0023).
@@ -1763,7 +1765,7 @@
     return {
       shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab,
       payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
-      commissions: loadCommissionsTab, rules: loadRulesTab, settings: loadSettingsTab, more: loadMoreTab,
+      commissions: loadCommissionsTab, rules: loadRulesTab, settings: loadSettingsTab, staff: loadStaffAdminTab, more: loadMoreTab,
       shopping: loadShoppingTab, suppliers: loadSuppliersTab,
       products: loadProductsTab, cash: loadCashTab, recon: loadReconTab,
     };
@@ -1781,7 +1783,7 @@
     const titles = {
       shift: 'My Shift', schedule: 'Schedule', mypay: 'My Pay',
       payroll: 'Payroll', sales: 'Sales', history: 'History',
-      commissions: 'Commissions', rules: 'Commission Rules', settings: 'Settings', more: 'More',
+      commissions: 'Commissions', rules: 'Commission Rules', settings: 'Settings', staff: 'Staff', more: 'More',
       shopping: 'Shopping List', suppliers: 'Suppliers',
       products: 'Product Master', cash: 'Cash Handling', recon: 'Reconcile',
     };
@@ -5302,6 +5304,292 @@
       send(value, 'settingSaveBtn', 'Saving…');
     };
     $('settingDefaultBtn').onclick = () => { haptic(); send('', 'settingDefaultBtn', 'Saving…'); };
+  }
+
+  // ============================================================
+  //  ░░  TAB: STAFF (the Operations app only; ADR-0023)  ░░
+  // ============================================================
+  //  Who works here, where it used to be the Sheet's staff tab (card P4-11).
+  //  An admin adds, changes, deactivates and reactivates people, sets PINs
+  //  and gives raises (optionally on unpaid days from a date, previewed
+  //  before saving). A manager may add an employee (name, tills, start date,
+  //  PIN) and sees no pay rate, email, notes or cash. The server decides; its
+  //  messages are shown as they are. A PIN is typed twice, sent with `call`
+  //  (never the read cache) and never shown, toasted or stored.
+  // ============================================================
+  const STAFF_ROLES = [['employee', 'Employee'], ['manager', 'Manager'], ['payroll_admin', 'Payroll admin'], ['admin', 'Admin']];
+  const STAFF_TILLS = [['cstore', 'cstore'], ['vape', 'vape']];
+
+  async function loadStaffAdminTab(force) {
+    const view = $('view-staff');
+    if (force || !cacheFresh('rpcGetStaffAdmin', [state.token], TTL_SEMI)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading staff…</div>';
+    }
+    try {
+      const data = await cachedCall('rpcGetStaffAdmin', [state.token], TTL_SEMI, { force });
+      renderStaffAdminTab(data);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  // A blank rate is "no rate set", never $0.00 (ADR-0004).
+  function staffRateText_(rate) {
+    if (rate === null || rate === undefined || rate === '') return 'no rate set';
+    return money(rate) + '/h';
+  }
+  function staffRoleLabel_(role) {
+    const r = STAFF_ROLES.find(x => x[0] === role);
+    return r ? r[1] : String(role || '');
+  }
+  function staffTillsText_(companies) {
+    return companies && companies.length ? companies.join(' + ') : 'no till';
+  }
+  function staffBadge_(text, bg, fg) {
+    return '<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;margin:2px 4px 0 0;background:' + bg + ';color:' + fg + '">' + esc(text) + '</span>';
+  }
+
+  function staffRowHTML_(p, isAdmin) {
+    let badges = '';
+    if (!p.active) badges += staffBadge_('inactive', '#e5e7eb', '#4b5563');
+    if (!p.hasPin) badges += staffBadge_('no PIN', '#fde68a', '#92611a');
+    if (isAdmin) {
+      if (p.lockedOut) badges += staffBadge_('locked out', '#fee2e2', '#b91c1c');
+      (p.openTills || []).forEach(c => { badges += staffBadge_(c + ' till open', '#dbeafe', '#1e40af'); });
+      if (p.cashHeld > 0.005) badges += staffBadge_('holds ' + money(p.cashHeld), '#dcfce7', '#166534');
+    }
+    const meta = staffRoleLabel_(p.role) + ' · ' + staffTillsText_(p.companies) + (isAdmin ? ' · ' + staffRateText_(p.hourlyRate) : '');
+    return '<div class="payroll-card"' + (isAdmin ? ' data-staff-id="' + esc(p.staffId) + '" style="cursor:pointer;' : ' style="') + 'margin-bottom:8px' + (p.active ? '' : ';opacity:.55') + '">' +
+      '<div class="payroll-card-head"><div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:600">' + esc(p.name) + '</div>' +
+        '<div class="payroll-rate">' + esc(meta) + '</div>' +
+        (badges ? '<div>' + badges + '</div>' : '') +
+      '</div></div></div>';
+  }
+
+  function renderStaffAdminTab(data) {
+    const view = $('view-staff');
+    const isAdmin = data && data.viewerRole === 'admin';
+    const people = (data && data.staff) || [];
+    let html = moreBack();
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><div style="flex:1">' +
+      '<div style="font-size:13px;font-weight:700">Staff</div>' +
+      '<div style="font-size:11px;color:#6a6e79">' + (isAdmin ? 'Tap a person to change them, set a PIN or deactivate them.' : 'You can add an employee. An admin changes people and pay.') + '</div></div>' +
+      '<button class="sheet-submit" id="staffAddBtn" style="flex:0 0 auto;padding:8px 12px">Add a person</button></div>';
+    if (!people.length) html += '<div class="empty">Nobody on the staff list yet.</div>';
+    people.forEach(p => { html += staffRowHTML_(p, isAdmin); });
+    view.innerHTML = html;
+    $('staffAddBtn').onclick = () => { haptic(); openStaffSheet_(isAdmin ? 'admin' : 'manager', null); };
+    if (isAdmin) {
+      view.querySelectorAll('[data-staff-id]').forEach(el => {
+        el.onclick = () => {
+          haptic();
+          const p = people.find(x => x.staffId === el.dataset.staffId);
+          if (p) openStaffSheet_('admin', p);
+        };
+      });
+    }
+  }
+
+  // The sheet's fields. A manager's add has name, tills, start date and PIN only: no role, no rate,
+  // no email, no notes. `person` is null for an add.
+  function staffSheetHTML_(viewerRole, person) {
+    const p = person || { name: '', role: 'employee', companies: [], hourlyRate: null, startDate: '', email: '', notes: '' };
+    const isAdmin = viewerRole === 'admin';
+    const field = (label, inner) => '<div class="sheet-field"><label>' + esc(label) + '</label>' + inner + '</div>';
+    let html = field('Name', '<input type="text" id="staffName" maxlength="80" autocomplete="off" value="' + esc(p.name) + '">');
+    if (isAdmin) {
+      html += field('Role', '<select id="staffRole">' + STAFF_ROLES.map(r => '<option value="' + r[0] + '"' + (r[0] === p.role ? ' selected' : '') + '>' + esc(r[1]) + '</option>').join('') + '</select>');
+    }
+    html += field('Tills they may open', STAFF_TILLS.map(t =>
+      '<label style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;font-weight:500"><input type="checkbox" data-staff-till="' + t[0] + '"' + ((p.companies || []).indexOf(t[0]) >= 0 ? ' checked' : '') + ' style="width:auto"> ' + esc(t[1]) + '</label>').join(''));
+    if (isAdmin) {
+      const rate = p.hourlyRate === null || p.hourlyRate === undefined ? '' : String(p.hourlyRate);
+      html += field('Hourly rate (blank = no rate yet)', '<input type="number" step="0.01" min="0" inputmode="decimal" id="staffRate" value="' + esc(rate) + '" placeholder="no rate set">');
+      if (person) {
+        html += '<div class="sheet-field" id="staffApplyWrap" style="display:none"><label>Also apply to unpaid days from (optional)</label>' +
+          '<input type="date" id="staffApplyFrom" value=""><div id="staffPreview" style="font-size:12px;color:#4a4e59;margin-top:6px"></div></div>';
+      }
+    }
+    html += field('Start date (optional)', '<input type="date" id="staffStart" value="' + esc(p.startDate || '') + '">');
+    if (isAdmin) {
+      html += field('Email (optional)', '<input type="email" id="staffEmail" maxlength="200" autocomplete="off" value="' + esc(p.email || '') + '">');
+      html += field('Notes (optional)', '<input type="text" id="staffNotes" maxlength="500" autocomplete="off" value="' + esc(p.notes || '') + '">');
+    }
+    if (!person) {
+      html += staffPinFieldsHTML_('First PIN (4 to 8 digits): tell the person');
+    } else {
+      html += field('Reason (needed when the rate, role or active changes)', '<input type="text" id="staffReason" maxlength="300" autocomplete="off" value="">');
+    }
+    html += '<div id="staffErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    return html;
+  }
+
+  function staffPinFieldsHTML_(label) {
+    return '<div class="sheet-field"><label>' + esc(label) + '</label>' +
+      '<input type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" id="staffPin" value=""></div>' +
+      '<div class="sheet-field"><label>The PIN again</label>' +
+      '<input type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" id="staffPin2" value=""></div>';
+  }
+
+  // The two PIN boxes: the PIN, or an error message. The value is only ever handed to `call`.
+  function staffPinPair_() {
+    const a = $('staffPin').value;
+    const b = $('staffPin2').value;
+    if (!/^[0-9]{4,8}$/.test(a)) return { error: 'The PIN must be 4 to 8 digits.' };
+    if (a !== b) return { error: 'The two PINs are not the same.' };
+    return { pin: a };
+  }
+
+  function staffFormValues_(viewerRole) {
+    const tills = [];
+    document.querySelectorAll('[data-staff-till]').forEach(cb => { if (cb.checked) tills.push(cb.dataset.staffTill); });
+    const v = { name: $('staffName').value, companies: tills, startDate: $('staffStart').value };
+    if (viewerRole === 'admin') {
+      v.role = $('staffRole').value;
+      v.hourlyRate = $('staffRate').value;
+      v.email = $('staffEmail').value;
+      v.notes = $('staffNotes').value;
+    }
+    return v;
+  }
+
+  function staffRateChanged_(person, rateText) {
+    const before = person.hourlyRate === null || person.hourlyRate === undefined ? '' : String(person.hourlyRate);
+    const now = String(rateText || '').trim();
+    if (now === '' || before === '') return now !== before;
+    return Number(now) !== Number(before);
+  }
+
+  // "4 days: owed for them goes from $160.00 to $418.00; 2 paid days are left as they are."
+  function ratePreviewText_(pv) {
+    if (!pv || !pv.days) {
+      return 'No unpaid days from then: nothing is re-rated.' + staffSkippedText_(pv && pv.skippedPaid);
+    }
+    return pv.days + (pv.days === 1 ? ' day' : ' days') + ': owed for ' + (pv.days === 1 ? 'it' : 'them') + ' goes from ' + money(pv.owedBefore) + ' to ' + money(pv.owedAfter) + '.' + staffSkippedText_(pv.skippedPaid);
+  }
+  function staffSkippedText_(skipped) {
+    const n = (skipped || []).length;
+    if (!n) return '';
+    return ' ' + n + (n === 1 ? ' paid day is' : ' paid days are') + ' left as ' + (n === 1 ? 'it is' : 'they are') + ' (' + skipped.map(s => s.date + ' ' + money(s.paid)).join(', ') + ').';
+  }
+
+  // What changed, in words, after a save.
+  function staffSavedText_(res) {
+    if (!res) return '';
+    const r = res.record || {};
+    const parts = [];
+    parts.push(res.changed ? esc(r.name) + ' saved.' : 'Nothing changed.');
+    if (res.daysChanged) parts.push(res.daysChanged + (res.daysChanged === 1 ? ' unpaid day' : ' unpaid days') + ' re-rated: owed for ' + (res.daysChanged === 1 ? 'it' : 'them') + ' went from ' + money(res.owedBefore) + ' to ' + money(res.owedAfter) + '.');
+    const n = (res.skippedPaid || []).length;
+    if (n) parts.push(n + (n === 1 ? ' paid day was' : ' paid days were') + ' left as ' + (n === 1 ? 'it was' : 'they were') + '.');
+    if (r.active === false && res.cashHeld > 0.005) parts.push(esc(r.name) + ' still holds ' + money(res.cashHeld) + ' of shop cash: it stays on the Cash screen under their name.');
+    return parts.join(' ');
+  }
+
+  function openStaffSheet_(viewerRole, person) {
+    const isAdmin = viewerRole === 'admin';
+    let actionsHTML = '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>';
+    if (person) {
+      actionsHTML += '<button class="sheet-cancel" id="staffPinBtn">Set a new PIN</button>' +
+        '<button class="sheet-cancel" id="staffActiveBtn">' + (person.active ? 'Deactivate' : 'Reactivate') + '</button>';
+    }
+    actionsHTML += '<button class="sheet-submit" id="staffSaveBtn">' + (person ? 'Save' : 'Add') + '</button>';
+    openSheet({
+      title: person ? 'Change ' + person.name : 'Add a person',
+      subtitle: person ? person.staffId + (person.active ? '' : ' · inactive') : (isAdmin ? '' : 'As an employee'),
+      bodyHTML: staffSheetHTML_(viewerRole, person),
+      actionsHTML,
+    });
+
+    const err = msg => { $('staffErr').textContent = msg || ''; };
+    let previewSeq = 0;
+    async function refreshPreview() {
+      const from = $('staffApplyFrom') ? $('staffApplyFrom').value : '';
+      const box = $('staffPreview');
+      if (!box) return;
+      if (!from) { box.textContent = ''; return; }
+      const seq = ++previewSeq;
+      box.textContent = 'Working it out…';
+      try {
+        const pv = await call('rpcPreviewRateChange', state.token, { staffId: person.staffId, hourlyRate: $('staffRate').value, applyRateFrom: from });
+        if (seq === previewSeq) box.textContent = ratePreviewText_(pv);
+      } catch (e) {
+        if (seq === previewSeq) box.textContent = e.message;
+      }
+    }
+    if (person && isAdmin) {
+      const onRate = () => {
+        const changed = staffRateChanged_(person, $('staffRate').value) && String($('staffRate').value).trim() !== '';
+        $('staffApplyWrap').style.display = changed ? '' : 'none';
+        if (!changed) $('staffApplyFrom').value = '';
+        refreshPreview();
+      };
+      $('staffRate').oninput = onRate;
+      $('staffApplyFrom').onchange = refreshPreview;
+    }
+
+    async function save(active) {
+      err('');
+      const btn = $('staffSaveBtn');
+      btn.disabled = true;
+      try {
+        if (!person) {
+          const pair = staffPinPair_();
+          if (pair.error) { err(pair.error); btn.disabled = false; return; }
+          const input = staffFormValues_(viewerRole);
+          input.pin = pair.pin;
+          const res = await call('rpcCreateStaff', state.token, input);
+          closeSheet();
+          toast('✓ Added ' + res.name + ' (' + res.staffId + ')', 'success');
+        } else {
+          const input = staffFormValues_('admin');
+          input.staffId = person.staffId;
+          input.active = active;
+          input.applyRateFrom = $('staffApplyFrom') ? $('staffApplyFrom').value : '';
+          input.reason = $('staffReason').value;
+          const res = await call('rpcUpdateStaff', state.token, input);
+          closeSheet();
+          openSheet({ title: res.record.name, subtitle: res.record.staffId, bodyHTML: '<div style="font-size:13px;line-height:1.5" id="staffSaved">' + staffSavedText_(res) + '</div>', actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">OK</button>' });
+        }
+        loadStaffAdminTab(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        err(e.message);
+        btn.disabled = false;
+      }
+    }
+    $('staffSaveBtn').onclick = () => { haptic(); save(person ? person.active : true); };
+    if (person) {
+      $('staffActiveBtn').onclick = () => { haptic(); save(!person.active); };
+      $('staffPinBtn').onclick = () => { haptic(); openStaffPinSheet_(person); };
+    }
+  }
+
+  function openStaffPinSheet_(person) {
+    openSheet({
+      title: 'New PIN for ' + person.name,
+      subtitle: 'Their other sign-ins end; a lockout is lifted',
+      bodyHTML: staffPinFieldsHTML_('New PIN (4 to 8 digits): tell the person') + '<div id="staffErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>',
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="staffPinSave">Set PIN</button>',
+    });
+    $('staffPinSave').onclick = async () => {
+      haptic();
+      $('staffErr').textContent = '';
+      const pair = staffPinPair_();
+      if (pair.error) { $('staffErr').textContent = pair.error; return; }
+      $('staffPinSave').disabled = true;
+      try {
+        const res = await call('rpcSetStaffPin', state.token, { staffId: person.staffId, pin: pair.pin });
+        closeSheet();
+        toast('✓ New PIN set for ' + person.name + (res.sessionsEnded ? ' · signed out on ' + res.sessionsEnded + (res.sessionsEnded === 1 ? ' device' : ' devices') : '') + (res.lockoutCleared ? ' · lockout lifted' : ''), 'success');
+        loadStaffAdminTab(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('staffErr').textContent = e.message;
+        $('staffPinSave').disabled = false;
+      }
+    };
   }
 
   // ============================================================

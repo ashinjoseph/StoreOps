@@ -1291,3 +1291,33 @@ New: `ops/test/attendance-corrections.test.ts` and the `ui-schedule-corrections`
 suite, both confirmed failing before the code existed and against deliberate
 mutations (paid-day guard, blank rate, the staff-row lock, the role gate, the
 Toronto offset).
+
+### Add, change and deactivate people, set PINs and give raises, in the Operations app (P4-11)
+
+Without the Sheet nobody could add a person or change their pay. In the
+Operations app (never inside Apps Script) **More → Staff** now lists everyone.
+
+- An admin adds a person (name, role, tills, rate, start date, email, notes,
+  a first PIN typed twice), changes them, deactivates or reactivates them and
+  sets a new PIN. A blank rate is "no rate set", stored blank, never $0.
+- A manager may add an employee (name, tills, start date, PIN) and sees no
+  pay rate, email, notes or cash.
+- A raise may reach back: with a date, every worked day from it with nothing
+  paid takes the new rate (paid and partly paid days are left alone and
+  listed). The sheet previews it ("4 days: owed goes from $160.00 to
+  $418.00") before Save.
+- Guards: the last active admin, yourself, an open till and the cash manager
+  cannot be deactivated (or the admin demoted); a reason is needed for a
+  rate, role or active change. Deactivating signs the person out everywhere;
+  a role change applies at their next call. Setting a PIN ends their other
+  sessions and lifts a lockout. The PIN is never stored, logged, audited or
+  answered, only its hash is kept.
+- Five new calls (ADR-0023), each audited (`staff.create`, `staff.update`,
+  `staff.rate_applied`, `staff.pin_set`). See [staff](docs/components/staff-admin.md).
+
+New: `ops/test/staff-admin.test.ts` and the `ui-staff-admin` suite, both seen
+failing before the code existed, and against seven deliberate mutations (a
+manager adding a manager, the rate in the manager's list, re-rating a paid
+day, a blank rate stored as 0, the id lock dropped, the PIN in the audit row,
+the last admin deactivated).
+

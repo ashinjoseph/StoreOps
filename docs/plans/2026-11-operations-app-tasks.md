@@ -69,7 +69,8 @@ hand one out.
 | P4-08 | The new app's own RPCs and screens: where they are listed, how they are hidden in Apps Script | T1 | P3-12 | security | done |
 | P4-09 | Settings screen: an admin edits the settings | T2 | P4-08 | security | done (four things for the owner, in the card) |
 | P4-10 | Schedule corrections after the fact | T3 | P4-08 | money | done (the owner confirmed its three rules, Nov 27) |
-| P4-11 | Staff screen: add, change, deactivate, PINs, raises | T3 | P4-08 | security, money | in progress |
+| P4-11 | Staff screen: add, change, deactivate, PINs, raises | T3 | P4-08 | security, money | done (one thing for the owner, in the card) |
+| P4-11b | A day worked with no rate shows as "no rate set", not $0 | T2 | P4-11 | money | todo (changes what a ported call answers: the owner to agree) |
 | P4-12a | Correct a closed till | T3 | P4-08 | money | in progress |
 | P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | todo |
 | P4-12c | Reconcile a past day again | T2 | P4-08 | money | todo |
@@ -867,6 +868,22 @@ where people looked things up.
    yet takes the person's current rate; a day set to "did not work" keeps its
    rate, is not in payroll and is owed nothing; notes capped at 2,000
    characters.
+
+**P4-11 is done:** More → Staff. An admin adds, changes, deactivates and
+reactivates people, sets PINs, and gives a raise that may also cover unpaid
+days from a date (shown before saving; days with a payment are left and
+listed). A manager adds an employee with a name, tills, a start date and a
+first PIN, and sees no pay rate anywhere, on the screen or in what the
+server sends. The guards: the only active admin, yourself, an open till,
+the cash manager. Setting a PIN signs the person out everywhere and clears
+a lockout. Checked in a browser as admin, manager and employee.
+One thing it showed, for the owner (P4-11b): a person with **no rate yet**
+who works a day gets a rate of 0 stored on that day, as the current app
+does. The day is then worth $0, is in no "owed" list, and My Pay shows
+"$0.00/hr", until an admin sets the rate with "also from this date", which
+does cover those days. So after a manager adds someone, an admin must set
+their rate that way. Showing such days as "no rate set" changes what two
+ported calls answer, so it is a card of its own.
 
 P4-12 is split in three so each can be reviewed on its own: correcting a
 closed till (a), entering a shift that was never put in the app (b), and

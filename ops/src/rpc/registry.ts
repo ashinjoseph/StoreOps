@@ -17,6 +17,7 @@ import { rpcCheckWhatsApp } from "./handlers/notifier";
 import { rpcGetReconciliation, rpcReconcileDay } from "./handlers/reconcile";
 import { rpcGetSalesDashboard } from "./handlers/sales-dashboard";
 import { rpcGetSettings, rpcUpdateSetting } from "./handlers/settings";
+import { rpcCreateStaff, rpcGetStaffAdmin, rpcPreviewRateChange, rpcSetStaffPin, rpcUpdateStaff } from "./handlers/staff-admin";
 import { rpcCloseShift, rpcNotifyShiftOpen, rpcOpenShift } from "./handlers/shifts";
 import { rpcGetMyOwedSummary, rpcGetOwedSummary, rpcGetPaymentHistory, rpcGetPayrollOverview, rpcPayBonus, rpcPayShifts, rpcUndoPayment } from "./handlers/payments";
 import { rpcGetActiveStaffForLogin, rpcGetAllStaff, rpcGetStaffDirectory } from "./handlers/staff";
@@ -68,6 +69,11 @@ export const handlers: RpcHandlers = {
   rpcGetReconciliation,
   rpcGetSettings,
   rpcUpdateSetting,
+  rpcGetStaffAdmin,
+  rpcCreateStaff,
+  rpcUpdateStaff,
+  rpcPreviewRateChange,
+  rpcSetStaffPin,
 };
 
 /** What the router calls for every RPC the contract marks `needs_session`. Throws Error("NOT_LOGGED_IN"). */

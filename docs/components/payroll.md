@@ -62,6 +62,10 @@ its amount, and its status moves `pending → paid`.
 - **No overpayment**, of shifts or of a bonus.
 - **Rates are snapshotted** on the attendance row, so a payment always prices
   a day at the rate it was worked.
+  One exception, in the Operations app: when an admin changes a rate on the
+  [Staff](staff-admin.md) screen they may give a date, and every worked day
+  from it with **nothing paid** against it takes the new rate (days with any
+  payment are left as they are). Owed moves by exactly the difference.
 - **Bonuses are never paid with shifts.** They are separate flows, so a shift
   payment can't quietly settle a commission.
 - **Only `pending` bonuses are payable.** A `proposed` one is refused with
@@ -85,6 +89,8 @@ undo) is on the [backlog](../guides/docs-process.md#known-gaps).
 
 ## History
 
+- **Nov 2026 (card P4-11):** in the Operations app, a rate change may re-rate
+  unpaid days from a date ([Staff](staff-admin.md)).
 - **Oct 2026:** My Pay fits a phone: tiles two-by-two, and the shift table stays
   on one line.
 - **Batch 4:** payroll and My Pay screens.
