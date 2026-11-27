@@ -92,6 +92,10 @@ table.
 
 ## History
 
+- **Nov 2026:** the Operations app gets calls and screens of its own
+  ([ADR-0023](../adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)).
+  A drawer entry marked `opsOnly` shows only there; inside Apps Script
+  nothing changes.
 - **Batch 6:** the token moves to `localStorage`, ending constant re-logins;
   the product catalogue is no longer loaded at login.
 - **Batch 4:** the single-page web UI.

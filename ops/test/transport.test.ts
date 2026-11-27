@@ -218,3 +218,14 @@ describe("install", () => {
     expect(/\bvar\s/.test(SRC)).toBe(false);
   });
 });
+
+// ADR-0023: the page shows the screens only the Operations app has when it runs there.
+describe("the transport tells the page it is running in the Operations app", () => {
+  it("sets window.STOREOPS_APP to 'ops' when it installs itself", () => {
+    expect(boot(json({ ok: true, result: 1 })).win.STOREOPS_APP).toBe("ops");
+  });
+  it("leaves it unset inside Apps Script, where google.script.run already exists", () => {
+    const existing = { script: { run: {} } };
+    expect(boot(json({ ok: true, result: 1 }), existing).win.STOREOPS_APP).toBeUndefined();
+  });
+});

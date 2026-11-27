@@ -63,9 +63,12 @@ hand one out.
 | P4-02 | Import tool with a rejects file | T2 | P4-01, P2-02 | money | done (not yet run on real data) |
 | P4-03 | Reconcile report: Sheet against database | T2 | P4-02 | money | done (not yet run on real data) |
 | P4-04 | Dry run on a copy of production | T3 + owner | P3-12, P4-03 | money | todo |
-| P4-05 | Cutover runbook, then the switch | T3 + owner | P4-04 | money | todo |
+| P4-05 | Cutover runbook, then the switch | T3 + owner | P4-04, P4-09, P4-10 | money | todo |
 | P4-06 | Nightly export to a Google Sheet | T2 | P4-05 | | todo |
 | P4-07 | Retire the Apps Script deploy | T1 | P4-05 + 30 days | | todo |
+| P4-08 | The new app's own RPCs and screens: where they are listed, how they are hidden in Apps Script | T1 | P3-12 | security | done |
+| P4-09 | Settings screen: an admin edits the settings | T2 | P4-08 | security | in progress |
+| P4-10 | Schedule corrections after the fact | T3 | P4-08 | money | in progress |
 | P5-01 | Stores and staff assignments | T2 | P4-05 | security | todo |
 | P5-02 | Till link: staff sync and key expiry | T2 | P5-01, P1-02 | security | todo |
 | P5-03 | Vape close from the till snapshot | T2 | P5-02 | money | todo |
@@ -762,6 +765,32 @@ totals.
 ### P4-07 · Retire the Apps Script deploy · T1
 Thirty days after the switch. Remove the two deploy workflows; mark `src/`
 as archived in `AGENTS.md`; set ADR-0001 to superseded.
+
+### P4-08, P4-09, P4-10 · What the Sheet used to do (owner, Nov 27)
+Once the Sheet is gone an admin cannot fix things by editing a cell. Two
+needs come first, both for the admin role only, both before the switch
+(P4-05 now waits for them):
+
+- **P4-08 · Groundwork (done).** [ADR-0023](../adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md):
+  the new app's own RPCs are listed by hand in `ops/contracts/rpc-ops.json`
+  and merged into the contract the Worker enforces; a screen only the new
+  app has is marked `opsOnly` in the page's drawer list and is hidden inside
+  Apps Script. Own RPCs have no comparison case (nothing to compare with):
+  unit tests are their specification.
+- **P4-09 · Settings.** An admin sees every setting with its meaning and
+  default, and changes any of them: checked by the setting's kind, audited
+  with before and after, blank meaning "use the default". The three keys
+  (WhatsApp, the two Clover tokens) are not settings any more: they are held
+  by Cloudflare and are shown only as set or not set.
+- **P4-10 · Schedule corrections.** An admin corrects a day for one person,
+  today or in the past, with a reason: scheduled times, actual start and
+  end, and whether the day was worked or cancelled; or adds a day worked by
+  someone who was not scheduled. Hours follow the actual times. Refused
+  while money has been paid against the day (undo the payment first) or
+  while that person's till is open. Till sessions and sales are not moved.
+  The owner's two cases: someone left early and another stayed (two
+  corrections, one per person); someone did not show and a stand-in worked
+  (cancel one day, add the other).
 
 ## Phase 5 — New abilities
 

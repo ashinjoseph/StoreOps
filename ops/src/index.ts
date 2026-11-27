@@ -13,11 +13,12 @@
 // script-src policy for the app page yet: it is one large inline script. The
 // public pages carry their own policy (one script, by hash; see secure()).
 import rpcContractJson from "../contracts/rpc.json";
+import rpcOpsJson from "../contracts/rpc-ops.json";
 import { runWeeklyCommissions } from "./cron";
 import { connect } from "./db/client";
 import { handlePublic, publicView } from "./public/pages";
 import { notFound } from "./router";
-import { parseRpcContract, type RpcContract } from "./rpc/contract";
+import { mergeOpsContract, parseRpcContract, type RpcContract } from "./rpc/contract";
 import { ERROR_PREFIXED, handlers, resolveSession } from "./rpc/registry";
 import { createRpcRouter } from "./rpc/router";
 
@@ -61,7 +62,7 @@ function rpcRouter(env: Env): RpcHandle {
   let router = routers.get(env);
   if (router === undefined) {
     if (contract === undefined) {
-      contract = parseRpcContract(rpcContractJson);
+      contract = parseRpcContract(mergeOpsContract(rpcContractJson, rpcOpsJson));
       buildCounts.contract++;
     }
     router = createRpcRouter({

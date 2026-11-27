@@ -62,6 +62,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [0020. Operations moves to its own app and database](docs/adr/0020-operations-moves-off-sheets.md)
 - [0021. Till figures come through an API, and Operations keeps its own snapshot](docs/adr/0021-till-figures-come-through-an-api.md)
 - [0022. LLM calls go to the free model first, with Claude behind a flag](docs/adr/0022-llm-calls-go-to-the-free-model-first.md)
+- [0023. The Operations app has RPCs and screens of its own, listed apart and hidden in Apps Script](docs/adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)
 
 ## Guides
 

@@ -70,4 +70,6 @@
   window.google = window.google || {};
   window.google.script = window.google.script || {};
   window.google.script.run = chain(null, null, undefined);
+  // The page shows the screens that only the Operations app has when this is set (ADR-0023).
+  window.STOREOPS_APP = 'ops';
 })();

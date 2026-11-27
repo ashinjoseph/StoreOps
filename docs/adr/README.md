@@ -35,6 +35,7 @@ requests and the code. Their dates are when the decision took effect.
 | [0020](0020-operations-moves-off-sheets.md) | Operations moves to its own app and database | Proposed | 2026-11 |
 | [0021](0021-till-figures-come-through-an-api.md) | Till figures come through an API, and Operations keeps its own snapshot | Proposed | 2026-11 |
 | [0022](0022-llm-calls-go-to-the-free-model-first.md) | LLM calls go to the free model first, with Claude behind a flag | Proposed | 2026-11 |
+| [0023](0023-the-operations-app-has-rpcs-and-screens-of-its-own.md) | The Operations app has RPCs and screens of its own, listed apart and hidden in Apps Script | Accepted | 2026-11 |
 
 ## When to write one
 

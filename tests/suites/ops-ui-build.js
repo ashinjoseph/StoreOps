@@ -100,6 +100,26 @@ const warmOf = js => js.split('\n').map(warmOfLine).filter(Boolean);
     t.eq('the two public templates are the same', JSON.stringify(fromCrlf), JSON.stringify(fromLf));
   }
 
+  // ADR-0023: a screen only the Operations app has is listed with `opsOnly: true` and is hidden
+  // inside Apps Script, where the calls behind it do not exist.
+  t.section('Screens only the Operations app has');
+  {
+    const js = scriptOf(SRC_HTML);
+    const pick = new Function(H.fnSource(js, 'moreItemsFor_') + '; return moreItemsFor_;')();
+    const items = [
+      { tab: 'cash', roles: ['admin', 'employee'] },
+      { tab: 'settings', roles: ['admin'], opsOnly: true },
+    ];
+    const tabs = (role, ops) => pick(items, role, ops).map(i => i.tab);
+    t.eq('hidden inside Apps Script, even from an admin', tabs('admin', false), ['cash']);
+    t.eq('shown to the roles it lists in the Operations app', tabs('admin', true), ['cash', 'settings']);
+    t.eq('still by role in the Operations app', tabs('employee', true), ['cash']);
+    t.ok('the drawer uses it', /moreItemsFor_\(MORE_ITEMS, role, isOpsApp_\(\)\)/.test(js));
+    const isOps = new Function('window', H.fnSource(js, 'isOpsApp_') + '; return isOpsApp_();');
+    t.eq('the page asks the transport\'s marker', [isOps({}), isOps({ STOREOPS_APP: 'ops' }), isOps({ STOREOPS_APP: 'x' })], [false, true, false]);
+    t.ok('the built page keeps both functions', out.indexOf('function moreItemsFor_(') !== -1 && out.indexOf('function isOpsApp_(') !== -1);
+  }
+
   t.section('Deterministic');
   t.ok('building twice gives the same bytes', buildUi({ write: false }) === buildUi({ write: false }));
 

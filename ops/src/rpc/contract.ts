@@ -97,3 +97,34 @@ export function parseRpcContract(json: unknown): RpcContract {
     get: (name: string) => byName.get(name),
   });
 }
+
+/**
+ * The contract the Worker enforces: the current app's RPCs (rpc.json, generated) plus the
+ * Operations app's own (rpc-ops.json, written by hand; ADR-0023). Returns one document for
+ * parseRpcContract. An own entry:
+ *   - may not reuse a name from rpc.json;
+ *   - always needs a session and names its roles (`null` for any signed-in person must be written
+ *     out): nothing new is open by omission;
+ *   - is always live (`migrate`) and belongs to no module of the current app; those two fields are
+ *     filled in here and may not be set otherwise.
+ * The comparison harness keeps using rpc.json alone: an own RPC has nothing to be compared with.
+ */
+export function mergeOpsContract(base: unknown, own: unknown): { rpcs: unknown[] } {
+  if (!isObject(base) || !Array.isArray(base["rpcs"])) throw new RpcContractError("the contract must be an object with an rpcs list");
+  if (!isObject(own) || !Array.isArray(own["rpcs"])) throw new RpcContractError("rpc-ops.json must be an object with an rpcs list");
+  const taken = new Set((base["rpcs"] as unknown[]).map((r) => (isObject(r) ? r["name"] : undefined)));
+  const added = (own["rpcs"] as unknown[]).map((raw, i) => {
+    if (!isObject(raw)) throw new RpcContractError(`rpc-ops.json entry ${i} must be an object`);
+    const name = raw["name"];
+    if (taken.has(name)) throw new RpcContractError(`rpc-ops.json: ${String(name)} is already in rpc.json (an own RPC needs a name of its own)`);
+    if (raw["needs_session"] !== true) throw new RpcContractError(`rpc-ops.json: ${String(name)}: needs_session must be true`);
+    if (!("roles" in raw)) throw new RpcContractError(`rpc-ops.json: ${String(name)}: roles is missing (write null for any signed-in person)`);
+    if ("migrate" in raw && raw["migrate"] !== true) throw new RpcContractError(`rpc-ops.json: ${String(name)}: migrate cannot be set (an own RPC is always live)`);
+    if ("modules" in raw && !(Array.isArray(raw["modules"]) && raw["modules"].length === 0)) {
+      throw new RpcContractError(`rpc-ops.json: ${String(name)}: modules cannot be set (they name modules of the current app)`);
+    }
+    return { ...raw, migrate: true, modules: [] };
+  });
+  if (added.length === 0) return base as { rpcs: unknown[] };
+  return { ...base, rpcs: [...(base["rpcs"] as unknown[]), ...added] };
+}

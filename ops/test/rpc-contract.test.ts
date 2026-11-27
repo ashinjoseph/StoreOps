@@ -1,7 +1,8 @@
 // The contract loader: a bad rpc.json must fail when it is loaded, never at call time.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseRpcContract, RpcContractError } from "../src/rpc/contract";
+import { mergeOpsContract, parseRpcContract, RpcContractError } from "../src/rpc/contract";
+import { handlers } from "../src/rpc/registry";
 
 const real = JSON.parse(readFileSync(new URL("../contracts/rpc.json", import.meta.url), "utf8"));
 
@@ -88,5 +89,40 @@ describe("validation rejects a doctored contract with a clear message", () => {
   it("a needs_session entry's first param must be token", () => {
     rejects(doctored((r) => { entry(r, "rpcGetMe").params = []; }), /rpcGetMe.*first param.*token/i);
     rejects(doctored((r) => { entry(r, "rpcGetMe").params = ["session"]; }), /rpcGetMe.*first param.*token/i);
+  });
+});
+
+// ADR-0023: calls that only the new app has (the admin's settings and schedule corrections) are
+// listed in ops/contracts/rpc-ops.json, written by hand. rpc.json stays what it is: generated from
+// the current app, and the list the comparison harness checks against.
+describe("the new app's own RPCs are added to the contract, never mixed into it", () => {
+  const base = { rpcs: [{ name: "rpcOld", params: ["token"], roles: null, needs_session: true, modules: [], migrate: true }] };
+  const own = (name: string, extra: object = {}) => ({ name, params: ["token", "input"], roles: ["admin"], needs_session: true, ...extra });
+
+  it("merges the two lists; an own entry is always migrated and has its role rule", () => {
+    const c = parseRpcContract(mergeOpsContract(base, { rpcs: [own("rpcNew")] }));
+    expect(c.entries.map((e) => e.name)).toEqual(["rpcOld", "rpcNew"]);
+    expect(c.get("rpcNew")).toMatchObject({ roles: ["admin"], needs_session: true, migrate: true, modules: [] });
+  });
+  it("an empty own list changes nothing", () => {
+    expect(mergeOpsContract(base, { rpcs: [] })).toEqual(base);
+  });
+  it("an own entry may not reuse a name of the current app's contract", () => {
+    expect(() => mergeOpsContract(base, { rpcs: [own("rpcOld")] })).toThrow(/rpcOld.*already in rpc\.json/);
+  });
+  it("an own entry must need a session and name its roles: nothing new is open to everyone by default", () => {
+    expect(() => mergeOpsContract(base, { rpcs: [own("rpcNew", { needs_session: false })] })).toThrow(/needs_session/);
+    expect(() => mergeOpsContract(base, { rpcs: [{ name: "rpcNew", params: ["token"], needs_session: true }] })).toThrow(/roles/);
+  });
+  it("an own entry cannot switch itself off or claim modules of the current app", () => {
+    expect(() => mergeOpsContract(base, { rpcs: [own("rpcNew", { migrate: false })] })).toThrow(/migrate/);
+    expect(() => mergeOpsContract(base, { rpcs: [own("rpcNew", { modules: ["Staff"] })] })).toThrow(/modules/);
+  });
+  it("the real files merge, and every own RPC has a handler and every handler is in the contract", () => {
+    const real = JSON.parse(readFileSync(new URL("../contracts/rpc.json", import.meta.url), "utf8"));
+    const ops = JSON.parse(readFileSync(new URL("../contracts/rpc-ops.json", import.meta.url), "utf8"));
+    const c = parseRpcContract(mergeOpsContract(real, ops));
+    for (const e of ops.rpcs as { name: string }[]) expect(Object.hasOwn(handlers, e.name), e.name).toBe(true);
+    for (const name of Object.keys(handlers)) expect(c.get(name), name).toBeDefined();
   });
 });

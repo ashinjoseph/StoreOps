@@ -1732,6 +1732,14 @@
     { tab: 'rules',       icon: '⚙️', label: 'Commission Rules', meta: 'Create & manage commission rules', roles: ['admin', 'payroll_admin'] },
   ];
 
+  // A screen that only the Operations app has is listed with `opsOnly: true` (ADR-0023).
+  // Inside Apps Script it is hidden: the calls behind it do not exist here. The Operations
+  // app's transport script sets the marker; Apps Script never loads that script.
+  function isOpsApp_() { return window.STOREOPS_APP === 'ops'; }
+  function moreItemsFor_(items, role, opsApp) {
+    return items.filter(function (it) { return it.roles.indexOf(role) >= 0 && (!it.opsOnly || opsApp); });
+  }
+
   function setupRoleVisibility() {
     // Bottom bar is the same 4 tabs for everyone: Shift, Schedule, My Pay, More.
     // Everything role-specific lives in the More drawer (filtered by MORE_ITEMS).
@@ -2899,7 +2907,7 @@
   function renderMoreTab() {
     const view = $('view-more');
     const role = state.me.role;
-    const items = MORE_ITEMS.filter(it => it.roles.indexOf(role) >= 0);
+    const items = moreItemsFor_(MORE_ITEMS, role, isOpsApp_());
     if (items.length === 0) {
       view.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>Nothing here yet.</div>';
       return;
