@@ -19,6 +19,13 @@
     { "name": "rpcPreviewMissedShift", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcEnterMissedShift", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcGetAuditLog", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
-    { "name": "rpcGetCommissionRunPaused", "params": ["token"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true }
+    { "name": "rpcGetCommissionRunPaused", "params": ["token"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
+    { "name": "rpcGetReceiptInbox", "params": ["token", "input"], "roles": null, "needs_session": true },
+    { "name": "rpcSetReceiptAside", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcSetReceiptBusiness", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcGetBusinesses", "params": ["token"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
+    { "name": "rpcUpdateBusiness", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcAddBusinessSign", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcRemoveBusinessSign", "params": ["token", "input"], "roles": ["admin"], "needs_session": true }
   ]
 }

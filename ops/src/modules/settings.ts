@@ -47,7 +47,7 @@ const LAYOUT: ReadonlyArray<readonly [Group, readonly string[]]> = [
   ["Till", ["till_enabled", "till_api_url", "till_key_expires_on"]],
   ["Commissions", ["commission_run_day", "commission_run_hour", "commission_run_paused"]],
   ["Public report", ["public_report_url"]],
-  ["Other", ["cstore_business_name", "vape_business_name", "timezone"]],
+  ["Other", ["cstore_business_name", "vape_business_name", "timezone", "receipt_max_mb"]],
   ["Assistants", ["assistants_enabled", "assistant_calls_per_minute", "assistant_proposals_per_day"]],
 ];
 
@@ -93,6 +93,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   assistants_enabled: "Open the door for AI assistants (/mcp). Off: the address answers nothing to anyone, key or no key",
   assistant_calls_per_minute: "Tool calls one assistant key may make in a minute",
   assistant_proposals_per_day: "Proposals one assistant key may make in a Toronto day",
+  receipt_max_mb: "Largest receipt original (photo or PDF) the Receipts screen accepts, in MB (1 to 25)",
 };
 
 /** A sentence added to the description the screen shows, whatever the table row says. */
@@ -136,6 +137,7 @@ const NUMBER_RULES: Readonly<Record<string, NumberRule>> = {
   cash_handover_stale_days: { min: 1, max: 365, integer: true },
   assistant_calls_per_minute: { min: 1, max: 600, integer: true },
   assistant_proposals_per_day: { min: 1, max: 5000, integer: true },
+  receipt_max_mb: { min: 1, max: 25, integer: true },
 };
 
 const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/;

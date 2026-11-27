@@ -197,6 +197,53 @@ sequenceDiagram
     R-->>UI: summary, including whether WhatsApp was sent
 ```
 
+## The Operations app (being built)
+
+The replacement for the Apps Script app (`ops/`, not live yet; see the
+[migration plan](../plans/2026-11-operations-app-migration.md)) is one
+Cloudflare Worker over Postgres. It serves the same page (`src/Index.html`,
+built into the Worker's assets) and has four ways in, each with its own way of
+saying who is calling:
+
+```mermaid
+flowchart LR
+    page["Browser<br/>Index.html + transport.js"]
+    asst["AI assistant<br/>(Muse, Claude)"]
+    pub["Owners, no login"]
+    subgraph worker["Cloudflare Worker (ops/src/index.ts)"]
+        rpc["/rpc/*<br/>RPC router · session token"]
+        files["/files/receipt-original<br/>PUT adds one · GET /id shows one<br/>session as a Bearer header"]
+        mcp["/mcp<br/>MCP door · assistant key<br/>off unless switched on"]
+        pages["/?v=recon · /?v=sales<br/>data inlined"]
+    end
+    pg[("Postgres<br/>(Hyperdrive)")]
+    r2[("R2 bucket RECEIPTS<br/>receipt originals")]
+    page --> rpc
+    page --> files
+    asst --> mcp
+    pub --> pages
+    rpc --> pg
+    files --> pg
+    files --> r2
+    mcp --> pg
+    pages --> pg
+```
+
+- **`/rpc/*`**: every screen's calls, checked against the contract
+  (`ops/contracts/rpc.json` plus the app's own `rpc-ops.json`,
+  [ADR-0023](../adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)).
+- **`/mcp`**: the door for AI assistants, with a key per person and only
+  read and propose tools
+  ([ADR-0025](../adr/0025-assistants-come-in-through-mcp-and-only-propose.md);
+  [assistants](../components/assistants.md)).
+- **`/files/receipt-original`**: receipt originals, uploaded as raw bytes and
+  served back only to a signed-in session; the bytes are kept in R2, their
+  record in Postgres
+  ([ADR-0026](../adr/0026-receipt-originals-are-kept-as-received.md);
+  [receipts](../components/receipts.md)).
+- **The public pages**, as before: no session, the data inlined
+  ([ADR-0003](../adr/0003-public-pages-inline-their-data.md)).
+
 ## Cross-cutting rules
 
 These hold across every module. Each has an ADR with the reasoning.

@@ -134,6 +134,25 @@ bootstrap RPC returns only the caller's identity and shift state. The generated 
 config **keys** and never values. Deploy credentials (`CLASPRC_JSON`) are a
 GitHub Actions secret.
 
+## The Operations app's doors
+
+The Operations app (`ops/`, not live yet) is a Cloudflare Worker over
+Postgres. Every answer leaves with `nosniff`, `no-referrer`, `DENY` framing
+and a content-security policy. Its ways in, and who each lets in:
+
+| Door | Who is calling | How it is checked |
+|---|---|---|
+| `POST /rpc/<name>` | a signed-in person | the session token (first argument) resolved from `ops.sessions` on every call, then the contract's roles; the handler checks again ([ADR-0023](../adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)) |
+| `POST /mcp` | an AI assistant, for one person | off unless `assistants_enabled`; a key per person and assistant, stored as a hash; read and propose tools only; a request with an `Origin` is refused; every call recorded ([ADR-0025](../adr/0025-assistants-come-in-through-mcp-and-only-propose.md)) |
+| `PUT /files/receipt-original` | a signed-in person adding a receipt original | the session from `Authorization: Bearer` (the same resolution as `/rpc`); a foreign `Origin` refused; `Content-Length` checked before reading and the body read with a hard cap; the type decided by the file's bytes; nothing converted ([ADR-0026](../adr/0026-receipt-originals-are-kept-as-received.md)) |
+| `GET /files/receipt-original/<id>` | a signed-in person allowed to see that original | the same header (never a URL or cookie); admin, manager and payroll admin see every original, an employee only their own of the last 7 days, and a forbidden id answers as a missing one; served with the stored type, `nosniff`, `inline` under a generated name, `private, no-store`, and `sandbox; default-src 'none'` so a hostile file cannot run script on the app's origin |
+| `/?v=recon`, `/?v=sales` | anyone | as the public pages above |
+
+Receipt originals are kept in an R2 bucket that is never public. The code has
+no way to erase or replace one, but a Worker binding cannot be denied that
+right, so the hosted bucket carries a retention lock
+([receipts](../components/receipts.md)).
+
 ## Audit
 
 Logins (`login.success`, `login.fail` with a reason, `login.logout`), payments,

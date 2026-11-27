@@ -55,6 +55,7 @@ shared globals, which hid at least one ordering-dependent pass.
 | `ui-dashboard` | tender tiles that never lose a tender, and where the chart sits |
 | `ui-picker` | chips show a whole category, needs-detail rows listed but not addable |
 | `ui-products` | no cost is "no cost recorded", not a 100% margin; margin sort |
+| `ui-receipts` | the Receipts and Businesses screens: both `opsOnly` (Receipts for every role, Businesses for admin, manager and payroll admin); an employee is shown only their own additions and no set-aside or business control; a photo over the limit refused before any request; the token only ever in an Authorization header, never in a URL, a toast or storage; blob URLs revoked when a view closes; the built page carries both |
 | `ui-recon` | reconcile history shows "not verified", never a $0 measurement |
 | `ui-reconcile-past` | "Run again for a past day" only in the Operations app and only for the roles that open the Reconcile screen; the Apps Script screen renders the same HTML as before; a day with several sets of results shows the newest and says how many it replaced; the form says no message is sent and earlier results are kept; the built page carries the control |
 | `ui-schedule-corrections` | "Correct this day" only for an admin in the Operations app, today or earlier; Toronto instants across both clock changes; the Apps Script cell sheet unchanged |

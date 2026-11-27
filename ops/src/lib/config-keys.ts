@@ -82,6 +82,8 @@ export const CONFIG_KEYS = {
   assistants_enabled: setting("boolean", "false"),
   assistant_calls_per_minute: setting("number", "30"),
   assistant_proposals_per_day: setting("number", "200"),
+  // Operations app only (card P5-12a, the receipt inbox): not in Setup.gs; listed in OPS_ONLY_KEYS below.
+  receipt_max_mb: setting("number", "10"),
 } as const satisfies Record<string, ConfigKeySpec>;
 
 export type ConfigKey = keyof typeof CONFIG_KEYS;
@@ -107,6 +109,8 @@ export const OPS_ONLY_KEYS: readonly string[] = [
   "assistant_proposals_per_day",
   // card P4-13, pause the Monday commission run
   "commission_run_paused",
+  // card P5-12a, the receipt inbox
+  "receipt_max_mb",
 ];
 
 export const SECRET_KEYS: readonly ConfigKey[] = (Object.keys(CONFIG_KEYS) as ConfigKey[]).filter((key) => CONFIG_KEYS[key].kind === "secret");

@@ -33,6 +33,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [Payroll](docs/components/payroll.md): Pay people for the days they worked, oldest first, and let each person check the arithmetic for themselves
 - [Product master](docs/components/product-master.md): One catalogue of everything the store sells, with cost, price and margin worked out from the inputs each kind of product actually has
 - [Public reports](docs/components/public-reports.md): Two read-only pages for owners and partners who need the numbers but shouldn't need a PIN
+- [Receipts and businesses](docs/components/receipts.md): Take a photo of a purchase receipt, or pick its PDF, and the app keeps it exactly as it was received, for the books and for a tax audit
 - [Reconcile](docs/components/reconcile.md): After every close, compare what the cashier entered against something that measured it independently, and say plainly what was checked and what wasn't
 - [Sales dashboard](docs/components/sales-dashboard.md): How trade is going, in the four questions a corner store acts on
 - [Schedule and attendance](docs/components/schedule-and-attendance.md): Plan the week, then let the tills record who actually worked and for how long
@@ -70,6 +71,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [0023. The Operations app has RPCs and screens of its own, listed apart and hidden in Apps Script](docs/adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)
 - [0024. The till is read through one client that never throws, and ships switched off](docs/adr/0024-the-till-is-read-through-one-client.md)
 - [0025. Assistants come in through MCP, with a key per person, and only propose](docs/adr/0025-assistants-come-in-through-mcp-and-only-propose.md)
+- [0026. Receipt originals are kept as received, and served back only to a signed-in session](docs/adr/0026-receipt-originals-are-kept-as-received.md)
 
 ## Guides
 

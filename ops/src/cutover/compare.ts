@@ -48,6 +48,10 @@ export const LATER_OPS_TABLES: readonly string[] = [
   // card P5-11, the MCP door (0009_assistant_keys.sql)
   "assistant_keys",
   "assistant_calls",
+  // card P5-12a, the two businesses and the receipt inbox (0010_receipt_inbox.sql)
+  "businesses",
+  "business_signs",
+  "receipt_originals",
 ];
 
 /** The column each table's rows are grouped by, per month (America/Toronto). null: the table has no date. */

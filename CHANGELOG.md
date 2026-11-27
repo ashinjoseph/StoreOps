@@ -1487,3 +1487,43 @@ reading the log, ordering by time, phone numbers unmasked, a `pinHash` shown, th
 action put into the SQL, a value rendered without `esc()`, the pause also stopping
 Run engine, the weekly job running while paused, a session id or an amount masked as
 a phone number).
+
+### The two businesses and a receipt inbox, in the Operations app (P5-12a)
+
+- **More → Receipts**, for everyone signed in: take a photo of a purchase
+  receipt or choose its PDF, say which business (cstore, vape or not sure),
+  add a note, and send. The original is kept exactly as received (never
+  shrunk or converted), with its SHA-256, size and type, in an R2 bucket
+  (`RECEIPTS`, `storeops-receipts`) and a row in `ops.receipt_originals`. The
+  same file twice is one original ("Already on file, added … by …"). Nothing
+  is read from it yet.
+- Admin, manager and payroll admin see the list (Waiting, then Set aside) with
+  previews, and open an original large; admin and manager set one aside with a
+  reason, put it back, or say which business it belongs to. An employee sees
+  their own additions of the last 7 days.
+- **More → Businesses**: each business's legal name, HST number (nine digits,
+  RT, four digits) and the signs that say a receipt is its own (a name as
+  printed, an HST number, a supplier account, a card's last four digits).
+  Changed by an admin; read by manager and payroll admin. One sign belongs to
+  one business only, however it is spaced, dashed or cased.
+- Two routes beside `/rpc/*` and `/mcp`: `PUT /files/receipt-original` (the
+  session as a bearer header, the type decided by the file's bytes: JPEG, PNG,
+  WebP, HEIC/HEIF or PDF; at most `receipt_max_mb`, default 10) and
+  `GET /files/receipt-original/<id>` (only to a session allowed to see it,
+  sandboxed, never cached, never by a URL alone). Seven new calls in
+  `rpc-ops.json`; every change audited.
+- The assistant's `businesses` tool now also answers each business's legal
+  name, HST number and live signs.
+- Three new tables (migration 0010), not loaded or compared by the cutover
+  tools. The hosted setup must create the bucket and put a retention lock on it.
+
+Why, and what was rejected: [ADR-0026](docs/adr/0026-receipt-originals-are-kept-as-received.md).
+See [receipts](docs/components/receipts.md).
+
+New: `ops/test/receipt-inbox.test.ts`, `ops/test/businesses.test.ts` and the
+`ui-receipts` suite, against a real database and the in-memory bucket; each
+failed before the code existed, and against ten deliberate mutations (the sent
+type trusted, SVG accepted, no size cap, an employee viewing another's
+original, no sandbox or `nosniff`, a second object for the same hash, a
+`delete` in the storage interface, the file name in the storage key, one sign
+for both businesses, an original served without a session).

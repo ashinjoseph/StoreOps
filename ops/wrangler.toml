@@ -28,6 +28,15 @@ run_worker_first = true
 binding = "HYPERDRIVE"
 id = "REPLACE_IN_P2-10"
 
+# Receipt originals (card P5-12a, ADR-0026): photos and PDFs kept byte for byte, never deleted by the
+# app (src/receipts/storage.ts has no delete). The hosted setup creates this bucket (and puts a
+# retention lock on it: a binding cannot be denied delete); `wrangler dev` emulates it on disk under
+# .wrangler/ with no account. Never public: originals are served only through
+# GET /files/receipt-original/<id> to a signed-in session.
+[[r2_buckets]]
+binding = "RECEIPTS"
+bucket_name = "storeops-receipts"
+
 # The weekly commission run (src/cron.ts): Mondays at 09:00 in Toronto. A cron has no time zone, and
 # Toronto's 09:00 is 13:00 UTC in summer time and 14:00 UTC in winter time, so both fire and the handler
 # runs only the one that is 09:00 there. Keep this list equal to CRON_SCHEDULES in src/cron.ts (a test

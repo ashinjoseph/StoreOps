@@ -40,7 +40,7 @@ withdrawn, expired and stopped keys greyed), and has two actions:
 | Tool | Right | Answers |
 |---|---|---|
 | `whoami` | read | `{ label, name, right, expires, personalDetails }`: the key's label, its person's name, the right, the expiry day (Toronto, `YYYY-MM-DD`), and whether it may see personal details. Nothing else about the person |
-| `businesses` | read | `{ businesses: [ { key: "cstore", name }, { key: "vape", name } ] }`, the names from `cstore_business_name` and `vape_business_name` |
+| `businesses` | read | `{ businesses: [ { key, name, legalName, hstNumber, signs: [ { kind, value, supplier } ] } ] }` for `cstore` then `vape`: `name` is the display name (`cstore_business_name`, `vape_business_name`); `legalName` and `hstNumber` are null until an admin records them on the Businesses screen; `signs` are the live signs that say a receipt is that business's (`kind` `name`, `hst_number`, `supplier_account` with its `supplier`, or `card_last4`; `supplier` is null for the others). None of it is secret: it is what is printed on receipts. Nothing about who added a sign. See [receipts](receipts.md) |
 | `my_proposals` | read | `{ proposals: [ { id, kind, status, made_at, decided_at, note } ] }`: this key's own proposals, `status` being `waiting`, `confirmed` or `refused`. Empty until a card adds a propose tool. Optional input: `status`, `limit` (1 to 50) |
 
 Every answer is one text block: a one-line summary, then the JSON. Every tool's
@@ -203,6 +203,9 @@ nothing.
 
 ## History
 
+- **Nov 2026 (card P5-12a):** the `businesses` tool also answers each
+  business's legal name, HST number and live signs
+  ([receipts](receipts.md)).
 - **Nov 2026 (card P5-11):** the door: `/mcp` on the official MCP SDK,
   stateless and off by default; keys per person and assistant, read and
   propose rights, limits, a record of every call, the Assistants screen, and

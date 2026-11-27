@@ -90,7 +90,7 @@ hand one out.
 | P5-09 | Bookkeeping export of receipts, per business, in QuickBooks's layout | T2 | P5-05 | money | todo |
 | P5-10 | Trial with Muse: can it hand over an original, and how does it connect | T2 + owner | P2-10 | security | todo (needs a public address: the hosted setup) |
 | P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | | security | done (switched off; questions for the trial and the owner, in the card) |
-| P5-12a | The two businesses and the receipt inbox (originals kept) | T3 | | money, security | in progress |
+| P5-12a | The two businesses and the receipt inbox (originals kept) | T3 | | money, security | done (to try on a real phone; notes in the card) |
 | P5-12b | The assistant's tools for the inbox: hand over an original, see one, list those waiting | T3 | P5-12a, P5-11 | security | todo |
 | P5-13 | Emailed invoices through the assistant | T2 | P5-05 | security | todo |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
@@ -1185,6 +1185,34 @@ would be a card of its own. For the owner: how long to keep the record of
 calls (it is never deleted today), and whether 30 calls a minute suits how
 Muse works. Still to write: the new way in belongs in the architecture and
 security pages too.
+
+**P5-12a is done:** More → Receipts, for everyone signed in: "Take a photo"
+or "Choose a file", which business (cstore, vape or not sure), an optional
+note. The original is kept byte for byte in file storage (R2) with its
+fingerprint in the database; the same file twice is one original; nothing
+in the code can delete or overwrite one. JPEG, PNG, WebP, HEIC and PDF up
+to 10 MB (a setting); the kind is decided by the file's own bytes, never by
+its name. Admin, manager and payroll admin see every original; an employee
+sees only their own for 7 days. An original can be set aside ("not a
+receipt") with a reason, and put back. It is shown only to a signed-in
+person allowed to see it, in a locked-down view that cannot run anything.
+More → Businesses: each business's legal name, HST number and its signs (a
+name as printed, an HST number, a supplier account, the last four digits of
+a card), edited by an admin; one sign can belong to one business only. The
+assistant's `businesses` tool now gives these, so an assistant can tell
+which business a receipt is for.
+[ADR-0026](../adr/0026-receipt-originals-are-kept-as-received.md),
+[receipts](../components/receipts.md). Notes:
+1. **Not yet tried on a real phone.** An iPhone may send its own photo
+   format (HEIC), which Chrome and Firefox cannot display; the original is
+   kept either way. A 48-megapixel photo can pass 10 MB and is refused
+   before sending, with a message to pick a smaller picture size.
+2. **The hosted setup must** create the private bucket and put a retention
+   lock on it: the app cannot be denied the right to erase from its own
+   storage, so the lock is the real guard. How long: tax records are
+   generally kept six years; confirm with the bookkeeper.
+3. A card sign must be exactly four digits ("48 21" with a space is
+   refused).
 
 ## Phase 6 — App
 

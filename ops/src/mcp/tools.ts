@@ -18,6 +18,7 @@ import { z } from "zod";
 import type { Tx } from "../db/tx";
 import type { Config } from "../lib/config";
 import { formatDate } from "../lib/dates";
+import { list as listBusinesses } from "../receipts/businesses";
 import { asData } from "./data";
 import type { KeyInfo, Right } from "./keys";
 
@@ -70,14 +71,19 @@ const businesses: ToolDef = {
   name: "businesses",
   right: "read",
   title: "The two businesses",
-  description: "The store's two businesses, each with its key (cstore or vape) and its display name. Every receipt and every proposal belongs to exactly one of them. " + DATA_SENTENCE,
+  description:
+    "The store's two businesses (separate companies with separate books), each with its key (cstore or vape), its display name, its legal name and HST number (null until recorded), and its signs: what printed on a receipt says it is that business's (kind name, hst_number, supplier_account with the supplier's name, or card_last4). Every receipt and every proposal belongs to exactly one of them; when no sign settles it, the business is not known, never guessed. " +
+    DATA_SENTENCE,
   input: NOTHING,
   async run(ctx) {
-    const list = [
-      { key: "cstore", name: asData(ctx.config.value("cstore_business_name")) },
-      { key: "vape", name: asData(ctx.config.value("vape_business_name")) },
-    ];
-    return { summary: `2 businesses: ${list.map((b) => `${b.key} (${b.name})`).join(", ")}.`, data: { businesses: list } };
+    const list = (await listBusinesses(ctx.db, ctx.config)).map((b) => ({
+      key: b.key,
+      name: asData(b.displayName),
+      legalName: b.legalName === null ? null : asData(b.legalName),
+      hstNumber: b.hstNumber,
+      signs: b.signs.map((g) => ({ kind: g.kind, value: asData(g.value), supplier: g.supplier === null ? null : asData(g.supplier) })),
+    }));
+    return { summary: `2 businesses: ${list.map((b) => `${b.key} (${b.name}, ${b.signs.length} sign${b.signs.length === 1 ? "" : "s"})`).join(", ")}.`, data: { businesses: list } };
   },
 };
 

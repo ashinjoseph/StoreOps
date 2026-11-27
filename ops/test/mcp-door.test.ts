@@ -146,17 +146,17 @@ describe("the tools", () => {
     await client.close();
   });
 
-  it("businesses: the two, by key, with their display names from the settings", async () => {
+  it("businesses: the two, by key, with their display names from the settings, legal names, HST numbers and signs (card P5-12a)", async () => {
     await setConfig(w, "cstore_business_name", "Corner Example");
     const client = await sdkClient(w, (await makeKey(w)).key);
     const result = await client.callTool({ name: "businesses", arguments: {} });
     const data = jsonOf(result);
     expect(Object.keys(data)).toEqual(["businesses"]);
     expect(data["businesses"]).toEqual([
-      { key: "cstore", name: "Corner Example" },
-      { key: "vape", name: "YV Vape Shop" },
+      { key: "cstore", name: "Corner Example", legalName: null, hstNumber: null, signs: [] },
+      { key: "vape", name: "YV Vape Shop", legalName: null, hstNumber: null, signs: [] },
     ]);
-    for (const b of data["businesses"] as object[]) expect(Object.keys(b).sort()).toEqual(["key", "name"]);
+    for (const b of data["businesses"] as object[]) expect(Object.keys(b).sort()).toEqual(["hstNumber", "key", "legalName", "name", "signs"]);
     await client.close();
   });
 

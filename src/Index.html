@@ -1277,6 +1277,8 @@
     <div class="view" id="view-staff"></div>
     <div class="view" id="view-assistants"></div>
     <div class="view" id="view-audit"></div>
+    <div class="view" id="view-receipts"></div>
+    <div class="view" id="view-businesses"></div>
     <div class="view" id="view-shopping"></div>
     <div class="view" id="view-suppliers"></div>
     <div class="view" id="view-products"></div>
@@ -1719,7 +1721,7 @@
 
   // Tabs accessed only via the "More" drawer (no direct bottom-bar button).
   // Every role gets the More drawer; History/Shopping/Suppliers live there for all.
-  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon', 'settings', 'staff', 'assistants', 'audit'];
+  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon', 'settings', 'staff', 'assistants', 'audit', 'receipts', 'businesses'];
 
   // Items shown in the "More" drawer, with role visibility.
   const ALL_ROLES = ['admin', 'manager', 'payroll_admin', 'employee'];
@@ -1738,6 +1740,8 @@
     { tab: 'staff',       icon: '👥', label: 'Staff',            meta: 'Add people, PINs, roles, pay rates', roles: ['admin', 'manager'], opsOnly: true },
     { tab: 'assistants',  icon: '🤖', label: 'Assistants',       meta: 'Keys for AI assistants (MCP)',     roles: ['admin'], opsOnly: true },
     { tab: 'audit',       icon: '🔎', label: 'Audit log',        meta: 'Who did what, newest first',       roles: ['admin'], opsOnly: true },
+    { tab: 'receipts',    icon: '🧾', label: 'Receipts',         meta: 'Add a photo or PDF of a receipt',  roles: ALL_ROLES, opsOnly: true },
+    { tab: 'businesses',  icon: '🏢', label: 'Businesses',       meta: 'Legal names, HST numbers, signs',  roles: ['admin', 'manager', 'payroll_admin'], opsOnly: true },
   ];
 
   // A screen that only the Operations app has is listed with `opsOnly: true` (ADR-0023).
@@ -1769,7 +1773,7 @@
     return {
       shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab,
       payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
-      commissions: loadCommissionsTab, rules: loadRulesTab, settings: loadSettingsTab, staff: loadStaffAdminTab, assistants: loadAssistantsTab, audit: loadAuditLogTab, more: loadMoreTab,
+      commissions: loadCommissionsTab, rules: loadRulesTab, settings: loadSettingsTab, staff: loadStaffAdminTab, assistants: loadAssistantsTab, audit: loadAuditLogTab, receipts: loadReceiptsTab, businesses: loadBusinessesTab, more: loadMoreTab,
       shopping: loadShoppingTab, suppliers: loadSuppliersTab,
       products: loadProductsTab, cash: loadCashTab, recon: loadReconTab,
     };
@@ -1787,7 +1791,7 @@
     const titles = {
       shift: 'My Shift', schedule: 'Schedule', mypay: 'My Pay',
       payroll: 'Payroll', sales: 'Sales', history: 'History',
-      commissions: 'Commissions', rules: 'Commission Rules', settings: 'Settings', staff: 'Staff', assistants: 'Assistants', audit: 'Audit log', more: 'More',
+      commissions: 'Commissions', rules: 'Commission Rules', settings: 'Settings', staff: 'Staff', assistants: 'Assistants', audit: 'Audit log', receipts: 'Receipts', businesses: 'Businesses', more: 'More',
       shopping: 'Shopping List', suppliers: 'Suppliers',
       products: 'Product Master', cash: 'Cash Handling', recon: 'Reconcile',
     };
@@ -1795,6 +1799,7 @@
     // Clear running timers from previous tab
     state.runningTimers.forEach(id => clearInterval(id));
     state.runningTimers = [];
+    revokeReceiptBlobs_(); // the Receipts screen's blob URLs go when any screen is opened
     (tabLoaders_()[tab] || (() => {}))();
   }
 
@@ -6579,6 +6584,562 @@
       btn.disabled = false;
       btn.textContent = 'Older';
     }
+  }
+
+  // ============================================================
+  //  ░░  TAB: RECEIPTS (the Operations app only; ADR-0023, ADR-0026)  ░░
+  // ============================================================
+  //  Anyone signed in adds a receipt original: a photo taken now or a file
+  //  chosen. It is sent as it is (never shrunk or converted: the server keeps
+  //  it byte for byte) to PUT /files/receipt-original, with the session in an
+  //  Authorization header. An original is fetched back the same way and shown
+  //  from a blob URL; the token is never put in a URL, a toast or storage, and
+  //  every blob URL is revoked when its view closes.
+  //  Admin, manager and payroll admin see the list; admin and manager set an
+  //  original aside or change its business; an employee sees their own of the
+  //  last 7 days.
+  // ============================================================
+  const RECEIPT_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,application/pdf';
+  const RECEIPT_MB = 1024 * 1024;
+  const receiptState_ = { file: null, source: 'upload', previewUrl: null, blobs: [], maxMb: 10 };
+
+  // "2.4 MB", "830 KB", "512 bytes" (the server's own wording).
+  function receiptSizeText_(bytes) {
+    const n = Number(bytes) || 0;
+    if (n >= RECEIPT_MB) return (n / RECEIPT_MB).toFixed(1) + ' MB';
+    if (n >= 1024) return Math.round(n / 1024) + ' KB';
+    return n + ' bytes';
+  }
+
+  function receiptBusinessLabel_(b) {
+    return b === 'cstore' ? 'cstore' : b === 'vape' ? 'vape' : 'business not known';
+  }
+
+  function receiptWhen_(iso) {
+    const d = new Date(iso);
+    if (!iso || isNaN(d.getTime())) return '';
+    return d.toLocaleString('en-CA', { timeZone: 'America/Toronto', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  // Refused on the device, before anything is sent: the page never shrinks a photo.
+  function receiptTooLarge_(file, maxMb) {
+    if (!file) return '';
+    const mb = Number(maxMb) || 10;
+    if (file.size <= mb * RECEIPT_MB) return '';
+    const isImage = String(file.type || '').indexOf('image/') === 0 || /\.(jpe?g|png|webp|heic|heif)$/i.test(String(file.name || ''));
+    return 'This ' + (isImage ? 'photo' : 'file') + ' is ' + receiptSizeText_(file.size) + ', more than the ' + mb + ' MB the app keeps. ' +
+      (isImage ? 'Choose a smaller picture size in the phone\'s camera settings and take it again.' : 'Ask for a smaller copy of the file.');
+  }
+
+  // The headers of an upload. The token goes in Authorization and nowhere else.
+  function receiptUploadHeaders_(token, file, opts) {
+    const h = { authorization: 'Bearer ' + token, 'x-receipt-source': opts.source === 'photo' ? 'photo' : 'upload' };
+    if (opts.business === 'cstore' || opts.business === 'vape') h['x-receipt-business'] = opts.business;
+    if (file && file.name) h['x-receipt-filename'] = encodeURIComponent(String(file.name).slice(0, 300));
+    const note = String(opts.note || '').trim();
+    if (note) h['x-receipt-note'] = encodeURIComponent(note.slice(0, 300));
+    return h;
+  }
+
+  // PUT the file as it is. Answers { ok, status, result } or { ok: false, status, message }.
+  async function sendReceiptOriginal_(file, opts) {
+    let res;
+    try {
+      res = await fetch('/files/receipt-original', { method: 'PUT', headers: receiptUploadHeaders_(state.token, file, opts), body: file, credentials: 'same-origin' });
+    } catch (e) {
+      return { ok: false, status: 0, message: 'The receipt could not be sent (no connection). Try again.' };
+    }
+    let body = null;
+    try { body = await res.json(); } catch (e) { body = null; }
+    if (body && body.ok === true) return { ok: true, status: res.status, result: body.result };
+    return { ok: false, status: res.status, message: (body && body.error && body.error.message) || 'The receipt could not be sent. Try again.' };
+  }
+
+  // GET an original with the session in a header; a blob URL, remembered so it is revoked later.
+  async function fetchReceiptOriginal_(id) {
+    const res = await fetch('/files/receipt-original/' + encodeURIComponent(id), { headers: { authorization: 'Bearer ' + state.token }, credentials: 'same-origin' });
+    if (!res.ok) {
+      let msg = 'This original could not be shown.';
+      try { const b = await res.json(); if (b && b.error && b.error.message) msg = b.error.message; } catch (e) { /* not JSON */ }
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    receiptState_.blobs.push(url);
+    return { url, type: blob.type };
+  }
+
+  function revokeReceiptUrl_(url) {
+    if (!url) return;
+    try { URL.revokeObjectURL(url); } catch (e) { /* already gone */ }
+    receiptState_.blobs = receiptState_.blobs.filter(u => u !== url);
+  }
+
+  // Every blob URL the Receipts screen made: called when the screen is left or drawn again.
+  function revokeReceiptBlobs_() {
+    receiptState_.blobs.slice().forEach(revokeReceiptUrl_);
+    if (receiptState_.previewUrl) { try { URL.revokeObjectURL(receiptState_.previewUrl); } catch (e) { /* gone */ } }
+    receiptState_.previewUrl = null;
+  }
+
+  async function loadReceiptsTab(force) {
+    const view = $('view-receipts');
+    const args = [state.token, { status: 'waiting' }];
+    if (force || !cacheFresh('rpcGetReceiptInbox', args, TTL_LIVE)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading receipts…</div>';
+    }
+    try {
+      const data = await cachedCall('rpcGetReceiptInbox', args, TTL_LIVE, { force });
+      let aside = null;
+      if (data && data.scope === 'all') aside = await cachedCall('rpcGetReceiptInbox', [state.token, { status: 'set_aside' }], TTL_LIVE, { force });
+      renderReceiptsTab(data, aside);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function receiptAddHTML_(maxMb) {
+    return '<div class="payroll-card" style="margin-bottom:12px" id="rcptAdd">' +
+      '<div style="font-size:15px;font-weight:700;margin-bottom:4px">Add a receipt</div>' +
+      '<div style="font-size:11px;color:#6a6e79;margin-bottom:10px">A photo or a PDF, up to ' + esc(maxMb) + ' MB. It is kept exactly as sent.</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:10px">' +
+        '<label class="btn-primary" style="flex:1;text-align:center;cursor:pointer">📷 Take a photo' +
+          '<input type="file" id="rcptCamera" accept="image/*" capture="environment" style="display:none"></label>' +
+        '<label class="payroll-btn payroll-btn-secondary" style="flex:1;text-align:center;cursor:pointer;padding:12px">📄 Choose a file' +
+          '<input type="file" id="rcptFile" accept="' + RECEIPT_ACCEPT + '" style="display:none"></label>' +
+      '</div>' +
+      '<div id="rcptPreview"></div>' +
+      '<div class="sheet-field"><label>Which business</label><select id="rcptBusiness">' +
+        '<option value="">Not sure</option><option value="cstore">cstore</option><option value="vape">vape</option></select></div>' +
+      '<div class="sheet-field"><label>Note (optional)</label><input type="text" id="rcptNote" maxlength="300" autocomplete="off"></div>' +
+      '<div id="rcptMsg" style="font-size:12px;font-weight:600;min-height:16px;margin-bottom:8px"></div>' +
+      '<button class="btn-primary" id="rcptSend" disabled>Send</button>' +
+    '</div>';
+  }
+
+  function receiptThumbHTML_(it) {
+    if (it.contentType === 'application/pdf') {
+      return '<div style="width:48px;height:48px;flex:0 0 48px;border-radius:6px;background:#fee2e2;color:#b91c1c;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center">PDF</div>';
+    }
+    return '<div data-receipt-thumb="' + esc(it.id) + '" style="width:48px;height:48px;flex:0 0 48px;border-radius:6px;background:#f0f1f5;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:10px;color:#6a6e79">' +
+      (it.contentType === 'image/heic' ? 'HEIC' : '…') + '</div>';
+  }
+
+  function receiptRowHTML_(it) {
+    const aside = it.status === 'set_aside' && it.setAside;
+    return '<div class="payroll-card" data-receipt-id="' + esc(it.id) + '" style="margin-bottom:8px;cursor:pointer' + (aside ? ';opacity:.7' : '') + '">' +
+      '<div class="payroll-card-head" style="gap:10px">' +
+        receiptThumbHTML_(it) +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(it.fileName || (it.contentType === 'application/pdf' ? 'PDF' : 'Photo')) + '</div>' +
+          '<div class="payroll-rate">' + esc(it.addedBy) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + '</div>' +
+          '<div class="payroll-rate">' + esc(receiptBusinessLabel_(it.business)) + (it.note ? ' · ' + esc(it.note) : '') + '</div>' +
+          (aside ? '<div class="payroll-rate">Set aside by ' + esc(it.setAside.by) + ': ' + esc(it.setAside.reason) + '</div>' : '') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // data: the waiting page, or an employee's own list; aside: the set-aside page (admin, manager, payroll admin).
+  function renderReceiptsTab(data, aside) {
+    const view = $('view-receipts');
+    revokeReceiptBlobs_();
+    receiptState_.file = null;
+    receiptState_.maxMb = (data && data.maxMb) || 10;
+    const items = (data && data.items) || [];
+    let html = moreBack();
+    html += '<div style="font-size:13px;font-weight:700;margin-bottom:4px">Receipts</div>' +
+      '<div style="font-size:11px;color:#6a6e79;margin-bottom:12px">Every purchase receipt or invoice is kept as it was received, for the books and for an audit. Nothing is read from it yet.</div>';
+    html += receiptAddHTML_(receiptState_.maxMb);
+    if (data && data.scope === 'own') {
+      html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">What you added in the last ' + esc(data.days) + ' days</div>';
+      if (!items.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing yet.</div>';
+      items.forEach(it => { html += receiptRowHTML_(it); });
+    } else if (data && data.scope === 'all') {
+      const counts = data.counts || {};
+      html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Waiting (' + esc(counts.waiting || 0) + ')</div>';
+      if (!items.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing waiting.</div>';
+      items.forEach(it => { html += receiptRowHTML_(it); });
+      const asideItems = (aside && aside.items) || [];
+      html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Set aside (' + esc(counts.set_aside || 0) + ')</div>';
+      if (!asideItems.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing set aside.</div>';
+      asideItems.forEach(it => { html += receiptRowHTML_(it); });
+    }
+    view.innerHTML = html;
+    wireReceiptAdd_();
+    const all = items.concat((aside && aside.items) || []);
+    const canEdit = !!(data && data.scope === 'all' && data.canSetAside);
+    view.querySelectorAll('[data-receipt-id]').forEach(el => {
+      el.onclick = () => {
+        haptic();
+        const it = all.find(x => x.id === el.dataset.receiptId);
+        if (it) openReceiptSheet_(it, canEdit);
+      };
+    });
+    loadReceiptThumbs_(view);
+  }
+
+  // Small previews, a few at a time, as they come into sight.
+  function loadReceiptThumbs_(view) {
+    const queue = [];
+    let running = 0;
+    const next = () => {
+      while (running < 3 && queue.length) {
+        const el = queue.shift();
+        running++;
+        fetchReceiptOriginal_(el.dataset.receiptThumb)
+          .then(o => {
+            el.innerHTML = '<img alt="" src="' + esc(o.url) + '" style="width:100%;height:100%;object-fit:cover">';
+            const img = el.querySelector('img');
+            if (img) img.onerror = () => { el.textContent = 'no preview'; };
+          })
+          .catch(() => { el.textContent = '—'; })
+          .then(() => { running--; next(); });
+      }
+    };
+    const els = [];
+    view.querySelectorAll('[data-receipt-thumb]').forEach(el => els.push(el));
+    if (typeof IntersectionObserver === 'function') {
+      const io = new IntersectionObserver(entries => {
+        entries.forEach(e => { if (e.isIntersecting) { io.unobserve(e.target); queue.push(e.target); } });
+        next();
+      });
+      els.forEach(el => io.observe(el));
+    } else {
+      els.forEach(el => queue.push(el));
+      next();
+    }
+  }
+
+  function receiptPickHTML_(file) {
+    return '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">' +
+      '<div id="rcptPreviewBox" style="width:64px;height:64px;flex:0 0 64px;border-radius:6px;background:#f0f1f5;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:11px;color:#6a6e79">' +
+        (String(file.type) === 'application/pdf' ? 'PDF' : '') + '</div>' +
+      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(file.name || 'Photo') + '</div>' +
+      '<div class="payroll-rate">' + esc(receiptSizeText_(file.size)) + ' will be sent, as it is</div></div></div>';
+  }
+
+  function wireReceiptAdd_() {
+    const msg = $('rcptMsg');
+    const send = $('rcptSend');
+    const pick = (input, source) => {
+      if (!input) return;
+      input.onchange = () => {
+        const file = input.files && input.files[0];
+        if (receiptState_.previewUrl) { try { URL.revokeObjectURL(receiptState_.previewUrl); } catch (e) { /* gone */ } receiptState_.previewUrl = null; }
+        receiptState_.file = null;
+        msg.textContent = '';
+        msg.style.color = '#b91c1c';
+        if (!file) { send.disabled = true; $('rcptPreview').innerHTML = ''; return; }
+        const tooBig = receiptTooLarge_(file, receiptState_.maxMb);
+        if (tooBig) { msg.textContent = tooBig; send.disabled = true; $('rcptPreview').innerHTML = ''; input.value = ''; return; }
+        receiptState_.file = file;
+        receiptState_.source = source;
+        $('rcptPreview').innerHTML = receiptPickHTML_(file);
+        if (String(file.type).indexOf('image/') === 0) {
+          receiptState_.previewUrl = URL.createObjectURL(file);
+          const box = $('rcptPreviewBox');
+          box.innerHTML = '<img alt="" src="' + esc(receiptState_.previewUrl) + '" style="width:100%;height:100%;object-fit:cover">';
+          const img = box.querySelector('img');
+          if (img) img.onerror = () => { box.textContent = 'no preview'; };
+        }
+        send.disabled = false;
+      };
+    };
+    pick($('rcptCamera'), 'photo');
+    pick($('rcptFile'), 'upload');
+    if (send) send.onclick = () => { haptic(); submitReceipt_(); };
+  }
+
+  async function submitReceipt_() {
+    const msg = $('rcptMsg');
+    const send = $('rcptSend');
+    const file = receiptState_.file;
+    if (!file) return;
+    const tooBig = receiptTooLarge_(file, receiptState_.maxMb);
+    msg.style.color = '#b91c1c';
+    if (tooBig) { msg.textContent = tooBig; return; }
+    send.disabled = true;
+    send.textContent = 'Sending ' + receiptSizeText_(file.size) + '…';
+    msg.style.color = '#4a4e59';
+    msg.textContent = 'Sending…';
+    const out = await sendReceiptOriginal_(file, { source: receiptState_.source, business: $('rcptBusiness').value, note: $('rcptNote').value });
+    send.textContent = 'Send';
+    if (!out.ok) {
+      if (out.status === 401 || out.message === 'NOT_LOGGED_IN') { handleRpcError(new Error('NOT_LOGGED_IN')); return; }
+      msg.style.color = '#b91c1c';
+      msg.textContent = out.message;
+      send.disabled = false;
+      return;
+    }
+    rpcCache.clear();
+    const r = out.result || {};
+    const words = r.message || 'Kept.';
+    toast(r.duplicate ? 'Already on file' : '✓ Receipt kept', r.duplicate ? 'warning' : 'success');
+    await loadReceiptsTab(true);
+    const again = $('rcptMsg');
+    if (again) { again.style.color = r.duplicate ? '#b45309' : '#15803d'; again.textContent = words; }
+  }
+
+  // The original, large. Admin and manager may set it aside, put it back, or change its business.
+  async function openReceiptSheet_(it, canEdit) {
+    const isPdf = it.contentType === 'application/pdf';
+    const aside = it.status === 'set_aside';
+    const bodyHTML =
+      '<div id="rcptBig" style="min-height:120px;display:flex;align-items:center;justify-content:center;background:#f6f7f9;border-radius:8px;margin-bottom:10px;font-size:12px;color:#6a6e79">Loading the original…</div>' +
+      '<div class="payroll-rate">' + esc(it.addedBy) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + ' · ' + esc(it.source === 'photo' ? 'photo' : 'file') + '</div>' +
+      '<div class="payroll-rate">' + esc(receiptBusinessLabel_(it.business)) + (it.note ? ' · ' + esc(it.note) : '') + '</div>' +
+      (aside && it.setAside ? '<div class="payroll-rate">Set aside by ' + esc(it.setAside.by) + ', ' + esc(receiptWhen_(it.setAside.at)) + ': ' + esc(it.setAside.reason) + '</div>' : '') +
+      '<div id="rcptSheetErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    const actionsHTML = canEdit
+      ? (aside
+        ? '<button class="sheet-cancel" id="rcptCloseBtn">Close</button><button class="sheet-submit" id="rcptBackBtn">Put back</button>'
+        : '<button class="sheet-cancel" id="rcptAsideBtn">Set aside</button><button class="sheet-submit" id="rcptBizBtn">Change business</button>')
+      : '<button class="sheet-submit" id="rcptCloseBtn">Close</button>';
+    openSheet({ title: it.fileName || (isPdf ? 'PDF' : 'Photo'), subtitle: 'Receipt original', bodyHTML, actionsHTML });
+    let url = null;
+    let open = true;
+    const close = () => {
+      open = false;
+      revokeReceiptUrl_(url);
+      url = null;
+      $('sheetClose').onclick = closeSheet;
+      $('backdrop').onclick = closeSheet;
+      closeSheet();
+    };
+    $('sheetClose').onclick = close;
+    $('backdrop').onclick = close;
+    const closeBtn = $('rcptCloseBtn');
+    if (closeBtn) closeBtn.onclick = () => { haptic(); close(); };
+    const asideBtn = $('rcptAsideBtn');
+    if (asideBtn) asideBtn.onclick = () => { haptic(); close(); openReceiptAsideSheet_(it); };
+    const bizBtn = $('rcptBizBtn');
+    if (bizBtn) bizBtn.onclick = () => { haptic(); close(); openReceiptBusinessSheet_(it); };
+    const backBtn = $('rcptBackBtn');
+    if (backBtn) backBtn.onclick = async () => {
+      haptic();
+      backBtn.disabled = true;
+      try {
+        await call('rpcSetReceiptAside', state.token, { id: it.id, aside: false });
+        close();
+        toast('✓ Put back with the waiting receipts', 'success');
+        loadReceiptsTab(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('rcptSheetErr').textContent = e.message;
+        backBtn.disabled = false;
+      }
+    };
+    try {
+      const o = await fetchReceiptOriginal_(it.id);
+      if (!open) { revokeReceiptUrl_(o.url); return; }
+      url = o.url;
+      const big = $('rcptBig');
+      if (isPdf) {
+        big.innerHTML = '<button class="btn-primary" id="rcptOpenPdf" style="margin:16px">Open the PDF</button>';
+        $('rcptOpenPdf').onclick = () => { haptic(); window.open(url, '_blank', 'noopener'); };
+      } else {
+        big.innerHTML = '<img alt="Receipt original" src="' + esc(url) + '" style="max-width:100%;max-height:60vh;display:block">';
+        const img = big.querySelector('img');
+        if (img) img.onerror = () => { big.textContent = 'This device cannot show this kind of photo (' + it.contentType + '). It is kept as it was sent.'; };
+      }
+    } catch (e) {
+      const big = $('rcptBig');
+      if (big && open) big.textContent = e.message;
+    }
+  }
+
+  function openReceiptAsideSheet_(it) {
+    const bodyHTML =
+      '<div style="font-size:12px;color:#4a4e59;margin-bottom:10px">It is not a receipt. It stays on file, under Set aside, and can be put back.</div>' +
+      '<div class="sheet-field"><label>Why (3 to 300 characters)</label><input type="text" id="rcptReason" maxlength="300" autocomplete="off"></div>' +
+      '<div id="rcptAsideErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    const actionsHTML = '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="rcptAsideSave">Set aside</button>';
+    openSheet({ title: 'Set aside', subtitle: it.fileName || 'Receipt original', bodyHTML, actionsHTML });
+    $('rcptAsideSave').onclick = async () => {
+      haptic();
+      const btn = $('rcptAsideSave');
+      btn.disabled = true;
+      $('rcptAsideErr').textContent = '';
+      try {
+        await call('rpcSetReceiptAside', state.token, { id: it.id, aside: true, reason: $('rcptReason').value });
+        closeSheet();
+        toast('✓ Set aside', 'success');
+        loadReceiptsTab(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('rcptAsideErr').textContent = e.message;
+        btn.disabled = false;
+      }
+    };
+  }
+
+  function openReceiptBusinessSheet_(it) {
+    const opt = (v, label) => '<option value="' + v + '"' + ((it.business || '') === v ? ' selected' : '') + '>' + label + '</option>';
+    const bodyHTML =
+      '<div class="sheet-field"><label>Which business this receipt belongs to</label><select id="rcptBizPick">' +
+        opt('', 'Not known') + opt('cstore', 'cstore') + opt('vape', 'vape') + '</select></div>' +
+      '<div id="rcptBizErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    const actionsHTML = '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="rcptBizSave">Save</button>';
+    openSheet({ title: 'Change business', subtitle: it.fileName || 'Receipt original', bodyHTML, actionsHTML });
+    $('rcptBizSave').onclick = async () => {
+      haptic();
+      const btn = $('rcptBizSave');
+      btn.disabled = true;
+      $('rcptBizErr').textContent = '';
+      const v = $('rcptBizPick').value;
+      try {
+        await call('rpcSetReceiptBusiness', state.token, { id: it.id, business: v === 'cstore' || v === 'vape' ? v : null });
+        closeSheet();
+        toast('✓ Business saved', 'success');
+        loadReceiptsTab(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('rcptBizErr').textContent = e.message;
+        btn.disabled = false;
+      }
+    };
+  }
+
+  // ============================================================
+  //  ░░  TAB: BUSINESSES (the Operations app only; ADR-0023, ADR-0026)  ░░
+  // ============================================================
+  //  The two businesses (separate companies) and the signs that say a
+  //  receipt is one's: a name, an HST number, a supplier account, a card's
+  //  last four digits. An admin changes them; manager and payroll admin read.
+  // ============================================================
+  const BUSINESS_SIGN_KINDS = { name: 'Name as printed', hst_number: 'HST number', supplier_account: 'Supplier account', card_last4: 'Card ending' };
+
+  async function loadBusinessesTab(force) {
+    const view = $('view-businesses');
+    if (force || !cacheFresh('rpcGetBusinesses', [state.token], TTL_SEMI)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading businesses…</div>';
+    }
+    try {
+      const data = await cachedCall('rpcGetBusinesses', [state.token], TTL_SEMI, { force });
+      renderBusinessesTab(data);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  function businessSignText_(s) {
+    if (s.kind === 'supplier_account') return s.value + ' at ' + (s.supplier || '');
+    return s.value;
+  }
+
+  function businessCardHTML_(b, canEdit) {
+    let html = '<div class="payroll-card" data-business="' + esc(b.key) + '" style="margin-bottom:12px">' +
+      '<div style="font-size:15px;font-weight:700">' + esc(b.displayName) + ' <span style="font-size:11px;color:#6a6e79;font-weight:600">' + esc(b.key) + '</span></div>' +
+      '<div class="payroll-rate">Legal name: ' + (b.legalName ? esc(b.legalName) : '<i>not recorded</i>') + '</div>' +
+      '<div class="payroll-rate">HST number: ' + (b.hstNumber ? esc(b.hstNumber) : '<i>not recorded</i>') + '</div>' +
+      (b.notes ? '<div class="payroll-rate">' + esc(b.notes) + '</div>' : '') +
+      (canEdit ? '<button class="payroll-btn payroll-btn-secondary" style="margin:8px 0" data-business-edit="' + esc(b.key) + '">Change</button>' : '') +
+      '<div style="font-size:12px;font-weight:700;margin:8px 0 4px">Signs on a receipt that it is ' + esc(b.key) + '\'s</div>';
+    if (!b.signs.length) html += '<div style="font-size:12px;color:#6a6e79">None yet.</div>';
+    b.signs.forEach(s => {
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-top:1px solid #eef0f4" data-sign-id="' + esc(s.id) + '">' +
+        '<div style="flex:1;min-width:0;font-size:12px"><b>' + esc(BUSINESS_SIGN_KINDS[s.kind] || s.kind) + '</b> ' + esc(businessSignText_(s)) + '</div>' +
+        (canEdit ? '<button class="payroll-btn payroll-btn-secondary" style="flex:0 0 auto" data-sign-remove="' + esc(s.id) + '">Remove</button>' : '') +
+      '</div>';
+    });
+    if (canEdit) html += '<button class="btn-primary" style="margin-top:8px" data-sign-add="' + esc(b.key) + '">Add a sign</button>';
+    return html + '</div>';
+  }
+
+  function renderBusinessesTab(data) {
+    const view = $('view-businesses');
+    const list = (data && data.businesses) || [];
+    const canEdit = !!(data && data.canEdit);
+    let html = moreBack();
+    html += '<div style="font-size:13px;font-weight:700;margin-bottom:4px">Businesses</div>' +
+      '<div style="font-size:11px;color:#6a6e79;margin-bottom:12px">Two separate companies, with separate books. Every receipt belongs to one of them, decided from what is printed on it' +
+      (canEdit ? '.' : ' (read only: an admin changes these).') + '</div>';
+    list.forEach(b => { html += businessCardHTML_(b, canEdit); });
+    view.innerHTML = html;
+    if (!canEdit) return;
+    view.querySelectorAll('[data-business-edit]').forEach(el => {
+      el.onclick = () => { haptic(); const b = list.find(x => x.key === el.dataset.businessEdit); if (b) openBusinessEditSheet_(b); };
+    });
+    view.querySelectorAll('[data-sign-add]').forEach(el => {
+      el.onclick = () => { haptic(); const b = list.find(x => x.key === el.dataset.signAdd); if (b) openBusinessSignSheet_(b); };
+    });
+    view.querySelectorAll('[data-sign-remove]').forEach(el => {
+      el.onclick = async () => {
+        haptic();
+        el.disabled = true;
+        try {
+          await call('rpcRemoveBusinessSign', state.token, { id: el.dataset.signRemove });
+          toast('✓ Sign removed', 'success');
+          loadBusinessesTab(true);
+        } catch (e) {
+          handleRpcError(e);
+          el.disabled = false;
+        }
+      };
+    });
+  }
+
+  function openBusinessEditSheet_(b) {
+    const bodyHTML =
+      '<div class="sheet-field"><label>Legal name</label><input type="text" id="bizLegal" maxlength="120" autocomplete="off" value="' + esc(b.legalName || '') + '" placeholder="' + esc(b.displayName) + '"></div>' +
+      '<div class="sheet-field"><label>HST number (nine digits, RT, four digits)</label><input type="text" id="bizHst" maxlength="30" autocomplete="off" value="' + esc(b.hstNumber || '') + '" placeholder="123456789 RT 0001"></div>' +
+      '<div class="sheet-field"><label>Notes</label><textarea id="bizNotes" rows="3" maxlength="500">' + esc(b.notes || '') + '</textarea></div>' +
+      '<div id="bizErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    const actionsHTML = '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="bizSave">Save</button>';
+    openSheet({ title: b.displayName, subtitle: 'Business ' + b.key, bodyHTML, actionsHTML });
+    $('bizSave').onclick = async () => {
+      haptic();
+      const btn = $('bizSave');
+      btn.disabled = true;
+      $('bizErr').textContent = '';
+      try {
+        await call('rpcUpdateBusiness', state.token, { business: b.key, legalName: $('bizLegal').value, hstNumber: $('bizHst').value, notes: $('bizNotes').value });
+        closeSheet();
+        toast('✓ Saved', 'success');
+        loadBusinessesTab(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('bizErr').textContent = e.message;
+        btn.disabled = false;
+      }
+    };
+  }
+
+  function openBusinessSignSheet_(b) {
+    const bodyHTML =
+      '<div class="sheet-field"><label>Kind of sign</label><select id="signKind">' +
+        '<option value="name">A name as suppliers print it</option><option value="hst_number">The HST number as printed</option>' +
+        '<option value="supplier_account">An account or membership number with a supplier</option><option value="card_last4">A card it pays with (last four digits only)</option></select></div>' +
+      '<div class="sheet-field"><label id="signValueLabel">Name as printed</label><input type="text" id="signValue" maxlength="120" autocomplete="off"></div>' +
+      '<div class="sheet-field" id="signSupplierWrap" style="display:none"><label>Supplier</label><input type="text" id="signSupplier" maxlength="80" autocomplete="off"></div>' +
+      '<div id="signErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    const actionsHTML = '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="signSave">Add</button>';
+    openSheet({ title: 'Add a sign', subtitle: b.displayName + ' (' + b.key + ')', bodyHTML, actionsHTML });
+    const labels = { name: 'Name as printed', hst_number: 'HST number', supplier_account: 'Account number', card_last4: 'Last four digits' };
+    $('signKind').onchange = () => {
+      const k = $('signKind').value;
+      $('signValueLabel').textContent = labels[k] || 'Value';
+      $('signSupplierWrap').style.display = k === 'supplier_account' ? '' : 'none';
+      $('signValue').setAttribute('inputmode', k === 'card_last4' ? 'numeric' : 'text');
+    };
+    $('signSave').onclick = async () => {
+      haptic();
+      const btn = $('signSave');
+      btn.disabled = true;
+      $('signErr').textContent = '';
+      const kind = $('signKind').value;
+      try {
+        await call('rpcAddBusinessSign', state.token, { business: b.key, kind, value: $('signValue').value, supplier: kind === 'supplier_account' ? $('signSupplier').value : null });
+        closeSheet();
+        toast('✓ Sign added', 'success');
+        loadBusinessesTab(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('signErr').textContent = e.message;
+        btn.disabled = false;
+      }
+    };
   }
 
   // ============================================================

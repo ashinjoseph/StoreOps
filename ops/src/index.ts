@@ -6,6 +6,8 @@
 //   /rpc/*                          the RPC router (contract, handlers, a real database connection)
 //   /mcp                            the door for AI assistants (mcp/server.ts; ADR-0025): off unless the
 //                                   setting assistants_enabled is true; a key, not a session
+//   /files/receipt-original[/<id>]  receipt originals (receipts/routes.ts; ADR-0026): PUT adds one, GET
+//                                   sends one back; the page's session as a bearer header, never a URL
 //   everything else                 the static assets: the built page and its script (so / with any
 //                                   other v, or none, is the app page, as before)
 //
@@ -20,6 +22,8 @@ import { runWeeklyCommissions } from "./cron";
 import { connect } from "./db/client";
 import { handleMcp } from "./mcp/server";
 import { handlePublic, publicView } from "./public/pages";
+import { handleUpload, handleView, UPLOAD_PATH, VIEW_CSP, VIEW_PREFIX, type ReceiptRouteDeps } from "./receipts/routes";
+import { bucketStorage, isBucket } from "./receipts/storage";
 import { notFound } from "./router";
 import { mergeOpsContract, parseRpcContract, type RpcContract } from "./rpc/contract";
 import { ERROR_PREFIXED, handlers, resolveSession } from "./rpc/registry";
@@ -33,6 +37,8 @@ export interface Env {
   /** A direct connection string (local development, tests). */
   OPS_DB_APP_URL?: string;
   PIN_PEPPER?: string;
+  /** Cloudflare R2: the bucket receipt originals are kept in (wrangler.toml [[r2_buckets]]). */
+  RECEIPTS?: unknown;
   [binding: string]: unknown;
 }
 
@@ -143,9 +149,21 @@ function secure(res: Response, path: string, policy: { csp?: string } = {}): Res
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
+function receiptDeps(env: Env): ReceiptRouteDeps {
+  return {
+    openDb: async () => connect(connectionString(env)),
+    resolveSession,
+    storage: isBucket(env.RECEIPTS) ? bucketStorage(env.RECEIPTS) : null,
+    now: () => new Date(),
+    log: (entry) => console.error(entry),
+  };
+}
+
 async function route(request: Request, env: Env): Promise<Response> {
   const { pathname } = new URL(request.url);
   if (pathname.startsWith("/rpc/")) return rpcRouter(env)(request);
+  if (pathname === UPLOAD_PATH) return handleUpload(request, receiptDeps(env));
+  if (pathname.startsWith(VIEW_PREFIX)) return handleView(request, receiptDeps(env));
   if (pathname === "/mcp") {
     return handleMcp(request, { openDb: async () => connect(connectionString(env)), now: () => new Date(), log: (entry) => console.error(entry) });
   }
@@ -168,7 +186,8 @@ export default {
       });
       return secure(response, path, { csp });
     }
-    return secure(await route(request, env), path);
+    // An original is served with its own sandboxing policy (receipts/routes.ts), never the page's.
+    return secure(await route(request, env), path, path.startsWith(VIEW_PREFIX) ? { csp: VIEW_CSP } : {});
   },
   /**
    * The Monday commission cron (wrangler.toml [triggers]). It is scheduled for both UTC hours that can be
