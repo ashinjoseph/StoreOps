@@ -64,7 +64,8 @@ hand one out.
 | P4-03 | Reconcile report: Sheet against database | T2 | P4-02 | money | done (not yet run on real data) |
 | P4-04 | Dry run on a copy of production | T3 + owner | P3-12, P4-03 | money | todo |
 | P4-05 | Cutover runbook, then the switch | T3 + owner | P4-04, P4-09, P4-10 | money | todo |
-| P4-06 | Nightly export to a Google Sheet | T2 | P4-05 | | todo |
+| P4-06a | A nightly copy of every table to file storage, and a restore that has been tried | T2 | | money | in progress |
+| P4-06b | The same tables as a read-only Google Sheet, nightly | T2 | P2-10 | | todo (needs Google credentials and the hosted setup) |
 | P4-07 | Retire the Apps Script deploy | T1 | P4-05 + 30 days | | todo |
 | P4-08 | The new app's own RPCs and screens: where they are listed, how they are hidden in Apps Script | T1 | P3-12 | security | done |
 | P4-09 | Settings screen: an admin edits the settings | T2 | P4-08 | security | done (four things for the owner, in the card) |
@@ -83,19 +84,20 @@ hand one out.
 | P5-03 | Vape close from the till snapshot | T2 | P5-02b, P4-05 | money | todo (goes live only after the switch has settled) |
 | P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02b | | done (switched off; five questions for the till side, in the card) |
 | P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | postponed (the owner, Nov 27: assistants through MCP first) |
-| P5-05 | Purchase receipts, supplier records and product costs | T2 | P5-12b | money | todo (the draft now comes through MCP) |
-| P5-06 | Receipt test set through each assistant | T2 + owner | P5-05 | | todo |
+| P5-05a | Receipt drafts: what was read off a receipt, checked by the app | T3 | P5-12b | money | in progress |
+| P5-05b | Review a draft beside the original: correct, confirm, void; learn signs and supplier spellings | T3 | P5-05a | money | todo |
+| P5-06 | Receipt test set through each assistant | T2 + owner | P5-05b, P5-10 | | todo |
 | P5-07 | Delivery runs: spec first, then build | T3 | P5-02a | | spec drafted, with the owner (eight questions; needs new calls from the till side) |
 | P5-08 | Send a vape delivery to the till, on a button | T2 | P5-05, P1-02 | money | todo |
-| P5-09 | Bookkeeping export of receipts, per business, in QuickBooks's layout | T2 | P5-05 | money | todo |
+| P5-09 | Bookkeeping export of receipts, per business, in QuickBooks's layout | T2 | P5-05b | money | todo (the bookkeeper to say: bills or expenses) |
 | P5-10 | Trial with Muse: can it hand over an original, and how does it connect | T2 + owner | P2-10 | security | todo (needs a public address: the hosted setup) |
 | P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | | security | done (switched off; questions for the trial and the owner, in the card) |
 | P5-12a | The two businesses and the receipt inbox (originals kept) | T3 | | money, security | done (to try on a real phone; notes in the card) |
 | P5-12b | The assistant's tools for the inbox: hand over an original, see one, list those waiting | T3 | P5-12a, P5-11 | security | done (questions for the trial and the owner, in the card) |
-| P5-13 | Emailed invoices through the assistant | T2 | P5-05 | security | todo |
+| P5-13 | Emailed invoices through the assistant | T2 | P5-05b | security | todo (the owner to decide how an invoice with no attachment is kept) |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
-| P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05 | money | todo |
-| P5-16 | The old purchase list brought in as history | T1 | P5-12a | money | todo |
+| P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | todo |
+| P5-16 | The old purchase list brought in as history | T1 | P5-05a | money | todo |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
 | P6-02 | Store listings: decide | owner | P6-01 | | todo |
 
