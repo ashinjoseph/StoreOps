@@ -466,7 +466,7 @@ describe("the inbox list", () => {
       expect(r.ok, id).toBe(true);
       expect(r.result.scope).toBe("all");
       expect(r.result.items.map((x: any) => x.id)).toEqual([b, a, c]);
-      expect(r.result.counts).toEqual({ waiting: 3, set_aside: 0 });
+      expect(r.result.counts).toEqual({ waiting: 3, drafted: 0, set_aside: 0 });
       expect(r.result.canSetAside).toBe(id !== "S_004");
       expect(r.result.maxMb).toBe(10);
       const text = JSON.stringify(r);
@@ -602,7 +602,7 @@ describe("set aside and change business", () => {
     // It stays in the list, under its own heading.
     const list = await call("rpcGetReceiptInbox", [tokens["S_004"], { status: "set_aside" }]);
     expect(list.result.items.map((x: any) => x.id)).toEqual([id]);
-    expect(list.result.counts).toEqual({ waiting: 0, set_aside: 1 });
+    expect(list.result.counts).toEqual({ waiting: 0, drafted: 0, set_aside: 1 });
     // A set-aside original keeps its business; changing it needs putting back first.
     expect((await call("rpcSetReceiptBusiness", [tokens["S_001"], { id, business: "vape" }])).error?.message).toMatch(/Put it back first/);
     const back = await call("rpcSetReceiptAside", [tokens["S_001"], { id, aside: false }]);

@@ -24,6 +24,7 @@ import type { Tx } from "../db/tx";
 import type { Config } from "../lib/config";
 import { formatDate, formatDateTime } from "../lib/dates";
 import { list as listBusinesses } from "../receipts/businesses";
+import * as drafts from "../receipts/drafts";
 import * as originals from "../receipts/originals";
 import { CONTENT_TYPES, type ContentType } from "../receipts/sniff";
 import type { ReceiptStorage } from "../receipts/storage";
@@ -114,7 +115,7 @@ const myProposals: ToolDef = {
   right: "read",
   title: "What became of my proposals",
   description:
-    "This key's own proposals, newest first, each with its status: waiting (for a person, or an upload address still open), confirmed, or refused, and a note in plain words. Today the only kind is receipt_upload: an upload address this key asked for with receipt_upload_start; confirmed means the file was kept or was already on file (the note names the original's id), refused means the file was refused (the note says why) or the address expired unused. Optional: status to see one kind, limit (1 to 50, default 20). " +
+    "This key's own proposals, newest first, each with its kind, its status: waiting (for a person, or an upload address still open), confirmed, or refused, and a note in plain words. Two kinds. receipt_upload: an upload address this key asked for with receipt_upload_start; confirmed means the file was kept or was already on file (the note names the original's id), refused means the file was refused (the note says why) or the address expired unused. receipt_draft: a draft this key proposed with receipt_propose; waiting while it waits for a person, refused when it was replaced by a later draft (the note says whose) or its original was set aside. Optional: status to see one kind, limit (1 to 50, default 20). " +
     DATA_SENTENCE,
   input: z
     .object({
@@ -124,7 +125,11 @@ const myProposals: ToolDef = {
     .strict(),
   async run(ctx, input) {
     const status = input["status"] as tickets.ProposalStatus | undefined;
-    const proposals = await tickets.proposals(ctx.db, ctx.key.keyId, ctx.now, { status, limit: (input["limit"] as number | undefined) ?? 20 });
+    const limit = (input["limit"] as number | undefined) ?? 20;
+    const uploads: Array<{ id: string; kind: string; status: string; made_at: string; decided_at: string | null; note: string }> = await tickets.proposals(ctx.db, ctx.key.keyId, ctx.now, { status, limit });
+    const read = await drafts.proposals(ctx.db, ctx.key.keyId, { status, limit });
+    // Newest first across both kinds (ISO instants sort as text), then by id, as each list is.
+    const proposals = [...uploads, ...read].sort((a, b) => (a.made_at === b.made_at ? (a.id < b.id ? 1 : -1) : a.made_at < b.made_at ? 1 : -1)).slice(0, limit);
     if (proposals.length === 0) return { summary: "No proposals from this key yet.", data: { proposals } };
     const counts = (["waiting", "confirmed", "refused"] as const).map((s) => [s, proposals.filter((p) => p.status === s).length] as const).filter(([, n]) => n > 0);
     return { summary: `${proposals.length} proposal${proposals.length === 1 ? "" : "s"}, newest first: ${counts.map(([s, n]) => `${n} ${s}`).join(", ")}.`, data: { proposals } };
@@ -170,14 +175,14 @@ const receiptsToRead: ToolDef = {
   },
 };
 
-const NO_SUCH_ORIGINAL = "No receipt original with that id is waiting to be read. Ask receipts_to_read for the ids.";
+const NO_SUCH_ORIGINAL = "No receipt original with that id is waiting to be read or read already. Ask receipts_to_read for the ids.";
 
 const receiptOriginal: ToolDef = {
   name: "receipt_original",
   right: "read",
   title: "Be shown one receipt original",
   description:
-    "One receipt original that is waiting to be read, as it was received: a text block (a summary line, then JSON: id, type, size, added_at, source, business, file_name, note), then the file itself, byte for byte: an image block for a JPEG, PNG, WebP or HEIC photo, an embedded resource with a blob for a PDF. An original larger than the setting assistant_show_max_mb is not shortened or resized: the answer says too_large_to_show and its size, with no file. Input: id (from receipts_to_read). " +
+    "One receipt original that is waiting to be read (or was read already and its draft not yet reviewed, so a draft can be looked at again and corrected with receipt_propose), as it was received: a text block (a summary line, then JSON: id, type, size, added_at, source, business, file_name, note), then the file itself, byte for byte: an image block for a JPEG, PNG, WebP or HEIC photo, an embedded resource with a blob for a PDF. An original larger than the setting assistant_show_max_mb is not shortened or resized: the answer says too_large_to_show and its size, with no file. Input: id (from receipts_to_read). " +
     DATA_SENTENCE,
   input: z.object({ id: RECEIPT_ID }).strict(),
   async run(ctx, input) {
@@ -298,8 +303,79 @@ const receiptsFromEmail: ToolDef = {
   },
 };
 
+// ── Receipt drafts (card P5-05a; ADR-0027) ────────────────
+
+const words = (r: boolean | null): string => (r === true ? "passed" : r === false ? "failed" : "not checked");
+const textOr = (v: string | null, max?: number): string | null => (v === null ? null : asData(v, max));
+
+/** The draft as an assistant is answered it: snake_case, every outside text through asData. */
+function draftForAssistant(d: drafts.DraftView) {
+  return {
+    id: d.id,
+    original_id: d.originalId,
+    status: d.status,
+    read_by: { kind: d.readBy.kind, name: asData(d.readBy.name), key_label: textOr(d.readBy.keyLabel) },
+    read_at: d.readAt,
+    supplier: { name: textOr(d.supplier.name), hst_number: textOr(d.supplier.hstNumber), supplier_id: d.supplier.id, on_list: d.supplier.onList },
+    invoice_number: textOr(d.invoiceNumber),
+    date: d.date,
+    date_as_read: textOr(d.dateAsRead),
+    paid: d.paid === null ? null : { how: d.paid.how, card_last4: d.paid.cardLast4 },
+    amounts: { subtotal: d.amounts.subtotal, hst: d.amounts.hst, other_total: d.amounts.otherTotal, other: d.amounts.other.map((o) => ({ label: asData(o.label), amount: o.amount })), total: d.amounts.total },
+    kind: d.kind,
+    buyer: { name: textOr(d.buyer.name), hst_number: textOr(d.buyer.hstNumber), account_number: textOr(d.buyer.accountNumber), card_last4: d.buyer.cardLast4 },
+    suggested_business: d.suggestedBusiness,
+    lines: d.lines.map((l) => ({ line: l.line, description: asData(l.description, drafts.LIMITS.description), code: textOr(l.code), quantity: l.quantity, unit_price: l.unitPrice, total: l.total, taxed: l.taxed })),
+    where_read: d.whereRead === null ? null : Object.fromEntries(Object.entries(d.whereRead).map(([k, v]) => [k, asData(v)])),
+    note: textOr(d.note, drafts.LIMITS.note),
+    supersedes: d.supersedes,
+  };
+}
+
+const receiptPropose: ToolDef = {
+  name: "receipt_propose",
+  right: "propose",
+  title: "Propose a draft of one receipt",
+  description:
+    "Propose the figures read off ONE stored receipt original (an id from receipts_to_read; be shown it with receipt_original). Three rules. 1. Read only what is printed: leave out any field the document does not print; never invent an invoice number, a date or a tax figure (a field left out is kept as blank, never as 0). " +
+    "2. Report what the document prints about the BUYER (the sold-to or bill-to name, the buyer's HST number, an account or membership number, the last four digits of the card paid with) in buyer, and do not decide the business: the app decides it from those signs (suggested_business is kept as your guess and decides nothing). " +
+    "3. Amounts exactly as printed: a number or a decimal string with at most two decimals (12.50, -3.10), no thousands separators or currency sign; a line's unit_price may have up to four decimals (1.459) and its quantity three; only the total is required. " +
+    "Input: original_id; optional supplier { name, hst_number } as printed; invoice_number; date (YYYY-MM-DD, the day printed); paid { how: cash, card, account or other; card_last4 for a card }; amounts { subtotal, hst, total, other: [{ label, amount }] for deposits, fees or duty }; kind (stock, supplies, equipment, licences_fees, other); buyer { name, hst_number, account_number, card_last4 }; lines [{ description, code, quantity, unit_price, total, taxed }] (up to 300; leave taxed out when not marked); where_read { field: where on the page, e.g. bottom right, under TOTAL }; note. " +
+    "The app checks the arithmetic (lines to subtotal, parts to total, HST against the rate, the date, duplicates, the supplier's HST number, the business) and keeps the draft even when a check fails, marked needs attention. The answer is the draft as stored, the business decision and why, and each check as passed, failed or not checked in words: look again once and propose a correction if a check shows a misreading (it replaces your draft). Nothing counts until a person confirms it. " +
+    DATA_SENTENCE,
+  input: drafts.draftInputSchema(true),
+  async run(ctx, input) {
+    let made: drafts.ProposeResult;
+    try {
+      made = await drafts.propose(ctx.db, input, { kind: "assistant", keyId: ctx.key.keyId, staffId: ctx.key.staffId }, ctx.config, ctx.now);
+    } catch (err) {
+      if (drafts.isRefusal(err)) return { error: err.message };
+      throw err;
+    }
+    const d = made.draft;
+    const data = {
+      draft: draftForAssistant(d),
+      business: {
+        business: d.business.key,
+        decided_by: d.business.decidedBy,
+        why: asData(d.business.why, 400),
+        signs: d.business.signs.map((s) => ({ kind: s.kind, value: asData(s.value), supplier: textOr(s.supplier), business: s.business })),
+        person_said: d.business.personSaid,
+        agrees_with_person: d.business.agreesWithPerson,
+        suggested_business: d.suggestedBusiness,
+      },
+      checks: d.checks.map((c) => ({ check: c.check, result: words(c.passed), words: asData(c.words, 400) })),
+      needs_attention: d.needsAttention,
+      replaced: made.replaced,
+    };
+    const biz = d.business.key === null ? `business not known (${d.business.why})` : `business ${d.business.key} (${d.business.why})`;
+    const checks = d.failed === 0 ? "all checks passed" : `${d.failed} of ${d.checks.length} checks failed: needs attention`;
+    return { summary: `Draft ${d.id} kept for receipt original ${d.originalId}: ${biz}; ${checks}. Nothing counts until a person confirms it.`, data };
+  },
+};
+
 /** The allowlist. Adding a tool here is the only way to add one (and the pinned list in test/mcp-door.test.ts must change with it). */
-export const TOOLS: readonly ToolDef[] = Object.freeze([whoami, businesses, myProposals, receiptsToRead, receiptOriginal, receiptUploadStart, receiptsFromEmail]);
+export const TOOLS: readonly ToolDef[] = Object.freeze([whoami, businesses, myProposals, receiptsToRead, receiptOriginal, receiptUploadStart, receiptsFromEmail, receiptPropose]);
 
 /** Whether a key with `right` may use a tool that needs `needs`. */
 export function rightAllows(right: Right, needs: Right): boolean {

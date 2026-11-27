@@ -7003,8 +7003,10 @@
     try {
       const data = await cachedCall('rpcGetReceiptInbox', args, TTL_LIVE, { force });
       let aside = null;
+      let drafted = null;
       if (data && data.scope === 'all') aside = await cachedCall('rpcGetReceiptInbox', [state.token, { status: 'set_aside' }], TTL_LIVE, { force });
-      renderReceiptsTab(data, aside);
+      if (data && data.scope === 'all' && data.counts && data.counts.drafted > 0) drafted = await cachedCall('rpcGetReceiptInbox', [state.token, { status: 'drafted' }], TTL_LIVE, { force });
+      renderReceiptsTab(data, aside, drafted);
     } catch (e) {
       handleRpcError(e, view);
     }
@@ -7047,13 +7049,15 @@
           '<div class="payroll-rate">' + (it.assistant ? 'added by ' + esc(it.addedBy) + '\'s assistant (' + esc(it.assistant.label) + ')' : esc(it.addedBy)) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + (it.email ? ' · from ' + esc(it.email.from) + ', sent ' + esc(receiptWhen_(it.email.date)) : '') + '</div>' +
           '<div class="payroll-rate">' + esc(receiptBusinessLabel_(it.business)) + (it.note ? ' · ' + esc(it.note) : '') + '</div>' +
           (aside ? '<div class="payroll-rate">Set aside by ' + esc(it.setAside.by) + ': ' + esc(it.setAside.reason) + '</div>' : '') +
+          (it.draft ? receiptDraftHeadHTML_(it.draft) : (it.status === 'drafted' ? '<div class="payroll-rate">It has been read.</div>' : '')) +
         '</div>' +
       '</div>' +
     '</div>';
   }
 
-  // data: the waiting page, or an employee's own list; aside: the set-aside page (admin, manager, payroll admin).
-  function renderReceiptsTab(data, aside) {
+  // data: the waiting page, or an employee's own list; aside: the set-aside page (admin, manager, payroll admin);
+  // drafted: the read ones, waiting for review (the same roles; card P5-05a).
+  function renderReceiptsTab(data, aside, drafted) {
     const view = $('view-receipts');
     revokeReceiptBlobs_();
     receiptState_.file = null;
@@ -7061,7 +7065,7 @@
     const items = (data && data.items) || [];
     let html = moreBack();
     html += '<div style="font-size:13px;font-weight:700;margin-bottom:4px">Receipts</div>' +
-      '<div style="font-size:11px;color:#6a6e79;margin-bottom:12px">Every purchase receipt or invoice is kept as it was received, for the books and for an audit. Nothing is read from it yet.</div>';
+      '<div style="font-size:11px;color:#6a6e79;margin-bottom:12px">Every purchase receipt or invoice is kept as it was received, for the books and for an audit. What is read from it counts for nothing until a person confirms it.</div>';
     html += receiptAddHTML_(receiptState_.maxMb);
     if (data && data.scope === 'own') {
       html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">What you added in the last ' + esc(data.days) + ' days</div>';
@@ -7072,6 +7076,10 @@
       html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Waiting (' + esc(counts.waiting || 0) + ')</div>';
       if (!items.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing waiting.</div>';
       items.forEach(it => { html += receiptRowHTML_(it); });
+      const readItems = (drafted && drafted.items) || [];
+      html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Read, waiting for review (' + esc(counts.drafted || 0) + ')</div>';
+      if (!readItems.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing read yet.</div>';
+      readItems.forEach(it => { html += receiptRowHTML_(it); });
       const asideItems = (aside && aside.items) || [];
       html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Set aside (' + esc(counts.set_aside || 0) + ')</div>';
       if (!asideItems.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing set aside.</div>';
@@ -7079,7 +7087,7 @@
     }
     view.innerHTML = html;
     wireReceiptAdd_();
-    const all = items.concat((aside && aside.items) || []);
+    const all = items.concat((aside && aside.items) || [], (drafted && drafted.items) || []);
     const canEdit = !!(data && data.scope === 'all' && data.canSetAside);
     view.querySelectorAll('[data-receipt-id]').forEach(el => {
       el.onclick = () => {
@@ -7202,11 +7210,15 @@
       '<div class="payroll-rate">' + (it.assistant ? 'added by ' + esc(it.addedBy) + '\'s assistant (' + esc(it.assistant.label) + ')' : esc(it.addedBy)) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + ' · ' + esc(it.source === 'photo' ? 'photo' : 'file') + (it.email ? ' · from ' + esc(it.email.from) + ', sent ' + esc(receiptWhen_(it.email.date)) : '') + '</div>' +
       '<div class="payroll-rate">' + esc(receiptBusinessLabel_(it.business)) + (it.note ? ' · ' + esc(it.note) : '') + '</div>' +
       (aside && it.setAside ? '<div class="payroll-rate">Set aside by ' + esc(it.setAside.by) + ', ' + esc(receiptWhen_(it.setAside.at)) + ': ' + esc(it.setAside.reason) + '</div>' : '') +
+      (it.draft ? '<div id="rcptDraft" style="margin-top:10px;font-size:12px;color:#6a6e79">Loading what was read…</div>' : '') +
       '<div id="rcptSheetErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    const read = it.status === 'drafted';
     const actionsHTML = canEdit
       ? (aside
         ? '<button class="sheet-cancel" id="rcptCloseBtn">Close</button><button class="sheet-submit" id="rcptBackBtn">Put back</button>'
-        : '<button class="sheet-cancel" id="rcptAsideBtn">Set aside</button><button class="sheet-submit" id="rcptBizBtn">Change business</button>')
+        : read
+          ? '<button class="sheet-cancel" id="rcptAsideBtn">Set aside</button><button class="sheet-submit" id="rcptCloseBtn">Close</button>'
+          : '<button class="sheet-cancel" id="rcptAsideBtn">Set aside</button><button class="sheet-cancel" id="rcptEnterBtn">Enter the figures by hand</button><button class="sheet-submit" id="rcptBizBtn">Change business</button>')
       : '<button class="sheet-submit" id="rcptCloseBtn">Close</button>';
     openSheet({ title: it.fileName || (isPdf ? 'PDF' : 'Photo'), subtitle: 'Receipt original', bodyHTML, actionsHTML });
     let url = null;
@@ -7227,6 +7239,13 @@
     if (asideBtn) asideBtn.onclick = () => { haptic(); close(); openReceiptAsideSheet_(it); };
     const bizBtn = $('rcptBizBtn');
     if (bizBtn) bizBtn.onclick = () => { haptic(); close(); openReceiptBusinessSheet_(it); };
+    const enterBtn = $('rcptEnterBtn');
+    if (enterBtn) enterBtn.onclick = () => { haptic(); close(); openReceiptDraftEntry_(it); };
+    if (it.draft) {
+      cachedCall('rpcGetReceiptDraft', [state.token, { id: it.id }], TTL_LIVE)
+        .then(r => { const box = $('rcptDraft'); if (box && open) box.innerHTML = r && r.draft ? receiptDraftHTML_(r.draft) : 'No draft is live for this original.'; })
+        .catch(e => { const box = $('rcptDraft'); if (box && open) box.textContent = e.message; });
+    }
     const backBtn = $('rcptBackBtn');
     if (backBtn) backBtn.onclick = async () => {
       haptic();
@@ -7308,6 +7327,192 @@
       } catch (e) {
         if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
         $('rcptBizErr').textContent = e.message;
+        btn.disabled = false;
+      }
+    };
+  }
+
+  // ── Drafts: what was read off an original (card P5-05a; ADR-0027) ──
+  //  Shown READ ONLY: reviewing and confirming is the next card. A blank
+  //  field reads "not on the receipt"; amounts arrive as exact text ("56.60").
+
+  // A row's line in "Read, waiting for review".
+  function receiptDraftHeadHTML_(h) {
+    const parts = [h.supplier ? esc(h.supplier) : 'supplier not on the receipt', h.date ? esc(h.date) : 'no date', esc(money(h.total)), esc(receiptBusinessLabel_(h.business))];
+    const attention = h.needsAttention ? ' · <b style="color:#b45309">needs attention (' + esc(h.failed) + ' check' + (h.failed === 1 ? '' : 's') + ' failed)</b>' : '';
+    return '<div class="payroll-rate">Read: ' + parts.join(' · ') + attention + '</div>';
+  }
+
+  const RECEIPT_KINDS = { stock: 'stock for resale', supplies: 'supplies', equipment: 'equipment', licences_fees: 'licences and fees', other: 'other' };
+
+  function receiptDraftPaid_(p) {
+    if (!p) return '';
+    if (p.how === 'card') return p.cardLast4 ? 'card ending ' + p.cardLast4 : 'card';
+    return p.how === 'account' ? 'on account' : p.how;
+  }
+
+  // A unit price as the server answers it (exact text, two to four decimals: "1.459", "6.00"),
+  // with a dollar sign and nothing rounded: money() would cut 1.459 to 1.46.
+  function receiptUnitPrice_(text) {
+    const s = String(text);
+    return s.charAt(0) === '-' ? '-$' + s.slice(1) : '$' + s;
+  }
+
+  // The draft, read only: every field, blank as words, each failed check a sentence.
+  function receiptDraftHTML_(d) {
+    const blank = '<i style="color:#9a9ea9">not on the receipt</i>';
+    const row = (label, v) => '<div style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #f0f1f5"><div style="flex:0 0 42%;color:#6a6e79">' + esc(label) + '</div><div style="flex:1;min-width:0;overflow-wrap:anywhere;color:#1f2330">' + v + '</div></div>';
+    const text = v => (v === null || v === undefined || v === '' ? blank : esc(v));
+    const amount = v => (v === null || v === undefined ? blank : esc(money(v)));
+    const a = d.amounts || {};
+    const b = d.business || {};
+    const s = d.supplier || {};
+    const buyer = d.buyer || {};
+    const failed = (d.checks || []).filter(c => c.passed === false);
+    let html = '<div style="font-size:13px;font-weight:700;color:#1f2330;margin:4px 0 6px">What was read</div>';
+    html += failed.length
+      ? '<div style="background:#fef3c7;border-radius:6px;padding:8px;margin-bottom:8px;color:#92400e"><b>Needs attention</b>' + failed.map(c => '<div style="margin-top:4px">' + esc(c.words) + '</div>').join('') + '</div>'
+      : '<div style="background:#dcfce7;border-radius:6px;padding:8px;margin-bottom:8px;color:#166534">Every check that could be made passed.</div>';
+    html += row('Supplier', text(s.name) + (s.name ? (s.onList ? ' <span style="color:#6a6e79">(on the supplier list as ' + esc(s.listedName) + ')</span>' : ' <span style="color:#6a6e79">(not on the supplier list yet)</span>') : ''));
+    html += row('Supplier\'s HST number', text(s.hstNumber));
+    html += row('Invoice number', text(d.invoiceNumber));
+    html += row('Date', d.date ? esc(d.date) : d.dateAsRead ? esc(d.dateAsRead) + ' <span style="color:#b45309">(not a real day)</span>' : blank);
+    html += row('How paid', d.paid ? esc(receiptDraftPaid_(d.paid)) : blank);
+    html += row('Subtotal', amount(a.subtotal));
+    html += row('HST', amount(a.hst));
+    html += row('Other charges', (a.other || []).length ? (a.other || []).map(o => esc(o.label) + ' ' + esc(money(o.amount))).join('<br>') : blank);
+    html += row('Total', '<b>' + esc(money(a.total)) + '</b>');
+    html += row('Kind of purchase', d.kind ? esc(RECEIPT_KINDS[d.kind] || d.kind) : blank);
+    html += row('Business', (b.key ? '<b>' + esc(b.key) + '</b>, ' : '') + esc(b.why) + (b.personSaid ? '<br><span style="color:#6a6e79">a person said ' + esc(b.personSaid) + ' when it was added' + (b.agreesWithPerson === false ? ': they disagree' : '') + '</span>' : ''));
+    html += row('Buyer as printed', [buyer.name ? 'name ' + esc(buyer.name) : '', buyer.hstNumber ? 'HST number ' + esc(buyer.hstNumber) : '', buyer.accountNumber ? 'account ' + esc(buyer.accountNumber) : '', buyer.cardLast4 ? 'card ending ' + esc(buyer.cardLast4) : ''].filter(Boolean).join('<br>') || blank);
+    if (d.suggestedBusiness) html += row('The reader suggested', esc(d.suggestedBusiness) + ' <span style="color:#6a6e79">(decides nothing)</span>');
+    const rb = d.readBy || {};
+    html += row('Read by', (rb.kind === 'assistant' ? esc(rb.name) + '\'s assistant (' + esc(rb.keyLabel) + ')' : 'typed by ' + esc(rb.name)) + ' · ' + esc(receiptWhen_(d.readAt)));
+    if ((d.lines || []).length) {
+      html += '<div style="font-size:12px;font-weight:700;color:#1f2330;margin:10px 0 4px">Lines (' + esc(d.lines.length) + ')</div>';
+      d.lines.forEach(l => {
+        const taxed = l.taxed === true ? 'taxed' : l.taxed === false ? 'not taxed' : 'tax not marked';
+        html += '<div style="padding:3px 0;border-bottom:1px solid #f0f1f5;color:#1f2330">' + esc(l.line) + '. ' + esc(l.description) + (l.code ? ' <span style="color:#6a6e79">(' + esc(l.code) + ')</span>' : '') +
+          '<div style="color:#6a6e79">' + (l.quantity !== null && l.quantity !== undefined ? esc(l.quantity) + ' × ' : '') + (l.unitPrice !== null && l.unitPrice !== undefined ? esc(receiptUnitPrice_(l.unitPrice)) : 'no unit price') + ' · ' + (l.total !== null && l.total !== undefined ? esc(money(l.total)) : 'no line total') + ' · ' + esc(taxed) + '</div></div>';
+      });
+    }
+    const where = d.whereRead || {};
+    const whereKeys = Object.keys(where);
+    if (whereKeys.length) html += '<div style="font-size:12px;font-weight:700;color:#1f2330;margin:10px 0 4px">Where it was read</div>' + whereKeys.map(k => '<div>' + esc(k) + ': ' + esc(where[k]) + '</div>').join('');
+    if (d.note) html += '<div style="margin-top:8px"><b>Note from the reader:</b> ' + esc(d.note) + '</div>';
+    html += '<div style="margin-top:10px;font-weight:600;color:#4a4e59">Reviewing and confirming comes next: nothing here counts yet.</div>';
+    return html;
+  }
+
+  // The by-hand sheet's fields, as typed: what is blank is left out (never 0 or "").
+  function receiptDraftInput_(id, lineCount) {
+    const v = k => { const el = $(k); return el ? String(el.value == null ? '' : el.value).trim() : ''; };
+    const put = (o, k, x) => { if (x !== '') o[k] = x; };
+    const out = { original_id: id };
+    const supplier = {};
+    put(supplier, 'name', v('rdSupplier'));
+    put(supplier, 'hst_number', v('rdSupplierHst'));
+    if (Object.keys(supplier).length) out.supplier = supplier;
+    put(out, 'invoice_number', v('rdInvoice'));
+    put(out, 'date', v('rdDate'));
+    const how = v('rdPaidHow');
+    if (how) { out.paid = { how }; if (how === 'card') put(out.paid, 'card_last4', v('rdCard')); }
+    const amounts = {};
+    put(amounts, 'subtotal', v('rdSubtotal'));
+    put(amounts, 'hst', v('rdHst'));
+    put(amounts, 'total', v('rdTotal'));
+    const otherLabel = v('rdOtherLabel');
+    const otherAmount = v('rdOtherAmount');
+    if (otherLabel || otherAmount) { const o = {}; put(o, 'label', otherLabel); put(o, 'amount', otherAmount); amounts.other = [o]; }
+    out.amounts = amounts;
+    put(out, 'kind', v('rdKind'));
+    const buyer = {};
+    put(buyer, 'name', v('rdBuyerName'));
+    put(buyer, 'hst_number', v('rdBuyerHst'));
+    put(buyer, 'account_number', v('rdBuyerAccount'));
+    put(buyer, 'card_last4', v('rdBuyerCard'));
+    if (Object.keys(buyer).length) out.buyer = buyer;
+    const lines = [];
+    for (let i = 0; i < lineCount; i++) {
+      const l = {};
+      put(l, 'description', v('rdLineDesc' + i));
+      put(l, 'code', v('rdLineCode' + i));
+      put(l, 'quantity', v('rdLineQty' + i));
+      put(l, 'unit_price', v('rdLinePrice' + i));
+      put(l, 'total', v('rdLineTotal' + i));
+      const taxed = v('rdLineTaxed' + i);
+      if (taxed === 'yes') l.taxed = true;
+      if (taxed === 'no') l.taxed = false;
+      if (Object.keys(l).length) lines.push(l);
+    }
+    if (lines.length) out.lines = lines;
+    put(out, 'note', v('rdNote'));
+    return out;
+  }
+
+  function receiptDraftLineHTML_(i, l) {
+    const val = k => ' value="' + esc((l && l[k]) || '') + '"';
+    const sel = x => ((l && l.taxed) === x ? ' selected' : '');
+    return '<div style="border:1px solid #e5e7eb;border-radius:6px;padding:6px;margin-bottom:6px"><div style="font-size:11px;font-weight:700;margin-bottom:4px">Line ' + (i + 1) + '</div>' +
+      '<div class="sheet-field"><label>Description</label><input type="text" id="rdLineDesc' + i + '" maxlength="300" autocomplete="off"' + val('description') + '></div>' +
+      '<div style="display:flex;gap:6px"><div class="sheet-field" style="flex:1"><label>Code</label><input type="text" id="rdLineCode' + i + '" maxlength="60" autocomplete="off"' + val('code') + '></div>' +
+      '<div class="sheet-field" style="flex:1"><label>Quantity</label><input type="text" inputmode="decimal" id="rdLineQty' + i + '" autocomplete="off"' + val('quantity') + '></div></div>' +
+      '<div style="display:flex;gap:6px"><div class="sheet-field" style="flex:1"><label>Unit price</label><input type="text" inputmode="decimal" id="rdLinePrice' + i + '" autocomplete="off" placeholder="as printed, up to 4 decimals"' + val('unit_price') + '></div>' +
+      '<div class="sheet-field" style="flex:1"><label>Line total</label><input type="text" inputmode="decimal" id="rdLineTotal' + i + '" autocomplete="off"' + val('total') + '></div></div>' +
+      '<div class="sheet-field"><label>Taxed</label><select id="rdLineTaxed' + i + '"><option value="">Not marked</option><option value="yes"' + sel('yes') + '>Yes</option><option value="no"' + sel('no') + '>No</option></select></div></div>';
+  }
+
+  // Admin and manager, on a waiting original: the same fields as an assistant's proposal, typed by hand.
+  function openReceiptDraftEntry_(it) {
+    let lineCount = 0;
+    const field = (label, id, attrs) => '<div class="sheet-field"><label>' + label + '</label><input type="text" id="' + id + '" autocomplete="off"' + (attrs || '') + '></div>';
+    const money2 = ' inputmode="decimal" placeholder="as printed, e.g. 12.50"';
+    const bodyHTML =
+      '<div style="font-size:12px;color:#4a4e59;margin-bottom:10px">Type only what the receipt prints; leave the rest blank. The app checks the arithmetic and decides the business from what is printed about the buyer.</div>' +
+      field('Supplier, as printed', 'rdSupplier', ' maxlength="120"') + field('Supplier\'s HST number', 'rdSupplierHst', ' maxlength="40"') +
+      field('Invoice or receipt number', 'rdInvoice', ' maxlength="60"') + field('Date (YYYY-MM-DD)', 'rdDate', ' maxlength="40" placeholder="2026-11-27"') +
+      '<div class="sheet-field"><label>How it was paid</label><select id="rdPaidHow"><option value="">Not on the receipt</option><option value="cash">Cash</option><option value="card">Card</option><option value="account">On account</option><option value="other">Other</option></select></div>' +
+      field('Card ending (four digits)', 'rdCard', ' maxlength="4" inputmode="numeric"') +
+      field('Subtotal', 'rdSubtotal', money2) + field('HST', 'rdHst', money2) +
+      field('Other charge: what it is', 'rdOtherLabel', ' maxlength="80" placeholder="bottle deposit"') + field('Other charge: amount', 'rdOtherAmount', money2) +
+      field('Total (required)', 'rdTotal', money2) +
+      '<div class="sheet-field"><label>Kind of purchase</label><select id="rdKind"><option value="">Not chosen</option><option value="stock">Stock for resale</option><option value="supplies">Supplies</option><option value="equipment">Equipment</option><option value="licences_fees">Licences and fees</option><option value="other">Other</option></select></div>' +
+      '<div style="font-size:12px;font-weight:700;margin:8px 0 4px">What it prints about the buyer</div>' +
+      field('Name (sold to, bill to)', 'rdBuyerName', ' maxlength="120"') + field('Buyer\'s HST number', 'rdBuyerHst', ' maxlength="40"') +
+      field('Account or membership number', 'rdBuyerAccount', ' maxlength="60"') + field('Card ending', 'rdBuyerCard', ' maxlength="4" inputmode="numeric"') +
+      '<div style="font-size:12px;font-weight:700;margin:8px 0 4px">Lines (optional)</div><div id="rdLines"></div>' +
+      '<button class="payroll-btn payroll-btn-secondary" id="rdAddLine" style="margin-bottom:8px">+ Add a line</button>' +
+      field('Note', 'rdNote', ' maxlength="500"') +
+      '<div id="rdErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    const actionsHTML = '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="rdSave">Keep the draft</button>';
+    openSheet({ title: 'Enter the figures by hand', subtitle: it.fileName || 'Receipt original', bodyHTML, actionsHTML });
+    $('rdAddLine').onclick = () => {
+      haptic();
+      // Keep what was typed in the lines already there, then draw one more.
+      const typed = [];
+      for (let i = 0; i < lineCount; i++) {
+        const g = k => { const el = $(k + i); return el ? String(el.value == null ? '' : el.value) : ''; };
+        typed.push({ description: g('rdLineDesc'), code: g('rdLineCode'), quantity: g('rdLineQty'), unit_price: g('rdLinePrice'), total: g('rdLineTotal'), taxed: g('rdLineTaxed') });
+      }
+      lineCount++;
+      let lines = '';
+      for (let i = 0; i < lineCount; i++) lines += receiptDraftLineHTML_(i, typed[i]);
+      $('rdLines').innerHTML = lines;
+    };
+    $('rdSave').onclick = async () => {
+      haptic();
+      const btn = $('rdSave');
+      btn.disabled = true;
+      $('rdErr').textContent = '';
+      try {
+        const r = await call('rpcEnterReceiptDraft', state.token, receiptDraftInput_(it.id, lineCount));
+        closeSheet();
+        toast(r && r.draft && r.draft.needsAttention ? 'Draft kept: it needs attention' : '✓ Draft kept', r && r.draft && r.draft.needsAttention ? 'warning' : 'success');
+        openSheet({ title: 'Draft kept', subtitle: it.fileName || 'Receipt original', bodyHTML: r && r.draft ? receiptDraftHTML_(r.draft) : '', actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Close</button>' });
+        loadReceiptsTab(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('rdErr').textContent = e.message;
         btn.disabled = false;
       }
     };

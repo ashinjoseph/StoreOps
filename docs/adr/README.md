@@ -39,6 +39,7 @@ requests and the code. Their dates are when the decision took effect.
 | [0024](0024-the-till-is-read-through-one-client.md) | The till is read through one client that never throws, and ships switched off | Accepted | 2026-11 |
 | [0025](0025-assistants-come-in-through-mcp-and-only-propose.md) | Assistants come in through MCP, with a key per person, and only propose | Accepted | 2026-11 |
 | [0026](0026-receipt-originals-are-kept-as-received.md) | Receipt originals are kept as received, and served back only to a signed-in session | Accepted | 2026-11 |
+| [0027](0027-the-app-decides-the-business-and-checks-the-arithmetic.md) | A reader reports what is printed; the app decides the business and checks the arithmetic | Accepted | 2026-11 |
 | [0028](0028-the-app-makes-its-own-nightly-copy.md) | The app makes its own nightly copy of every table, and a restore tool proves it | Accepted | 2026-11 |
 
 ## When to write one

@@ -32,6 +32,8 @@
     { "name": "rpcLinkTillStaff", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcUnlinkTillStaff", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcGetSalesByChannel", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
-    { "name": "rpcRunBackupNow", "params": ["token"], "roles": ["admin"], "needs_session": true }
+    { "name": "rpcRunBackupNow", "params": ["token"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcGetReceiptDraft", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
+    { "name": "rpcEnterReceiptDraft", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true }
   ]
 }

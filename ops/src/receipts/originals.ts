@@ -23,10 +23,12 @@ import * as audit from "../lib/audit";
 import type { Config } from "../lib/config";
 import { formatDate, formatDateTime } from "../lib/dates";
 import { type Business, isBusiness } from "./businesses";
+import * as drafts from "./drafts";
 import { type ContentType } from "./sniff";
 import type { ReceiptStorage } from "./storage";
 
-export const STATUSES = ["waiting", "set_aside"] as const;
+/** drafted (card P5-05a): read, its draft waiting for review (ops/src/receipts/drafts.ts). */
+export const STATUSES = ["waiting", "drafted", "set_aside"] as const;
 export type Status = (typeof STATUSES)[number];
 export const SOURCES = ["photo", "upload"] as const;
 export type Source = (typeof SOURCES)[number];
@@ -104,6 +106,19 @@ export interface OriginalView {
   assistant?: { label: string };
   /** Only on an original from an email: the sender and date as the assistant gave them (text, shown as text). */
   email?: { from: string; date: string };
+  /** Only on a drafted original in the list of admin, manager and payroll admin (card P5-05a): its live draft's headline. */
+  draft?: DraftHeadline;
+}
+
+/** What the "Read, waiting for review" list shows of a draft. Money as exact text ("56.60"). */
+export interface DraftHeadline {
+  id: string;
+  supplier: string | null;
+  date: string | null;
+  total: string;
+  business: Business | null;
+  needsAttention: boolean;
+  failed: number;
 }
 
 interface Row {
@@ -263,7 +278,7 @@ export async function inbox(db: Db, viewer: Viewer, input: InboxInput, now: Date
     const rows = await db.query<Row>(`${SELECT} where o.added_by = $1 and o.added_at > $2 order by o.added_at desc, o.receipt_id desc limit $3`, [viewer.staffId, since, PAGE_MAX]);
     return { scope: "own", days: EMPLOYEE_DAYS, items: rows.map((r) => view(r, viewer)) };
   }
-  const status: Status = input.status === "set_aside" ? "set_aside" : "waiting";
+  const status: Status = input.status === "set_aside" ? "set_aside" : input.status === "drafted" ? "drafted" : "waiting";
   const limitIn = typeof input.limit === "number" && Number.isInteger(input.limit) ? input.limit : PAGE_DEFAULT;
   const limit = Math.min(Math.max(limitIn, 1), PAGE_MAX);
   const before = typeof input.before === "string" && ID.test(input.before) ? input.before : null;
@@ -275,19 +290,38 @@ export async function inbox(db: Db, viewer: Viewer, input: InboxInput, now: Date
       limit $3`,
     [status, before, limit + 1],
   );
-  const counts: Record<Status, number> = { waiting: 0, set_aside: 0 };
+  const counts: Record<Status, number> = { waiting: 0, drafted: 0, set_aside: 0 };
   for (const c of await db.query<{ status: Status; n: number }>("select status, count(*)::int as n from ops.receipt_originals group by status")) {
     if (c.status in counts) counts[c.status] = c.n;
   }
   const page = rows.slice(0, limit);
+  const heads = status === "drafted" ? await headlines(db, page.map((r) => r.receipt_id)) : new Map<string, DraftHeadline>();
   return {
     scope: "all",
     status,
-    items: page.map((r) => view(r, viewer)),
+    items: page.map((r) => {
+      const v = view(r, viewer);
+      const h = heads.get(r.receipt_id);
+      return h === undefined ? v : { ...v, draft: h };
+    }),
     counts,
     next: rows.length > limit ? (page[page.length - 1]?.receipt_id ?? null) : null,
     canSetAside: SET_ASIDE_ROLES.includes(viewer.role),
   };
+}
+
+/** The live drafts' headlines of these originals, by original id. One query. */
+async function headlines(db: Db, ids: readonly string[]): Promise<Map<string, DraftHeadline>> {
+  const out = new Map<string, DraftHeadline>();
+  if (ids.length === 0) return out;
+  const rows = await db.query<{ original_id: string; purchase_id: string; supplier_name: string | null; receipt_date: string | null; total: string; business: Business | null; needs_attention: boolean; failed: number }>(
+    `select original_id, purchase_id, supplier_name, receipt_date, total::text as total, business, needs_attention,
+            (select count(*)::int from jsonb_array_elements(checks) c where c->>'passed' = 'false') as failed
+       from ops.purchase_receipts where original_id = any($1::text[]) and status = 'draft'`,
+    [ids],
+  );
+  for (const r of rows) out.set(r.original_id, { id: r.purchase_id, supplier: r.supplier_name, date: r.receipt_date, total: r.total, business: r.business, needsAttention: r.needs_attention, failed: r.failed });
+  return out;
 }
 
 /** What the view route needs to serve an original, or null: no such id, or one `viewer` may not see (the same answer). */
@@ -343,10 +377,14 @@ export async function toRead(db: Db, input: { after?: string | undefined; limit:
   return { waiting, items: page.map(toReadItem), next: rows.length > limit ? (page[page.length - 1]?.receipt_id ?? null) : null };
 }
 
-/** One waiting original for an assistant, with its storage key; null for a malformed id, an unknown one or one set aside (the same answer). */
+/**
+ * One original for an assistant, with its storage key: waiting, or drafted (card P5-05a: so a reader can
+ * look again and propose a correction); null for a malformed id, an unknown one or one set aside (the
+ * same answer).
+ */
 export async function forAssistant(db: Db, id: unknown): Promise<(ToReadItem & { storageKey: string }) | null> {
   if (typeof id !== "string" || !ID.test(id)) return null;
-  const row = await db.maybeOne<Row>(`${SELECT} where o.receipt_id = $1 and o.status = 'waiting'`, [id]);
+  const row = await db.maybeOne<Row>(`${SELECT} where o.receipt_id = $1 and o.status in ('waiting', 'drafted')`, [id]);
   return row === null ? null : { ...toReadItem(row), storageKey: row.storage_key };
 }
 
@@ -364,7 +402,7 @@ export async function setAside(tx: Tx, input: { id?: unknown; aside?: unknown; r
   const row = await lockOne(tx, input.id);
   if (input.aside) {
     if (row.status === "set_aside") return { record: view(row, viewer), changed: false };
-    if (row.status !== "waiting") throw new Error("Only an original that is waiting can be set aside.");
+    if (row.status !== "waiting" && row.status !== "drafted") throw new Error("Only an original that is waiting or read can be set aside.");
     const raw = typeof input.reason === "string" ? input.reason : "";
     if (/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(raw)) throw new Error("The reason cannot contain a line break or other control character.");
     const reason = raw.trim().replace(/\s+/g, " ");
@@ -372,12 +410,16 @@ export async function setAside(tx: Tx, input: { id?: unknown; aside?: unknown; r
     if (n < REASON_MIN || n > REASON_MAX) throw new Error(`Say why it is set aside, in ${REASON_MIN} to ${REASON_MAX} characters.`);
     await tx.query("update ops.receipt_originals set status = 'set_aside', set_aside_reason = $2, set_aside_by = $3, set_aside_at = $4 where receipt_id = $1", [row.receipt_id, reason, viewer.staffId, now]);
     await audit.write(tx, { actorId: viewer.staffId, action: "receipt_original.set_aside", targetType: "receipt_originals", targetId: row.receipt_id, before: { status: row.status }, after: { status: "set_aside", reason } }, { now });
+    // A drafted original's draft leaves the live list with it (kept, unchanged; card P5-05a).
+    if (row.status === "drafted") await drafts.takenOut(tx, row.receipt_id, viewer.staffId, now);
   } else {
     if (row.status !== "set_aside") return { record: view(row, viewer), changed: false };
-    await tx.query("update ops.receipt_originals set status = 'waiting', set_aside_reason = null, set_aside_by = null, set_aside_at = null where receipt_id = $1", [row.receipt_id]);
+    // Back to drafted when it has a draft (restored to the live list), else to waiting.
+    const back: Status = (await drafts.restore(tx, row.receipt_id, viewer.staffId, now)) ? "drafted" : "waiting";
+    await tx.query("update ops.receipt_originals set status = $2, set_aside_reason = null, set_aside_by = null, set_aside_at = null where receipt_id = $1", [row.receipt_id, back]);
     await audit.write(
       tx,
-      { actorId: viewer.staffId, action: "receipt_original.put_back", targetType: "receipt_originals", targetId: row.receipt_id, before: { status: "set_aside", reason: row.set_aside_reason, by: row.set_aside_by, at: row.set_aside_at?.toISOString() }, after: { status: "waiting" } },
+      { actorId: viewer.staffId, action: "receipt_original.put_back", targetType: "receipt_originals", targetId: row.receipt_id, before: { status: "set_aside", reason: row.set_aside_reason, by: row.set_aside_by, at: row.set_aside_at?.toISOString() }, after: { status: back } },
       { now },
     );
   }

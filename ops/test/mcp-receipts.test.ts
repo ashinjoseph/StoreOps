@@ -38,7 +38,7 @@ beforeEach(async () => {
   w.clock.now = new Date();
   w.extraTools = [];
   w.bucket = memoryBucket();
-  for (const t of ["receipt_upload_tickets", "receipt_originals", "assistant_calls", "audit_log", "config"]) await w.owner.query(`delete from ops.${t}`);
+  for (const t of ["purchase_receipt_lines", "purchase_receipts", "receipt_upload_tickets", "receipt_originals", "assistant_calls", "audit_log", "config"]) await w.owner.query(`delete from ops.${t}`);
   await w.owner.query("update ops.staff set active = (staff_id <> 'S_005')");
   await setDoor(w, true);
 });
@@ -642,6 +642,8 @@ describe("receipt_original", () => {
       receipt_original: { id },
       receipt_upload_start: { source: "assistant" },
       receipts_from_email: { message_ids: ["<a@example.test>"] },
+      // card P5-05a
+      receipt_propose: { original_id: id, amounts: { total: "1.00" } },
     };
     for (const tool of TOOLS) {
       const r = await client.callTool({ name: tool.name, arguments: ARGS[tool.name] ?? {} });

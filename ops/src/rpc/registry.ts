@@ -18,7 +18,7 @@ import { rpcGetCashHandoverHistory, rpcGetCashOutstandingFor, rpcGetCashPosition
 import { rpcCreateCommissionRule, rpcGetCommissionRules, rpcUpdateCommissionRule } from "./handlers/commission-rules";
 import { rpcGetCommissionRuns, rpcRunCommissionEngine } from "./handlers/commissions";
 import { rpcCheckWhatsApp } from "./handlers/notifier";
-import { rpcAddBusinessSign, rpcGetBusinesses, rpcGetReceiptInbox, rpcRemoveBusinessSign, rpcSetReceiptAside, rpcSetReceiptBusiness, rpcUpdateBusiness } from "./handlers/receipts";
+import { rpcAddBusinessSign, rpcEnterReceiptDraft, rpcGetBusinesses, rpcGetReceiptDraft, rpcGetReceiptInbox, rpcRemoveBusinessSign, rpcSetReceiptAside, rpcSetReceiptBusiness, rpcUpdateBusiness } from "./handlers/receipts";
 import { rpcGetReconciliation, rpcReconcileDay } from "./handlers/reconcile";
 import { rpcReconcilePastDay } from "./handlers/reconcile-past";
 import { rpcGetSalesByChannel } from "./handlers/sales-channels";
@@ -102,6 +102,8 @@ export const handlers: RpcHandlers = {
   rpcUpdateBusiness,
   rpcAddBusinessSign,
   rpcRemoveBusinessSign,
+  rpcGetReceiptDraft,
+  rpcEnterReceiptDraft,
   rpcGetTillLink,
   rpcGetSalesByChannel,
   rpcSetTillStore,

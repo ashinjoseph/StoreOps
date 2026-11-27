@@ -131,19 +131,20 @@ describe("it refuses, and leaves the database exactly as it was", () => {
   it("a database on an older migration than the copy's, and one with a different migration file", async () => {
     const dir = scratch();
     const m = manifestIn(dir);
+    const here = m.database.newestMigration.version;
     m.database.newestMigration.version += 1;
     writeManifest(dir, m);
-    await refused(dir, /newest migration is 12, older than the copy's 13/);
+    await refused(dir, new RegExp(`newest migration is ${here}, older than the copy's ${here + 1}`));
 
     const dir2 = scratch();
     const m2 = manifestIn(dir2);
     m2.database.newestMigration.checksum = "0".repeat(64);
     writeManifest(dir2, m2);
-    await refused(dir2, /migration 12 is not the same file as the copy's/);
+    await refused(dir2, new RegExp(`migration ${here} is not the same file as the copy's`));
 
-    await owner(target, "delete from ops.schema_migrations where version = 12");
+    await owner(target, `delete from ops.schema_migrations where version = ${here}`);
     fresh = await dumpAll(target.ownerUrl);
-    await refused(folder, /newest migration is 11, older than the copy's 12/);
+    await refused(folder, new RegExp(`newest migration is ${here - 1}, older than the copy's ${here}`));
   });
 
   it("a database that has not been migrated at all", async () => {

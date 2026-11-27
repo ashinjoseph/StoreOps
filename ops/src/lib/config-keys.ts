@@ -86,6 +86,8 @@ export const CONFIG_KEYS = {
   assistant_show_max_mb: setting("number", "8"),
   // Operations app only (card P5-12a, the receipt inbox): not in Setup.gs; listed in OPS_ONLY_KEYS below.
   receipt_max_mb: setting("number", "10"),
+  // card P5-05a: the HST rate the receipt drafts' checks use (percent; read as exact text, so 0 is 0).
+  hst_rate_percent: setting("number", "13"),
 } as const satisfies Record<string, ConfigKeySpec>;
 
 export type ConfigKey = keyof typeof CONFIG_KEYS;
@@ -114,6 +116,8 @@ export const OPS_ONLY_KEYS: readonly string[] = [
   "commission_run_paused",
   // card P5-12a, the receipt inbox
   "receipt_max_mb",
+  // card P5-05a, receipt drafts
+  "hst_rate_percent",
 ];
 
 export const SECRET_KEYS: readonly ConfigKey[] = (Object.keys(CONFIG_KEYS) as ConfigKey[]).filter((key) => CONFIG_KEYS[key].kind === "secret");

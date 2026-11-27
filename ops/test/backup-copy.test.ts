@@ -429,7 +429,9 @@ describe("the manifest", () => {
     expect(sales.totals.months?.length).toBeGreaterThan(2);
     expect(m.totals.tables).toBe(m.tables.length);
     expect(m.totals.rows).toBe(m.tables.reduce((n, t) => n + t.rows, 0));
-    expect(m.database.newestMigration.version).toBe(12);
+    // The newest migration in the folder, read here (not a number that goes stale when a migration is added).
+    const newest = Math.max(...readdirSync(new URL("../migrations/", import.meta.url)).filter((f) => /^\d{4}_.*\.sql$/.test(f)).map((f) => Number(f.slice(0, 4))));
+    expect(m.database.newestMigration.version).toBe(newest);
   });
 
   it("a failure injected at any file leaves no manifest", async () => {

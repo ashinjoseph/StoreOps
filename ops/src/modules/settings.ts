@@ -48,7 +48,7 @@ const LAYOUT: ReadonlyArray<readonly [Group, readonly string[]]> = [
   ["Till", ["till_enabled", "till_api_url", "till_key_expires_on"]],
   ["Commissions", ["commission_run_day", "commission_run_hour", "commission_run_paused"]],
   ["Public report", ["public_report_url"]],
-  ["Other", ["cstore_business_name", "vape_business_name", "timezone", "receipt_max_mb"]],
+  ["Other", ["cstore_business_name", "vape_business_name", "timezone", "receipt_max_mb", "hst_rate_percent"]],
   ["Assistants", ["assistants_enabled", "assistant_calls_per_minute", "assistant_proposals_per_day", "assistant_show_max_mb"]],
 ];
 
@@ -96,6 +96,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   assistant_proposals_per_day: "Proposals one assistant key may make in a Toronto day",
   assistant_show_max_mb: "Largest receipt original an assistant is shown in one answer, in MB (1 to 25). A larger one is not shown, never shrunk",
   receipt_max_mb: "Largest receipt original (photo or PDF) the Receipts screen accepts, in MB (1 to 25)",
+  hst_rate_percent: "HST rate (percent) a receipt draft's tax is checked against: 0 to 30, up to three decimals. Ontario is 13",
 };
 
 /** A sentence added to the description the screen shows, whatever the table row says. */
@@ -118,6 +119,8 @@ interface NumberRule {
   integer?: boolean;
   /** Zero is refused because the reader turns it into this default. */
   zeroReadsAs?: string;
+  /** At most this many decimals (hst_rate_percent: 3). */
+  decimals?: number;
 }
 
 const MONEY_MAX = 1_000_000;
@@ -141,6 +144,7 @@ const NUMBER_RULES: Readonly<Record<string, NumberRule>> = {
   assistant_proposals_per_day: { min: 1, max: 5000, integer: true },
   assistant_show_max_mb: { min: 1, max: 25, integer: true },
   receipt_max_mb: { min: 1, max: 25, integer: true },
+  hst_rate_percent: { min: 0, max: 30, decimals: 3 },
 };
 
 const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/;
@@ -150,6 +154,7 @@ function checkNumber(key: string, text: string): string {
   if (!PLAIN_NUMBER.test(text) || !Number.isFinite(Number(text))) throw new Error(`${key} must be a plain number such as 250 or 250.50`);
   const n = Number(text);
   if (rule === undefined) return text;
+  if (rule.decimals !== undefined && (text.split(".")[1] ?? "").length > rule.decimals) throw new Error(`${key} can have at most ${rule.decimals} decimals`);
   if (rule.integer) {
     if (!Number.isInteger(n) || n < rule.min || n > rule.max) throw new Error(`${key} must be a whole number from ${rule.min} to ${rule.max}`);
     return text;

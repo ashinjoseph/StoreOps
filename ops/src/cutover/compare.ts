@@ -57,6 +57,11 @@ export const LATER_OPS_TABLES: readonly string[] = [
   "till_staff_links",
   // card P5-12b, the assistant's upload tickets for the receipt inbox (0012_receipt_upload_tickets.sql)
   "receipt_upload_tickets",
+  // card P5-05a, receipt drafts and the supplier list (0013_receipt_drafts.sql)
+  "suppliers",
+  "supplier_names",
+  "purchase_receipts",
+  "purchase_receipt_lines",
 ];
 
 /** The column each table's rows are grouped by, per month (America/Toronto). null: the table has no date. */
@@ -1121,7 +1126,9 @@ export function compareExportToDatabase(input: CompareInput): ReconcileResult {
   const deprecated: ReconcileResult["deprecated"] = [];
   for (const tabName of contract.leftTabs.keys()) {
     const t = tabs.get(tabName);
-    const inDb = db.allTables.includes(tabName);
+    // A later card's own table of the same name is a new design, never loaded from the tab (card P5-05a's
+    // ops.suppliers: schema.sql says the suppliers tab's "new design is in P5-05").
+    const inDb = db.allTables.includes(tabName) && !LATER_OPS_TABLES.includes(tabName);
     deprecated.push({ tab: tabName, sheetRows: t ? t.rows.length : 0, tableInDatabase: inDb });
     if (inDb) other.push({ table: tabName, kind: "schema", message: `the Sheet's deprecated tab ${tabName} has a table in the database` });
   }

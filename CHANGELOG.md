@@ -1685,3 +1685,43 @@ transaction, money as a float, a table left out silently, a restore into a
 database with rows, a file with a wrong SHA-256, identity counters not reset, a
 manager allowed to copy, a failed copy stopping the Monday job, a folder
 overwritten), every one seen failing.
+
+### Receipt drafts: what was read off a receipt, checked by the app (P5-05a)
+
+- An AI assistant with a key that may propose can now send the figures it read
+  off one stored receipt (`receipt_propose`): supplier, invoice number, date,
+  how it was paid, subtotal, HST, other charges, total, kind of purchase, what
+  the receipt prints about the buyer, the lines, and where each figure was
+  read. An admin or a manager can type the same figures by hand on a waiting
+  receipt (**Enter the figures by hand**). Either way it is kept as a **draft
+  that counts for nothing** until a person confirms it (the next card).
+- **The app decides the business**, from what the receipt prints about the
+  buyer and the signs on the Businesses screen: one business matched says
+  which signs decided it; signs of both businesses, or none, leave it not
+  known. The reader's guess, the supplier and the business chosen at upload
+  never decide it (the last is shown beside, and a disagreement is flagged).
+- **The app checks the arithmetic, exactly, in cents**: the lines add up to the
+  subtotal, the parts to the total, the HST is plausible for the rate (new
+  setting `hst_rate_percent`, default 13), the date is a real day and not in
+  the future or over 7 years old, the same invoice is not already on file in
+  either business, the supplier's HST number has the right shape. A draft that
+  fails a check is kept and marked *needs attention*, with each failure in a
+  sentence with its numbers; it is refused only when it is no draft at all. A
+  figure not on the receipt stays blank and reads *not on the receipt*. Money
+  has two decimals; a line's unit price may have four (fuel at 1.459 a litre),
+  and nothing is computed from quantity × unit price.
+- On the Receipts screen a read receipt moves to **Read, waiting for review**
+  (admin, manager, payroll admin), and opens with what was read beside the
+  original, read only. An employee sees that their receipt *has been read*.
+- A new reading of the same receipt replaces the old one (which is kept) until
+  a person has typed it; nothing is deleted, and every draft is in the audit
+  log. Four new tables (migration 0013) and ADR-0027.
+
+New: `ops/test/receipt-drafts.test.ts` and assertions in the `ui-receipts`
+suite, seen failing first and against thirteen deliberate mutations (float sums,
+the reader's suggestion deciding the business, a business picked when the signs
+conflict, a left-out HST stored as 0, a total that does not add up refused, a
+read key proposing, an assistant replacing a hand-typed draft, a removed sign
+counted, a duplicate missed in the other business, a supplier created from an
+assistant's draft, two live drafts for one original, a third decimal accepted on
+money, a fifth decimal accepted on a unit price).

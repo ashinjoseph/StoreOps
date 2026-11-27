@@ -84,7 +84,7 @@ hand one out.
 | P5-03 | Vape close from the till snapshot | T2 | P5-02b, P4-05 | money | todo (goes live only after the switch has settled) |
 | P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02b | | done (switched off; five questions for the till side, in the card) |
 | P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | postponed (the owner, Nov 27: assistants through MCP first) |
-| P5-05a | Receipt drafts: what was read off a receipt, checked by the app | T3 | P5-12b | money | in progress |
+| P5-05a | Receipt drafts: what was read off a receipt, checked by the app | T3 | P5-12b | money | done (kinds of receipt it does not hold well, for the owner, in the card) |
 | P5-05b | Review a draft beside the original: correct, confirm, void; learn signs and supplier spellings | T3 | P5-05a | money | todo |
 | P5-06 | Receipt test set through each assistant | T2 + owner | P5-05b, P5-10 | | todo |
 | P5-07 | Delivery runs: spec first, then build | T3 | P5-02a | | spec drafted, with the owner (eight questions; needs new calls from the till side) |
@@ -1333,6 +1333,44 @@ plan must allow it. For the owner:
    message id.
 3. An assistant may say which business a file is for when handing it over;
    a person still confirms it later. Say if an assistant should not.
+
+**P5-05a is done.** A draft is the figures read off one stored original:
+proposed by an assistant through one new tool (`receipt_propose`), or typed
+by an admin or manager on the Receipts screen ("Enter the figures by
+hand"); both go through the same code. It counts for nothing: reviewing and
+confirming is P5-05b.
+- **The app decides the business.** The reader reports what the receipt
+  prints about the buyer (a name, an HST number, an account number, the
+  card's last four digits); the app matches those against each business's
+  signs. One business matched: that one, with which signs decided it.
+  Signs pointing at both: "conflict". Nothing matched: "not known". A
+  reader's own guess decides nothing, and neither does the supplier.
+- **The checks flag and do not refuse:** the lines add up to the subtotal;
+  subtotal + HST + other charges = total, to the cent; the HST is plausible
+  at the rate in settings (13%); the date is real, not in the future and
+  not older than 7 years; the same supplier and invoice number is not
+  already on file in either business. Each failed check is a sentence with
+  the numbers in it.
+- **Blank is "not on the receipt",** never 0 and never invented. Amounts are
+  exact, in cents; a line's unit price may have up to four decimals (a fuel
+  pump prints three).
+- A read original moves to "Read, waiting for review" on the Receipts
+  screen, where its figures are shown read-only beside the original.
+Migration `0013_receipt_drafts.sql`;
+[ADR-0027](../adr/0027-the-app-decides-the-business-and-checks-the-arithmetic.md).
+**Kinds of receipt it does not hold well yet** (for the owner and the
+bookkeeper to say which matter):
+1. A credit note or return: accepted with a negative total, but nothing
+   marks it as a credit.
+2. Tax included in the price with no HST line: the tax is not recorded and
+   so cannot be claimed.
+3. A deposit or environmental fee that is itself taxed: goes in "other
+   charges", and the HST check may flag it.
+4. Tobacco tax: no field of its own.
+5. An invoice in another currency: treated as dollars.
+6. A statement covering several invoices: one draft, one invoice number.
+Also: nothing creates a supplier yet (P5-05b does, from the review screen),
+so no draft's supplier is matched until then.
 
 ## Phase 6 — App
 

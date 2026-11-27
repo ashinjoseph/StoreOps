@@ -58,7 +58,7 @@ flowchart LR
 | understand the business and the problem | [Context](context.md): the store, goals, constraints, glossary |
 | see how it's built | [Architecture overview](architecture/overview.md): system context, layers, module map, the daily flow |
 | see a feature, with screenshots | [Components](components/README.md): one page per feature |
-| know why something is the way it is | [Decisions (ADRs)](adr/README.md): 24 recorded decisions, plus 3 proposed |
+| know why something is the way it is | [Decisions (ADRs)](adr/README.md): 25 recorded decisions, plus 3 proposed |
 | see where it's going | [Migration plan](plans/2026-11-operations-app-migration.md): off Sheets to its own app, in small task cards (draft) |
 | set it up | [Setup guide](guides/setup.md) |
 | rehearse the move off Sheets | [Dry run](guides/cutover-dry-run.md): the real Sheet into a local database, with a report of every difference |

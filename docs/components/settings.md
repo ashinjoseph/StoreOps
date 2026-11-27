@@ -98,6 +98,7 @@ roles `["admin"]`. The handlers check the role again themselves.
 | `assistant_calls_per_minute`, `assistant_proposals_per_day` | number | 30, 200 | not a whole number from 1 to 600, or from 1 to 5000 | the door's limits per key |
 | `assistant_show_max_mb` | number | 8 | not a whole number from 1 to 25 | the largest receipt original an assistant is shown in one answer (card P5-12b); a larger one is not shown, never shrunk |
 | `receipt_max_mb` | number | 10 | not a whole number from 1 to 25 | the largest receipt original (photo or PDF) the app keeps (card P5-12a; [receipts](receipts.md)) |
+| `hst_rate_percent` | number | 13 | below 0, above 30, more than three decimals | the HST rate a receipt draft's tax is checked against (card P5-05a; [receipts](receipts.md)); read as exact text, so 0 means 0% (not the default), in group *Other* and `OPS_ONLY_KEYS` |
 | business names, template names and language, merchant ids, `timezone` | text | | over 500 characters, or a line break or other control character | a newline in a name would break a WhatsApp template parameter; `timezone` must also be a real zone |
 
 Every number must be written in plain decimal form (`250` or `250.50`): no
@@ -161,6 +162,9 @@ letting "default: No" stand for something the app does not do.
   Operations app, so they are listed in `OPS_ONLY_KEYS` rather than in Setup.gs.
 - **Nov 2026 (cards P5-12a, P5-12b):** `receipt_max_mb` in *Other* and
   `assistant_show_max_mb` in *Assistants*.
+- **Nov 2026 (card P5-05a):** `hst_rate_percent` in *Other* (also in
+  `OPS_ONLY_KEYS`), with a new number rule: at most three decimals
+  ([receipts](receipts.md)).
 - **Nov 2026 (card P4-13):** `commission_run_paused` in the *Commissions* group
   (also in `OPS_ONLY_KEYS`): switches the Monday commission run off and on
   ([commissions](commissions.md)). Every edit is in the [audit log](audit-log.md).

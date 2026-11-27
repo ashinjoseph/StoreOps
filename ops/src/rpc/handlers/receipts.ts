@@ -6,6 +6,7 @@
 import { requireRole } from "../../auth/roles";
 import { NOT_LOGGED_IN, type Session } from "../../auth/types";
 import * as businesses from "../../receipts/businesses";
+import * as drafts from "../../receipts/drafts";
 import * as originals from "../../receipts/originals";
 import type { RpcContext, RpcHandler } from "../types";
 
@@ -37,6 +38,22 @@ export const rpcSetReceiptBusiness: RpcHandler = async (ctx, input) => {
   const s = caller(ctx, originals.SET_ASIDE_ROLES);
   const o = fields(input);
   return originals.setBusiness(ctx.db, { id: o["id"], business: o["business"] }, viewer(s), ctx.now);
+};
+
+/** Admin, manager, payroll admin: `{ id }` (an original's id). `{ draft }`: its live draft with lines, checks and business decision, or null (card P5-05a). */
+export const rpcGetReceiptDraft: RpcHandler = async (ctx, input) => {
+  caller(ctx, originals.SEE_ALL);
+  return { draft: await drafts.getDraft(ctx.db, fields(input)["id"]) };
+};
+
+/**
+ * Admin or manager: the figures typed by hand from an original (the same fields as the tool
+ * receipt_propose; unknown fields such as a planted role or business are dropped). The same code path
+ * as an assistant's proposal, with the person as the reader. `{ draft, replaced }`.
+ */
+export const rpcEnterReceiptDraft: RpcHandler = async (ctx, input) => {
+  const s = caller(ctx, originals.SET_ASIDE_ROLES);
+  return drafts.propose(ctx.db, drafts.parsePageInput(input), { kind: "person", staffId: s.staffId }, await ctx.config(), ctx.now);
 };
 
 /** Admin, manager, payroll admin: both businesses and their live signs. Only an admin may change them. */
