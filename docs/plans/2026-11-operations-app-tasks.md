@@ -72,8 +72,8 @@ hand one out.
 | P4-11 | Staff screen: add, change, deactivate, PINs, raises | T3 | P4-08 | security, money | done (one thing for the owner, in the card) |
 | P4-11b | A day worked with no rate shows as "no rate set", not $0 | T2 | P4-11 | money | todo (changes what a ported call answers: the owner to agree) |
 | P4-12a | Correct a closed till | T3 | P4-08 | money | done (three things for the owner, in the card) |
-| P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | todo |
-| P4-12c | Reconcile a past day again | T2 | P4-08 | money | todo |
+| P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | in progress |
+| P4-12c | Reconcile a past day again | T2 | P4-08 | money | in progress |
 | P4-13 | Audit log on a screen; a setting to pause the Monday run | T1 | P4-09 | security | todo (planned) |
 | P4-14 | Backups, and a restore that has been tried | T2 + owner | P2-10 | money | todo (planned) |
 | P5-01 | Stores and staff assignments | T2 | P4-05 | security | todo |
@@ -88,7 +88,7 @@ hand one out.
 | P5-08 | Send a vape delivery to the till, on a button | T2 | P5-05, P1-02 | money | todo |
 | P5-09 | Bookkeeping export of receipts, per business, in QuickBooks's layout | T2 | P5-05 | money | todo |
 | P5-10 | Trial with Muse: can it hand over an original, and how does it connect | T2 + owner | P2-10 | security | todo (needs a public address: the hosted setup) |
-| P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | | security | todo |
+| P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | | security | in progress |
 | P5-12 | The two businesses and the receipt inbox (originals kept) | T2 | P5-11 | money | todo |
 | P5-13 | Emailed invoices through the assistant | T2 | P5-05 | security | todo |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
