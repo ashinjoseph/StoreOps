@@ -74,14 +74,14 @@ hand one out.
 | P4-12a | Correct a closed till | T3 | P4-08 | money | done (three things for the owner, in the card) |
 | P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | done (notes in the card) |
 | P4-12c | Reconcile a past day again | T2 | P4-08 | money | done (three things for the owner, in the card) |
-| P4-12d | The Reconcile screen shows unmeasured cards as "not verified", not as a difference | T1 | | money | todo (an existing fault, found by P4-12c) |
+| P4-12d | The Reconcile screen shows unmeasured cards as "not verified", not as a difference | T1 | | money | in progress |
 | P4-13 | Audit log on a screen; a setting to pause the Monday run | T2 | P4-09 | security | done (notes in the card) |
 | P4-14 | Backups, and a restore that has been tried | T2 + owner | P2-10 | money | todo (planned) |
 | P5-01 | Stores and staff assignments | T2 | P4-05 | security | todo |
 | P5-02a | Till link: the client and a fake till (switched off) | T2 | | security | done (nine questions for the till side, in the card) |
 | P5-02b | Till link: people and stores matched, key expiry | T2 | P5-02a, P4-11 | security | done (switched off; five questions for the till side, in the card) |
 | P5-03 | Vape close from the till snapshot | T2 | P5-02b, P4-05 | money | todo (goes live only after the switch has settled) |
-| P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02a | | todo |
+| P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02b | | in progress |
 | P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | postponed (the owner, Nov 27: assistants through MCP first) |
 | P5-05 | Purchase receipts, supplier records and product costs | T2 | P5-12b | money | todo (the draft now comes through MCP) |
 | P5-06 | Receipt test set through each assistant | T2 + owner | P5-05 | | todo |
@@ -91,7 +91,7 @@ hand one out.
 | P5-10 | Trial with Muse: can it hand over an original, and how does it connect | T2 + owner | P2-10 | security | todo (needs a public address: the hosted setup) |
 | P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | | security | done (switched off; questions for the trial and the owner, in the card) |
 | P5-12a | The two businesses and the receipt inbox (originals kept) | T3 | | money, security | done (to try on a real phone; notes in the card) |
-| P5-12b | The assistant's tools for the inbox: hand over an original, see one, list those waiting | T3 | P5-12a, P5-11 | security | todo |
+| P5-12b | The assistant's tools for the inbox: hand over an original, see one, list those waiting | T3 | P5-12a, P5-11 | security | in progress |
 | P5-13 | Emailed invoices through the assistant | T2 | P5-05 | security | todo |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
 | P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05 | money | todo |
