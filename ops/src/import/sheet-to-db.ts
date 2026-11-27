@@ -96,7 +96,9 @@ const COLUMN_RE = /^"?([a-z_]+)"?\s+(text|boolean|date|timestamptz|integer|bigin
  * integer, bigint, boolean, date, timestamptz, bytea) and throws on anything
  * else rather than guess.
  */
-export function parseContract(sql: string): Contract {
+export function parseContract(text: string): Contract {
+  // A checkout on Windows has CRLF line ends (Git's default there). Read it as the same file.
+  const sql = text.replace(/\r\n?/g, "\n");
   const leftTabs = new Map<string, string>();
   const leftColumns = new Map<string, string>();
   const start = sql.indexOf("Left out, and why");

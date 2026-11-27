@@ -56,6 +56,9 @@ const countOf = (text, needle) => text.split(needle).length - 1;
  * <script> element, inline (no src: the page's policy allows that one script and nothing else),
  * and the tag inside that script as `var DATA = <?!= payload ?>;`.
  */
+/** A checkout on Windows has CRLF line ends (Git's default there): build from the same text everywhere. */
+const lf = (text) => text.replace(/\r\n?/g, "\n");
+
 export function splitPublicTemplate(name, source) {
   const opens = countOf(source, "<?");
   const closes = countOf(source, "?>");
@@ -88,7 +91,7 @@ export function splitPublicTemplate(name, source) {
 export function buildPublicTemplates({ write = false, sources = {} } = {}) {
   const out = {};
   for (const [view, src] of Object.entries(PUBLIC_SOURCES)) {
-    const text = sources[view] ?? readFileSync(src.path, "utf8");
+    const text = lf(sources[view] ?? readFileSync(src.path, "utf8"));
     out[view] = { source: src.file, ...splitPublicTemplate(src.file, text) };
   }
   const module =
@@ -152,7 +155,7 @@ function addTransport(html) {
  * `source` replaces the contents of src/Index.html, for tests.
  */
 export function buildUi({ write = false, source } = {}) {
-  const input = source ?? readFileSync(SRC, "utf8");
+  const input = lf(source ?? readFileSync(SRC, "utf8"));
   const html = addTransport(removeWarmups(removeMoreItems(input)));
   const left = html.indexOf("<?");
   if (left !== -1) {

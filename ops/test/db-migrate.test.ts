@@ -194,3 +194,25 @@ describe("test databases", () => {
     expect(inB).toHaveLength(0);
   });
 });
+
+// Found on the owner's first dry run (Nov 27): Git on Windows checks files out with CRLF line
+// ends. A checksum over the file's bytes would then differ between a Windows checkout and the
+// deploy's, and the same migration would look "changed".
+describe("a migration's checksum does not depend on the checkout's line endings", () => {
+  it("the same file with CRLF gives the same checksum and the same SQL text", () => {
+    const d = mkdtempSync(join(tmpdir(), "ops-mig-eol-"));
+    const unix = "-- a migration\ncreate table ops.e (id int);\n";
+    writeFileSync(join(d, "0001_a.sql"), unix);
+    const a = readMigrationFiles(d)[0]!;
+    writeFileSync(join(d, "0001_a.sql"), unix.replace(/\n/g, "\r\n"));
+    const b = readMigrationFiles(d)[0]!;
+    expect(b.checksum).toBe(a.checksum);
+    expect(b.sql).toBe(unix);
+    // A real change is still a change.
+    writeFileSync(join(d, "0001_a.sql"), unix.replace("int", "bigint"));
+    expect(readMigrationFiles(d)[0]!.checksum).not.toBe(a.checksum);
+  });
+  it("the real migrations keep the checksums they had (files with LF are read as they are)", () => {
+    for (const f of REAL) expect(f.sql.includes("\r")).toBe(false);
+  });
+});

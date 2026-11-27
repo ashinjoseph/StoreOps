@@ -699,6 +699,14 @@ writing. Two people then use staging for a normal day beside the real app.
 Sheet through export, import and the check on the owner's own computer.
 Run end to end on the fictional data on Nov 26: clean result, a second
 import refused, and a planted one-cent change reported.
+**First real run (owner, Windows, Nov 27):** the export worked on the real
+download. The import then refused all 13 deprecated tabs as unknown. Cause:
+Git on Windows checks files out with CRLF line ends, and the reader of the
+schema file's deprecated-tab list understood only LF. Fixed the same day:
+the schema reader, migration checksums and the page build now read a CRLF
+checkout as the same text, and `.gitattributes` keeps LF in every checkout.
+Checked by taking a full CRLF copy of the code through migrate, dry run,
+import, the check and the page build.
 **Done when:** the owner signs off the reconcile report.
 
 ### P4-05 · Cutover runbook, then the switch · T3 + owner · money

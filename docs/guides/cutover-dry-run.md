@@ -20,6 +20,21 @@ It takes about 20 minutes. You need Docker, Node 22 and this repository.
 Work in a folder outside the repository, for example `~/storeops-dry-run`.
 The steps below call it `$RUN`.
 
+### On Windows (Command Prompt)
+
+The commands below are written for a bash terminal. In Command Prompt the
+`npm` commands are the same; three things differ:
+
+| bash | Command Prompt |
+|---|---|
+| `export NAME="value"` | `set NAME=value` (no quotes: they would become part of the value) |
+| `"$RUN/export"` | `"%RUN%\export"` |
+| `cp a b` | `copy a b` |
+
+Set the folder once with `set RUN=%USERPROFILE%\storeops-dry-run`. A `set`
+lasts for that window only, so run every step in the same window. Keep `RUN`
+outside OneDrive or any other synced folder: it holds the real workbook.
+
 ## 1. Start an empty local database
 
 ```sh

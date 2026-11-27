@@ -43,13 +43,15 @@ export function readMigrationFiles(dir: string): MigrationFile[] {
     if (!file.endsWith(".sql")) continue;
     const m = FILE_RE.exec(file);
     if (!m) throw new Error(`Migration file "${file}" is not named NNNN_name.sql (four digits, lower-case name).`);
-    const raw = readFileSync(join(dir, file));
+    // A checkout on Windows has CRLF line ends (Git's default there). The SQL and its checksum are
+    // those of the file with LF, so the same migration has the same checksum on every machine.
+    const sql = readFileSync(join(dir, file)).toString("utf8").replace(/\r\n/g, "\n");
     files.push({
       version: Number(m[1]),
       name: m[2] as string,
       id: file.slice(0, -4),
-      sql: raw.toString("utf8"),
-      checksum: sha256(raw),
+      sql,
+      checksum: sha256(Buffer.from(sql, "utf8")),
     });
   }
   files.sort((a, b) => a.version - b.version);

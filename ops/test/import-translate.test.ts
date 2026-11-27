@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 // Pure tests of the Sheet-to-database translation: no database, no Sheet.
 import { describe, expect, it } from "vitest";
 import { readContract } from "../src/import/load";
@@ -399,6 +400,20 @@ describe("what the contract leaves out", () => {
 });
 
 describe("parseContract", () => {
+  // Found on the owner's first dry run (Nov 27): Git on Windows checks files out with CRLF line
+  // ends. The list of deprecated tabs was then read as empty, and the import refused all 13.
+  it("reads the same contract from a checkout with Windows line endings", () => {
+    const lf = readFileSync(new URL("../contracts/schema.sql", import.meta.url), "utf8");
+    expect(lf.includes("\r")).toBe(false);
+    const fromCrlf = parseContract(lf.replace(/\n/g, "\r\n"));
+    const fromLf = parseContract(lf);
+    expect(fromCrlf.leftTabs.size).toBe(13);
+    expect([...fromCrlf.leftTabs]).toEqual([...fromLf.leftTabs]);
+    expect([...fromCrlf.leftColumns]).toEqual([...fromLf.leftColumns]);
+    expect(fromCrlf.tables).toEqual(fromLf.tables);
+    for (const reason of fromCrlf.leftTabs.values()) expect(reason.endsWith("\r")).toBe(false);
+  });
+
   it("reads types, scales, enums, primary keys, defaults and foreign keys from the real contract", () => {
     const c = contract.tables;
     expect(c["sales"]?.columns.find((x) => x.name === "cash_sales")).toMatchObject({ type: "numeric", precision: 12, scale: 2, notNull: false });

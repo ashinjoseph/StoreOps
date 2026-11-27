@@ -87,6 +87,19 @@ const warmOf = js => js.split('\n').map(warmOfLine).filter(Boolean);
   t.throws('when a template tag would remain (in markup)',
     () => buildUi({ write: false, source: SRC_HTML.replace('</body>', '<?!= x ?></body>') }), '<?');
 
+  // Found on the owner's first dry run (Nov 27): Git on Windows checks files out with CRLF line ends.
+  t.section('A checkout with Windows line endings builds the same pages');
+  const crlf = s => s.replace(/\r?\n/g, '\r\n');
+  t.ok('the source here has LF only', SRC_HTML.indexOf('\r') === -1);
+  t.ok('the app page is the same bytes', buildUi({ write: false, source: crlf(SRC_HTML) }) === out);
+  {
+    const { buildPublicTemplates } = await import(BUILD);
+    const pub = name => fs.readFileSync(path.join(H.SRC, name), 'utf8');
+    const fromLf = buildPublicTemplates({ write: false });
+    const fromCrlf = buildPublicTemplates({ write: false, sources: { recon: crlf(pub('Public.html')), sales: crlf(pub('PublicSales.html')) } });
+    t.eq('the two public templates are the same', JSON.stringify(fromCrlf), JSON.stringify(fromLf));
+  }
+
   t.section('Deterministic');
   t.ok('building twice gives the same bytes', buildUi({ write: false }) === buildUi({ write: false }));
 

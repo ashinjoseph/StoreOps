@@ -1,0 +1,12 @@
+# Line endings. Every text file is LF in the repository AND in every checkout,
+# Windows included. Git for Windows otherwise checks text out with CRLF, and
+# three things here read files by their bytes or line by line: the schema
+# reader (the list of deprecated tabs), migration checksums, and the shell
+# script the local database container runs. The code tolerates CRLF too
+# (found on the first dry run, Nov 27); this keeps the files the same everywhere.
+* text=auto eol=lf
+
+# Data files stay exactly as committed.
+*.csv -text
+*.png binary
+*.xlsx binary
