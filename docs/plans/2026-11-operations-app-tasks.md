@@ -722,6 +722,13 @@ that holds money loaded whole except the rows below.
   522, and two sales rows (523 and 524) pointing at sessions that are not
   in the tab; one bonus (row 3) pointing at a commission run that is not in
   the tab.
+  **Owner's answer (Nov 27): all 11 are test data and are left out.** The
+  import is run with `--accept-rejects 11`; the Sheet-against-database
+  check then lists them under "not loaded" with the money they carry.
+  For the real cutover (P4-05): the same rows will reject again unless they
+  are removed from the Sheet first. Accepting by count alone would also
+  accept a different 11, so the runbook compares that day's `rejects.csv`
+  with this list (tab and row) before the count is given.
 - Also seen: 5 formula cells in `till_sessions` (someone typed formulas
   there; the export keeps their shown values); 2 tills open at download
   time, holding 0 in their closing figures; 1 audit id re-keyed.
