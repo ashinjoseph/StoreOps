@@ -24,7 +24,7 @@ import {
 } from "../src/cutover/compare";
 import { parseContract } from "../src/import/sheet-to-db";
 
-const CONTRACT = parseContract(`
+const MINI_SQL = `
 create table ops.config (key text primary key, value text, description text);
 create table ops.staff (
   staff_id text primary key,
@@ -63,9 +63,25 @@ create table ops.payments (
 -- Left out, and why
 --    tab    shopping_list    deprecated: shopping list
 --    column staff.login_code the plaintext PIN
-`);
+`;
+const CONTRACT = parseContract(MINI_SQL);
+/** The same contract with the audit log, for the tests about it. */
+const WITH_LOG = parseContract(
+  MINI_SQL.replace(
+    "-- Left out, and why",
+    `create table ops.audit_log (
+  log_id text primary key,
+  "timestamp" timestamptz not null,
+  actor_id text,
+  action text not null,
+  target_type text,
+  target_id text
+);
+-- Left out, and why`,
+  ),
+);
 const TABLES = ["config", "staff", "till_sessions", "sales", "payments"];
-const COLS: Record<string, string[]> = Object.fromEntries(TABLES.map((t) => [t, (CONTRACT.tables[t]?.columns ?? []).map((c) => c.name).filter((c) => c !== "store_id")]));
+const COLS: Record<string, string[]> = Object.fromEntries([...TABLES, "audit_log"].map((t) => [t, (WITH_LOG.tables[t]?.columns ?? []).map((c) => c.name).filter((c) => c !== "store_id")]));
 
 type Obj = Record<string, unknown>;
 const HASH = `pbkdf2-sha256$100000$${Buffer.alloc(16, 7).toString("base64")}$${Buffer.alloc(32, 9).toString("base64")}`;
@@ -79,21 +95,27 @@ interface World {
   /** Tables whose database rows are in `seq` order. */
   seq?: string[];
   extraTabs?: SheetTabIn[];
+  /** The tables of this world, when not the usual five. */
+  tables?: string[];
+  /** The contract, when not the usual one. */
+  contract?: typeof CONTRACT;
 }
 
 const allEmpty = (cells: unknown[]): boolean => cells.every((c) => c === "" || c === null || c === undefined);
 
 /** The comparison of a world; the honest import report is derived from the world unless overridden. */
 function run(w: World): ReconcileResult {
+  const names = w.tables ?? TABLES;
+  const contract = w.contract ?? CONTRACT;
   const sheet = w.sheet ?? {};
-  const tabs: SheetTabIn[] = TABLES.map((t) => {
+  const tabs: SheetTabIn[] = names.map((t) => {
     const header = t === "staff" ? [...(COLS[t] as string[]), "login_code"] : (COLS[t] as string[]);
     const rows = (sheet[t] ?? []).map((o) => header.map((h) => (h in o ? (o[h] as unknown) : "")));
     return { name: t, header, rows };
   });
-  const db: DbSnapshot = { tables: {}, allTables: [...TABLES], opsOnlyCounts: {} };
-  for (const t of TABLES) {
-    const cols = [...(COLS[t] as string[]), ...(CONTRACT.tables[t]?.columns.some((c) => c.name === "store_id") ? ["store_id"] : []), ...(t === "staff" ? ["pin_hash"] : [])];
+  const db: DbSnapshot = { tables: {}, allTables: [...names], opsOnlyCounts: {} };
+  for (const t of names) {
+    const cols = [...(COLS[t] as string[]), ...(contract.tables[t]?.columns.some((c) => c.name === "store_id") ? ["store_id"] : []), ...(t === "staff" ? ["pin_hash"] : [])];
     const rows = (w.db?.[t] ?? []).map((o) => {
       const r: Record<string, string | null> = {};
       for (const c of cols) r[c] = c in o ? (o[c] as string | null) : c === "store_id" ? "store_main" : null;
@@ -139,7 +161,7 @@ function run(w: World): ReconcileResult {
     ...given,
   };
   if (given.tables) evidence.tables = given.tables;
-  return compareExportToDatabase({ contract: CONTRACT, tabs: [...tabs, ...(w.extraTabs ?? [])], db, evidence });
+  return compareExportToDatabase({ contract, tabs: [...tabs, ...(w.extraTabs ?? [])], db, evidence });
 }
 
 const emptyEvidence = (): ImportEvidence => ({
@@ -234,6 +256,27 @@ describe("a Sheet and a database that agree", () => {
       db: { staff: [{ staff_id: "S_9", name: "Pat", active: "false", role: "employee", start_date: "2026-11-20", created_at: "2026-11-21T03:00:00.250000Z" }] },
     });
     expect(diffs(r, "staff").filter((d) => d.kind !== "pin_hash")).toEqual([]);
+  });
+});
+
+// Found on the first dry run on real data (Nov 27): the app writes a reconcile entry's target as
+// the day in text, and Google Sheets turns that into a date cell. The import reads it back as the
+// day; this check has the same expectation, stated on its own.
+describe("an audit target that Google Sheets turned into a date", () => {
+  const log = (target: unknown) => ({ log_id: "L1", timestamp: new Date("2026-11-22T03:10:00Z"), actor_id: "S_1", action: "reconcile.day", target_type: "validation_results", target_id: target });
+  const dbLog = (target: string | null) => ({ log_id: "L1", timestamp: "2026-11-22T03:10:00.000000Z", actor_id: "S_1", action: "reconcile.day", target_type: "validation_results", target_id: target });
+
+  it("a date cell at midnight in Toronto equals the day in text", () => {
+    const r = run({ contract: WITH_LOG, tables: [...TABLES, "audit_log"], seq: ["audit_log"], sheet: { audit_log: [log(new Date("2026-11-21T05:00:00Z"))] }, db: { audit_log: [dbLog("2026-11-21")] } });
+    expect(diffs(r, "audit_log")).toEqual([]);
+  });
+  it("another day in the database is a difference", () => {
+    const r = run({ contract: WITH_LOG, tables: [...TABLES, "audit_log"], seq: ["audit_log"], sheet: { audit_log: [log(new Date("2026-11-21T05:00:00Z"))] }, db: { audit_log: [dbLog("2026-11-20")] } });
+    expect(kinds(r, "audit_log")).toContain("value");
+  });
+  it("a date cell with a time of day is not readable as text: reported, never guessed", () => {
+    const r = run({ contract: WITH_LOG, tables: [...TABLES, "audit_log"], seq: ["audit_log"], sheet: { audit_log: [log(new Date("2026-11-21T15:30:00Z"))] }, db: { audit_log: [dbLog("2026-11-21")] } });
+    expect(diffs(r, "audit_log").length).toBeGreaterThan(0);
   });
 });
 

@@ -314,6 +314,25 @@ const NUMERIC_TEXT = /^[+-]?\d+(\.\d+)?$/;
 const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i;
 
+/**
+ * Text columns where the app wrote a day as text and Google Sheets turned it into a date cell
+ * (every reconcile entry in the audit log has the business day as its target). The expected
+ * database value is that day in text, and only when the cell is exactly midnight in Toronto.
+ * This check's own statement of the rule: nothing is taken from the importer.
+ */
+const DAY_AS_TEXT: ReadonlySet<string> = new Set(["audit_log.target_id"]);
+const OFFSET_PARTS = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+/** The instant of 00:00:00.000 in Toronto on the day "YYYY-MM-DD" (the offset is read at a guess near it, then applied). */
+function midnightOf(day: string): number {
+  const utc = Date.parse(`${day}T00:00:00.000Z`);
+  for (const guess of [utc + 4 * 3600_000, utc + 5 * 3600_000]) {
+    const p: Record<string, string> = {};
+    for (const x of OFFSET_PARTS.formatToParts(new Date(guess))) p[x.type] = x.value;
+    if (`${p["year"]}-${p["month"]}-${p["day"]}` === day && p["hour"] === "00" && p["minute"] === "00" && p["second"] === "00") return guess;
+  }
+  return Number.NaN;
+}
+
 function readCell(table: string, col: Column, cell: unknown): Expected {
   const whiteBlank = (isIdColumn(col) || col.enumValues !== undefined) && typeof cell === "string" && cell.trim() === "";
   if (isBlankCell(cell) || whiteBlank) {
@@ -369,6 +388,7 @@ function readCell(table: string, col: Column, cell: unknown): Expected {
       if (typeof cell === "string") s = cell;
       else if (typeof cell === "number" && Number.isFinite(cell)) s = String(cell);
       else if (typeof cell === "boolean") s = String(cell);
+      else if (cell instanceof Date && !Number.isNaN(cell.getTime()) && DAY_AS_TEXT.has(`${table}.${col.name}`) && cell.getTime() === midnightOf(torontoDay(cell))) s = torontoDay(cell);
       else return { k: "bad", why: "not text" };
       if (isIdColumn(col)) s = s.trim();
       if (col.enumValues) {

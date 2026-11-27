@@ -707,6 +707,24 @@ the schema reader, migration checksums and the page build now read a CRLF
 checkout as the same text, and `.gitattributes` keeps LF in every checkout.
 Checked by taking a full CRLF copy of the code through migrate, dry run,
 import, the check and the page build.
+**First dry run on real data (Nov 27): 10,271 rows, 314 rejected.** No
+reject was a money figure, a date or a status in the wrong form: every tab
+that holds money loaded whole except the rows below.
+- 303 in `audit_log`: the app writes each reconcile entry's target as the
+  day in text, and Google Sheets had turned it into a date cell. Fixed the
+  same day: in `audit_log.target_id` only, a date cell at midnight in
+  Toronto is read back as the day in text, counted in the report; the
+  Sheet-against-database check states the same rule on its own.
+- 11 that need the owner to look at the Sheet (nothing is guessed):
+  two early till sessions (rows 3 and 4) whose attendance row does not
+  exist, which take their two sales rows and two handover lines with them;
+  two till sessions (rows 525 and 526) repeating the ids of rows 521 and
+  522, and two sales rows (523 and 524) pointing at sessions that are not
+  in the tab; one bonus (row 3) pointing at a commission run that is not in
+  the tab.
+- Also seen: 5 formula cells in `till_sessions` (someone typed formulas
+  there; the export keeps their shown values); 2 tills open at download
+  time, holding 0 in their closing figures; 1 audit id re-keyed.
 **Done when:** the owner signs off the reconcile report.
 
 ### P4-05 · Cutover runbook, then the switch · T3 + owner · money

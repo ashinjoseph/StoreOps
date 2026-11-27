@@ -11,7 +11,7 @@
 // column's type or the row is rejected; nothing is repaired, defaulted or
 // rounded. A blank is NULL, never 0 (ADR-0004).
 import { configKeySpec } from "../lib/config-keys";
-import { formatDate } from "../lib/dates";
+import { formatDate, wallClock } from "../lib/dates";
 
 // ── The contract, parsed ─────────────────────────────────────
 
@@ -199,6 +199,8 @@ export interface TranslatedTab {
   rejectedRows: number;
   /** Rows the contract leaves out (config secrets). */
   leftOut: number;
+  /** Cells that Google Sheets had turned from text into a date, read back as the day (SHEETS_RETYPED_DAY). */
+  retyped: { row: number; column: string }[];
 }
 
 export interface NotMigrated {
@@ -242,7 +244,7 @@ export function configKeyLeftOut(key: string): boolean {
 /** An id: a primary key, a *_id column, or an actor column (*_by). Trimmed of surrounding spaces, nothing else. */
 const isIdColumn = (c: Column): boolean => c.primaryKey || c.name.endsWith("_id") || c.name.endsWith("_by");
 
-type Cell = { ok: true; value: Value } | { ok: false; reason: string };
+type Cell = { ok: true; value: Value; retyped?: true } | { ok: false; reason: string };
 const ok = (value: Value): Cell => ({ ok: true, value });
 const bad = (reason: string): Cell => ({ ok: false, reason });
 
@@ -300,12 +302,27 @@ function booleanCell(cell: unknown): Cell {
   return bad("not TRUE or FALSE");
 }
 
-function textCell(col: Column, cell: unknown): Cell {
+/**
+ * Text columns where the old app wrote a day as text ("2026-11-21") and Google Sheets turned it
+ * into a date cell, as it does with any text that looks like a date. Found on the first dry run on
+ * real data: every `reconcile.day` audit row has the business day as its target (Reconcile.gs).
+ * In these columns only, a date cell at exactly midnight in Toronto is read back as that day, the
+ * text the app wrote. A date with a time of day, or a date in any other text column, is still a
+ * reject: what was typed there cannot be known from the cell.
+ */
+export const SHEETS_RETYPED_DAY: ReadonlySet<string> = new Set(["audit_log.target_id"]);
+
+function textCell(table: Table, col: Column, cell: unknown): Cell {
   let s: string;
   if (typeof cell === "string") s = cell;
   else if (typeof cell === "number" && Number.isFinite(cell)) s = String(cell);
   else if (typeof cell === "boolean") s = String(cell);
-  else return bad("not text");
+  else if (cell instanceof Date) {
+    if (Number.isNaN(cell.getTime()) || !SHEETS_RETYPED_DAY.has(`${table.name}.${col.name}`)) return bad("not text (a date)");
+    const w = wallClock(cell);
+    if (w.hour !== 0 || w.minute !== 0 || w.second !== 0 || w.ms !== 0) return bad("not text (a date with a time of day)");
+    return { ok: true, value: formatDate(cell), retyped: true };
+  } else return bad("not text");
   if (isIdColumn(col)) s = s.trim();
   if (col.enumValues) {
     // The Sheet's own validation is advisory and the old code read these columns
@@ -342,7 +359,7 @@ function translateCell(table: Table, col: Column, cell: unknown): Cell {
     case "boolean":
       return booleanCell(cell);
     case "text":
-      return textCell(col, cell);
+      return textCell(table, col, cell);
     case "bytea":
       return bad("binary columns are not imported");
   }
@@ -393,6 +410,7 @@ export function translateTab(tab: string, header: readonly unknown[], rows: read
 
   const out: Record<string, Value>[] = [];
   const rowNumbers: number[] = [];
+  const retyped: { row: number; column: string }[] = [];
   const rejects: Reject[] = [];
   let skipped = 0;
   let rejectedRows = 0;
@@ -417,11 +435,14 @@ export function translateTab(tab: string, header: readonly unknown[], rows: read
       return;
     }
     const row: Record<string, Value> = {};
+    const rowRetyped: { row: number; column: string }[] = [];
     let rowRejected = false;
     for (const col of present) {
       const r = translateCell(table, col, cells[at.get(col.name) as number]);
-      if (r.ok) row[col.name] = r.value;
-      else {
+      if (r.ok) {
+        row[col.name] = r.value;
+        if (r.retyped) rowRetyped.push({ row: rowNo, column: col.name });
+      } else {
         rowRejected = true;
         rejects.push({ tab, row: rowNo, column: col.name, reason: r.reason });
       }
@@ -433,7 +454,8 @@ export function translateTab(tab: string, header: readonly unknown[], rows: read
     if (known.has("store_id")) row["store_id"] = storeId;
     out.push(row);
     rowNumbers.push(rowNo);
+    retyped.push(...rowRetyped);
   });
 
-  return { status: "ok", tab, rows: out, rowNumbers, rejects, headerIssues, read: rows.length, skipped, rejectedRows, leftOut };
+  return { status: "ok", tab, rows: out, rowNumbers, rejects, headerIssues, read: rows.length, skipped, rejectedRows, leftOut, retyped };
 }

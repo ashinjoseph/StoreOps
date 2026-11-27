@@ -64,6 +64,10 @@ export function buildReport(run: RunResult): Record<string, unknown> {
       foreignKeys: "a row whose parent was rejected or is missing is rejected, naming the parent's table and column",
       duplicateKeys: { rejectedLaterRows: r.duplicateKeyRejects, reKeyed: r.rekeyed },
       placeholders: { leftOut: r.leftOut },
+      retypedBySheets: {
+        rule: "in audit_log.target_id only, a date cell at midnight in Toronto is read back as the day in text (the app wrote the day as text and Google Sheets made it a date); any other date in a text column is rejected",
+        cells: r.retypedBySheets,
+      },
       openSessions: r.openSessions,
       pins: {
         loginCodeNeverImported: true,
@@ -99,6 +103,8 @@ export function summaryLines(run: RunResult, reportDir: string): string[] {
   lines.push(`config keys left out as secrets: ${r.configKeysLeftOut.length}`);
   lines.push(`placeholders left out: ${r.leftOut.length}`);
   lines.push(`ids re-keyed: ${r.rekeyed.length}`);
+  const retyped = Object.entries(r.retypedBySheets);
+  if (retyped.length > 0) lines.push(`dates read back as the text the app wrote: ${retyped.map(([where, n]) => `${n} in ${where}`).join(", ")}`);
   lines.push(
     `open till sessions: ${r.openSessions.openRows}, ${r.openSessions.rowsWithClosingFigures} holding closing figures; ` +
       `${r.openSessions.flag ? `closing columns imported as NULL for ${r.openSessions.rowsWithClosingFigures}` : `copied as they are (--open-sessions-blank would change ${r.openSessions.rowsWithClosingFigures})`}`,

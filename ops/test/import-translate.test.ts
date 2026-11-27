@@ -191,6 +191,43 @@ describe("text columns", () => {
   });
 });
 
+// Found on the owner's first dry run on real data (Nov 27): 303 audit rows rejected as "not text".
+// The app writes each day's reconcile entry with the day as its target ("2026-11-21"), and Google
+// Sheets turns text that looks like a date into a date cell.
+describe("text that Google Sheets turned into a date", () => {
+  const LOG = ["log_id", "timestamp", "actor_id", "action", "target_type", "target_id", "details"];
+  const row = (target: unknown, details: unknown = "x"): unknown[] => ["LOG_1", new Date("2026-11-22T03:10:00Z"), "S_1", "reconcile.day", "validation_results", target, details];
+  const tr = (cells: unknown[]) => translateTab("audit_log", LOG, [cells], opts());
+
+  it("an audit row's target that is a date cell at midnight in Toronto is read back as the day the app wrote", () => {
+    const winter = tr(row(new Date("2026-11-21T05:00:00Z"))); // 00:00 EST
+    expect(winter.rejects).toEqual([]);
+    expect(winter.rows[0]?.["target_id"]).toBe("2026-11-21");
+    const summer = tr(row(new Date("2026-07-04T04:00:00Z"))); // 00:00 EDT
+    expect(summer.rows[0]?.["target_id"]).toBe("2026-07-04");
+    expect(winter.status === "ok" && winter.retyped).toEqual([{ row: 3, column: "target_id" }]);
+  });
+  it("a target that is text is left alone and not counted", () => {
+    const r = tr(row("2026-11-21"));
+    expect(r.rows[0]?.["target_id"]).toBe("2026-11-21");
+    expect(r.status === "ok" && r.retyped).toEqual([]);
+  });
+  it("a date cell with a time of day is still a reject: what the app wrote cannot be known", () => {
+    const r = tr(row(new Date("2026-11-21T15:30:00Z")));
+    expect(r.rows).toEqual([]);
+    expect(r.rejects).toEqual([{ tab: "audit_log", row: 3, column: "target_id", reason: "not text (a date with a time of day)" }]);
+  });
+  it("a date cell in any other text column is still a reject, and the reason says what the cell is", () => {
+    const r = tr(row("VAP-1", new Date("2026-11-21T05:00:00Z")));
+    expect(r.rejects).toEqual([{ tab: "audit_log", row: 3, column: "details", reason: "not text (a date)" }]);
+    const note = one("sales", "misc_notes", new Date("2026-11-21T05:00:00Z"));
+    expect(note.rejects.map((x) => x.reason)).toEqual(["not text (a date)"]);
+  });
+  it("an invalid date is a reject", () => {
+    expect(tr(row(new Date(NaN))).rejects.map((x) => x.reason)).toEqual(["not text (a date)"]);
+  });
+});
+
 describe("enum columns", () => {
   it.each<[string, string, unknown, unknown]>([
     ["till_sessions", "status", "Closed", "closed"],

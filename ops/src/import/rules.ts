@@ -281,6 +281,8 @@ export interface RulesReport {
   openSessions: OpenSessionsReport;
   pins: PinReport;
   configKeysLeftOut: LeftOutKey[];
+  /** Cells Google Sheets had turned from text into a date, read back as the day: count per "table.column". */
+  retypedBySheets: Record<string, number>;
 }
 
 export interface RulesOptions {
@@ -298,9 +300,13 @@ export function createRules(options: RulesOptions): { report: RulesReport; prepa
     leftOut: [],
     openSessions: { flag: options.openSessionsBlank, openRows: 0, rowsWithClosingFigures: 0, columns: [...OPEN_SESSION_CLOSING_COLUMNS] },
     pins: { hashed: 0, blank: [], unreadable: 0, notFourToEightDigits: 0 },
+    retypedBySheets: {},
     configKeysLeftOut: [],
   };
   const prepare = async ({ translated, tabs, contract }: PrepareContext): Promise<void> => {
+    for (const [name, tab] of translated) {
+      for (const cell of tab.retyped) report.retypedBySheets[`${name}.${cell.column}`] = (report.retypedBySheets[`${name}.${cell.column}`] ?? 0) + 1;
+    }
     for (const [name, tab] of translated) {
       const pk = pkOf(contract, name);
       if (ITEM_TABLES.includes(name)) report.rekeyed.push(...rekeyDuplicateItems(tab, pk));
