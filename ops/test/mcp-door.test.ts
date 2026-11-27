@@ -98,12 +98,12 @@ describe("off by default", () => {
 // ── The handshake and the list ──────────────────────────────
 
 describe("handshake and tools/list through the SDK client", () => {
-  it("connects (stateless: no session id), lists exactly the three tools, each with the data sentence and an object schema", async () => {
+  it("connects (stateless: no session id), lists exactly the read tools, each with the data sentence and an object schema", async () => {
     const { key } = await makeKey(w, { right: "read" });
     const client = await sdkClient(w, key);
     expect(client.getServerVersion()?.name).toBe("storeops-operations");
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals"]);
+    expect(tools.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "receipts_to_read", "receipt_original", "receipts_from_email"]);
     for (const t of tools) {
       expect(t.description?.endsWith(DATA_SENTENCE), t.name).toBe(true);
       expect(t.inputSchema.type, t.name).toBe("object");
@@ -112,17 +112,17 @@ describe("handshake and tools/list through the SDK client", () => {
     await client.close();
   });
 
-  it("the allowlist in tools.ts is exactly these three names", () => {
-    expect(TOOLS.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals"]);
-    expect(TOOLS.map((t) => t.right)).toEqual(["read", "read", "read"]);
+  it("the allowlist in tools.ts is exactly these names (card P5-12b added the four receipt tools)", () => {
+    expect(TOOLS.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "receipts_to_read", "receipt_original", "receipt_upload_start", "receipts_from_email"]);
+    expect(TOOLS.map((t) => t.right)).toEqual(["read", "read", "read", "read", "read", "propose", "read"]);
   });
 
   it("a key sees the tools its right allows: a read key does not see a propose tool, a propose key does", async () => {
     w.extraTools = [testPropose];
     const read = await sdkClient(w, (await makeKey(w, { right: "read" })).key);
-    expect((await read.listTools()).tools.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals"]);
+    expect((await read.listTools()).tools.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "receipts_to_read", "receipt_original", "receipts_from_email"]);
     const propose = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
-    expect((await propose.listTools()).tools.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "test_propose"]);
+    expect((await propose.listTools()).tools.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "receipts_to_read", "receipt_original", "receipt_upload_start", "receipts_from_email", "test_propose"]);
     await read.close();
     await propose.close();
   });
@@ -562,7 +562,7 @@ describe("nothing else moves", () => {
     expect(await snap()).toBe(before);
   });
 
-  it("a tool handler gets the database, the key, the time and the settings: never the request", async () => {
+  it("a tool handler gets the database, the key, the time, the settings, the request's origin and the receipt storage: never the request", async () => {
     let seen: string[] = [];
     w.extraTools = [
       {
@@ -579,7 +579,7 @@ describe("nothing else moves", () => {
     ];
     const client = await sdkClient(w, (await makeKey(w)).key);
     await client.callTool({ name: "test_ctx", arguments: {} });
-    expect(seen).toEqual(["config", "db", "key", "now"]);
+    expect(seen).toEqual(["config", "db", "key", "now", "origin", "storage"]);
     expect(Object.keys((await withTransaction(w.db, (tx) => keys.authenticate(tx, "Bearer x", w.clock.now))) as object)).not.toContain("request");
   });
 

@@ -235,6 +235,7 @@ describe("settings", () => {
       ["assistants_enabled", "Assistants"],
       ["assistant_calls_per_minute", "Assistants"],
       ["assistant_proposals_per_day", "Assistants"],
+      ["assistant_show_max_mb", "Assistants"],
     ]);
   });
 

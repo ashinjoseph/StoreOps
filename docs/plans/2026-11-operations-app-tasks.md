@@ -91,7 +91,7 @@ hand one out.
 | P5-10 | Trial with Muse: can it hand over an original, and how does it connect | T2 + owner | P2-10 | security | todo (needs a public address: the hosted setup) |
 | P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | | security | done (switched off; questions for the trial and the owner, in the card) |
 | P5-12a | The two businesses and the receipt inbox (originals kept) | T3 | | money, security | done (to try on a real phone; notes in the card) |
-| P5-12b | The assistant's tools for the inbox: hand over an original, see one, list those waiting | T3 | P5-12a, P5-11 | security | in progress |
+| P5-12b | The assistant's tools for the inbox: hand over an original, see one, list those waiting | T3 | P5-12a, P5-11 | security | done (questions for the trial and the owner, in the card) |
 | P5-13 | Emailed invoices through the assistant | T2 | P5-05 | security | todo |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
 | P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05 | money | todo |
@@ -1271,6 +1271,34 @@ which business a receipt is for.
    generally kept six years; confirm with the bookkeeper.
 3. A card sign must be exactly four digits ("48 21" with a space is
    refused).
+
+**P5-12b is done:** an assistant with a key can now see which originals
+are waiting (`receipts_to_read`), be shown one (`receipt_original`: the
+stored file itself, photo or PDF, exactly as kept), hand one over, and ask
+whether an email is already on file (`receipts_from_email`). To hand one
+over it calls `receipt_upload_start` and is given a one-time address, good
+for 10 minutes and one file; it then sends the file there. The address
+needs no other key, dies with the key that asked for it, and every wrong or
+spent address gets the same answer. The file goes through exactly the path
+a person's upload does: the same size limit, the kind decided by the bytes,
+the same duplicate rule. An assistant's original is recorded under the
+key's person with the key and, for an emailed invoice, the message's id,
+sender and date; the Receipts screen says "added by <name>'s assistant".
+Asking for an address counts against the key's daily limit. Only this one
+tool can return a file. Checked over real HTTP with the MCP library's own
+client. Migration `0012_receipt_upload_tickets.sql`.
+For the trial with a real assistant: does it accept an answer of about 11 MB
+(an 8 MB photo), a photo in the iPhone's HEIC format, and a PDF? Building
+that answer takes about a third of a second of processing, so the hosted
+plan must allow it. For the owner:
+1. **An invoice that is the email's own text, with no attachment,** cannot
+   be kept as it is: only photos and PDFs are accepted. Either the assistant
+   prints the email to PDF (kept, but not the message itself), or the app
+   learns to keep an email as a file. To decide before P5-13.
+2. One email with several attachments gives several originals under one
+   message id.
+3. An assistant may say which business a file is for when handing it over;
+   a person still confirms it later. Say if an assistant should not.
 
 ## Phase 6 — App
 

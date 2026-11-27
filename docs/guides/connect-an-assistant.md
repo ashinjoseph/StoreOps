@@ -65,7 +65,32 @@ If it does not connect:
 The app never says which of these it was, to the assistant or to anyone else;
 the reason is kept in the app's record of calls.
 
-## 5. Withdraw a key
+## 5. What to ask it to do
+
+With a key that may **read**, it can see the receipts waiting to be read and be
+shown each one. With a key that may **read and propose**, it can also hand
+receipts over. Two requests, in plain words:
+
+- *"Look at the receipts waiting in the Operations app and tell me what each
+  one is."* It lists what is waiting (oldest first) and is shown each photo or
+  PDF as it was kept. Nothing changes in the app.
+- *"Find the supplier invoices in my inbox from this week and hand each one
+  over to the Operations app's receipts. Skip any it already has."* For each
+  email it first asks whether that email was handed over already, then asks for
+  a one-time upload address and sends the attached file there. This needs an
+  assistant that can send a file (one with a computer of its own, or a
+  scheduled task), and the mailbox connected to it.
+
+What you then see: under **More → Receipts → Waiting**, each original it handed
+over says *added by Priya Nair's assistant (Priya's Muse)* (your name and the
+key's label), and an emailed one also shows who sent it and when. It is kept
+exactly as sent, like a photo you took; nothing is read from it or confirmed
+yet. On the **Assistants** screen the key's *calls today* go up, and each upload
+address it asked for counts as one proposal. The assistant can ask
+`my_proposals` whether each file was kept, was already on file, or was refused
+(and why).
+
+## 6. Withdraw a key
 
 **More → Assistants**, **Withdraw** on the key, give a reason. It stops
 working at once, on the assistant's next call. Withdraw a key when a phone or

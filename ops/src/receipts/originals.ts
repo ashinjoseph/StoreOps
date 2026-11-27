@@ -100,6 +100,10 @@ export interface OriginalView {
   note: string | null;
   status: Status;
   setAside: { reason: string; by: string; at: string } | null;
+  /** Only on an original an assistant handed over (card P5-12b): the label of the key it used. */
+  assistant?: { label: string };
+  /** Only on an original from an email: the sender and date as the assistant gave them (text, shown as text). */
+  email?: { from: string; date: string };
 }
 
 interface Row {
@@ -120,14 +124,21 @@ interface Row {
   added_at: Date;
   file_name: string | null;
   note: string | null;
+  assistant_key_id: string | null;
+  key_label: string | null;
+  email_message_id: string | null;
+  email_sender: string | null;
+  email_date: Date | null;
 }
 
 const SELECT = `select o.receipt_id, o.sha256, o.size_bytes, o.content_type, o.storage_key, o.business, o.status,
                        o.set_aside_reason, o.set_aside_by, sa.name as set_aside_by_name, o.set_aside_at,
-                       o.source, o.added_by, ad.name as added_by_name, o.added_at, o.file_name, o.note
+                       o.source, o.added_by, ad.name as added_by_name, o.added_at, o.file_name, o.note,
+                       o.assistant_key_id, ak.label as key_label, o.email_message_id, o.email_sender, o.email_date
                   from ops.receipt_originals o
                   left join ops.staff ad on ad.staff_id = o.added_by
-                  left join ops.staff sa on sa.staff_id = o.set_aside_by`;
+                  left join ops.staff sa on sa.staff_id = o.set_aside_by
+                  left join ops.assistant_keys ak on ak.key_id = o.assistant_key_id`;
 
 const nameOr = (name: string | null, id: string): string => (name ?? id).trim();
 
@@ -145,6 +156,8 @@ function view(r: Row, viewer: Viewer): OriginalView {
     note: r.note,
     status: r.status,
     setAside: r.status === "set_aside" && r.set_aside_at !== null ? { reason: r.set_aside_reason ?? "", by: nameOr(r.set_aside_by_name, r.set_aside_by ?? ""), at: r.set_aside_at.toISOString() } : null,
+    ...(r.assistant_key_id !== null ? { assistant: { label: r.key_label ?? r.assistant_key_id } } : {}),
+    ...(r.email_sender !== null && r.email_date !== null ? { email: { from: r.email_sender, date: r.email_date.toISOString() } } : {}),
   };
 }
 
@@ -164,6 +177,12 @@ export interface AddInput {
   source: unknown;
   fileName: unknown;
   note: unknown;
+  /**
+   * Only for an original an assistant handed over through an upload ticket (card P5-12b): the key it
+   * used, and the source it declared (an email's message id, sender and date, already checked).
+   * Nothing a person sends can set this: the page's route never passes it.
+   */
+  from?: { keyId: string; source: "assistant" | "email"; email: { messageId: string; sender: string; date: Date } | null };
 }
 
 export interface AddResult {
@@ -183,7 +202,10 @@ const when = (d: Date): string => formatDateTime(d).slice(0, 16);
 export async function add(tx: Tx, storage: ReceiptStorage, input: AddInput, viewer: Viewer, now: Date): Promise<AddResult> {
   if (input.sha256.byteLength !== 32) throw new TypeError("sha256 must be 32 bytes");
   const business: Business | null = isBusiness(input.business) ? input.business : null;
-  const source: Source = input.source === "photo" ? "photo" : "upload";
+  const from = input.from;
+  const source: Source | "assistant" | "email" = from !== undefined ? from.source : input.source === "photo" ? "photo" : "upload";
+  const email = from?.source === "email" ? from.email : null;
+  if (from?.source === "email" && email === null) throw new TypeError("an emailed original needs the email's message id, sender and date");
   const fileName = cleanFileName(input.fileName);
   const note = cleanNote(input.note);
   const hash = hex(input.sha256);
@@ -203,15 +225,14 @@ export async function add(tx: Tx, storage: ReceiptStorage, input: AddInput, view
   // and never removed by the app (docs/components/receipts.md).
   await storage.put(key, input.bytes, { contentType: input.contentType, sha256: hash, receiptId: id });
   await tx.query(
-    `insert into ops.receipt_originals (receipt_id, sha256, size_bytes, content_type, storage_key, business, status, source, added_by, added_at, file_name, note)
-     values ($1, $2, $3, $4, $5, $6, 'waiting', $7, $8, $9, $10, $11)`,
-    [id, input.sha256, input.bytes.byteLength, input.contentType, key, business, source, viewer.staffId, now, fileName, note],
+    `insert into ops.receipt_originals (receipt_id, sha256, size_bytes, content_type, storage_key, business, status, source, added_by, added_at, file_name, note,
+                                        assistant_key_id, email_message_id, email_sender, email_date)
+     values ($1, $2, $3, $4, $5, $6, 'waiting', $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    [id, input.sha256, input.bytes.byteLength, input.contentType, key, business, source, viewer.staffId, now, fileName, note, from?.keyId ?? null, email?.messageId ?? null, email?.sender ?? null, email?.date ?? null],
   );
-  await audit.write(
-    tx,
-    { actorId: viewer.staffId, action: "receipt_original.add", targetType: "receipt_originals", targetId: id, after: { id, sha256: hash, size: input.bytes.byteLength, type: input.contentType, business, source } },
-    { now },
-  );
+  const after: Record<string, unknown> = { id, sha256: hash, size: input.bytes.byteLength, type: input.contentType, business, source };
+  if (from !== undefined) after["assistantKeyId"] = from.keyId;
+  await audit.write(tx, { actorId: viewer.staffId, action: "receipt_original.add", targetType: "receipt_originals", targetId: id, after }, { now });
   const row = await tx.one<Row>(`${SELECT} where o.receipt_id = $1`, [id]);
   return { duplicate: false, message: `Kept. ${sizeText(row.size_bytes)}, added ${when(now)}.`, record: view(row, viewer) };
 }
@@ -275,6 +296,58 @@ export async function forView(db: Db, viewer: Viewer, id: unknown, now: Date): P
   const row = await db.maybeOne<Row>(`${SELECT} where o.receipt_id = $1`, [id]);
   if (row === null || !maySee(viewer, row, now)) return null;
   return { id: row.receipt_id, storageKey: row.storage_key, contentType: row.content_type, size: row.size_bytes };
+}
+
+// ── What an assistant reads (card P5-12b) ─────────────────
+// An assistant reads for the business, not for one person: a key may list and be shown any original
+// that is waiting (not set aside). Never a storage key, a URL or who set something aside.
+
+export interface ToReadItem {
+  id: string;
+  addedAt: Date;
+  source: string;
+  contentType: ContentType;
+  size: number;
+  business: Business | null;
+  fileName: string | null;
+  note: string | null;
+  email: { sender: string; date: Date } | null;
+}
+
+const toReadItem = (r: Row): ToReadItem => ({
+  id: r.receipt_id,
+  addedAt: r.added_at,
+  source: r.source,
+  contentType: r.content_type,
+  size: r.size_bytes,
+  business: r.business,
+  fileName: r.file_name,
+  note: r.note,
+  email: r.email_sender !== null && r.email_date !== null ? { sender: r.email_sender, date: r.email_date } : null,
+});
+
+/** The waiting originals, oldest first, a page at a time after the id `after`; and how many are waiting. */
+export async function toRead(db: Db, input: { after?: string | undefined; limit: number }): Promise<{ waiting: number; items: ToReadItem[]; next: string | null }> {
+  const limit = Math.min(Math.max(Math.floor(input.limit), 1), PAGE_MAX);
+  const after = typeof input.after === "string" && ID.test(input.after) ? input.after : null;
+  const rows = await db.query<Row>(
+    `${SELECT}
+      where o.status = 'waiting'
+        and ($1::text is null or (o.added_at, o.receipt_id) > (select added_at, receipt_id from ops.receipt_originals where receipt_id = $1))
+      order by o.added_at, o.receipt_id
+      limit $2`,
+    [after, limit + 1],
+  );
+  const waiting = (await db.one<{ n: number }>("select count(*)::int as n from ops.receipt_originals where status = 'waiting'")).n;
+  const page = rows.slice(0, limit);
+  return { waiting, items: page.map(toReadItem), next: rows.length > limit ? (page[page.length - 1]?.receipt_id ?? null) : null };
+}
+
+/** One waiting original for an assistant, with its storage key; null for a malformed id, an unknown one or one set aside (the same answer). */
+export async function forAssistant(db: Db, id: unknown): Promise<(ToReadItem & { storageKey: string }) | null> {
+  if (typeof id !== "string" || !ID.test(id)) return null;
+  const row = await db.maybeOne<Row>(`${SELECT} where o.receipt_id = $1 and o.status = 'waiting'`, [id]);
+  return row === null ? null : { ...toReadItem(row), storageKey: row.storage_key };
 }
 
 // ── Changing ───────────────────────────────────────────────

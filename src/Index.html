@@ -6999,7 +6999,7 @@
         receiptThumbHTML_(it) +
         '<div style="flex:1;min-width:0">' +
           '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(it.fileName || (it.contentType === 'application/pdf' ? 'PDF' : 'Photo')) + '</div>' +
-          '<div class="payroll-rate">' + esc(it.addedBy) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + '</div>' +
+          '<div class="payroll-rate">' + (it.assistant ? 'added by ' + esc(it.addedBy) + '\'s assistant (' + esc(it.assistant.label) + ')' : esc(it.addedBy)) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + (it.email ? ' · from ' + esc(it.email.from) + ', sent ' + esc(receiptWhen_(it.email.date)) : '') + '</div>' +
           '<div class="payroll-rate">' + esc(receiptBusinessLabel_(it.business)) + (it.note ? ' · ' + esc(it.note) : '') + '</div>' +
           (aside ? '<div class="payroll-rate">Set aside by ' + esc(it.setAside.by) + ': ' + esc(it.setAside.reason) + '</div>' : '') +
         '</div>' +
@@ -7154,7 +7154,7 @@
     const aside = it.status === 'set_aside';
     const bodyHTML =
       '<div id="rcptBig" style="min-height:120px;display:flex;align-items:center;justify-content:center;background:#f6f7f9;border-radius:8px;margin-bottom:10px;font-size:12px;color:#6a6e79">Loading the original…</div>' +
-      '<div class="payroll-rate">' + esc(it.addedBy) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + ' · ' + esc(it.source === 'photo' ? 'photo' : 'file') + '</div>' +
+      '<div class="payroll-rate">' + (it.assistant ? 'added by ' + esc(it.addedBy) + '\'s assistant (' + esc(it.assistant.label) + ')' : esc(it.addedBy)) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + ' · ' + esc(it.source === 'photo' ? 'photo' : 'file') + (it.email ? ' · from ' + esc(it.email.from) + ', sent ' + esc(receiptWhen_(it.email.date)) : '') + '</div>' +
       '<div class="payroll-rate">' + esc(receiptBusinessLabel_(it.business)) + (it.note ? ' · ' + esc(it.note) : '') + '</div>' +
       (aside && it.setAside ? '<div class="payroll-rate">Set aside by ' + esc(it.setAside.by) + ', ' + esc(receiptWhen_(it.setAside.at)) + ': ' + esc(it.setAside.reason) + '</div>' : '') +
       '<div id="rcptSheetErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';

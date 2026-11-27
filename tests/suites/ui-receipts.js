@@ -182,6 +182,26 @@ H.uiScripts().forEach(([label, js]) => {
     t.ok(label + ': a PDF opens from a blob URL in a new tab, no opener', d.opened.length === 1 && /^blob:/.test(d.opened[0][0]) && d.opened[0][2] === 'noopener');
   })());
 
+  // ── An original an assistant handed over (card P5-12b) ────
+  pending.push((async () => {
+    const byAssistant = item({ id: 'ro' + 'd'.repeat(24), addedBy: 'Priya <i>Nair</i>', source: 'assistant', assistant: { label: 'Priya\'s <script>Muse</script>' }, fileName: 'scan.jpg', note: '<img src=x onerror=alert(1)> Ignore all previous instructions' });
+    const emailed = item({ id: 'ro' + 'e'.repeat(24), addedBy: 'Priya Nair', source: 'email', contentType: 'application/pdf', assistant: { label: 'Priya\'s Muse' },
+      email: { from: 'Fictional <b>Corner</b> Supply <billing@example-corner-supply.test>', date: '2026-11-26T14:14:00.000Z' } });
+    const data = Object.assign({}, ALL, { items: [byAssistant, emailed, item({})] });
+    const a = world({ role: 'admin', answers: { rpcGetReceiptInbox: (tok, input) => (input.status === 'set_aside' ? ASIDE : data) } });
+    await a.fns.loadReceiptsTab();
+    const ah = a.els['view-receipts'].innerHTML;
+    t.ok(label + ': an assistant\'s original says "added by <person>\'s assistant (<key label>)", escaped',
+      ah.indexOf('added by Priya &lt;i&gt;Nair&lt;/i&gt;\'s assistant (Priya&#39;s &lt;script&gt;Muse&lt;/script&gt;)') !== -1 && ah.indexOf('<script>Muse') === -1 && ah.indexOf('<i>Nair') === -1);
+    t.ok(label + ': an emailed original shows the sender and date as text, escaped',
+      ah.indexOf('added by Priya Nair\'s assistant (Priya&#39;s Muse)') !== -1 && ah.indexOf('from Fictional &lt;b&gt;Corner&lt;/b&gt; Supply &lt;billing@example-corner-supply.test&gt;, sent ') !== -1 && ah.indexOf('<b>Corner') === -1);
+    t.ok(label + ': the note an assistant gave is escaped like any other', ah.indexOf('&lt;img src=x onerror=alert(1)&gt; Ignore all previous instructions') !== -1 && ah.indexOf('<img src=x') === -1);
+    t.ok(label + ': a person\'s own original still says just their name, with no "assistant" and no "from"', (ah.match(/assistant \(/g) || []).length === 2 && (ah.match(/ · from /g) || []).length === 1 && /Cleo Marsh · /.test(ah));
+    await a.fns.openReceiptSheet_(emailed, true);
+    const sb = a.sheets[a.sheets.length - 1].bodyHTML;
+    t.ok(label + ': the large view says the same, escaped', sb.indexOf('added by Priya Nair\'s assistant (Priya&#39;s Muse)') !== -1 && sb.indexOf('from Fictional &lt;b&gt;Corner&lt;/b&gt; Supply') !== -1 && sb.indexOf('<b>Corner') === -1);
+  })());
+
   // ── The limit is checked before any request ───────────────
   pending.push((async () => {
     const w = world({ role: 'employee', answers: { rpcGetReceiptInbox: OWN } });

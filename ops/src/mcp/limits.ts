@@ -12,7 +12,8 @@
 // Refused sign-ins (no key, a malformed or unknown key, a wrong secret, an expired or withdrawn key, an
 // inactive person) are recorded too, but a flood of them must not fill the table: at most
 // FLOOD_PER_ADDRESS a minute from one caller address and FLOOD_TOTAL a minute in all are recorded. Beyond
-// that the caller still gets the same 401, and no row. The address is the one Cloudflare gives the Worker
+// that the caller still gets the same 401, and no row. A refused PUT to the receipt ticket route (an
+// unknown, used or expired ticket, card P5-12b) counts in the same two limits. The address is the one Cloudflare gives the Worker
 // (CF-Connecting-IP), kept only as a SHA-256. Those counts run under one transaction-scoped advisory
 // lock, so concurrent floods cannot slip past them either.
 //
@@ -28,7 +29,10 @@ const AUTH_REASONS = ["bad_key", "expired", "withdrawn", "person_inactive"] as c
 /** Any fixed 63-bit number: the advisory lock taken while refused sign-ins are counted and recorded. */
 const FLOOD_LOCK = "7020251101";
 
-export type Refusal = (typeof AUTH_REASONS)[number] | "no_right" | "rate_limited" | "unknown_tool" | "bad_input" | "failed";
+/** Refused PUTs to the receipt ticket route (card P5-12b): counted with refused sign-ins in the flood limit. */
+const TICKET_REASONS = ["bad_ticket", "ticket_used", "ticket_expired"] as const;
+
+export type Refusal = (typeof AUTH_REASONS)[number] | (typeof TICKET_REASONS)[number] | "no_right" | "rate_limited" | "unknown_tool" | "bad_input" | "failed";
 
 export interface CallRecord {
   keyId: string | null;
@@ -100,7 +104,7 @@ export async function floodAllows(tx: Tx, caller: Uint8Array, now: Date): Promis
   const row = await tx.one<{ mine: number; total: number }>(
     `select count(*) filter (where caller_hash = $1)::int as mine, count(*)::int as total
        from ops.assistant_calls
-      where at > $2 and refusal in ('bad_key', 'expired', 'withdrawn', 'person_inactive')`,
+      where at > $2 and refusal in ('bad_key', 'expired', 'withdrawn', 'person_inactive', 'bad_ticket', 'ticket_used', 'ticket_expired')`,
     [caller, since],
   );
   return row.mine < FLOOD_PER_ADDRESS && row.total < FLOOD_TOTAL;

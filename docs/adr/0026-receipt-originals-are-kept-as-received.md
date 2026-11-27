@@ -98,3 +98,23 @@ to a manager's browser, on the app's own origin, next to pay and cash.
   both businesses (a cash-and-carry, a hardware store). The supplier is the
   weakest sign, used last by a later card, and only for a supplier that sells
   to one of the two; nothing in this card guesses.
+
+## Amendment (2026-11-27, card P5-12b): a third route, by one-time ticket
+
+- **`PUT /files/receipt-original/by-ticket/<ticket>`** takes an original from
+  an assistant. The ticket (32 random bytes, kept only as a SHA-256) is
+  answered once by the tool `receipt_upload_start` to a `propose` key, is for
+  one file, lasts 10 minutes, and is dead at once if its key expires or is
+  withdrawn, its person is deactivated, or the door is off. It is the only
+  credential on that route; every refused ticket is the same 404.
+- **Why a ticket in a URL, when originals are never in one:** this address
+  only adds a file, never shows one; it works once and briefly; and an
+  assistant with a computer can send a plain `PUT` but cannot be given a
+  session. A file cannot travel in a tool call (see
+  [ADR-0025](0025-assistants-come-in-through-mcp-and-only-propose.md)).
+- **The same path as the page's upload**: the size cap and capped reading, the
+  type from the bytes, the SHA-256, the duplicate rule and the storage are the
+  same functions. The original is added by the key's person, with the key and
+  the source (`assistant`, or `email` with the message's id, sender and date).
+  0010's check tying the key to source `assistant` only is widened so that an
+  emailed original keeps its key.

@@ -8,6 +8,9 @@
 //                                   setting assistants_enabled is true; a key, not a session
 //   /files/receipt-original[/<id>]  receipt originals (receipts/routes.ts; ADR-0026): PUT adds one, GET
 //                                   sends one back; the page's session as a bearer header, never a URL
+//   /files/receipt-original/by-ticket/<ticket>
+//                                   an assistant's original (receipts/routes.ts; card P5-12b): PUT only,
+//                                   the one-time ticket is the only credential
 //   everything else                 the static assets: the built page and its script (so / with any
 //                                   other v, or none, is the app page, as before)
 //
@@ -22,8 +25,9 @@ import { runWeeklyCommissions } from "./cron";
 import { connect } from "./db/client";
 import { handleMcp } from "./mcp/server";
 import { handlePublic, publicView } from "./public/pages";
-import { handleUpload, handleView, UPLOAD_PATH, VIEW_CSP, VIEW_PREFIX, type ReceiptRouteDeps } from "./receipts/routes";
+import { handleTicketUpload, handleUpload, handleView, UPLOAD_PATH, VIEW_CSP, VIEW_PREFIX, type ReceiptRouteDeps } from "./receipts/routes";
 import { bucketStorage, isBucket } from "./receipts/storage";
+import { TICKET_PREFIX } from "./receipts/tickets";
 import { notFound } from "./router";
 import { mergeOpsContract, parseRpcContract, type RpcContract } from "./rpc/contract";
 import { ERROR_PREFIXED, handlers, resolveSession } from "./rpc/registry";
@@ -163,9 +167,15 @@ async function route(request: Request, env: Env): Promise<Response> {
   const { pathname } = new URL(request.url);
   if (pathname.startsWith("/rpc/")) return rpcRouter(env)(request);
   if (pathname === UPLOAD_PATH) return handleUpload(request, receiptDeps(env));
+  if (pathname.startsWith(TICKET_PREFIX)) return handleTicketUpload(request, receiptDeps(env));
   if (pathname.startsWith(VIEW_PREFIX)) return handleView(request, receiptDeps(env));
   if (pathname === "/mcp") {
-    return handleMcp(request, { openDb: async () => connect(connectionString(env)), now: () => new Date(), log: (entry) => console.error(entry) });
+    return handleMcp(request, {
+      openDb: async () => connect(connectionString(env)),
+      now: () => new Date(),
+      log: (entry) => console.error(entry),
+      storage: isBucket(env.RECEIPTS) ? bucketStorage(env.RECEIPTS) : null,
+    });
   }
   if (request.method !== "GET" && request.method !== "HEAD") {
     return json({ error: { code: "method_not_allowed", message: "Only GET and HEAD." } }, 405);

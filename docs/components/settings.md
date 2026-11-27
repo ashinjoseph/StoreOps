@@ -96,6 +96,8 @@ roles `["admin"]`. The handlers check the role again themselves.
 | `commission_run_paused` | boolean | false | anything but true/false | **pauses the weekly run** (card P4-13): when true, the Monday morning run does nothing except write one audit row, `commissions.run_skipped`; no bonuses are proposed. It stops that run only: **Run engine** on the Commissions screen still works. In the Sheet an admin paused the run by removing the trigger; here the schedule is part of the app. See [commissions](commissions.md) |
 | `assistants_enabled` | boolean | false | anything but true/false | opens the door for AI assistants ([assistants](assistants.md)); off, `/mcp` answers nothing |
 | `assistant_calls_per_minute`, `assistant_proposals_per_day` | number | 30, 200 | not a whole number from 1 to 600, or from 1 to 5000 | the door's limits per key |
+| `assistant_show_max_mb` | number | 8 | not a whole number from 1 to 25 | the largest receipt original an assistant is shown in one answer (card P5-12b); a larger one is not shown, never shrunk |
+| `receipt_max_mb` | number | 10 | not a whole number from 1 to 25 | the largest receipt original (photo or PDF) the app keeps (card P5-12a; [receipts](receipts.md)) |
 | business names, template names and language, merchant ids, `timezone` | text | | over 500 characters, or a line break or other control character | a newline in a name would break a WhatsApp template parameter; `timezone` must also be a real zone |
 
 Every number must be written in plain decimal form (`250` or `250.50`): no
@@ -157,6 +159,8 @@ letting "default: No" stand for something the app does not do.
 - **Nov 2026 (card P5-11):** the *Assistants* group: `assistants_enabled` and
   the door's two limits ([assistants](assistants.md)). They exist only in the
   Operations app, so they are listed in `OPS_ONLY_KEYS` rather than in Setup.gs.
+- **Nov 2026 (cards P5-12a, P5-12b):** `receipt_max_mb` in *Other* and
+  `assistant_show_max_mb` in *Assistants*.
 - **Nov 2026 (card P4-13):** `commission_run_paused` in the *Commissions* group
   (also in `OPS_ONLY_KEYS`): switches the Monday commission run off and on
   ([commissions](commissions.md)). Every edit is in the [audit log](audit-log.md).

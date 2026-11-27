@@ -1594,3 +1594,41 @@ Apps Script screen differs from it only in those lines.
   exactly as it was.
 - One new call, `rpcGetSalesByChannel` (the Sales screen's own roles, read only,
   8 seconds at most). The till's client now has four named callers.
+
+### The assistant's tools for the receipt inbox (P5-12b)
+
+- An AI assistant connected with a key (Operations app only) can now see which
+  receipt originals are waiting to be read (`receipts_to_read`, oldest first)
+  and be shown one exactly as it was kept (`receipt_original`: a photo as an
+  image, a PDF as an embedded file; one larger than the new setting
+  `assistant_show_max_mb`, default 8 MB, is not shown and never shrunk). Any
+  key may list and be shown every waiting original, none set aside.
+- With a key that may propose, it can hand an original over: the tool
+  `receipt_upload_start` answers a one-time upload address and the assistant
+  sends the raw file there with a plain `PUT`
+  (`/files/receipt-original/by-ticket/<ticket>`). A file never travels inside a
+  tool call. The address is for one file, for 10 minutes, for that key; it is
+  used up by the first PUT that sends a body, and every refused address gets the
+  same 404. The file goes through exactly the checks and storage of the
+  Receipts screen (size, type from the bytes, fingerprint, the same bytes kept
+  once). Each address counts as one proposal against the key's daily cap.
+- An emailed invoice keeps the message's id, sender and date, and
+  `receipts_from_email` says whether an email has already been handed over (or
+  has an address open), so a daily mailbox scan does not file it twice.
+  `my_proposals` lists the key's upload addresses: waiting, confirmed (kept or
+  already on file, naming the original) or refused (saying why).
+- On the Receipts screen an original an assistant handed over says *added by
+  <person>'s assistant (<key label>)*, and an emailed one shows its sender and
+  date. Nothing is read from an original yet and nothing is confirmed.
+- One new table (`ops.receipt_upload_tickets`, migration 0012, which also lets
+  an emailed original keep its key and records refused PUTs with the door's
+  calls); ADR-0025 and ADR-0026 amended.
+
+New: `ops/test/mcp-receipts.test.ts` (the tools through the SDK's own client,
+the upload route through the Worker) and assertions in the `ui-receipts` suite,
+seen failing against eleven deliberate mutations (a ticket used twice, the
+ticket stored instead of its hash, a ticket alive after its key is withdrawn, an
+expired ticket answered differently, a read key starting an upload, the
+declared type trusted over the bytes, a set-aside original shown, another tool
+answering a file, a file name in the call record, tickets outside the daily
+cap, an `Origin` accepted on the upload route).

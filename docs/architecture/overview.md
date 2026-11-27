@@ -202,7 +202,7 @@ sequenceDiagram
 The replacement for the Apps Script app (`ops/`, not live yet; see the
 [migration plan](../plans/2026-11-operations-app-migration.md)) is one
 Cloudflare Worker over Postgres. It serves the same page (`src/Index.html`,
-built into the Worker's assets) and has four ways in, each with its own way of
+built into the Worker's assets) and has five ways in, each with its own way of
 saying who is calling:
 
 ```mermaid
@@ -214,6 +214,7 @@ flowchart LR
         rpc["/rpc/*<br/>RPC router · session token"]
         files["/files/receipt-original<br/>PUT adds one · GET /id shows one<br/>session as a Bearer header"]
         mcp["/mcp<br/>MCP door · assistant key<br/>off unless switched on"]
+        ticket["/files/receipt-original/by-ticket/…<br/>PUT one file · one-time ticket"]
         pages["/?v=recon · /?v=sales<br/>data inlined"]
     end
     pg[("Postgres<br/>(Hyperdrive)")]
@@ -221,11 +222,15 @@ flowchart LR
     page --> rpc
     page --> files
     asst --> mcp
+    asst --> ticket
     pub --> pages
     rpc --> pg
     files --> pg
     files --> r2
     mcp --> pg
+    mcp --> r2
+    ticket --> pg
+    ticket --> r2
     pages --> pg
 ```
 
@@ -241,6 +246,14 @@ flowchart LR
   record in Postgres
   ([ADR-0026](../adr/0026-receipt-originals-are-kept-as-received.md);
   [receipts](../components/receipts.md)).
+- **`/files/receipt-original/by-ticket/<ticket>`**: the third file route, for
+  an assistant that has a file to hand over. A file never travels inside a
+  tool call: the `receipt_upload_start` tool answers a one-time address (a
+  ticket kept only as a hash, ten minutes, one file, tied to the key), and
+  the assistant `PUT`s the raw file there; it then goes through the page's
+  own checks and storage
+  ([ADR-0026, amended](../adr/0026-receipt-originals-are-kept-as-received.md);
+  [assistants](../components/assistants.md)).
 - **The public pages**, as before: no session, the data inlined
   ([ADR-0003](../adr/0003-public-pages-inline-their-data.md)).
 

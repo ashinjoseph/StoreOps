@@ -89,3 +89,22 @@ in a header.
 - **A generic "call any RPC" tool:** the RPC list includes payroll and
   settings; any allowlist would then live in a second place and drift. Tools
   are written one by one instead.
+
+## Amendment (2026-11-27, card P5-12b): one file block, for one tool
+
+- **A tool's answer may carry one file, for one tool only.** "One text block"
+  becomes "one text block, and for `receipt_original` one file block after
+  it": an image block (base64, the stored type) for a photo, an embedded
+  resource with a blob for a PDF. The tool shows a stored receipt original so
+  that an assistant's draft is always a reading of the kept copy. The door
+  refuses a file from any other tool (`FILE_TOOLS` in `ops/src/mcp/tools.ts`;
+  a test iterates the allowlist), and an original larger than
+  `assistant_show_max_mb` is not sent, never shrunk.
+- **A file never travels inside a tool call.** The call's body stays under the
+  door's 64 KB cap; to hand over a file, the propose tool
+  `receipt_upload_start` answers a one-time upload address and the assistant
+  `PUT`s the raw file there (see [ADR-0026](0026-receipt-originals-are-kept-as-received.md)).
+  A file in a tool's arguments would be base64 inside JSON, pass through the
+  assistant's own context, and need the cap raised for every tool.
+- **A handler is given the origin the assistant reached the door at** (to
+  build that address) and the receipt storage; still never the request.

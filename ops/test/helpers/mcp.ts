@@ -9,6 +9,7 @@ import { withTransaction } from "../../src/db/tx";
 import * as keys from "../../src/mcp/keys";
 import { handleMcp, type McpDeps } from "../../src/mcp/server";
 import type { ToolDef } from "../../src/mcp/tools";
+import { bucketStorage, memoryBucket } from "../../src/receipts/storage";
 import { createTestDb, type TestDb } from "./db";
 
 export const PEPPER = "test-pepper-not-a-secret";
@@ -34,6 +35,8 @@ export interface McpWorld {
   responses: Response[];
   /** Extra tools (test-only) the next requests see beside the real ones. */
   extraTools: ToolDef[];
+  /** The in-memory receipt bucket the door's tools read (card P5-12b); replace it to start empty. */
+  bucket: ReturnType<typeof memoryBucket>;
   deps(): McpDeps;
   /** handleMcp over an in-memory fetch. */
   fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>;
@@ -55,10 +58,12 @@ export async function makeWorld(start: Date): Promise<McpWorld> {
     clock: { now: start },
     responses: [],
     extraTools: [],
+    bucket: memoryBucket(),
     deps() {
       return {
         openDb: () => connect(testDb.appUrl),
         now: () => world.clock.now,
+        storage: bucketStorage(world.bucket),
         ...(world.extraTools.length > 0 ? { tools: world.extraTools } : {}),
       };
     },

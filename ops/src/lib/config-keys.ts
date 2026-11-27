@@ -82,6 +82,8 @@ export const CONFIG_KEYS = {
   assistants_enabled: setting("boolean", "false"),
   assistant_calls_per_minute: setting("number", "30"),
   assistant_proposals_per_day: setting("number", "200"),
+  // card P5-12b: how large an original an assistant is shown in one answer (receipt_original).
+  assistant_show_max_mb: setting("number", "8"),
   // Operations app only (card P5-12a, the receipt inbox): not in Setup.gs; listed in OPS_ONLY_KEYS below.
   receipt_max_mb: setting("number", "10"),
 } as const satisfies Record<string, ConfigKeySpec>;
@@ -107,6 +109,7 @@ export const OPS_ONLY_KEYS: readonly string[] = [
   "assistants_enabled",
   "assistant_calls_per_minute",
   "assistant_proposals_per_day",
+  "assistant_show_max_mb",
   // card P4-13, pause the Monday commission run
   "commission_run_paused",
   // card P5-12a, the receipt inbox

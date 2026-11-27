@@ -10,8 +10,8 @@
 
 ## What it does
 
-Built so far (card P5-12a), in the Operations app only (inside Apps Script
-neither entry exists):
+Built so far (cards P5-12a and P5-12b), in the Operations app only (inside
+Apps Script neither entry exists):
 
 **More → Receipts**, for everyone signed in.
 
@@ -35,6 +35,11 @@ neither entry exists):
   waiting original.
 - **An employee** sees *Add a receipt* and what they added in the last 7 days,
   so they can check the photo arrived. Nothing of anyone else's.
+- **An original an assistant handed over** (card P5-12b) says *added by Priya
+  Nair's assistant (Priya's Muse)*: the key's person and the key's label. One
+  from an email also shows its sender and date, as text: *from Fictional
+  Corner Supply <billing@…>, sent Nov 26, 09:14 a.m.* Everything else on the
+  row is as for a person's upload.
 
 **More → Businesses**, for admin, manager and payroll admin (read only for the
 last two). Each business: its display name (the settings
@@ -54,11 +59,17 @@ A sign that already belongs to the other business is refused: *The card
 ending 4821 already belongs to vape (YV Vape Shop). A sign can belong to one
 business only: remove it there first.* A removed sign is kept, marked removed.
 
+**An assistant** (card P5-12b; [assistants](assistants.md)) can list the
+originals waiting to be read, be shown one (the stored file itself), hand one
+over through a one-time upload address, and ask whether an email has already
+been handed over. It reads for the business: any key may list and be shown
+every waiting original.
+
 **Not built yet** (later cards): nothing is read from an original (no
-supplier, total or tax); no assistant tool for the inbox (the assistant's
-`businesses` tool already shows the signs); no drafts or review screen; no
-cost history; no QuickBooks export; no emailed invoices. The business on an
-original is only what a person said.
+supplier, total or tax); no drafts or review screen; no cost history; no
+QuickBooks export; no "this email is handled" list beyond the message ids of
+originals filed (P5-13). The business on an original is only what a person,
+or an assistant from the document, said.
 
 ## How it works
 
@@ -103,6 +114,46 @@ Optional headers, all cleaned on the server: `x-receipt-business` (`cstore` or
 part after `/` or `\`, loses control and direction characters and leading
 dots, and is cut to 120 characters; the note becomes one line of at most 300.
 Both are shown to people and never used in a path or a key.
+
+**An assistant's original: `PUT /files/receipt-original/by-ticket/<ticket>`**
+(card P5-12b). A file never travels inside a tool call: the tool
+`receipt_upload_start` (a `propose` key, counted against its daily cap)
+answers a one-time address holding a ticket, 32 random bytes from `crypto` as
+base64url, kept in `ops.receipt_upload_tickets` only as its SHA-256. The
+ticket is the only credential: no session or assistant key is read on this
+route. Its order: `PUT` only (405); **any** `Origin` header refused (403: no
+browser has business there); the door on (`assistants_enabled`; off: the same
+404 as below, nothing written); `Content-Length` required (411) and within
+`receipt_max_mb` (413), before a byte is read and without using the ticket up;
+then, in one transaction, the ticket found under a row lock (two PUTs with one
+ticket at the same instant take one file). An unknown or malformed ticket, one
+used already, one past its 10 minutes, or one whose key has expired or been
+withdrawn or whose person is inactive: **the same 404 with one fixed body**,
+the reason only in the door's record of calls (flood-limited). A usable ticket
+is spent and the PUT recorded, committed **before** the body is read, so the
+first PUT that gets that far uses it up whether or not the file is accepted.
+Then exactly the page's path: the body read with the same hard cap, the type
+from the bytes, the SHA-256, the duplicate rule under the hash lock, the same
+storage and audit (`checkLength`, `receiveFile` and `originals.add`, shared
+by both routes). The answer is the page's: 201 kept (`id`, `size`, `type`,
+*Kept. …*), 200 already on file (`id`, `addedAt`, *Already on file, added …
+by …*), or the page's refusal; the ticket is then marked `kept`,
+`duplicate` (with the original's id) or `refused` (`not_accepted`, `empty`,
+`too_long`, `incomplete`), and one that expires unused is marked `expired`
+when it is next seen. Nothing is removed.
+
+**What is recorded for an assistant's or an emailed original.** `added_by` is
+the key's person; `assistant_key_id` the key; `source` `assistant`, or `email`
+with `email_message_id`, `email_sender` and `email_date` as the assistant gave
+them (the message id at most 300 characters and the sender at most 200, with
+control characters refused, direction marks removed and the surrounding white
+space trimmed; the date a real instant). The file name and the note are
+cleaned by the page's own `cleanFileName` and `cleanNote`. The business is
+what the assistant declared (`cstore`, `vape`) or NULL. The audit row is the
+same `receipt_original.add`, with `assistantKeyId` added. 0010 tied
+`assistant_key_id` to source `assistant` only; migration 0012 widens that
+check so an emailed original keeps its key (and a later forwarding address can
+add an emailed one with none).
 
 **If the row cannot be written after the object was stored** (the database
 fails between the two), the answer is an error (500, `SERVER_ERROR` with an
@@ -177,12 +228,15 @@ two businesses.
 | Table | Reads | Writes |
 |---|:-:|:-:|
 | `ops.receipt_originals` | ✓ | ✓ (add; status, set-aside, business only) |
+| `ops.receipt_upload_tickets` | ✓ | ✓ (add; spend and outcome only) |
+| `ops.assistant_calls` | | ✓ (a PUT to the ticket route) |
 | `ops.businesses` | ✓ | ✓ (legal name, HST number, notes only; the two rows are seeded) |
 | `ops.business_signs` | ✓ | ✓ (add; mark removed only) |
 | `ops.audit_log` | | ✓ |
 | `ops.config` | `receipt_max_mb`, `cstore_business_name`, `vape_business_name` | |
 
-All three tables come from `ops/migrations/0010_receipt_inbox.sql`, are the
+The first three tables come from `ops/migrations/0010_receipt_inbox.sql`, the
+upload tickets from `ops/migrations/0012_receipt_upload_tickets.sql`; all are the
 Operations app's own (no Sheet tab feeds them) and are not loaded or compared
 by the cutover tools (`LATER_OPS_TABLES` in `ops/src/cutover/compare.ts`). The
 legal names and HST numbers start blank: the settings hold display names, not
@@ -202,6 +256,10 @@ settings, so the screen shows the setting's name until one is typed.
 - **No original without a session, and none in a URL**: the session comes
   only from the `Authorization` header; the view answer carries the sandbox
   policy and `nosniff`; an id the session may not see answers as a missing one.
+  The one exception adds, never shows: an assistant's one-time ticket in the
+  upload address, kept as a hash, for one file, for 10 minutes.
+- **Every refused ticket is the same 404**, with the same body; the reason is
+  only in the record of calls.
 - **The business is never guessed**: "not sure" is NULL; one live sign
   belongs to one business.
 - **Roles from the session only** (AGENTS.md hard rule 5): a planted `role`,
@@ -242,15 +300,16 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 
 | What | Where |
 |---|---|
-| Routes | `ops/src/receipts/routes.ts`: `handleUpload`, `handleView`, `readCapped`, `VIEW_CSP`; wired in `ops/src/index.ts` (`/files/receipt-original`) |
-| Originals | `ops/src/receipts/originals.ts`: `add`, `inbox`, `forView`, `setAside`, `setBusiness`, `maySee`, `maxBytes`, `cleanFileName`, `cleanNote` |
+| Routes | `ops/src/receipts/routes.ts`: `handleUpload`, `handleView`, `handleTicketUpload`, `checkLength`, `receiveFile`, `readCapped`, `NO_TICKET_BODY`, `VIEW_CSP`; wired in `ops/src/index.ts` (`/files/receipt-original`, `/files/receipt-original/by-ticket/`) |
+| Upload tickets | `ops/src/receipts/tickets.ts`: `ask`, `lockForPut`, `spend`, `markOutcome`, `proposals`, `byMessageIds`, `cleanEmailText`, `parseEmailDate`, `TICKET_PREFIX` |
+| Originals | `ops/src/receipts/originals.ts`: `add`, `inbox`, `forView`, `toRead`, `forAssistant`, `setAside`, `setBusiness`, `maySee`, `maxBytes`, `cleanFileName`, `cleanNote` |
 | The type | `ops/src/receipts/sniff.ts`: `sniff`, `CONTENT_TYPES`, `NOT_ACCEPTED` |
 | Storage | `ops/src/receipts/storage.ts`: `ReceiptStorage`, `bucketStorage`, `memoryBucket`, `isBucket`; the binding in `ops/wrangler.toml` (`[[r2_buckets]]`, `RECEIPTS`) |
 | Businesses | `ops/src/receipts/businesses.ts`: `list`, `update`, `addSign`, `removeSign`, `normalise`, `signKey`, `checkHst` |
 | RPCs | `ops/src/rpc/handlers/receipts.ts`: `rpcGetReceiptInbox`, `rpcSetReceiptAside`, `rpcSetReceiptBusiness`, `rpcGetBusinesses`, `rpcUpdateBusiness`, `rpcAddBusinessSign`, `rpcRemoveBusinessSign`; listed in `ops/contracts/rpc-ops.json` |
-| Tables | `ops/migrations/0010_receipt_inbox.sql` |
+| Tables | `ops/migrations/0010_receipt_inbox.sql`; `ops/migrations/0012_receipt_upload_tickets.sql` (the tickets) |
 | Setting | `receipt_max_mb` in `ops/src/lib/config-keys.ts` (`OPS_ONLY_KEYS`) and `ops/src/modules/settings.ts` (group *Other*) |
-| The assistant's view | the `businesses` tool in `ops/src/mcp/tools.ts` ([assistants](assistants.md)) |
+| The assistant's view | the `businesses`, `receipts_to_read`, `receipt_original`, `receipt_upload_start` and `receipts_from_email` tools in `ops/src/mcp/tools.ts` ([assistants](assistants.md)) |
 | UI | `src/Index.html`: `loadReceiptsTab`, `renderReceiptsTab`, `sendReceiptOriginal_`, `fetchReceiptOriginal_`, `receiptTooLarge_`, `openReceiptSheet_`, `revokeReceiptBlobs_`, `loadBusinessesTab`, `renderBusinessesTab`, `openBusinessSignSheet_`; the `receipts` and `businesses` entries of `MORE_ITEMS` (`opsOnly`) |
 
 ## Tests
@@ -258,12 +317,20 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 | Suite | Holds down |
 |---|---|
 | `ops/test/receipt-inbox.test.ts` | through the Worker's own `fetch` with the in-memory bucket: each of the five types kept with the type its bytes say, whatever was sent; the exact signatures; SVG, HTML, zip, GIF, empty, cut-short refused with nothing stored or written; over the limit refused before the body is read, a lying `Content-Length` stopped at its claim, the limit following the setting; byte for byte and the real SHA-256; the same bytes twice (and twice at once on two connections) one object and one row; no `delete` under `src/receipts/`, no key reused, the database role unable to remove or rewrite; set aside and put back leaving the object and hash; who may add, list, view, set aside and change business; a foreign `Origin`; the view's headers for an image and a PDF, no cookie, no CORS, the same 404 for a forbidden and a missing id, no answer without the header; the audit rows; names and notes cleaned and kept out of the key; a failure after the object was stored; no other table moved |
+| `ops/test/mcp-receipts.test.ts` | card P5-12b: an assistant's originals by ticket through the Worker's `fetch` and the tools through the SDK client: the whole flow; byte for byte both ways for the five kinds; the ticket single use, 10 minutes exactly, the same 404 for every refused ticket, one file from two PUTs at once, nowhere stored or answered but once; the page's file rules on this route; who it belongs to and what is recorded; email ids; planted text cleaned; nothing else moved. The refactor of the upload path (`checkLength`, `receiveFile`) is held by `ops/test/receipt-inbox.test.ts`, unchanged |
 | `ops/test/businesses.test.ts` | the seven RPCs' roles in the merged contract; the two seeded businesses, blank until typed; every field rule; the HST number normalised and never shared; each kind of sign, normalised; a sign refused at the other business however it is spaced, dashed or cased, also by the database; two admins at once; removal kept and audited; who may; the assistant's `businesses` tool through the SDK client showing the new fields and nothing else |
 | `ops/test/mcp-door.test.ts` | the `businesses` tool's exact keys |
 | `ops/test/db-migrate.test.ts`, `ops/test/cutover-tool.test.ts` | the three new tables present and skipped by the cutover tools |
-| `tests/suites/ui-receipts.js` | both drawer entries `opsOnly` with their roles; per role, what is rendered (an employee: no list of others, no set-aside or business control); the oversize photo refused before any request; the token only in an `Authorization` header, never in a URL, a toast or storage; blob URLs revoked; the built page carries both screens and Apps Script hides them |
+| `tests/suites/ui-receipts.js` | an assistant's original says *added by <person>'s assistant (<key label>)*, an emailed one its sender and date, all escaped (card P5-12b); both drawer entries `opsOnly` with their roles; per role, what is rendered (an employee: no list of others, no set-aside or business control); the oversize photo refused before any request; the token only in an `Authorization` header, never in a URL, a toast or storage; blob URLs revoked; the built page carries both screens and Apps Script hides them |
 
 ## History
+
+- **Nov 2026 (card P5-12b):** an assistant's way in: the ticket route
+  `PUT /files/receipt-original/by-ticket/<ticket>` and its table
+  (`ops.receipt_upload_tickets`, migration 0012), the assistant's four inbox
+  tools ([assistants](assistants.md)), and on the Receipts screen *added by
+  <person>'s assistant (<key label>)* and an emailed original's sender and date
+  ([ADR-0026, amended](../adr/0026-receipt-originals-are-kept-as-received.md)).
 
 - **Nov 2026 (card P5-12a):** the two businesses and their signs, the receipt
   inbox (originals kept byte for byte in R2 with a SHA-256 in Postgres), the

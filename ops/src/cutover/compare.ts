@@ -55,6 +55,8 @@ export const LATER_OPS_TABLES: readonly string[] = [
   // card P5-02b, the till link's matches (0011_till_links.sql)
   "till_stores",
   "till_staff_links",
+  // card P5-12b, the assistant's upload tickets for the receipt inbox (0012_receipt_upload_tickets.sql)
+  "receipt_upload_tickets",
 ];
 
 /** The column each table's rows are grouped by, per month (America/Toronto). null: the table has no date. */

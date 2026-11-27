@@ -18,7 +18,10 @@
 // A tool call, inside one transaction that holds the key's row lock: the key is still usable; the
 // per-minute limit; the tool is on the allowlist; the key's right covers it; the arguments fit its
 // schema; a proposal's daily cap; then the tool runs, the call is recorded and the key marked used, all
-// committed together. A refusal is recorded and answered as a tool error with a readable message (an
+// committed together. The answer is one text block, and for the one tool that shows a receipt original
+// (FILE_TOOLS in tools.ts) one file block after it; a tool's own error ("no such original") is a tool
+// error, recorded as allowed. A handler is given the request's origin (to build an upload address) and
+// the receipt storage, never the request itself. A refusal is recorded and answered as a tool error with a readable message (an
 // unknown tool as the protocol's "invalid params" error). A tool that throws is rolled back, answered
 // with a fixed message, and recorded as failed in a transaction of its own.
 //
@@ -34,7 +37,8 @@ import { loadConfig, type Config } from "../lib/config";
 import { asData, toolText } from "./data";
 import * as keys from "./keys";
 import { callerHash, callsPerMinute, checkCallLimit, checkProposalLimit, floodAllows, proposalsPerDay, recordCall, type Refusal } from "./limits";
-import { DATA_SENTENCE, TOOLS, rightAllows, type ToolDef } from "./tools";
+import { DATA_SENTENCE, FILE_TOOLS, TOOLS, rightAllows, type ToolDef, type ToolFile } from "./tools";
+import type { ReceiptStorage } from "../receipts/storage";
 
 export interface McpDeps {
   /** One connection per request; the door closes it. */
@@ -43,6 +47,8 @@ export interface McpDeps {
   now: () => Date;
   /** Tests only: tools added after the allowlist. The Worker never passes this. */
   tools?: readonly ToolDef[];
+  /** Where receipt originals are kept (the RECEIPTS binding); null or absent when it is not bound. */
+  storage?: ReceiptStorage | null;
   /** One entry per fault: the tool's name and the error's class, never a message, argument or key. */
   log?: (entry: object) => void;
 }
@@ -133,6 +139,25 @@ interface CallScope {
   caller: Uint8Array;
   deps: McpDeps;
   tools: ReadonlyMap<string, ToolDef>;
+  /** The request's own origin (scheme, host, port): the one thing of the request a tool is given. */
+  origin: string;
+}
+
+/** Base64 of `bytes`, built a slice at a time (a spread of millions of arguments would overflow the stack). */
+function base64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let at = 0; at < bytes.length; at += 0x8000) bin += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  return btoa(bin);
+}
+
+/**
+ * The one file block a tool may add after its text (only the tools in FILE_TOOLS): an image block for
+ * a photo, an embedded resource with a blob for a PDF.
+ */
+function fileBlock(file: ToolFile): CallToolResult["content"][number] {
+  const data = base64(file.bytes);
+  if (file.contentType === "application/pdf") return { type: "resource", resource: { uri: file.uri, mimeType: file.contentType, blob: data } };
+  return { type: "image", data, mimeType: file.contentType };
 }
 
 type Outcome = { kind: "result"; result: CallToolResult } | { kind: "unknown"; name: string } | { kind: "failed"; tool: ToolDef; err: unknown };
@@ -172,15 +197,23 @@ async function callTool(scope: CallScope, name: string, rawArgs: unknown): Promi
       }
       let answer;
       try {
-        answer = await tool.run({ db: tx, key: locked.key, now: started, config: scope.config }, parsed.data as Record<string, unknown>);
+        answer = await tool.run(
+          { db: tx, key: locked.key, now: started, config: scope.config, origin: scope.origin, storage: scope.deps.storage ?? null },
+          parsed.data as Record<string, unknown>,
+        );
+        // One text block; and for the tools in FILE_TOOLS only, one file block after it. Any other tool
+        // that answers a file has failed (rolled back, answered with the fixed message).
+        if ("file" in answer && answer.file !== undefined && !FILE_TOOLS.includes(tool.name)) throw new TypeError(`${tool.name} may not answer a file`);
       } catch (err) {
         // Leave the transaction by throwing, so everything the tool wrote is rolled back.
         throw new ToolFailed(tool, err);
       }
-      const text = toolText(answer.summary, answer.data);
       await recordCall(tx, { keyId, tool: tool.name, at: started, allowed: true, refusal: null, tookMs: elapsed(), proposal, callerHash: caller });
       await keys.markUsed(tx, keyId, started);
-      return { kind: "result", result: { content: [{ type: "text", text }] } };
+      if ("error" in answer) return { kind: "result", result: toolError(asData(answer.error, 400)) };
+      const content: CallToolResult["content"] = [{ type: "text", text: toolText(answer.summary, answer.data) }];
+      if (answer.file !== undefined) content.push(fileBlock(answer.file));
+      return { kind: "result", result: { content } };
     });
   } catch (err) {
     const failedTool = err instanceof ToolFailed ? err.tool : tool;
@@ -264,7 +297,7 @@ export async function handleMcp(request: Request, deps: McpDeps): Promise<Respon
     const all = [...TOOLS, ...(deps.tools ?? [])];
     const tools = new Map<string, ToolDef>();
     for (const t of all) if (!tools.has(t.name)) tools.set(t.name, t);
-    const server = buildServer({ conn, key: auth.key, config, caller, deps, tools });
+    const server = buildServer({ conn, key: auth.key, config, caller, deps, tools, origin: new URL(request.url).origin });
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true, maxRequestBodySize: MAX_BODY_BYTES });
     await server.connect(transport);
     try {
