@@ -29,9 +29,11 @@ const SCREEN = ['receiptSizeText_', 'receiptBusinessLabel_', 'receiptWhen_', 're
   'receiptBusinessName_', 'receiptFailedHTML_', 'receiptLineValues_', 'receiptReviewLinesHTML_', 'receiptReviewOtherHTML_', 'receiptReviewInput_', 'receiptReviewKeep_', 'receiptReviewHTML_',
   'openReceiptReview_', 'showReceiptReviewOriginal_', 'drawReceiptReview_', 'closeReceiptReview_', 'wireReceiptReview_', 'wireReceiptReviewRows_', 'saveReceiptReview_', 'openReceiptConfirmSheet_',
   'loadReceiptBooks_', 'receiptBooksHTML_', 'wireReceiptBooks_', 'receiptChangesHTML_', 'openReceiptOnBooks_', 'openReceiptVoidSheet_',
-  'loadBusinessesTab', 'businessSignText_', 'businessCardHTML_', 'renderBusinessesTab', 'openBusinessEditSheet_', 'openBusinessSignSheet_'];
+  'loadBusinessesTab', 'businessSignText_', 'businessCardHTML_', 'renderBusinessesTab', 'openBusinessEditSheet_', 'openBusinessSignSheet_',
+  'legacyCents_', 'legacySupplierHTML_', 'legacySortedWords_', 'legacySpellingHTML_', 'legacyRowHTML_', 'legacyHTML_', 'legacyLoad_', 'legacyToggle_', 'legacyWire_', 'openLegacySpellingSheet_'];
 const CALLS = ['rpcGetReceiptInbox', 'rpcSetReceiptAside', 'rpcSetReceiptBusiness', 'rpcGetBusinesses', 'rpcUpdateBusiness', 'rpcAddBusinessSign', 'rpcRemoveBusinessSign', 'rpcGetReceiptDraft', 'rpcEnterReceiptDraft',
-  'rpcGetReceiptReview', 'rpcSaveReceiptCorrection', 'rpcConfirmReceipt', 'rpcVoidReceipt', 'rpcGetReceiptSuppliers', 'rpcCreateReceiptSupplier', 'rpcGetReceiptBooks'];
+  'rpcGetReceiptReview', 'rpcSaveReceiptCorrection', 'rpcConfirmReceipt', 'rpcVoidReceipt', 'rpcGetReceiptSuppliers', 'rpcCreateReceiptSupplier', 'rpcGetReceiptBooks',
+  'rpcGetLegacyPurchases', 'rpcGetLegacySpellings', 'rpcSetLegacyBusiness', 'rpcLinkLegacySupplier'];
 
 const item = (o) => Object.assign({ id: 'ro' + 'a'.repeat(24), addedAt: '2026-11-27T15:00:00.000Z', addedBy: 'Cleo Marsh', mine: false, business: null, source: 'photo', contentType: 'image/jpeg', size: 2516582, fileName: 'IMG_0042.JPG', note: 'Fictional Grocer', status: 'waiting', setAside: null }, o);
 const ALL = { scope: 'all', status: 'waiting', items: [item({}), item({ id: 'ro' + 'b'.repeat(24), contentType: 'application/pdf', fileName: 'invoice.pdf', addedBy: 'Eli <b>Stone</b>', business: 'vape' })], counts: { waiting: 2, set_aside: 1 }, next: null, canSetAside: true, maxMb: 10 };
@@ -67,7 +69,7 @@ H.uiScripts().forEach(([label, js]) => {
   const lift = n => { const src = H.fnSource(js, n); return js.indexOf('async function ' + n + '(') !== -1 ? 'async ' + src : src; };
   const own = SCREEN.map(lift).join('\n');
   const count = (s, n) => s.split(n).length - 1;
-  t.eq('the sixteen calls are named only inside the screens\' own functions', CALLS.map(n => count(js, n) > 0 && count(js, n) === count(own, n)), CALLS.map(() => true));
+  t.eq('the twenty calls are named only inside the screens\' own functions', CALLS.map(n => count(js, n) > 0 && count(js, n) === count(own, n)), CALLS.map(() => true));
   t.ok('no var in the screens', !/\bvar\b/.test(own));
   t.ok('no "<?" in the screens', own.indexOf('<?') === -1);
   t.ok('no storage, history or address bar in the screens', !/localStorage|sessionStorage|history\.|location\.(hash|href|search)|document\.cookie/.test(own));
@@ -123,8 +125,8 @@ H.uiScripts().forEach(([label, js]) => {
       window: { open: (u, n, f) => { w.opened.push([u, n, f]); return null; } },
     };
     const names = Object.keys(deps);
-    const consts = ['RECEIPT_ACCEPT', 'RECEIPT_MB', 'receiptState_', 'BUSINESS_SIGN_KINDS', 'RECEIPT_KINDS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
-    w.fns = new Function(...names, consts + '\n' + H.fnSource(js, 'esc') + '\n' + H.fnSource(js, 'money') + '\n' + own + '; return { receiptState_, ' + SCREEN.join(', ') + ' };')(...names.map(n => deps[n]));
+    const consts = ['RECEIPT_ACCEPT', 'RECEIPT_MB', 'receiptState_', 'BUSINESS_SIGN_KINDS', 'RECEIPT_KINDS', 'legacyState_', 'LEGACY_VIEWS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
+    w.fns = new Function(...names, consts + '\n' + H.fnSource(js, 'esc') + '\n' + H.fnSource(js, 'money') + '\n' + own + '; return { receiptState_, legacyState_, ' + SCREEN.join(', ') + ' };')(...names.map(n => deps[n]));
     return w;
   }
   const tick = () => new Promise(r => setTimeout(r, 0));
@@ -576,6 +578,192 @@ H.uiScripts().forEach(([label, js]) => {
   })());
 });
 
+
+// ── The old purchase list (card P5-16) ────────────────────
+//  Purchases from the old spreadsheet, shown on the Receipts screen to admin, manager and payroll admin: one plain
+//  sentence, the spellings table, the rows, a business control per row and per spelling for admin and manager only.
+//  Invented shops, notes and amounts.
+const LG_SPELLINGS = {
+  imported: true, canEdit: true, label: 'from the old list: no original on file',
+  files: [{ name: 'purchases.xlsx', tab: 'Purchase Invoices', rowsKept: 4, rowsRejected: 1, importedAt: '2026-11-27T15:00:00.000Z' }],
+  spellings: [
+    { key: 'maplefieldgrocer', text: 'Maplefield Grocer', variants: 3, rows: 2, totalCents: 16560, cstore: 0, vape: 0, unsorted: 2, supplier: null, partlyLinked: false },
+    { key: 'oakridge', text: 'Oakridge <b>Wholesale</b>', variants: 1, rows: 1, totalCents: 123456, cstore: 1, vape: 0, unsorted: 0, supplier: { id: 'sp' + '1'.repeat(20), name: 'Oakridge Ltd' }, partlyLinked: false },
+    { key: '', text: '', variants: 1, rows: 1, totalCents: 775, cstore: 0, vape: 0, unsorted: 1, supplier: null, partlyLinked: false },
+  ],
+};
+const lgRow = (o) => Object.assign({ id: 'lp' + '1'.repeat(24), sheetRow: 2, date: '2026-03-02', supplier: 'Maplefield Grocer', spellingKey: 'maplefieldgrocer', note: '', amount: '120.50', amountCents: 12050, business: null, linked: null }, o);
+const LG_PAGE = {
+  view: 'unsorted', canEdit: true, imported: true, label: 'from the old list: no original on file', next: null,
+  items: [
+    lgRow({}),
+    lgRow({ id: 'lp' + '2'.repeat(24), sheetRow: 12, supplier: '', spellingKey: '', amount: '7.75', amountCents: 775 }),
+    lgRow({ id: 'lp' + '3'.repeat(24), sheetRow: 10, supplier: 'Oakridge <b>Wholesale</b>', note: '=HYPERLINK("http://example.invalid","click")', amount: '-15.25', amountCents: -1525, linked: { id: 'sp' + '1'.repeat(20), name: 'Oakridge Ltd' } }),
+    lgRow({ id: 'lp' + '4'.repeat(24), sheetRow: 11, note: '<script>alert(1)</script>' }),
+  ],
+  totals: { count: 4, totalCents: 12050 + 775 - 1525 + 12050 }, counts: { unsorted: 4, cstore: 1, vape: 0 },
+};
+pending.push(...H.uiScripts().map(([label, js]) => ({ label, js })).map(async ({ label, js }) => {
+  // Re-lift the screen for this script: the same world as above, which is local to the loop, so build a small one here.
+  const lift = n => { const src = H.fnSource(js, n); return js.indexOf('async function ' + n + '(') !== -1 ? 'async ' + src : src; };
+  const own = SCREEN.map(lift).join('\n');
+  function world(role, answers) {
+    const made = {};
+    const found = new Map();
+    const mk = id => ({
+      id, innerHTML: '', textContent: '', value: '', disabled: false, onclick: null, onchange: null, style: {}, files: null, dataset: {}, setAttribute() {}, querySelector: () => null,
+      querySelectorAll(sel) {
+        const attr = /^\[data-([a-z-]+)\]$/.exec(sel);
+        if (!attr) return [];
+        const key = attr[1].replace(/-([a-z])/g, (_m, c) => c.toUpperCase());
+        return (String(this.innerHTML).match(new RegExp('data-' + attr[1] + '="([^"]*)"', 'g')) || []).map(m => {
+          const v = /"([^"]*)"/.exec(m)[1];
+          const k = sel + v;
+          if (!found.has(k)) found.set(k, { innerHTML: '', textContent: '', value: '', dataset: { [key]: v }, querySelector: () => null });
+          return found.get(k);
+        });
+      },
+    });
+    const els = new Proxy(made, { get: (o, id) => (o[id] = o[id] || mk(id)) });
+    const w = { els, toasts: [], sheets: [], calls: [], closed: 0, stored: [] };
+    const deps = {
+      $: id => els[id], haptic: () => {}, toast: (msg, kind) => w.toasts.push(String(msg) + '|' + String(kind)),
+      openSheet: o => { w.sheets.push(o); els.sheetBody.innerHTML = o.bodyHTML || ''; els.sheetActions.innerHTML = o.actionsHTML || ''; },
+      closeSheet: () => { w.closed++; }, handleRpcError: e => w.toasts.push('error:' + e.message), moreBack: () => '<button>← More</button>',
+      state: { token: TOKEN, me: { role } },
+      call: async (m, ...a) => { w.calls.push([m, a]); const x = answers[m]; return typeof x === 'function' ? x(...a) : x; },
+      cachedCall: async (m, a) => { w.calls.push([m, a]); const x = answers[m]; return typeof x === 'function' ? x(...a) : x; },
+      cacheFresh: () => false, rpcCache: { clear: () => {} }, TTL_LIVE: 60000, TTL_SEMI: 300000,
+      localStorage: { setItem: (k, v) => w.stored.push([k, v]), getItem: () => null, removeItem: () => {} }, sessionStorage: { setItem: (k, v) => w.stored.push([k, v]), getItem: () => null, removeItem: () => {} },
+      fetch: async () => ({ ok: true, status: 200, json: async () => ({ ok: true, result: {} }), blob: async () => ({ type: 'image/jpeg' }) }),
+      URL: { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} }, IntersectionObserver: undefined, window: { open: () => null },
+    };
+    const names = Object.keys(deps);
+    const consts = ['RECEIPT_ACCEPT', 'RECEIPT_MB', 'receiptState_', 'BUSINESS_SIGN_KINDS', 'RECEIPT_KINDS', 'legacyState_', 'LEGACY_VIEWS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
+    w.fns = new Function(...names, consts + '\n' + H.fnSource(js, 'esc') + '\n' + H.fnSource(js, 'money') + '\n' + own + '; return { legacyState_, ' + SCREEN.join(', ') + ' };')(...names.map(n => deps[n]));
+    return w;
+  }
+  const settle = () => new Promise(r => setTimeout(r, 0));
+  const inbox = Object.assign({}, ALL, { canSetAside: true });
+  const answersFor = (role, over) => Object.assign({
+    rpcGetReceiptInbox: (tok, input) => (input.status === 'set_aside' ? ASIDE : inbox),
+    rpcGetLegacySpellings: Object.assign({}, LG_SPELLINGS, { canEdit: role === 'admin' || role === 'manager' }),
+    rpcGetLegacyPurchases: Object.assign({}, LG_PAGE, { canEdit: role === 'admin' || role === 'manager' }),
+    rpcGetReceiptSuppliers: { suppliers: [{ id: 'sp' + '1'.repeat(20), displayName: 'Oakridge <i>Ltd</i>' }, { id: 'sp' + '2'.repeat(20), displayName: 'Maplefield Grocer' }] },
+  }, over || {});
+  const open = async role => {
+    const w = world(role, answersFor(role));
+    await w.fns.loadReceiptsTab();
+    const view = w.els['view-receipts'];
+    view.querySelectorAll('[data-old-list]')[0].onclick();
+    await settle();
+    await settle();
+    return w;
+  };
+
+  // The group is offered to the three roles, with its one plain sentence, above "On the books"; an employee is not offered it.
+  for (const role of ['admin', 'manager', 'payroll_admin']) {
+    const w = world(role, answersFor(role));
+    await w.fns.loadReceiptsTab();
+    const h = w.els['view-receipts'].innerHTML;
+    t.ok(label + ': ' + role + ': the group "Old purchase list" with its sentence, before "On the books"',
+      h.indexOf('Old purchase list') !== -1 && h.indexOf('Purchases from the old spreadsheet. No original is on file for any of these, and they are not part of the books below.') !== -1 &&
+      h.indexOf('Old purchase list') < h.indexOf('On the books (') && /data-old-list="toggle"/.test(h) && /id="rcptOld"/.test(h));
+    t.ok(label + ': ' + role + ': nothing is asked of the server until the group is opened', !w.calls.some(c => /Legacy/.test(c[0])));
+  }
+  {
+    const e = world('employee', { rpcGetReceiptInbox: OWN });
+    await e.fns.loadReceiptsTab();
+    const eh = e.els['view-receipts'].innerHTML;
+    t.ok(label + ': employee: no Old purchase list, no button, no call', !/Old purchase list|data-old-list|rcptOld|old spreadsheet/.test(eh) && !e.calls.some(c => /Legacy/.test(c[0])));
+  }
+
+  // Opened by an admin: the spellings table, the rows, the controls; hostile text escaped; blank supplier in words.
+  {
+    const a = await open('admin');
+    const h = a.els.rcptOld.innerHTML;
+    t.eq(label + ': opening asks for the spellings and the not-sorted rows, token first', a.calls.filter(c => /Legacy/.test(c[0])).map(c => [c[0], c[1][0], c[1][1]]),
+      [['rpcGetLegacySpellings', TOKEN, undefined], ['rpcGetLegacyPurchases', TOKEN, { business: 'unsorted', limit: 25 }]]);
+    t.ok(label + ': a blank supplier reads "supplier not written", in the table and on the row', (h.match(/supplier not written/g) || []).length >= 2);
+    t.ok(label + ': money is shown with money(): $165.60 for a spelling, a refund as -$15.25', h.indexOf('$165.60') !== -1 && h.indexOf('-$15.25') !== -1 && h.indexOf('$1234.56') !== -1);
+    t.ok(label + ': every row says "from the old list: no original on file" and its spreadsheet row', (h.match(/from the old list: no original on file · spreadsheet row \d+/g) || []).length === 4);
+    t.ok(label + ': a formula-looking note is shown as text, never as a link or a formula', h.indexOf('=HYPERLINK(&quot;http://example.invalid&quot;,&quot;click&quot;)') !== -1 && !/<a [^>]*HYPERLINK|href=/.test(h));
+    t.ok(label + ': hostile text is escaped: no <script>, no <b> from a supplier', h.indexOf('<script>') === -1 && h.indexOf('&lt;script&gt;alert(1)&lt;/script&gt;') !== -1 && h.indexOf('<b>Wholesale') === -1 && h.indexOf('Oakridge &lt;b&gt;Wholesale&lt;/b&gt;') !== -1);
+    t.ok(label + ': the spellings table: how typed, rows, how sorted, who it is linked to', /3 ways of typing it/.test(h) && /2 rows · cstore 0 · vape 0 · not sorted 2/.test(h) && /linked to Oakridge Ltd/.test(h) && /not linked to a supplier/.test(h));
+    t.ok(label + ': admin: a "Sort or link" per spelling and a business control per row', (h.match(/data-legacy-edit="/g) || []).length === 3 && (h.match(/<select data-legacy-biz="/g) || []).length === 4);
+    t.ok(label + ': the three views (cstore, vape, not sorted) with their counts, and date filters', /data-legacy-view="unsorted"/.test(h) && /data-legacy-view="cstore"/.test(h) && /data-legacy-view="vape"/.test(h) && /Not sorted \(4\)/.test(h) && /id="lgFrom"/.test(h));
+    t.ok(label + ': the totals line', /<b>4 rows<\/b> · total <b>\$334\.\d\d<\/b>|<b>4 rows<\/b> · total <b>\$/.test(h));
+
+    // A business for one row: the select sends the row and the business, null for "Not sorted".
+    const sel = a.els.rcptOld.querySelectorAll('[data-legacy-biz]')[0];
+    a.answers = null;
+    sel.value = 'vape';
+    await sel.onchange();
+    const set = a.calls.find(c => c[0] === 'rpcSetLegacyBusiness');
+    t.eq(label + ': a row\'s business is sent as the row id and the business', set && set[1], [TOKEN, { rowId: 'lp' + '1'.repeat(24), business: 'vape' }]);
+    sel.value = '';
+    await sel.onchange();
+    t.eq(label + ': "Not sorted" is sent as null', a.calls.filter(c => c[0] === 'rpcSetLegacyBusiness')[1][1][1].business, null);
+
+    // A spelling: all its rows at once; link to a supplier; or a new one.
+    const sp = LG_SPELLINGS.spellings[0];
+    await a.fns.openLegacySpellingSheet_(sp);
+    const body = a.sheets[a.sheets.length - 1].bodyHTML;
+    t.ok(label + ': the spelling sheet says how many rows, offers the business and the suppliers (escaped), and says the text stays as typed',
+      /2 rows written this way/.test(body) && /The text as typed stays on every row/.test(body) && /Set for all 2 rows/.test(body) && body.indexOf('Oakridge &lt;i&gt;Ltd&lt;/i&gt;') !== -1 && body.indexOf('<i>Ltd') === -1);
+    a.els.lgBizPick.value = 'cstore';
+    await a.els.lgBizSave.onclick();
+    t.eq(label + ': setting a whole spelling sends its key and the business', a.calls.filter(c => c[0] === 'rpcSetLegacyBusiness').pop()[1], [TOKEN, { spellingKey: 'maplefieldgrocer', business: 'cstore' }]);
+    await a.fns.openLegacySpellingSheet_(sp);
+    a.els.lgSupPick.value = 'sp' + '2'.repeat(20);
+    a.els.lgNewSup.value = '';
+    await a.els.lgSupSave.onclick();
+    t.eq(label + ': linking sends the key and the supplier', a.calls.filter(c => c[0] === 'rpcLinkLegacySupplier').pop()[1], [TOKEN, { spellingKey: 'maplefieldgrocer', supplierId: 'sp' + '2'.repeat(20) }]);
+    await a.fns.openLegacySpellingSheet_(sp);
+    a.els.lgSupPick.value = '';
+    a.els.lgNewSup.value = '  Maplefield Grocer Ltd ';
+    a.answers = null;
+    await a.els.lgSupSave.onclick();
+    const made = a.calls.find(c => c[0] === 'rpcCreateReceiptSupplier');
+    t.eq(label + ': a new supplier is made by the Receipts card\'s own call, then linked', made && made[1], [TOKEN, { displayName: 'Maplefield Grocer Ltd' }]);
+    t.ok(label + ': the token only ever as the first argument; nothing stored', a.calls.every(c => c[1][0] === TOKEN || c[0] === 'rpcGetReceiptInbox') && a.stored.length === 0);
+    // The blank-supplier spelling cannot be linked.
+    await a.fns.openLegacySpellingSheet_(LG_SPELLINGS.spellings[2]);
+    t.ok(label + ': a spelling with no supplier written offers no link', !/lgSupSave|lgSupPick/.test(a.sheets[a.sheets.length - 1].bodyHTML) && /nothing to link/.test(a.sheets[a.sheets.length - 1].bodyHTML));
+  }
+
+  // A manager has the controls too; a payroll admin sees the list without them.
+  {
+    const m = await open('manager');
+    t.ok(label + ': manager: the same controls as an admin', /data-legacy-edit="/.test(m.els.rcptOld.innerHTML) && /<select data-legacy-biz=/.test(m.els.rcptOld.innerHTML));
+    const p = await open('payroll_admin');
+    const ph = p.els.rcptOld.innerHTML;
+    t.ok(label + ': payroll admin: the spellings and the rows, with no control to sort or link and no business select', /Maplefield Grocer/.test(ph) && !/data-legacy-edit|data-legacy-biz|<select/.test(ph) && /Only an admin or a manager can sort or link them/.test(ph));
+  }
+
+  // Nothing imported yet: one line, pointing to the guide.
+  {
+    const w = world('admin', answersFor('admin', { rpcGetLegacySpellings: { imported: false, canEdit: true, spellings: [], files: [], label: 'x' }, rpcGetLegacyPurchases: { imported: false, canEdit: true, items: [], totals: { count: 0, totalCents: 0 }, counts: { unsorted: 0, cstore: 0, vape: 0 }, next: null, label: 'x' } }));
+    await w.fns.loadReceiptsTab();
+    w.els['view-receipts'].querySelectorAll('[data-old-list]')[0].onclick();
+    await settle();
+    await settle();
+    const h = w.els.rcptOld.innerHTML;
+    t.ok(label + ': nothing imported: one line that says so and names the guide, no table', /Nothing has been imported from the old list yet/.test(h) && /import-the-old-purchase-list\.md/.test(h) && !/data-legacy/.test(h));
+    w.els['view-receipts'].querySelectorAll('[data-old-list]')[0].onclick();
+    t.ok(label + ': pressing the button again closes it', w.els.rcptOld.innerHTML === '');
+  }
+  // A server message is shown, not swallowed.
+  {
+    const w = world('admin', answersFor('admin', { rpcGetLegacySpellings: () => { throw new Error('Only an admin, a manager or a payroll admin can see the old purchase list.'); } }));
+    await w.fns.loadReceiptsTab();
+    w.els['view-receipts'].querySelectorAll('[data-old-list]')[0].onclick();
+    await settle();
+    await settle();
+    t.ok(label + ': a refusal from the server is shown as its words', /Only an admin, a manager or a payroll admin/.test(w.els.rcptOld.textContent));
+  }
+}));
+
 // ── The built Operations page carries both screens; Apps Script hides them ──
 {
   t.section('The two apps');
@@ -589,7 +777,10 @@ H.uiScripts().forEach(([label, js]) => {
     built.indexOf("'rpcEnterReceiptDraft'") !== -1 && built.indexOf("'rpcGetReceiptDraft'") !== -1 && built.indexOf('Reviewing and confirming comes next: nothing here counts yet.') !== -1);
   t.ok('the built page has the review, the confirm sheet, the books and the void sheet (card P5-05b), with their calls',
     ['async function openReceiptReview_(', 'function openReceiptConfirmSheet_(', 'async function loadReceiptBooks_(', 'function openReceiptVoidSheet_(', "'rpcConfirmReceipt'", "'rpcSaveReceiptCorrection'", "'rpcVoidReceipt'", "'rpcGetReceiptBooks'", 'This goes on the books of '].every(x => built.indexOf(x) !== -1));
+  t.ok('the built page has the old purchase list (card P5-16): its sentence, its loader, its four calls',
+    ['Purchases from the old spreadsheet. No original is on file for any of these, and they are not part of the books below.', 'async function legacyLoad_(', 'function openLegacySpellingSheet_(', "'rpcGetLegacyPurchases'", "'rpcGetLegacySpellings'", "'rpcSetLegacyBusiness'", "'rpcLinkLegacySupplier'", 'supplier not written'].every(x => built.indexOf(x) !== -1));
   const src = fs.readFileSync(path.join(H.SRC, 'Index.html'), 'utf8');
+  t.ok('the old list is reachable only from the Receipts screen, which is opsOnly: the Apps Script page never shows it', (src.match(/legacyToggle_\(\)/g) || []).length === 2 && /legacyToggle_\(\)/.test(H.fnSource(src, 'renderReceiptsTab')));
   t.ok('the Apps Script page never loads the transport, so the entries are hidden there', src.indexOf('/transport.js') === -1);
   t.ok('no template tag in the page', src.indexOf('<?') === -1);
 }

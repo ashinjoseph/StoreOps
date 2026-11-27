@@ -83,6 +83,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [Dry run: the real Sheet into a local database](docs/guides/cutover-dry-run.md): This is the rehearsal for the move off Google Sheets (card P4-04 in the task cards)
 - [Keeping the docs current](docs/guides/docs-process.md): The docs are part of the change, not a follow-up
 - [The hosted setup: one checklist](docs/guides/hosted-setup-checklist.md): Everything the Operations app needs when it stops running on your own computer and runs hosted
+- [Import the old purchase list](docs/guides/import-the-old-purchase-list.md): For years the purchases were kept as a list in a spreadsheet
 - [Restore a nightly copy into an empty local database](docs/guides/restore-a-nightly-copy.md): The Operations app writes a copy of every table to a bucket every night (backups)
 - [Setting up StoreOps](docs/guides/setup.md): From nothing to a working web app in about 30 minutes
 - [Testing](docs/guides/testing.md): Apps Script has no test runner, and the services it depends on (SpreadsheetApp, UrlFetchApp, HtmlService) don't exist outside Google

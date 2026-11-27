@@ -1767,3 +1767,12 @@ New: `ops/test/receipt-review.test.ts` (48 tests) and the review, confirm,
 books and void assertions in the `ui-receipts` suite, seen failing first (no
 module, no functions) and against fourteen deliberate mutations, each restored
 byte for byte.
+
+### The old purchase list brought in as history (P5-16)
+
+- The owner's old purchase list (one tab of a workbook: date, supplier typed by hand, amount, note) comes into the app as history, marked *from the old list: no original on file*. It is not turned into receipts, never appears in *On the books* or its totals, and is never offered to an assistant. Every row is kept exactly as it was (the row number as seen in the spreadsheet, the supplier text with its odd spacing, the amount to the cent); a row with no date, no amount, an amount that is not a number or a date before 2000 or after the day of the import is rejected and listed, never guessed. Exact repeats are all kept.
+- A tool the owner runs on their own computer, `npm --prefix ops run import:purchases`, finds the four columns by their headings (never by position), has `--dry-run`, never prints or writes a cell value (counts, row numbers and reasons only), refuses a database that is not on this computer, and records itself under an active admin (`--as`). The same file again adds nothing; a changed file needs `--replace-file <old sha256>`, which marks the old rows replaced (never deleted) and carries their business and supplier over to the matching new rows. The workbook reader gains one option, the header in row 1; its default is unchanged.
+- On the Receipts screen, the group *Old purchase list* (admin, manager and payroll admin): the supplier spellings, most rows first, and the rows by cstore, vape or not sorted. Admin and manager set the business for one row or for every row written one way, and link a spelling to a supplier (the supplier then also learns that spelling, `old_list`, so a future receipt printed that way is matched). Nothing sets the business automatically.
+- Migration 0015 (two tables, and `old_list` as a way a spelling is learnt), four RPCs, [the guide](docs/guides/import-the-old-purchase-list.md).
+
+New: `ops/test/legacy-purchases.test.ts` and the old-purchase-list assertions in the `ui-receipts` suite, seen failing against twelve deliberate mutations, each restored byte for byte.

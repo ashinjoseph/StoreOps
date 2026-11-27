@@ -48,7 +48,7 @@ export interface Actor {
 const ORIGINAL_ID = /^ro[0-9a-f]{24}$/;
 const PURCHASE_ID = /^pr[0-9a-f]{24}$/;
 const SUPPLIER_ID = /^sp[0-9a-f]{20}$/;
-const SUPPLIER_LOCK = "select pg_advisory_xact_lock(hashtextextended('ops.suppliers', 0))";
+export const SUPPLIER_LOCK = "select pg_advisory_xact_lock(hashtextextended('ops.suppliers', 0))";
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 // eslint-disable-next-line no-control-regex
@@ -252,7 +252,7 @@ async function activeWithKey(tx: Tx, key: string, besides: string | null): Promi
 }
 
 /** Add a spelling to a supplier, unless it is one already. Refused, naming the other, when it is another supplier's. */
-async function addSpelling(tx: Tx, supplier: { id: string; displayName: string }, name: string, actor: Actor, now: Date, receiptId: string | null, fail: (m: string) => Error): Promise<boolean> {
+export async function addSpelling(tx: Tx, supplier: { id: string; displayName: string }, name: string, actor: Actor, now: Date, receiptId: string | null, fail: (m: string) => Error, learntFrom?: "old_list"): Promise<boolean> {
   const key = normalise(name);
   if (key === "") return false;
   await tx.query(SUPPLIER_LOCK);
@@ -263,11 +263,12 @@ async function addSpelling(tx: Tx, supplier: { id: string; displayName: string }
   if (taken !== null && taken.supplier_id === supplier.id) return false;
   if (taken !== null) throw fail(`"${name}" is already a spelling of ${taken.display_name}: a spelling belongs to one supplier. Untick it.`);
   const id = newNameId();
+  const learnt = learntFrom ?? (receiptId === null ? "typed" : "confirmed_receipt");
   await tx.query(
     "insert into ops.supplier_names (name_id, supplier_id, name, name_key, learnt_from, added_by, added_at, learnt_from_receipt) values ($1, $2, $3, $4, $5, $6, $7, $8)",
-    [id, supplier.id, name, key, receiptId === null ? "typed" : "confirmed_receipt", actor.staffId, now, receiptId],
+    [id, supplier.id, name, key, learnt, actor.staffId, now, receiptId],
   );
-  await audit.write(tx, { actorId: actor.staffId, action: "supplier_name.add", targetType: "supplier_names", targetId: id, after: { supplierId: supplier.id, name, learntFrom: receiptId === null ? "typed" : "confirmed_receipt", receiptId } }, { now });
+  await audit.write(tx, { actorId: actor.staffId, action: "supplier_name.add", targetType: "supplier_names", targetId: id, after: { supplierId: supplier.id, name, learntFrom: learnt, receiptId } }, { now });
   return true;
 }
 

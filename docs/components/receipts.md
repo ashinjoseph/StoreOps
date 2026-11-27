@@ -10,8 +10,10 @@
 
 ## What it does
 
-Built so far (cards P5-12a, P5-12b, P5-05a and P5-05b), in the Operations app only (inside
-Apps Script neither entry exists):
+Built so far (cards P5-12a, P5-12b, P5-05a, P5-05b and P5-16), in the Operations app only (inside
+Apps Script neither entry exists). The old spreadsheet's purchase list, kept as
+history and never among the receipts, has its own section,
+[The old purchase list](#the-old-purchase-list-card-p5-16).
 
 **More → Receipts**, for everyone signed in.
 
@@ -647,6 +649,87 @@ Questions for the owner and the bookkeeper. Each is what happens **today**:
 | A statement covering several invoices | one draft per original: one invoice number, one date; the duplicate check does not see the invoices inside it |
 | A tip on a meal | an other charge; parts add up; nothing marks it as a tip |
 
+### The old purchase list (card P5-16)
+
+Until the Operations app, the owner kept purchases as a list in a workbook: a
+date, a supplier typed by hand, an amount and a note. The owner's decision
+(Nov 27): **the old list comes into the app as history, with the little it has,
+marked "no original on file".** It is not turned into receipts: it has no
+document, no tax figure, no invoice number and, for most rows, nothing that says
+which business bought it.
+
+**What it is.** One tab of the workbook, read by a tool the owner runs on their
+own computer ([the guide](../guides/import-the-old-purchase-list.md)), kept in
+its own tables (`ops.legacy_purchase_files`, `ops.legacy_purchases`; migration
+`0015_legacy_purchases.sql`). On the Receipts screen, above *On the books*, the
+group **Old purchase list** says: *Purchases from the old spreadsheet. No
+original is on file for any of these, and they are not part of the books below.*
+It shows the supplier spellings (most rows first: the spelling as typed, rows,
+total, how they are sorted, who they are linked to) and the rows (newest first,
+by *cstore*, *vape* or *not sorted*, with a date filter). Every row says *from
+the old list: no original on file* and its row number in the spreadsheet.
+
+**What it is not.** Never a receipt, never a line in *On the books*, never in
+its totals, never offered to an assistant (nothing in `ops/src/mcp/` reads the
+tables; a test reads those sources). No conversion, no export, no deposits tab.
+
+**The rules.**
+
+- **A row is kept exactly as it was**: the date, the supplier text as typed
+  (odd spacing and capitals included), the amount to the cent
+  (`numeric(12,2)`, from whole cents, never a float), the note as typed, the
+  row number as a person sees it, and the file it came from (its SHA-256 and
+  name, the tab). Nothing is corrected, merged, re-spelled or dropped; exact
+  repeats are all kept (two trips in a day look the same as a mistake).
+- **A row that cannot be history is rejected and listed, never guessed**: no
+  date; a date that is text or not a date; before 2000 or after the day of the
+  import; no amount; an amount that is not a number (text, `$12.50`), has
+  fractions of a cent or is too large; a supplier or note that is not text.
+  A blank supplier is kept (*supplier not written*); a zero or negative amount
+  is kept as it is (a refund) and counted. A row with nothing in the four
+  columns is not a row.
+- **The business is not known, and is not guessed.** Every row comes in with
+  none. An admin or manager sets it for one row, or for every row written one
+  way at once (*all 83 rows written this way are cstore*), and may clear it.
+  Nothing sets it on its own, not even a supplier that only one business uses.
+- **A supplier is linked, not rewritten.** An admin or manager says a spelling
+  means a supplier on the app's list (or makes the supplier with the Receipts
+  card's own `rpcCreateReceiptSupplier`): every row of the spelling is linked,
+  the text stays as typed, and the spelling becomes one of the supplier's known
+  spellings (`learnt_from` = `old_list`), so a future receipt printed that way is
+  matched. A spelling that already belongs to another supplier is refused in the
+  Receipts card's own words. Unlinking leaves the learnt spelling and says so.
+- **Run once per file, safely again.** The same file (SHA-256) again adds
+  nothing and says so. A changed file is a different file: the tool refuses
+  while another is in the app unless told `--replace-file <old sha256>`; the old
+  rows are then marked superseded (never removed), and their business and
+  supplier links carry over to the new rows that match on tab, row number,
+  date, amount and supplier text; the report counts how many carried over and
+  how many did not.
+- **The tool never prints a cell value** and never writes one to its report
+  (counts, row numbers and reasons only); it has `--dry-run`; it refuses a
+  database that is not on this computer unless given
+  `--yes-load-into-a-database-that-is-not-on-this-computer`; `--as` must be an
+  active admin (the audit row says it was the owner's local tool).
+
+**Who may.** Admin, manager and payroll admin see the list
+(`rpcGetLegacyPurchases`, `rpcGetLegacySpellings`); admin and manager change a
+business or a link (`rpcSetLegacyBusiness`, `rpcLinkLegacySupplier`); an
+employee sees nothing. Identity and role come from the session only.
+
+**Tests.** `ops/test/legacy-purchases.test.ts` (a fictional workbook built in the
+test: the row rules as a table, the columns found by heading in any order, the
+load cell for cell with one insert for 30 rows or 300, rejects with row numbers,
+no cell value anywhere in the output, the same file again, `--replace-file` with
+its carry-over, `--dry-run` byte for byte, a non-local database, `--as`,
+business and link rules, the readers' cursor and totals, the books unchanged, no
+MCP source naming the tables, every RPC per role, the audit rows, the database
+grants, the nightly copy round trip) and the *old purchase list* assertions of
+`tests/suites/ui-receipts.js`.
+
+**History.** Nov 2026 (card P5-16): the old list as history; migration 0015,
+two tables, four RPCs, `ops/tools/import-purchases.ts`.
+
 ## Data
 
 | Table | Reads | Writes |
@@ -659,6 +742,7 @@ Questions for the owner and the bookkeeper. Each is what happens **today**:
 | `ops.purchase_receipts` | ✓ | ✓ (add; status, the superseded link, the confirm record and the void columns only; a confirmed or voided row only to void it, by a trigger) |
 | `ops.purchase_receipt_lines` | ✓ | ✓ (add only) |
 | `ops.suppliers`, `ops.supplier_names` | ✓ | ✓ (add a supplier, rename it, its HST number and notes, mark it inactive; add a spelling, typed or learnt; never removed) |
+| `ops.legacy_purchase_files`, `ops.legacy_purchases` | ✓ | ✓ (add by the owner's tool; the business, the supplier link and the superseded mark only; never removed; never among the receipts) |
 | `ops.audit_log` | | ✓ |
 | `ops.config` | `receipt_max_mb`, `cstore_business_name`, `vape_business_name`, `hst_rate_percent` | |
 
@@ -666,7 +750,9 @@ The first three tables come from `ops/migrations/0010_receipt_inbox.sql`, the
 upload tickets from `ops/migrations/0012_receipt_upload_tickets.sql`, the drafts
 and the supplier list from `ops/migrations/0013_receipt_drafts.sql`, the review's
 columns, the status `confirmed` and the trigger from
-`ops/migrations/0014_receipt_review.sql` (no new table); all are the
+`ops/migrations/0014_receipt_review.sql` (no new table), the old purchase list
+from `ops/migrations/0015_legacy_purchases.sql` (two tables, and `old_list` as a
+way a spelling is learnt); all are the
 Operations app's own (no Sheet tab feeds them) and are not loaded or compared
 by the cutover tools (`LATER_OPS_TABLES` in `ops/src/cutover/compare.ts`).
 `ops.suppliers` has the name of the Sheet's deprecated `suppliers` tab: it is
@@ -775,6 +861,7 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 | Drafts (card P5-05a) | `ops/src/receipts/drafts.ts`: `propose`, `getDraft`, `proposals`, `takenOut`, `restore`; the pure parts `readFields`, `decideBusiness`, `checkLinesAddUp`, `checkPartsAddUp`, `checkHstPlausible`, `checkDate`, `checkDuplicates`, `checkSupplierHst`, `checkBusiness`, `parseMoney`, `parseQuantity`, `centsText`, `moneyText`, `expectedHst`, `hstRateMilli`; the shared input `draftInputSchema`, `parsePageInput`; `matchSupplier`, `liveSigns`, `isRefusal` |
 | RPCs | `ops/src/rpc/handlers/receipts.ts`: `rpcGetReceiptInbox`, `rpcSetReceiptAside`, `rpcSetReceiptBusiness`, `rpcGetBusinesses`, `rpcUpdateBusiness`, `rpcAddBusinessSign`, `rpcRemoveBusinessSign`, `rpcGetReceiptDraft`, `rpcEnterReceiptDraft` (card P5-05a); `rpcGetReceiptReview`, `rpcSaveReceiptCorrection`, `rpcConfirmReceipt`, `rpcVoidReceipt`, `rpcGetReceiptSuppliers`, `rpcCreateReceiptSupplier`, `rpcUpdateReceiptSupplier`, `rpcGetReceiptBooks` (card P5-05b); listed in `ops/contracts/rpc-ops.json` |
 | Tables | `ops/migrations/0010_receipt_inbox.sql`; `ops/migrations/0012_receipt_upload_tickets.sql` (the tickets); `ops/migrations/0013_receipt_drafts.sql` (drafts, lines, suppliers and their spellings; `drafted`); `ops/migrations/0014_receipt_review.sql` (`confirmed`, the confirm record, what the signs said, `redo_of`, learnt-from links, the supplier's display key, the trigger `purchase_receipts_final`) |
+| The old purchase list (card P5-16) | `ops/src/receipts/legacy.ts`: the pure `judgeRow`, `readRows`, `findColumns`, `centsText`, `cleanFileName`; `loadFile` (one insert, `--replace-file` carry-over), `getPurchases`, `getSpellings`, `setBusiness`, `linkSupplier`; `addSpelling` is `review.ts`'s own, exported; the tool `ops/tools/import-purchases.ts` (`npm --prefix ops run import:purchases`); the workbook reader's `headerRow` option and `tableOf` in `ops/src/export/xlsx.ts`; the RPCs `rpcGetLegacyPurchases`, `rpcGetLegacySpellings`, `rpcSetLegacyBusiness`, `rpcLinkLegacySupplier` in `ops/src/rpc/handlers/receipts.ts`; `src/Index.html`: `legacyToggle_`, `legacyLoad_`, `legacyHTML_`, `openLegacySpellingSheet_` |
 | Setting | `receipt_max_mb` and `hst_rate_percent` in `ops/src/lib/config-keys.ts` (`OPS_ONLY_KEYS`) and `ops/src/modules/settings.ts` (group *Other*) |
 | The assistant's view | the `businesses`, `receipts_to_read`, `receipt_original`, `receipt_upload_start`, `receipts_from_email` and `receipt_propose` tools in `ops/src/mcp/tools.ts` ([assistants](assistants.md)) |
 | UI | `src/Index.html`: `loadReceiptsTab`, `renderReceiptsTab`, `sendReceiptOriginal_`, `fetchReceiptOriginal_`, `receiptTooLarge_`, `openReceiptSheet_`, `revokeReceiptBlobs_`, `receiptDraftHeadHTML_`, `receiptDraftHTML_`, `openReceiptDraftEntry_`, `receiptDraftInput_`, `receiptDraftLineHTML_`; card P5-05b: `openReceiptReview_`, `drawReceiptReview_`, `receiptReviewHTML_`, `receiptReviewInput_`, `saveReceiptReview_`, `openReceiptConfirmSheet_`, `loadReceiptBooks_`, `receiptBooksHTML_`, `openReceiptOnBooks_`, `receiptChangesHTML_`, `openReceiptVoidSheet_`; `loadBusinessesTab`, `renderBusinessesTab`, `openBusinessSignSheet_`; the `receipts` and `businesses` entries of `MORE_ITEMS` (`opsOnly`) |
@@ -787,12 +874,22 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 | `ops/test/mcp-receipts.test.ts` | card P5-12b: an assistant's originals by ticket through the Worker's `fetch` and the tools through the SDK client: the whole flow; byte for byte both ways for the five kinds; the ticket single use, 10 minutes exactly, the same 404 for every refused ticket, one file from two PUTs at once, nowhere stored or answered but once; the page's file rules on this route; who it belongs to and what is recorded; email ids; planted text cleaned; nothing else moved. The refactor of the upload path (`checkLength`, `receiveFile`) is held by `ops/test/receipt-inbox.test.ts`, unchanged |
 | `ops/test/receipt-drafts.test.ts` | card P5-05a, against a real database, the pure functions directly, the tool through the SDK's own client and the RPCs through the real router: money spellings accepted and refused and sums in cents where floats differ; every check at and just past its tolerance with its sentence; a draft with every check failing kept and flagged; only a total; the business decision as a table (each kind, two agreeing, both businesses, nothing, a removed sign, spellings, the paid card, a person's word at upload agreeing and disagreeing, a suggestion deciding nothing); supplier matching, never created; every left-out field NULL; HST 0 checked; duplicates across both businesses, possible duplicates, superseded and set-aside ones not counted; replacing, a person's draft not replaceable, two at once one live, the unique index; each refusal writing nothing; a fuel receipt kept exactly (quantity 41.287, unit price 1.459) through the tool and the by-hand RPC, a fifth decimal refused, nothing computed from quantity × unit price; drafted, `receipts_to_read`, set aside and put back; who may (tool rights, daily cap, RPC roles, planted fields); hostile text cleaned; audit rows; the role's rights; nothing else moved; the setting; the by-hand path and the inbox headline |
 | `ops/test/receipt-review.test.ts` | card P5-05b, against a real database, the RPCs through the real router, the assistant through the SDK client: the whole chain for two receipts (an assistant's draft decided by a card, one field corrected, confirmed by a manager with one change recorded; a hand-typed one with the business not known, chosen by a person, a printed name learnt by an admin's tick, then a new draft decided by it); each confirm requirement with its message and nothing written; corrections as new readings (the old row byte-identical, the checks and the decision re-run both ways); the app role unable to update figures, business or supplier, unable to delete, and the trigger refusing any change of a confirmed row but one void, also for the owner; the business chosen when not known, on conflict, overruling the signs (`person`, what the signs said kept, a reason needed), *not sure* refused, and the two books never mixing (a property over a mixed set); sign offers (printed and not yet a sign, unticked, the other business's a warning and refused when forged, a manager's tick refused server-side, the Businesses card's rules and audit, matched afterwards); suppliers (name rules, uniqueness ignoring case and spaces, search by spelling and paging, one supplier per spelling, remember on and off, matching after, inactive not choosable but still shown); failed checks needing a reason, stored with the failing checks; a duplicate of a confirmed receipt for an admin only, of a draft a warning; what was changed as a table (no change, a field, blank to value, value to blank, 12.5 = 12.50, business, supplier, other charges, lines added, removed, changed) and against the first reading after corrections and a second proposal; every write path refusing a confirmed original (correction, a proposal, by hand, set aside, confirm again); void (reason, roles, kept and marked, out of the totals, the copy equal to the voided figures, confirmed again, learnt signs and spellings listed and kept, twice refused); the books (filters, paging with a confirm between pages, totals in cents equal to the rows, a float trap, voided excluded, one receipt read only); two at once on two connections (two confirms, confirm and correction, confirm and a proposal, two voids and a confirm of the redo); `my_proposals` waiting → confirmed with a count and no values → refused once voided; no tool confirms, corrects or voids and nothing in `src/mcp/` imports the review; every RPC per role and without a token, planted fields ignored; hostile text kept as text; the audit rows; nothing else moved; a nightly copy and restore round trip with drafts, a confirmed and a voided receipt |
+| `ops/test/legacy-purchases.test.ts` | card P5-16, against a real database, a fictional workbook built in the test: the row rules as a table (kept as typed, blank supplier kept, zero and negative kept, every reject and its reason, never the value); the columns found by heading in any order; the reader's default mode unchanged; the load cell for cell with the spreadsheet's row numbers, repeats kept, one insert for 30 rows and for 300; no cell value in the tool's output (as a real process too), `import-report.json` or `rejects.csv`; the same file again adds nothing; a changed file refused without `--replace-file`, and with it the old rows marked and nothing removed, links carried over and counted; `--dry-run` byte for byte; a non-local database refused; `--as` an active admin; the business unset on arrival, set for a row or a spelling in one statement, cleared, never set by a link; the link learns the spelling so the Receipts card's matching finds the supplier, refuses another supplier's spelling, unlinking keeps it; the readers' filters, stable cursor and totals; the books identical before and after; no MCP source names the tables; every RPC per role and with no token; the database grants; the nightly copy round trip |
 | `ops/test/businesses.test.ts` | the seven RPCs' roles in the merged contract; the two seeded businesses, blank until typed; every field rule; the HST number normalised and never shared; each kind of sign, normalised; a sign refused at the other business however it is spaced, dashed or cased, also by the database; two admins at once; removal kept and audited; who may; the assistant's `businesses` tool through the SDK client showing the new fields and nothing else |
 | `ops/test/mcp-door.test.ts` | the `businesses` tool's exact keys; the pinned tool list (with `receipt_propose`, card P5-05a) |
 | `ops/test/db-migrate.test.ts`, `ops/test/cutover-tool.test.ts` | the new tables (0010, 0012, 0013) present and skipped by the cutover tools (0014 adds no table) |
-| `tests/suites/ui-receipts.js` | an assistant's original says *added by <person>'s assistant (<key label>)*, an emailed one its sender and date, all escaped (card P5-12b); both drawer entries `opsOnly` with their roles; per role, what is rendered (an employee: no list of others, no set-aside or business control); the oversize photo refused before any request; the token only in an `Authorization` header, never in a URL, a toast or storage; blob URLs revoked; the built page carries both screens and Apps Script hides them; card P5-05a: the *Read, waiting for review* group between Waiting and Set aside (asked for only when there are some), its headline, the read-only draft per role (blank reads *not on the receipt*, a failed check reads as its sentence, hostile text escaped), an employee's *It has been read.*, *Enter the figures by hand* for admin and manager only, the by-hand sheet sending exactly the fields typed (nothing as 0 or ""), lines added one at a time; card P5-05b: the review and *On the books* offered to admin, manager and payroll admin and not to an employee (*It is on the books.*); the review prefilled from the draft and escaped, its fields, a line added and removed, an other charge, Save sending exactly what was typed (a blank left out, the reader's notes unchanged, the draft, the business and the supplier); the confirm sheet naming the business in words, the sign offers unticked and greyed for a manager (a forced tick not sent), the other business's sign a warning, the spelling ticked, Confirm disabled until a reason of 3 characters when a check failed and while not allowed; an admin's tick sent by its id and the next receipt offered; the books asked for one business at a time with the cursor, totals and rows from the server escaped, voided marked, a receipt read only with what was changed, Void for admin and manager only and its sheet listing what was learnt; by hand goes straight into the review |
+| `tests/suites/ui-receipts.js` | an assistant's original says *added by <person>'s assistant (<key label>)*, an emailed one its sender and date, all escaped (card P5-12b); both drawer entries `opsOnly` with their roles; per role, what is rendered (an employee: no list of others, no set-aside or business control); the oversize photo refused before any request; the token only in an `Authorization` header, never in a URL, a toast or storage; blob URLs revoked; the built page carries both screens and Apps Script hides them; card P5-05a: the *Read, waiting for review* group between Waiting and Set aside (asked for only when there are some), its headline, the read-only draft per role (blank reads *not on the receipt*, a failed check reads as its sentence, hostile text escaped), an employee's *It has been read.*, *Enter the figures by hand* for admin and manager only, the by-hand sheet sending exactly the fields typed (nothing as 0 or ""), lines added one at a time; card P5-05b: the review and *On the books* offered to admin, manager and payroll admin and not to an employee (*It is on the books.*); the review prefilled from the draft and escaped, its fields, a line added and removed, an other charge, Save sending exactly what was typed (a blank left out, the reader's notes unchanged, the draft, the business and the supplier); the confirm sheet naming the business in words, the sign offers unticked and greyed for a manager (a forced tick not sent), the other business's sign a warning, the spelling ticked, Confirm disabled until a reason of 3 characters when a check failed and while not allowed; an admin's tick sent by its id and the next receipt offered; the books asked for one business at a time with the cursor, totals and rows from the server escaped, voided marked, a receipt read only with what was changed, Void for admin and manager only and its sheet listing what was learnt; by hand goes straight into the review; card P5-16: the *Old purchase list* group with its one sentence above *On the books* for admin, manager and payroll admin and not for an employee, nothing asked of the server until it is opened, *supplier not written*, money with `money()`, a formula-looking note and `<script>` shown as text, the sort-and-link controls for admin and manager only, the spelling sheet sending its key, a new supplier made with the Receipts card's own call, the empty state naming the guide |
 
 ## History
+
+- **Nov 2026 (card P5-16):** the old purchase list as history, marked *no
+  original on file* and never among the receipts: the owner's tool
+  `import:purchases` reads one tab of the workbook (headings in row 1, found by
+  name) into two tables (migration 0015); admin, manager and payroll admin see
+  the spellings and the rows on the Receipts screen, admin and manager set a
+  business (one row, or every row written one way) or link a spelling to a
+  supplier, which also teaches the supplier that spelling; four RPCs. See
+  [the guide](../guides/import-the-old-purchase-list.md).
 
 - **Nov 2026 (card P5-05b):** review, confirm, void and the books: a person
   corrects a draft beside its original (each correction a new reading, the

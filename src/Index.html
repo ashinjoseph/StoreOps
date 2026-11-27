@@ -7084,6 +7084,10 @@
       html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Set aside (' + esc(counts.set_aside || 0) + ')</div>';
       if (!asideItems.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing set aside.</div>';
       asideItems.forEach(it => { html += receiptRowHTML_(it); });
+      html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Old purchase list</div>' +
+        '<div style="font-size:11px;color:#6a6e79;margin-bottom:6px">Purchases from the old spreadsheet. No original is on file for any of these, and they are not part of the books below.</div>' +
+        '<button class="payroll-btn payroll-btn-secondary" data-old-list="toggle" style="width:100%">Old purchase list</button>' +
+        '<div id="rcptOld"></div>';
       html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">On the books (' + esc(counts.confirmed || 0) + ')</div>' +
         '<div style="font-size:11px;color:#6a6e79;margin-bottom:6px">One business at a time: the two are separate books and are never listed together.</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:8px"><button class="payroll-btn payroll-btn-secondary" data-books-business="cstore" style="flex:1">cstore</button><button class="payroll-btn payroll-btn-secondary" data-books-business="vape" style="flex:1">vape</button></div>' +
@@ -7103,6 +7107,9 @@
     });
     view.querySelectorAll('[data-books-business]').forEach(el => {
       el.onclick = () => { haptic(); loadReceiptBooks_(el.dataset.booksBusiness, {}); };
+    });
+    view.querySelectorAll('[data-old-list]').forEach(el => {
+      el.onclick = () => { haptic(); legacyToggle_(); };
     });
     loadReceiptThumbs_(view);
   }
@@ -7929,6 +7936,207 @@
     const more = $('rbMore');
     if (more) more.onclick = () => { haptic(); loadReceiptBooks_(b, { before: r.next }); };
     view.querySelectorAll('[data-books-id]').forEach(el => { el.onclick = () => { haptic(); openReceiptOnBooks_(el.dataset.booksId); }; });
+  }
+
+  // ── The old purchase list, as history (card P5-16) ──
+  //  Purchases from the old spreadsheet, kept with the little they have. They are NOT receipts: no original,
+  //  no tax figure, never in "On the books". Admin, manager and payroll admin see them; only admin and manager
+  //  (the server says canEdit) set a business or link a supplier. A blank supplier reads "supplier not written".
+  const legacyState_ = { view: 'unsorted', from: '', to: '', key: null, text: '', items: [], sp: null, page: null };
+  const LEGACY_VIEWS = [['unsorted', 'Not sorted'], ['cstore', 'cstore'], ['vape', 'vape']];
+
+  function legacyCents_(cents) { return money(Number(cents) / 100); }
+
+  function legacySupplierHTML_(text) { return text === '' ? '<i>supplier not written</i>' : esc(text); }
+
+  function legacySortedWords_(s) {
+    return 'cstore ' + esc(s.cstore) + ' · vape ' + esc(s.vape) + ' · not sorted ' + esc(s.unsorted);
+  }
+
+  function legacySpellingHTML_(s, i, canEdit) {
+    return '<div class="payroll-card" style="margin-bottom:6px">' +
+      '<div style="display:flex;gap:8px;font-size:13px"><div style="flex:1;min-width:0;overflow-wrap:anywhere"><b>' + legacySupplierHTML_(s.text) + '</b>' +
+        (s.variants > 1 ? ' <span class="payroll-rate">(' + esc(s.variants) + ' ways of typing it)</span>' : '') + '</div>' +
+        '<div style="font-weight:700">' + esc(legacyCents_(s.totalCents)) + '</div></div>' +
+      '<div class="payroll-rate">' + esc(s.rows) + ' row' + (s.rows === 1 ? '' : 's') + ' · ' + legacySortedWords_(s) + '</div>' +
+      '<div class="payroll-rate">' + (s.supplier ? 'linked to ' + esc(s.supplier.name) : (s.partlyLinked ? 'partly linked to a supplier' : 'not linked to a supplier')) + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:6px">' +
+        '<button class="payroll-btn payroll-btn-secondary" data-legacy-show="' + esc(i) + '">Show these rows</button>' +
+        (canEdit ? '<button class="payroll-btn payroll-btn-secondary" data-legacy-edit="' + esc(i) + '">Sort or link</button>' : '') +
+      '</div></div>';
+  }
+
+  function legacyRowHTML_(r, canEdit) {
+    const opt = (v, label) => '<option value="' + v + '"' + ((r.business || '') === v ? ' selected' : '') + '>' + label + '</option>';
+    return '<div class="payroll-card" style="margin-bottom:6px">' +
+      '<div style="display:flex;gap:8px;font-size:13px"><div style="flex:1;min-width:0;overflow-wrap:anywhere"><b>' + legacySupplierHTML_(r.supplier) + '</b> · ' + esc(r.date) + '</div>' +
+        '<div style="font-weight:700">' + esc(money(r.amountCents / 100)) + '</div></div>' +
+      (r.note !== '' ? '<div class="payroll-rate" style="overflow-wrap:anywhere">' + esc(r.note) + '</div>' : '') +
+      (r.linked ? '<div class="payroll-rate">linked to ' + esc(r.linked.name) + '</div>' : '') +
+      '<div class="payroll-rate">from the old list: no original on file · spreadsheet row ' + esc(r.sheetRow) + '</div>' +
+      (canEdit
+        ? '<div class="sheet-field" style="margin:6px 0 0"><label>Which business</label><select data-legacy-biz="' + esc(r.id) + '">' + opt('', 'Not sorted') + opt('cstore', 'cstore') + opt('vape', 'vape') + '</select></div>'
+        : '<div class="payroll-rate">' + (r.business ? esc(r.business) : 'not sorted') + '</div>') +
+      '</div>';
+  }
+
+  function legacyHTML_(sp, page, items) {
+    if (!sp || !sp.imported) {
+      return '<div class="payroll-card" style="font-size:12px;color:#4a4e59">Nothing has been imported from the old list yet. The guide “Import the old purchase list” (docs/guides/import-the-old-purchase-list.md) says how.</div>';
+    }
+    const st = legacyState_;
+    const canEdit = !!page.canEdit;
+    const f = (sp.files || [])[0];
+    let html = '<div class="payroll-rate" style="margin:6px 0">' + (f ? 'From ' + esc(f.name) + ', tab ' + esc(f.tab) + ': ' + esc(f.rowsKept) + ' rows kept' + (f.rowsRejected ? ', ' + esc(f.rowsRejected) + ' left out' : '') + '. ' : '') +
+      'Nothing is a receipt: the business is not known until someone says so.</div>';
+    html += '<div style="font-size:13px;font-weight:700;margin:10px 0 4px">Supplier spellings (' + esc((sp.spellings || []).length) + ')</div>' +
+      '<div class="payroll-rate" style="margin-bottom:6px">Most rows first. ' + (canEdit ? 'Sort every row written one way at once, or say which supplier it means.' : 'Only an admin or a manager can sort or link them.') + '</div>';
+    (sp.spellings || []).forEach((s, i) => { html += legacySpellingHTML_(s, i, canEdit); });
+    html += '<div style="font-size:13px;font-weight:700;margin:12px 0 4px">Rows</div>' +
+      '<div style="display:flex;gap:6px;margin-bottom:8px">' + LEGACY_VIEWS.map(v => '<button class="payroll-btn ' + (st.view === v[0] ? 'payroll-btn-primary' : 'payroll-btn-secondary') + '" data-legacy-view="' + v[0] + '" style="flex:1">' + esc(v[1]) + ' (' + esc(page.counts[v[0]]) + ')</button>').join('') + '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-bottom:8px">' +
+        '<div class="sheet-field" style="flex:1 1 110px;margin:0"><label>From</label><input type="text" id="lgFrom" placeholder="YYYY-MM-DD" value="' + esc(st.from) + '"></div>' +
+        '<div class="sheet-field" style="flex:1 1 110px;margin:0"><label>To</label><input type="text" id="lgTo" placeholder="YYYY-MM-DD" value="' + esc(st.to) + '"></div>' +
+        '<div class="sheet-field" style="flex:1 1 130px;margin:0"><label>Words in the supplier or note</label><input type="text" id="lgText" maxlength="100" value="' + esc(st.text) + '"></div>' +
+        '<button class="payroll-btn payroll-btn-secondary" id="lgApply">Show</button></div>';
+    if (st.key !== null) {
+      const hit = (sp.spellings || []).find(s => s.key === st.key);
+      html += '<div class="payroll-rate" style="margin-bottom:6px">Only rows written ' + (hit ? '“' + legacySupplierHTML_(hit.text) + '”' : 'one way') + ' <button class="payroll-btn payroll-btn-secondary" id="lgClearKey" style="flex:none;padding:4px 10px">Show all</button></div>';
+    }
+    const t = page.totals || { count: 0, totalCents: 0 };
+    html += '<div class="payroll-card" style="margin-bottom:8px;font-size:12px"><b>' + esc(t.count) + ' row' + (t.count === 1 ? '' : 's') + '</b> · total <b>' + esc(legacyCents_(t.totalCents)) + '</b>' +
+      '<div class="payroll-rate">' + esc(page.counts.unsorted) + ' not sorted in the whole list · ' + esc(page.label) + '</div></div>';
+    if (!items.length) html += '<div style="font-size:12px;color:#6a6e79">No rows for this choice.</div>';
+    items.forEach(r => { html += legacyRowHTML_(r, canEdit); });
+    if (page.next) html += '<button class="payroll-btn payroll-btn-secondary" id="lgMore" style="width:100%">More</button>';
+    return html;
+  }
+
+  async function legacyLoad_(opts) {
+    const box = $('rcptOld');
+    if (!box) return;
+    const o = opts || {};
+    const st = legacyState_;
+    const input = { business: st.view, limit: 25 };
+    if (st.from) input.from = st.from;
+    if (st.to) input.to = st.to;
+    if (st.text) input.text = st.text;
+    if (st.key !== null) input.spellingKey = st.key;
+    if (o.before) input.before = o.before;
+    try {
+      if (!o.before) st.sp = await cachedCall('rpcGetLegacySpellings', [state.token], TTL_LIVE, { force: true });
+      const page = await cachedCall('rpcGetLegacyPurchases', [state.token, input], TTL_LIVE, { force: true });
+      st.items = (o.before ? st.items : []).concat(page.items || []);
+      st.page = page;
+      box.innerHTML = legacyHTML_(st.sp, page, st.items);
+      legacyWire_(page);
+    } catch (e) {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+      box.textContent = e.message;
+    }
+  }
+
+  // The "Old purchase list" button: opens the list under it, or closes it.
+  function legacyToggle_() {
+    const box = $('rcptOld');
+    if (!box) return;
+    if (box.innerHTML) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="loading"><div class="spinner"></div>Loading the old purchase list…</div>';
+    legacyLoad_({});
+  }
+
+  function legacyWire_(page) {
+    const box = $('rcptOld');
+    const st = legacyState_;
+    box.querySelectorAll('[data-legacy-view]').forEach(el => {
+      el.onclick = () => { haptic(); st.view = el.dataset.legacyView; legacyLoad_({}); };
+    });
+    box.querySelectorAll('[data-legacy-show]').forEach(el => {
+      el.onclick = () => {
+        haptic();
+        const s = ((st.sp && st.sp.spellings) || [])[Number(el.dataset.legacyShow)];
+        if (!s) return;
+        st.key = s.key;
+        st.view = s.unsorted > 0 ? 'unsorted' : (s.cstore > 0 ? 'cstore' : 'vape');
+        legacyLoad_({});
+      };
+    });
+    box.querySelectorAll('[data-legacy-edit]').forEach(el => {
+      el.onclick = () => {
+        haptic();
+        const s = ((st.sp && st.sp.spellings) || [])[Number(el.dataset.legacyEdit)];
+        if (s) openLegacySpellingSheet_(s);
+      };
+    });
+    box.querySelectorAll('[data-legacy-biz]').forEach(el => {
+      el.onchange = async () => {
+        try {
+          await call('rpcSetLegacyBusiness', state.token, { rowId: el.dataset.legacyBiz, business: el.value === 'cstore' || el.value === 'vape' ? el.value : null });
+          toast('✓ Saved', 'success');
+          legacyLoad_({});
+        } catch (e) {
+          if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+          toast(e.message, 'error');
+          legacyLoad_({});
+        }
+      };
+    });
+    const apply = $('lgApply');
+    if (apply) apply.onclick = () => {
+      haptic();
+      st.from = String($('lgFrom').value || '').trim();
+      st.to = String($('lgTo').value || '').trim();
+      st.text = String($('lgText').value || '').trim();
+      legacyLoad_({});
+    };
+    const clear = $('lgClearKey');
+    if (clear) clear.onclick = () => { haptic(); st.key = null; legacyLoad_({}); };
+    const more = $('lgMore');
+    if (more) more.onclick = () => { haptic(); legacyLoad_({ before: page.next }); };
+  }
+
+  // One spelling: set a business for every row written that way, or link it to a supplier (an existing one, or a new one).
+  async function openLegacySpellingSheet_(s) {
+    const only = s.cstore === s.rows ? 'cstore' : (s.vape === s.rows ? 'vape' : '');
+    const bizOpt = (v, label) => '<option value="' + v + '"' + (only === v ? ' selected' : '') + '>' + label + '</option>';
+    let suppliers = [];
+    try { suppliers = ((await cachedCall('rpcGetReceiptSuppliers', [state.token, { limit: 50 }], TTL_LIVE, { force: true })) || {}).suppliers || []; } catch (e) { suppliers = []; }
+    const supOpt = x => '<option value="' + esc(x.id) + '"' + (s.supplier && s.supplier.id === x.id ? ' selected' : '') + '>' + esc(x.displayName) + '</option>';
+    const bodyHTML =
+      '<div style="font-size:12px;color:#4a4e59;margin-bottom:10px">' + esc(s.rows) + ' row' + (s.rows === 1 ? '' : 's') + ' written this way. The text as typed stays on every row; nothing is changed or merged.</div>' +
+      '<div class="sheet-field"><label>Which business bought all ' + esc(s.rows) + '</label><select id="lgBizPick">' + bizOpt('', 'Not sorted') + bizOpt('cstore', 'cstore') + bizOpt('vape', 'vape') + '</select></div>' +
+      '<button class="payroll-btn payroll-btn-secondary" id="lgBizSave" style="width:100%;margin-bottom:12px">Set for all ' + esc(s.rows) + ' rows</button>' +
+      (s.text !== '' ? '<div class="sheet-field"><label>Which supplier this means</label><select id="lgSupPick"><option value="">Not linked</option>' + suppliers.map(supOpt).join('') + '</select></div>' +
+        '<div class="sheet-field"><label>Or a new supplier called</label><input type="text" id="lgNewSup" maxlength="120" autocomplete="off" placeholder="Leave empty to use the choice above"></div>' +
+        '<button class="payroll-btn payroll-btn-secondary" id="lgSupSave" style="width:100%">Link these rows</button>' : '<div class="payroll-rate">There is no supplier written on these rows, so there is nothing to link.</div>') +
+      '<div id="lgErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px;margin-top:8px"></div>';
+    openSheet({ title: s.text === '' ? 'Supplier not written' : s.text, subtitle: 'from the old list: no original on file', bodyHTML, actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Close</button>' });
+    const fail = e => {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+      $('lgErr').textContent = e.message;
+    };
+    const done = words => { closeSheet(); toast('✓ ' + words, 'success'); legacyLoad_({}); };
+    $('lgBizSave').onclick = async () => {
+      haptic();
+      $('lgErr').textContent = '';
+      const v = $('lgBizPick').value;
+      try {
+        const r = await call('rpcSetLegacyBusiness', state.token, { spellingKey: s.key, business: v === 'cstore' || v === 'vape' ? v : null });
+        done(r.message);
+      } catch (e) { fail(e); }
+    };
+    const linkBtn = $('lgSupSave');
+    if (linkBtn) linkBtn.onclick = async () => {
+      haptic();
+      $('lgErr').textContent = '';
+      try {
+        let id = $('lgSupPick').value || null;
+        const fresh = String($('lgNewSup').value || '').trim();
+        if (fresh) id = (await call('rpcCreateReceiptSupplier', state.token, { displayName: fresh })).supplier.id;
+        const r = await call('rpcLinkLegacySupplier', state.token, { spellingKey: s.key, supplierId: id });
+        done(r.message);
+      } catch (e) { fail(e); }
+    };
   }
 
   function receiptChangesHTML_(ch) {

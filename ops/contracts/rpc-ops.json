@@ -42,6 +42,10 @@
     { "name": "rpcGetReceiptSuppliers", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
     { "name": "rpcCreateReceiptSupplier", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
     { "name": "rpcUpdateReceiptSupplier", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
-    { "name": "rpcGetReceiptBooks", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true }
+    { "name": "rpcGetReceiptBooks", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
+    { "name": "rpcGetLegacyPurchases", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
+    { "name": "rpcGetLegacySpellings", "params": ["token"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
+    { "name": "rpcSetLegacyBusiness", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcLinkLegacySupplier", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true }
   ]
 }

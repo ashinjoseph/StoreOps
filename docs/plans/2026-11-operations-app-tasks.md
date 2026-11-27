@@ -97,7 +97,7 @@ hand one out.
 | P5-13 | Emailed invoices through the assistant | T2 | P5-05b | security | todo (the owner to decide how an invoice with no attachment is kept) |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
 | P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | in progress |
-| P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | in progress |
+| P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | done (the owner runs the import; things to check in the real file, in the card) |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
 | P6-02 | Store listings: decide | owner | P6-01 | | todo |
 
@@ -1413,6 +1413,37 @@ Notes and questions:
 4. There is no screen yet to rename or retire a supplier (the calls exist).
 5. The export will need its own mark for "already exported"; a confirmed
    receipt cannot carry it, so it will live beside the receipt.
+
+**P5-16 is done.** The old purchase workbook comes in as its own list
+("Old purchase list" on the Receipts screen), never among the receipts and
+never in the books' totals; every row is marked "from the old list: no
+original on file".
+- **The owner runs the import on their own computer**
+  ([the guide](../guides/import-the-old-purchase-list.md)):
+  `npm --prefix ops run import:purchases -- <workbook.xlsx> --as <admin id>
+  --dry-run --report <dir>`, then again without `--dry-run`. It finds the
+  four columns by their headings, keeps every row exactly as typed (repeats
+  included), and lists the rows it cannot keep (no date, no amount) by row
+  number and reason. It never prints or writes a cell's content. The same
+  file twice adds nothing.
+- **Every row arrives unsorted.** An admin or manager sorts by supplier
+  spelling in one go ("all rows written this way are cstore") or row by row,
+  and can link a spelling to a supplier on the app's list; that also teaches
+  the app the spelling, so a future receipt printed that way is matched.
+  Nothing is sorted or re-spelled automatically.
+Migration `0015_legacy_purchases.sql`. Tested on an invented workbook only;
+the real file has never been in the repository or in a builder's hands.
+**To check in the real file before running it:**
+1. A total row at the bottom is listed as a reject (no date), not added.
+2. Merged cells: only the first keeps its value; unmerge them first.
+3. A date typed as text, or an amount with a currency sign typed as text,
+   is rejected and listed.
+4. A formula with no stored value, in any tab, makes the reader refuse the
+   whole file: "Download as .xlsx" from Google Sheets stores the values.
+5. The bank-deposit tab is not imported.
+Questions for the owner: should the import refuse to finish until the
+rejects are accepted by number, as the Sheet import does? And a spelling
+linked to the wrong supplier cannot be moved to another from the screen yet.
 
 ## Phase 6 — App
 

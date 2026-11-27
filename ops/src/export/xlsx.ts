@@ -44,6 +44,24 @@ export interface XlsxSheet {
   /** Cells that hold a formula (their cached value is what is in `cells`). */
   formulaCells: number;
   mergedRanges: number;
+  /** Only when the caller asked for a layout (ReadOptions.headerRow): the header and the data rows below it, each with its row number as a person sees it. */
+  table?: XlsxTable;
+}
+
+/** A tab read as a table: the heading cells, then one entry per row below them. A row's `row` is its number in the spreadsheet (1-based). */
+export interface XlsxTable {
+  headerRow: number;
+  header: SheetCell[];
+  rows: Array<{ row: number; cells: SheetCell[] }>;
+}
+
+export interface ReadOptions {
+  /**
+   * Where the headings are: 2 is the layout the app's own Sheet has (a title banner in row 1), 1 is a plain
+   * list with the headings in the first row. Given, every sheet carries `table`. Not given (the default),
+   * the sheets are exactly what they always were.
+   */
+  headerRow?: 1 | 2;
 }
 
 export interface XlsxWorkbook {
@@ -557,8 +575,17 @@ function readSheet(root: XNode, ctx: Context, tab: string): Pick<XlsxSheet, "cel
   return { cells, columns: lastCol, formulaCells, mergedRanges: merged };
 }
 
+/** The cells below row `headerRow` as a table; the first data row is row headerRow + 1. A tab with no row that far is an empty header and no rows. */
+export function tableOf(cells: readonly SheetCell[][], headerRow: number): XlsxTable {
+  return {
+    headerRow,
+    header: cells[headerRow - 1] ?? [],
+    rows: cells.slice(headerRow).map((c, i) => ({ row: headerRow + 1 + i, cells: c })),
+  };
+}
+
 /** Read every tab of an .xlsx file, hidden ones too. Throws XlsxError on anything it cannot read. */
-export function readWorkbook(bytes: Uint8Array): XlsxWorkbook {
+export function readWorkbook(bytes: Uint8Array, options: ReadOptions = {}): XlsxWorkbook {
   const parts = readZip(bytes);
   const WB = "xl/workbook.xml";
   const RELS = "xl/_rels/workbook.xml.rels";
@@ -602,7 +629,9 @@ export function readWorkbook(bytes: Uint8Array): XlsxWorkbook {
     const part = parts.get(rel.path);
     if (!part) return fail(`tab "${name}" refers to ${rel.path}, which is not in the file`);
     const body = readSheet(parseXml(part, rel.path), ctx, name);
-    sheets.push({ index: i + 1, name, state: stateText, hidden: stateText !== "visible", ...body });
+    const sheet: XlsxSheet = { index: i + 1, name, state: stateText, hidden: stateText !== "visible", ...body };
+    if (options.headerRow !== undefined) sheet.table = tableOf(body.cells, options.headerRow);
+    sheets.push(sheet);
   }
   return { date1904, sheets };
 }

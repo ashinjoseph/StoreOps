@@ -7,6 +7,7 @@ import { requireRole } from "../../auth/roles";
 import { NOT_LOGGED_IN, type Session } from "../../auth/types";
 import * as businesses from "../../receipts/businesses";
 import * as drafts from "../../receipts/drafts";
+import * as legacy from "../../receipts/legacy";
 import * as originals from "../../receipts/originals";
 import * as review from "../../receipts/review";
 import type { RpcContext, RpcHandler } from "../types";
@@ -138,4 +139,33 @@ export const rpcUpdateReceiptSupplier: RpcHandler = async (ctx, input) => {
 export const rpcGetReceiptBooks: RpcHandler = async (ctx, input) => {
   const s = caller(ctx, review.READ_ROLES);
   return review.books(ctx.db, fields(input), actor(s), await ctx.config());
+};
+
+// ── The old purchase list, as history (card P5-16) ──
+// Never among the receipts: its own tables, its own answers. The session's role is the only identity used.
+
+/** Admin, manager, payroll admin: `{ business: "cstore" | "vape" | "unsorted", from, to, spellingKey, text, before, limit }`: rows newest date first, with the totals of the filter. */
+export const rpcGetLegacyPurchases: RpcHandler = async (ctx, input) => {
+  const s = caller(ctx, legacy.LEGACY_READ_ROLES);
+  return legacy.getPurchases(ctx.db, fields(input), actor(s));
+};
+
+/** Admin, manager, payroll admin: every supplier spelling of the old list, most rows first. */
+export const rpcGetLegacySpellings: RpcHandler = async (ctx) => {
+  const s = caller(ctx, legacy.LEGACY_READ_ROLES);
+  return legacy.getSpellings(ctx.db, actor(s));
+};
+
+/** Admin or manager: `{ rowId | spellingKey, business: "cstore" | "vape" | null }`: exactly one of the first two. */
+export const rpcSetLegacyBusiness: RpcHandler = async (ctx, input) => {
+  const s = caller(ctx, legacy.LEGACY_EDIT_ROLES);
+  const o = fields(input);
+  return legacy.setBusiness(ctx.db, { rowId: o["rowId"], spellingKey: o["spellingKey"], business: o["business"] }, actor(s), ctx.now);
+};
+
+/** Admin or manager: `{ spellingKey, supplierId | null }`. */
+export const rpcLinkLegacySupplier: RpcHandler = async (ctx, input) => {
+  const s = caller(ctx, legacy.LEGACY_EDIT_ROLES);
+  const o = fields(input);
+  return legacy.linkSupplier(ctx.db, { spellingKey: o["spellingKey"], supplierId: o["supplierId"] }, actor(s), ctx.now);
 };

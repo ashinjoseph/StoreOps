@@ -19,6 +19,7 @@
     "till:check": "node --experimental-strip-types tools/till-check.ts",
     "export:sheet": "node --experimental-strip-types tools/export-sheet.ts",
     "import:sheet": "node --import ./tools/ts-resolve.mjs --experimental-strip-types tools/import.ts",
+    "import:purchases": "node --import ./tools/ts-resolve.mjs --experimental-strip-types tools/import-purchases.ts",
     "reconcile:import": "node --import ./tools/ts-resolve.mjs --experimental-strip-types tools/reconcile-import.ts",
     "restore:nightly": "node --env-file-if-exists=.env --import ./tools/ts-resolve.mjs --experimental-strip-types tools/restore-nightly.ts",
     "db:up": "docker compose --env-file .env -f db/compose.yml up -d --wait",
