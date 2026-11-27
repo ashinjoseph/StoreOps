@@ -85,7 +85,7 @@ hand one out.
 | P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02b | | done (switched off; five questions for the till side, in the card) |
 | P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | postponed (the owner, Nov 27: assistants through MCP first) |
 | P5-05a | Receipt drafts: what was read off a receipt, checked by the app | T3 | P5-12b | money | done (kinds of receipt it does not hold well, for the owner, in the card) |
-| P5-05b | Review a draft beside the original: correct, confirm, void; learn signs and supplier spellings | T3 | P5-05a | money | todo |
+| P5-05b | Review a draft beside the original: correct, confirm, void; learn signs and supplier spellings | T3 | P5-05a | money | in progress |
 | P5-06 | Receipt test set through each assistant | T2 + owner | P5-05b, P5-10 | | todo |
 | P5-07 | Delivery runs: spec first, then build | T3 | P5-02a | | spec drafted, with the owner (eight questions; needs new calls from the till side) |
 | P5-08 | Send a vape delivery to the till, on a button | T2 | P5-05, P1-02 | money | todo |
@@ -392,7 +392,10 @@ the live app (P4-04). This card is not dropped: the hosted pieces it sets up
 connection limits and speed) are not exercised locally, so one hosted
 rehearsal on the same kind of database as production is still needed before
 the switch (P4-05).
-**Read:** `docs/plans/2026-11-ops-local-database.md` ("Flip to Supabase").
+**Read:** `docs/plans/2026-11-ops-local-database.md` ("Flip to Supabase"),
+and [the hosted setup checklist](../guides/hosted-setup-checklist.md), which
+gathers what every later card asked of the hosted side (the two storage
+buckets and their rules, the keys, the schedules, what to try).
 **Needs from the owner:** a Cloudflare account; a fresh Supabase project in
 the slot freed from the till's staging, with the role script run and `ops`
 kept out of the exposed schemas; secrets.

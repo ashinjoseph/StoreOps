@@ -62,6 +62,7 @@ flowchart LR
 | see where it's going | [Migration plan](plans/2026-11-operations-app-migration.md): off Sheets to its own app, in small task cards (draft) |
 | set it up | [Setup guide](guides/setup.md) |
 | rehearse the move off Sheets | [Dry run](guides/cutover-dry-run.md): the real Sheet into a local database, with a report of every difference |
+| set it up hosted | [The hosted setup](guides/hosted-setup-checklist.md): one checklist of what the app needs from Cloudflare and the database, the keys and where each goes, and what to try in the rehearsal |
 | try a nightly copy of the app's records | [Restore a nightly copy](guides/restore-a-nightly-copy.md): download one, load it into an empty local database, and see every table match |
 | change it safely | [Testing](guides/testing.md) and [keeping the docs current](guides/docs-process.md) |
 | let an AI assistant in | [Connect an assistant](guides/connect-an-assistant.md): open the door, make a key, check it, withdraw it |
