@@ -18,8 +18,9 @@ for (const [label, js] of H.uiScripts()) {
 t.section('Against ' + label);
 // missedShiftControl_ (P4-12b) answers '' here: no session role, so no control.
 const NEEDED = ['esc', 'money', 'compactMoney', 'dayParts',
-                'chartScrollTarget_', 'renderSalesBody', 'missedShiftOffers_', 'missedShiftControl_'];
-const lifted = NEEDED.map(n => H.fnSource(js, n)).join('\n\n');
+                'chartScrollTarget_', 'renderSalesBody', 'missedShiftOffers_', 'missedShiftControl_',
+                'isOpsApp_', 'salesTillWanted_', 'salesTillHostHTML_', 'salesTillDayHostHTML_', 'loadSalesTill_'];
+const lifted = NEEDED.map(n => (n === 'loadSalesTill_' ? 'async ' : '') + H.fnSource(js, n)).join('\n\n');
 
 function render(data) {
   const out = {
@@ -29,6 +30,7 @@ function render(data) {
   };
   const ctx = {
     console: { log() {}, error() {}, warn() {} },
+    window: {},
     state: { salesData: data, salesExpandedDays: {} },
     $: () => out,
     haptic: () => {},

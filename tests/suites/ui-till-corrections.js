@@ -20,12 +20,13 @@ const t = H.suite('Till corrections — Operations app, admin only, the close\'s
 
 const NEEDED = ['esc', 'money', 'signedMoney_', 'moneyInput', 'compactMoney', 'dayParts', 'isOpsApp_', 'tillRowOffers_', 'tillRowControl_',
   'tillFigure_', 'tillCorrectionPreview_', 'tillCorrectionHTML_', 'tillCorrectionValues_', 'tillCorrectionInput_', 'tillCorrectionResultHTML_',
-  'openTillCorrection_', 'renderSalesBody', 'missedShiftOffers_', 'missedShiftControl_', 'torontoWall_', 'torontoToday_'];
+  'openTillCorrection_', 'renderSalesBody', 'missedShiftOffers_', 'missedShiftControl_', 'torontoWall_', 'torontoToday_',
+  'salesTillWanted_', 'salesTillHostHTML_', 'salesTillDayHostHTML_', 'loadSalesTill_'];
 
 const pending = [];
 H.uiScripts().forEach(([label, js]) => {
   t.section('Against ' + label);
-  const lifted = NEEDED.map(n => (n === 'openTillCorrection_' ? 'async ' : '') + H.fnSource(js, n)).join('\n\n');
+  const lifted = NEEDED.map(n => (n === 'openTillCorrection_' || n === 'loadSalesTill_' ? 'async ' : '') + H.fnSource(js, n)).join('\n\n');
 
   function world(opts) {
     let dom = DOM.fromHTML('');

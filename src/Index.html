@@ -726,6 +726,19 @@
      range that spans a till moving to a single card figure. */
   .ds-note { font-size: 11.5px; color: #6a6e79; margin: -4px 0 12px; line-height: 1.45; }
   .day-note { font-size: 11px; color: #92611a; padding: 4px 0; }
+  /* "From the till" on the Sales screen (Operations app only): the till's own figures, beside the app's. */
+  .tl-box { background: #fff; border: 1px solid #eceef2; border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; }
+  .tl-head { font-size: 13px; font-weight: 700; color: #20232b; }
+  .tl-sub { font-size: 11.5px; color: #6a6e79; margin: 2px 0 8px; line-height: 1.45; }
+  .tl-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; align-items: baseline; padding-top: 7px; }
+  .tl-row strong { font-variant-numeric: tabular-nums; }
+  .tl-fig { font-size: 11px; color: #6a6e79; margin-top: 2px; font-variant-numeric: tabular-nums; line-height: 1.45; }
+  .tl-none { font-style: italic; color: #6a6e79; font-size: 12px; }
+  .tl-note { font-size: 11.5px; color: #4b5060; background: #f3f4f6; border-radius: 8px; padding: 6px 9px; margin-top: 8px; line-height: 1.45; }
+  .tl-muted { font-size: 12px; color: #6a6e79; background: #f3f4f6; border-radius: 8px; padding: 8px 10px; margin: 0 0 14px; overflow-wrap: anywhere; }
+  .tl-pair { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; font-size: 11px; color: #6a6e79; }
+  .tl-pair strong { display: block; font-size: 14px; color: #20232b; font-variant-numeric: tabular-nums; }
+  .tl-day { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #eceef2; }
 
   /* reconciliation history collapse toggle */
   .recon-hist-toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 6px 0; background: none; border: 0; cursor: pointer; font-size: 11px; font-weight: 700; color: #6a6e79; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -7439,6 +7452,133 @@
     }
   }
 
+  // ── "From the till" on the Sales screen (Operations app only; card P5-03b) ──
+  //  The vape till's own figures for the screen's range, in its three channels, BESIDE what the
+  //  cashiers entered and never mixed into the totals, the trend or the bars above. Loaded after the
+  //  screen has drawn, by its own call, so a slow or silent till delays nothing. Inside Apps Script
+  //  salesTillWanted_() is false: no host element is written and no call is made.
+  function salesTillWanted_() {
+    if (!isOpsApp_()) return false;
+    const f = state.salesFilters || {};
+    return (!f.company || f.company === 'vape') && !!f.startDate && !!f.endDate;
+  }
+
+  function salesTillHostHTML_() { return salesTillWanted_() ? '<div id="salesTill"></div>' : ''; }
+  function salesTillDayHostHTML_() { return salesTillWanted_() ? '<div id="salesTillDay"></div>' : ''; }
+
+  // The day whose detail is open: the one selected, else the newest.
+  function salesSelectedDay_() {
+    const daily = ((state.salesData || {}).daily) || [];
+    const expanded = state.salesExpandedDays || {};
+    const sel = Object.keys(expanded).filter(k => expanded[k]).pop();
+    return sel || (daily.length ? daily[daily.length - 1].dateStr : null);
+  }
+
+  function tillDayLabel_(d) { return dayParts(d).label; }
+
+  // One channel: the total with tax, then the figures a manager reads under it. A channel the till did
+  // not report is "no figures"; a channel it reported as 0 is $0.00.
+  function tillChannelHTML_(label, f, delivery) {
+    if (!f) return '<div class="tl-row"><span>' + esc(label) + '</span><span class="tl-none">no figures</span></div>';
+    const bits = [
+      'before tax ' + money(f.net), 'tax ' + money(f.hst), 'refunds ' + money(f.refunds),
+      f.count + (f.count === 1 ? ' sale' : ' sales') + ', ' + f.refundCount + (f.refundCount === 1 ? ' refund' : ' refunds'),
+    ];
+    if (delivery) {
+      bits.push(f.orders + (f.orders === 1 ? ' order' : ' orders'));
+      bits.push('delivery fees ' + money(f.fees) + ' (already inside these figures)');
+    }
+    bits.push(f.days + (f.days === 1 ? ' day' : ' days'));
+    return '<div class="tl-row"><span>' + esc(label) + '</span><strong>' + money(f.total) + '</strong></div>' +
+      '<div class="tl-fig">' + esc(bits.join(' · ')) + '</div>';
+  }
+
+  function tillChannelsHTML_(c) {
+    c = c || {};
+    return tillChannelHTML_('In store', c.till, false) + tillChannelHTML_('Online', c.online, false) +
+      tillChannelHTML_('Delivery', c.delivery, true) + tillChannelHTML_('All channels', c.all, false);
+  }
+
+  function salesTillHTML_(a) {
+    if (!a) return '';
+    const role = state.me && state.me.role;
+    // Switched off is the Settings screen's business: only a role that can open it is told.
+    if (a.state === 'off' && role !== 'admin') return '';
+    if (a.state !== 'ok') {
+      return '<div class="tl-muted" data-till-state="' + esc(a.state) + '"><strong>From the till.</strong> ' + esc(a.message) + '</div>';
+    }
+    const c = a.channels || {};
+    const r = a.range || {};
+    let h = '<div class="tl-box" data-till-state="ok"><div class="tl-head">From the till</div>' +
+      '<div class="tl-sub">The vape till&#39;s own figures for ' + esc(tillDayLabel_(r.from)) + ' to ' + esc(tillDayLabel_(r.to)) +
+      ', as it reports them. They are not part of the totals above.</div>';
+    if (r.clamped) {
+      h += '<div class="tl-note">The range is longer than the till answers at once: showing the newest 92 days, ' +
+        esc(tillDayLabel_(r.from)) + ' to ' + esc(tillDayLabel_(r.to)) + '.</div>';
+    }
+    h += tillChannelsHTML_(c);
+    if (!c.all) h += '<div class="tl-note">The till reported no sales for these days.</div>';
+    const check = a.toCheck || [];
+    if (check.length) {
+      h += '<div class="tl-note" data-till-check="1">' + check.length + (check.length === 1 ? ' day' : ' days') + ' to check in the till: ' +
+        esc(check.map(tillDayLabel_).join(', ')) + '. Their takings do not add up to their total; they are counted as the till reports them.</div>';
+    }
+    if (a.brokenRows) {
+      h += '<div class="tl-note" data-till-broken="1">The till&#39;s figures did not all add up. They are shown as the till sent them.</div>';
+    }
+    // What was typed at close against what the till rang: two measurements, side by side, no verdict.
+    const e = a.enteredAtClose || {};
+    const rung = c.till ? c.till.total : null;
+    const entered = e.total == null ? null : e.total;
+    const diff = (rung != null && entered != null) ? signedMoney_((Math.round(rung * 100) - Math.round(entered * 100)) / 100) : '—';
+    h += '<div class="tl-pair" data-till-pair="1">' +
+      '<div>Entered at close<strong>' + (entered == null ? 'no closes' : money(entered)) + '</strong>' + esc((e.days || 0) + ((e.days || 0) === 1 ? ' day' : ' days')) + '</div>' +
+      '<div>Rung at the till (In store)<strong>' + (rung == null ? 'no figures' : money(rung)) + '</strong>' + esc(c.till ? c.till.days + (c.till.days === 1 ? ' day' : ' days') : '') + '</div>' +
+      '<div>Difference<strong>' + diff + '</strong>rung minus entered</div></div>' +
+      '<div class="tl-sub" style="margin:6px 0 0">Two different measurements, so they need not match: what the cashier typed, and what the till rang.</div>';
+    if (state.salesFilters && state.salesFilters.staffId) {
+      h += '<div class="tl-sub" style="margin:4px 0 0">The staff filter does not apply to this section.</div>';
+    }
+    return h + '</div>';
+  }
+
+  // The selected day's three lines (and the all-channels line), for the day detail.
+  function salesTillDayHTML_(a, day) {
+    if (!a || a.state !== 'ok' || !a.day || !day) return '';
+    const flagged = (a.toCheck || []).indexOf(day) !== -1;
+    return '<div class="tl-day" data-till-day="' + esc(day) + '"><div class="tl-head">From the till, ' + esc(tillDayLabel_(day)) + '</div>' +
+      tillChannelsHTML_(a.day) +
+      (flagged ? '<div class="tl-note">To check in the till: this day&#39;s takings do not add up to its total.</div>' : '') + '</div>';
+  }
+
+  function paintSalesTill_(a, day) {
+    const box = $('salesTill');
+    if (box) box.innerHTML = salesTillHTML_(a);
+    const d = $('salesTillDay');
+    if (d) d.innerHTML = salesTillDayHTML_(a, day);
+  }
+
+  async function loadSalesTill_() {
+    if (!salesTillWanted_() || !$('salesTill')) return;
+    const f = state.salesFilters;
+    const day = salesSelectedDay_();
+    const seq = state.salesTillSeq = (state.salesTillSeq || 0) + 1;
+    const prev = state.salesTill;
+    if (prev && prev.from === f.startDate && prev.to === f.endDate) paintSalesTill_(prev.answer, prev.day === day ? day : null);
+    else $('salesTill').innerHTML = '<div class="tl-sub">Loading the till&#39;s figures…</div>';
+    try {
+      const a = await call('rpcGetSalesByChannel', state.token, { from: f.startDate, to: f.endDate, day: day || null });
+      if (seq !== state.salesTillSeq) return;
+      state.salesTill = { from: f.startDate, to: f.endDate, day: day, answer: a };
+      paintSalesTill_(a, day);
+    } catch (e) {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+      if (seq !== state.salesTillSeq) return;
+      const box = $('salesTill');
+      if (box) box.innerHTML = '<div class="tl-muted"><strong>From the till.</strong> The till&#39;s figures could not be loaded: ' + esc(e.message) + '</div>';
+    }
+  }
+
   // ============================================================
   //  ░░  TAB: RECONCILE  ░░
   // ============================================================
@@ -8156,7 +8296,7 @@
       // a disappearing tile reads as a business that stopped taking cards.
       card('Card', t.cardAll != null ? t.cardAll : (t.credit + t.debit)) +
       card('Misc', t.misc) + '</div>' +
-      tenderSplitNote_(t);
+      tenderSplitNote_(t) + salesTillHostHTML_();
 
     // 2. bar chart — the ONLY per-day totals view, and the day selector.
     //    Each bar is stacked by company so the consolidated view still answers
@@ -8221,7 +8361,7 @@
           '<span class="day-meta">' + sel.sessionCount + ' sess · <strong>' + money(sel.total) + '</strong></span>' +
         '</div>' +
         (split ? '<div class="day-note">' + split.slice(3) + '</div>' : '') +
-        '<div class="day-body">';
+        '<div class="day-body">' + salesTillDayHostHTML_();
       const sessions = byDay[sel.dateStr] || [];
       if (!sessions.length) {
         html += '<div class="day-note">Detail not loaded — narrow the date range.</div>';
@@ -8263,6 +8403,7 @@
     $('salesResults').innerHTML = html;
 
     focusSalesChart_(prevScroll);
+    loadSalesTill_();
 
     // bar → show that day below. Selection REPLACES rather than accumulates:
     // one day is rendered, so leaving old keys set would make which one wins

@@ -1,0 +1,161 @@
+function renderSalesBody() {
+    const data = state.salesData || {};
+    const t = data.totals || {};
+    const daily = data.daily || [];                 // oldest → newest
+    const expanded = state.salesExpandedDays || (state.salesExpandedDays = {});
+
+    // session rows grouped by day string
+    const byDay = {};
+    (data.rows || []).forEach(r => { const k = r.date || '—'; (byDay[k] = byDay[k] || []).push(r); });
+
+    // How much of the card total carries a credit/debit breakdown. Silent when
+    // every row has one (nothing to explain) and when none does.
+    const tenderSplitNote_ = (t) => {
+      const split = (t.credit || 0) + (t.debit || 0);
+      if (split <= 0.005) return '';
+      const all = t.cardAll != null ? t.cardAll : split;
+      const partial = split < all - 0.005;
+      return '<div class="ds-note">Of the card total, ' + money(split) +
+        ' is split by type — credit ' + money(t.credit) + ' · debit ' + money(t.debit) +
+        (partial ? '. The rest is reported as one card figure by the till.' : '.') +
+        '</div>';
+    };
+    const card = (label, val) =>
+      '<div class="sales-total-card"><div class="sales-total-label">' + label +
+      '</div><div class="sales-total-amount">' + money(val) + '</div></div>';
+
+    // 1. range summary cards
+    let html = '<div class="sales-totals">' +
+      card('Total', t.total) + card('Cash', t.cash) +
+      // Card is the tender; credit/debit is a breakdown of it that only some
+      // rows carry. The Card tile is always present and always the sum, so it
+      // never vanishes partway through a range that spans a till migration —
+      // a disappearing tile reads as a business that stopped taking cards.
+      card('Card', t.cardAll != null ? t.cardAll : (t.credit + t.debit)) +
+      card('Misc', t.misc) + '</div>' +
+      tenderSplitNote_(t);
+
+    // 2. bar chart — the ONLY per-day totals view, and the day selector.
+    //    Each bar is stacked by company so the consolidated view still answers
+    //    "which side of the business did it", not just "how much".
+    //    Segments are drawn tallest-first from the bottom, and the heights are
+    //    derived from the same rounded numbers shown in the tooltip so the
+    //    parts visibly add up to the whole.
+    const segCompanies = (data.companies || []).slice();
+    if (daily.length) {
+      const max = Math.max.apply(null, daily.map(d => d.total).concat([1]));
+      const legend = segCompanies.length > 1
+        ? '<div class="sc-legend">' + segCompanies.map((c, n) =>
+            '<span class="sc-key"><i class="sc-sw c' + n + '"></i>' + esc(c) + '</span>').join('') + '</div>'
+        : '';
+      html += '<div class="sales-chart">' + legend + '<div class="sc-track">';
+      daily.forEach(d => {
+        const p = dayParts(d.dateStr);
+        const h = Math.max(3, Math.round((d.total / max) * 92));
+        const bc = d.byCompany || {};
+        let stack = '';
+        if (segCompanies.length > 1 && d.total > 0) {
+          segCompanies.forEach((c, n) => {
+            const v = bc[c] || 0;
+            if (v <= 0) return;
+            stack += '<span class="sc-seg c' + n + '" style="height:' +
+              Math.max(1, Math.round((v / d.total) * h)) + 'px" ' +
+              'title="' + esc(c + ' ' + money(v)) + '"></span>';
+          });
+        }
+        const detail = segCompanies.length > 1
+          ? segCompanies.map(c => c + ' ' + money(bc[c] || 0)).join(' · ') : '';
+        html += '<button class="sc-col' + (expanded[d.dateStr] ? ' sel' : '') + '" data-day="' + esc(d.dateStr) + '" ' +
+          'title="' + esc(p.weekday + ' ' + p.label + ' · ' + money(d.total) + (detail ? ' (' + detail + ')' : '')) + '">' +
+          '<span class="sc-amt">' + esc(compactMoney(d.total)) + '</span>' +
+          (stack
+            ? '<span class="sc-bar stacked" style="height:' + h + 'px">' + stack + '</span>'
+            : '<span class="sc-bar" style="height:' + h + 'px"></span>') +
+          '<span class="sc-lbl">' + esc(p.weekday) + '<br>' + esc(p.dayNum) + '</span>' +
+        '</button>';
+      });
+      html += '</div></div>';
+    }
+
+    // 3. detail for the SELECTED day only. The old accordion repeated every
+    //    day's date and total under a chart that had just shown them — the
+    //    same numbers twice, in two shapes. The bars are now the only place
+    //    per-day totals appear; this is the drill-down they open.
+    html += '<div class="day-acc">';
+    if (!daily.length) {
+      html += '<div class="recon-empty">No sales in this range.</div>' + missedShiftControl_('');
+    } else {
+      const selStr = Object.keys(expanded).filter(k => expanded[k]).pop()
+        || daily[daily.length - 1].dateStr;
+      const sel = daily.filter(d => d.dateStr === selStr)[0] || daily[daily.length - 1];
+      const p = dayParts(sel.dateStr);
+      const bc = sel.byCompany || {};
+      const split = (data.companies || []).length > 1
+        ? ' · ' + (data.companies || []).map(c => esc(c) + ' ' + money(bc[c] || 0)).join(' · ') : '';
+      html += '<div class="day-item open" id="day-' + esc(sel.dateStr) + '">' +
+        '<div class="day-head static">' +
+          '<span class="day-when"><strong>' + esc(p.weekday) + '</strong> ' + esc(p.label) + '</span>' +
+          '<span class="day-meta">' + sel.sessionCount + ' sess · <strong>' + money(sel.total) + '</strong></span>' +
+        '</div>' +
+        (split ? '<div class="day-note">' + split.slice(3) + '</div>' : '') +
+        '<div class="day-body">';
+      const sessions = byDay[sel.dateStr] || [];
+      if (!sessions.length) {
+        html += '<div class="day-note">Detail not loaded — narrow the date range.</div>';
+      } else {
+        sessions.forEach(r => {
+          const miscTitle = r.miscNotes ? ' title="' + esc(r.miscNotes) + '"' : '';
+          html += '<div class="day-sess">' +
+            '<div class="ds-top"><span>' + esc((r.company || '').toUpperCase()) + ' · ' + esc(r.staffName || '—') +
+              '</span><strong>' + money(r.total) + '</strong></div>' +
+            // A session is entirely one shape, so no coverage note is needed at
+            // row level — it either split its cards or it didn't.
+            '<div class="ds-sub"' + miscTitle + '>cash ' + money(r.cash) +
+              (r.card != null
+                ? ' · card ' + money(r.card)
+                : ' · cr ' + money(r.credit) + ' · db ' + money(r.debit)) +
+              (r.misc ? ' · misc ' + money(r.misc) : '') + '</div>' +
+            tillRowControl_(r) +
+          '</div>';
+        });
+      }
+      html += missedShiftControl_(sel.dateStr);
+      html += '</div></div>' +
+        '<div class="day-note" style="margin-top:6px">Tap a bar to see that day.</div>';
+    }
+    html += '</div>';
+
+    if ((data.rowCount || 0) > (data.rows || []).length) {
+      html += '<div class="day-note" style="margin-top:8px">Showing the first ' + (data.rows || []).length +
+        ' of ' + data.rowCount + ' sessions — narrow the range for full day detail.</div>';
+    }
+
+    // The track scrolls, and it is built oldest-first, so it opens hard left on
+    // the oldest day while the selected day is the newest — off-screen to the
+    // right. Capture where the reader had it before the innerHTML swap wipes
+    // the scroll position.
+    const prevTrack = $('salesResults').querySelector('.sc-track');
+    const prevScroll = prevTrack ? prevTrack.scrollLeft : null;
+
+    $('salesResults').innerHTML = html;
+
+    focusSalesChart_(prevScroll);
+
+    // bar → show that day below. Selection REPLACES rather than accumulates:
+    // one day is rendered, so leaving old keys set would make which one wins
+    // depend on object key order.
+    $('salesResults').querySelectorAll('.sc-col').forEach(b => {
+      b.onclick = () => {
+        haptic();
+        state.salesExpandedDays = {};
+        state.salesExpandedDays[b.dataset.day] = true;
+        renderSalesBody();
+      };
+    });
+    $('salesResults').querySelectorAll('[data-correct-till]').forEach(b => {
+      b.onclick = () => { haptic(); openTillCorrection_(b.dataset.correctTill); };
+    });
+    $('salesResults').querySelectorAll('[data-enter-shift]').forEach(b => {
+      b.onclick = () => { haptic(); openMissedShift_(b.dataset.enterShift); };
+    });
+  }

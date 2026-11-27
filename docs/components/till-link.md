@@ -1,12 +1,14 @@
 # Till link
 
 > The one place the Operations app calls the vape till's API, a fake till to
-> test every card against, and the first thing built on it: an admin matches
+> test every card against, and what is built on it: an admin matches
 > each person here to their till login and the till's store to this store, and
-> is warned before the till's key expires. The till is only read. **Switched
+> is warned before the till's key expires; and the Sales screen shows the vape
+> till's sales by channel beside what was entered. The till is only read. **Switched
 > off** until the setting, the address and the key are all set.
 
-<!-- No screenshot: the Till logins section and the warning are in the
+<!-- No screenshot: the Till logins section, the warning and the Sales screen's
+     From the till section are in the
      Operations app only (ADR-0023), and the docs runtime
      (scripts/docs/runtime.js) runs the Apps Script server, which has no
      rpcGetTillLink. Nothing in scripts/docs/screens.js can render them. -->
@@ -41,8 +43,13 @@ between Operations' people and stores and the till's, four admin-only calls, the
 Staff screen's *Till logins* section, and the key-expiry warning on the Staff
 and Settings screens (below).
 
-**What is not built:** anything that *uses* the matches (sales by channel, the
-vape close from the till's figures: later cards), any cron or message about the
+**What is built (card P5-03b):** the first read of figures: the Sales screen's
+*From the till* section, the vape till's sales by channel (in store, online,
+delivery) beside what cashiers entered, from one new read-only call
+(`rpcGetSalesByChannel`; [below](#sales-by-channel-card-p5-03b)).
+
+**What is not built:** anything else that *uses* the matches (the vape close from
+the till's figures: a later card), any cron or message about the
 key, any write to the till (a proposal is a later card, and the client has no
 code path that can write), and `GET /proposals/{id}` (it comes with proposals).
 
@@ -189,13 +196,130 @@ and whether `display_name` can repeat or change.
 
 #### Who may call the client
 
-A test names them (`ops/test/till-client.test.ts`): exactly
-`ops/src/modules/till-link.ts` and `ops/src/rpc/handlers/till-link.ts` import the
-client, its index, the types or the days. The module makes the reads; the
-handler gives it a timer and a clock. A third caller is a decision: it is a change
-to that list and to [ADR-0024](../adr/0024-the-till-is-read-through-one-client.md).
+A test names them (`ops/test/till-client.test.ts`): exactly four files import the
+client, its index, the types or the days: `ops/src/modules/till-link.ts` and
+`ops/src/rpc/handlers/till-link.ts` (the matching), and
+`ops/src/modules/sales-channels.ts` and `ops/src/rpc/handlers/sales-channels.ts`
+(sales by channel, card P5-03b). In each pair the module makes the reads and the
+handler gives it a timer and a clock (and reads the input's days). A fifth caller
+is a decision: it is a change to that list and to [ADR-0024](../adr/0024-the-till-is-read-through-one-client.md).
 `ops/src/modules/settings.ts` imports `keyExpiryWarning` from the module (a pure
 function) and `till/address` (the address rule), neither of which calls the till.
+
+### Sales by channel (card P5-03b)
+
+On the **Sales** screen (Operations app only), when the **All** or **Vape** view is
+selected, a section *From the till* sits under the totals, loaded after the screen
+has drawn (the screen never waits for the till; a quiet "Loading the till's
+figures..." shows meanwhile). It is the vape till's own figures for the screen's
+date range, by channel, **beside** what the cashiers entered and never mixed into
+the totals, the trend or the bars above them (those still come from what was
+typed at close). The cstore view, and Apps Script in every role, have no section
+and make no call. Nothing from the till is stored: the call is one live GET of
+`/sales/daily`, and no row of the database changes.
+
+**What a daily row holds** (contract 1.1.0, `DailyRow`). One row per business day
+and channel; a day and channel with no sales has *no row*. `till`: counter sales
+and refunds, by the day rung (the Office's "In store"). `online`: website pickup
+orders, by the day collected, wherever they were paid. `delivery`: website
+delivery orders, by the day delivered; its extra `delivery` object holds `orders`
+and `fees` (before HST, and **inside** that row's subtotal, net and total). A
+delivery cancelled after a failed drop (fee kept) is not in these figures. The
+`sales_summary` (sales less refunds, after voids): `count` (sales),
+`refund_count`, `subtotal` (before discounts and HST), `discount`, `net` (after
+discounts, before HST: subtotal - discount), `surcharge` (card), `rounding`
+(cash, to the nickel), `hst`, `total` (what customers paid less refunds, **with**
+HST: net + surcharge + hst + rounding). The `takings`, per method (cash, credit,
+debit, etransfer, other): `sales_total` (positive), `refunds_total` (negative),
+`net_total`. Their `net_total`s add up to `total`, except for a till sale whose
+payments did not cover its total (the Office's "To check").
+
+**What is shown, per channel (In store, Online, Delivery) and for All channels.**
+Chosen so a manager can read the day and check it against the till's own
+Office; nothing is derived beyond adding:
+
+| Shown | From | Why |
+|---|---|---|
+| **Total** | `sales_summary.total` | what customers paid, less refunds: the headline |
+| **Before tax** | `sales_summary.net` | after discounts, before HST (it is also before the card surcharge and the cash rounding, which are in the total) |
+| **Tax** | `sales_summary.hst` | the HST inside the total |
+| **Refunds** | the takings' `refunds_total` over the five methods | the money refunded, negative (the total is already net of it) |
+| **Sales, refunds** | `count`, `refund_count` | the volume behind the money |
+| **Days** | how many days reported the channel | so a channel that traded on 2 of 7 days is not read as a week |
+| Delivery: **orders**, **delivery fees** | `delivery.orders`, `delivery.fees` | the fees are inside the channel's figures, and the screen says so |
+
+Not shown: the discount, surcharge and rounding on their own, the subtotal, and
+the takings by method (they are in the till's Office; a later card reconciles).
+
+**Money is added in whole cents.** The till sends dollars as JSON numbers rounded
+to the cent; the module converts each with `cents()` (the rules' helper) and adds
+integers, and writes the answer as `cents / 100` with two decimals. A sum of
+floats anywhere fails a test. The screen's difference line is worked in cents too.
+
+**Blank is not zero.** A channel the till did not report in the range is
+`null` and the screen says **no figures**; a channel it reported as 0 is
+**$0.00**. A range the till reported nothing for answers `state: "ok"` with every
+channel `null`. Refunds and a negative day are negative and shown as such.
+
+**The range.** The screen's own range is asked of the till, with `to` not after
+today. The contract allows at most 92 days (`to` at most 91 days after `from`): a
+longer range is **cut at the start**, keeping the newest 92 days, and the answer
+says so (`range.clamped`) and the screen says it in words ("showing the newest 92
+days, Aug 28 to Nov 27"). A start after the end, a day that is not real, an end
+in the future, or a selected day outside the range are refused with a readable
+message **before any request** (the till is not asked); a selected day the cut
+removed has no figures. The app's own *Entered at close* is read for the same
+(cut) days, so the two sides cover the same days.
+
+**The states** (the same words as the Staff section, one more state, and no
+figures in any of them). The call still answers; only a request that makes no
+sense is refused:
+
+| `state` | When | Message |
+|---|---|---|
+| `ok` | the till answered | The till answered. |
+| `off` | `till_enabled` is false | The link to the till is switched off (Settings, Till)... Shown only to an admin, who can open Settings; a manager or a payroll admin sees nothing at all |
+| `not_configured` | switched on, no address or no key | ...switched on but not set up... |
+| `no_store` | set up, but no till store is matched to this store | The till's store is not matched to this store yet (Staff, Till logins). |
+| `unreachable` | down, slow past the 8 seconds, failing, throttled | the P5-02b words |
+| `refused` | the key not accepted, or a store it may not see | the P5-02b words |
+| `bad_answer` | not what the contract says | the P5-02b words |
+
+`off` is checked first, then `not_configured`, then `no_store`. The messages are
+`explain()` and `MESSAGES` from `ops/src/modules/till-link.ts` (`MESSAGES` is now
+exported; nothing else about it changed). The store asked of the till is the one
+matched in `ops.till_stores`, **never** one from the input. The whole call keeps
+P5-02b's 8-second budget and `sleep` wiring.
+
+**The "To check" case.** A day whose takings do not add up to its total (the
+rules' `checkDailyRow` warning) is counted exactly as the till reports it and
+listed in `toCheck`; the range's note says "2 days to check in the till: Nov 22,
+Nov 25" and the selected day says "To check in the till". Never dropped,
+never corrected.
+
+**A row the client accepted but the rules reject** (`checkDailyRow`'s errors:
+`net` or `total` not adding up, a method's `net_total`, a refund with the wrong
+sign, a `delivery` object on another channel; `checkDailyRows`: two rows for one
+day and channel, a day outside the range asked for) is **counted as sent** and
+`brokenRows` is true: the section says "the till's figures did not all add up.
+They are shown as the till sent them", and one line (`sales_channels.rows_rejected`
+with the places, never a value) goes through the handler's log. No audit row:
+nothing was done. A figure that is not a number (which the client's checks should
+have stopped) is left out of the sum, not made 0, and flags the same way.
+
+**Entered at close beside Rung at the till.** For the range the screen shows
+*Entered at close* (the app's own vape sales, what cashiers typed, read by the
+Sales screen's own reader and added in cents; "no closes" when there were none,
+not $0.00), *Rung at the till (In store)* and the difference (rung minus
+entered), side by side with no colour and no verdict: they are different
+measurements. The vape close from the till's snapshot (a later card) is where
+they are reconciled.
+
+**What a later card should cache.** Nothing is cached here: each draw of the
+Sales screen calls the till once (a tap on another day calls it again for that
+day's lines). A later card would cache the daily rows of **finished days** (a day
+before today changes only by a till correction) for a few minutes per range, and
+today's rows for no more than a minute, dropped by a refresh.
 
 ### Settings and the secret
 
@@ -343,8 +467,9 @@ the tests, which is also what keeps the hand-written `types.ts` honest.
   all, by the injected `sleep`. A 5xx or a timeout is the caller's to decide.
 - **Time, waiting, the network and the key come from outside.** No
   `new Date()`, timer, `process`, `fetch` or randomness in the client.
-- **Two callers, named:** only `ops/src/modules/till-link.ts` and
-  `ops/src/rpc/handlers/till-link.ts` import the client; the fake is for tests
+- **Four callers, named:** only `ops/src/modules/till-link.ts`,
+  `ops/src/rpc/handlers/till-link.ts`, `ops/src/modules/sales-channels.ts` and
+  `ops/src/rpc/handlers/sales-channels.ts` import the client; the fake is for tests
   (`ops/test/till-client.test.ts` lists them and fails for any other). A new
   caller changes that list on purpose, and ADR-0024.
 - **The matches, not the till, are Operations' record.** A person is matched only
@@ -355,6 +480,12 @@ the tests, which is also what keeps the hand-written `types.ts` honest.
   call are untouched, and the whole RPC stays inside 8 seconds.
 - **The warning is pure and shared:** `keyExpiryWarning(config, now)` serves the
   Staff section and the Settings answer: 14 days before, warn; 15, not.
+- **The till's figures are the till's, beside the app's and never mixed:** the
+  Sales screen's totals, trend and bars stay what cashiers entered; the *From the
+  till* section is separate and labelled, and nothing from the till is stored.
+- **Money from the till is added in cents,** a channel it did not report is *no
+  figures* (not $0.00), a "To check" day is counted as reported and marked, and a
+  row that breaks a rule is shown as sent and flagged: never dropped or corrected.
 - **Never the real till in a test.** Every test uses the fake; a test that
   reaches the global `fetch` fails.
 - **Blank is not zero:** a null `counted`, `expected` or `variance` is *not
@@ -373,8 +504,10 @@ the tests, which is also what keeps the hand-written `types.ts` honest.
 | The contract loader and rules (Node only, for the tool) | `ops/src/till/contract.ts`, `ops/src/till/rules.ts` |
 | The matches, the states, the budget, the expiry warning | `ops/src/modules/till-link.ts`: `get`, `setStore`, `linkStaff`, `unlinkStaff`, `keyExpiryWarning`, `explain`, `BUDGET_MS` |
 | The four calls, `sleep` and the clock for a Worker | `ops/src/rpc/handlers/till-link.ts`; entries in `ops/contracts/rpc-ops.json`; lines in `ops/src/rpc/registry.ts` |
+| Sales by channel: the figures (pure), the range, the read | `ops/src/modules/sales-channels.ts`: `summarise`, `parseRange`, `get`, `fromCents` |
+| Its call | `ops/src/rpc/handlers/sales-channels.ts` (`rpcGetSalesByChannel`, roles as the Sales screen's `rpcGetSalesDashboard`); entry in `ops/contracts/rpc-ops.json`; line in `ops/src/rpc/registry.ts` |
 | The two tables | `ops/migrations/0011_till_links.sql` (`ops.till_stores`, `ops.till_staff_links`); named in `LATER_OPS_TABLES` (`ops/src/cutover/compare.ts`) |
-| The screen | `src/Index.html`: *Till logins* (`loadTillSection_`, `renderTillSection_`, `tillSectionHTML_`, the three sheets) on the Staff screen, and `tillWarnHTML_` above the *Till* group of Settings |
+| The screen | `src/Index.html`: *Till logins* (`loadTillSection_`, `renderTillSection_`, `tillSectionHTML_`, the three sheets) on the Staff screen, and `tillWarnHTML_` above the *Till* group of Settings; the Sales screen's *From the till* (`salesTillWanted_`, `loadSalesTill_`, `salesTillHTML_`, `salesTillDayHTML_`, `tillChannelHTML_`) |
 | The registry entries | `ops/src/lib/config-keys.ts`: `till_enabled`, `till_api_url`, `till_key_expires_on`, `till_api_key` |
 | The Settings rules for them | `ops/src/modules/settings.ts` (group *Till*) |
 | The secret's name | `ops/wrangler.toml` (comment), `ops/.dev.vars.example` |
@@ -383,10 +516,12 @@ the tests, which is also what keeps the hand-written `types.ts` honest.
 
 | Suite | Holds down |
 |---|---|
-| `ops/test/till-client.test.ts` | every `kind` of error through the fake's switches; the address table (look-alike hosts, sub-domains, user info, ports, IPs, trailing dots, look-alike letters, paths); the servers equal the contract's; the key only in the header and in no result, request record or log, including what the till echoes (raw, URL-encoded, escaped, base64) and a redirect that is not followed; 429 waits (seconds, HTTP date, unreadable), the retry cap and the total-wait cap; the timeout by the injected clock; inputs refused before any request; the typed results equal the fake's data; the light checks; no way to send anything but a GET and no ambient time or randomness; the shapes and parameters equal the contract's; `tillClientFor` for each missing piece; exactly the two named callers import the client |
+| `ops/test/till-client.test.ts` | every `kind` of error through the fake's switches; the address table (look-alike hosts, sub-domains, user info, ports, IPs, trailing dots, look-alike letters, paths); the servers equal the contract's; the key only in the header and in no result, request record or log, including what the till echoes (raw, URL-encoded, escaped, base64) and a redirect that is not followed; 429 waits (seconds, HTTP date, unreadable), the retry cap and the total-wait cap; the timeout by the injected clock; inputs refused before any request; the typed results equal the fake's data; the light checks; no way to send anything but a GET and no ambient time or randomness; the shapes and parameters equal the contract's; `tillClientFor` for each missing piece; exactly the four named callers import the client |
 | `ops/test/till-fake.test.ts` | every normal answer validates against the contract with no error and no warning; the arithmetic rules hold apart from the "To check" day; the cases later cards need are present; each switch; the request record never holds the key; the fake clock |
 | `ops/test/till-link.test.ts` | against a real database and the fake till: linking a person; a till person not in Operations is listed and never created (`staff` unchanged); the till down with sign-in still working; the warning at 14 days and not 15, on the day, after, blank, and across both clock changes; every state (off, not configured by setting, key or address, ok, unreachable by down, slow, failing and throttled, refused by a wrong key and a store the key may not see, bad answer by garbage and a redirect) answering inside the budget with the stored matches listed; a till so slow that the 8 seconds run out; suggestions on equal names only and never automatic; the nil uuid never offered and refused; a till person not listed now; both already-matched messages; an inactive person; ending a match with the till down; a match the till dropped flagged and kept; two admins at once on two connections; the store map; who may call (the router and each handler alone); planted `role` and `actorId`; no pay, PIN, hash, email or notes in the answer; the key in no answer, audit row or message in every state (with `echoKey`); only GETs, once per endpoint; nothing else moves; the tables' own constraints and grants; one real-time run of the Worker's timers |
 | `tests/suites/ui-till-link.js` | the section only for an admin in the Operations app (a manager makes no till call; Apps Script unchanged); each state's message and no matching control when not ok, stored matches read-only; the suggestion sends nothing until the confirm; choosing, ending, the store sheet; the warning at the top of the section and above the Till group on Settings; everything escaped; the built page carries it |
+| `ops/test/sales-channels.test.ts` | the pure part on hand-built rows: three channels summed per channel and together in cents (amounts where a float sum is wrong: 0.1 + 0.2, a hundred days of 0.35, thirty of 1.15), negatives, a channel missing on some days, a channel at 0 against one not reported, a range with nothing reported, delivery orders and fees, the "To check" day counted and listed, a broken row kept and flagged; the fake's days (`allChannels`, `empty`, `toCheck`) and the selected day; the range (clamped to 92 days and said so; from after to, a bad date, the future, a day outside: refused before any request); every state (off, not configured, no store matched, down, slow, failing, throttled, wrong key, hidden store, garbage, redirect, the 8 seconds running out) answering with no figures and the app's own total; who may call, read from both contracts and equal to the Sales screen's; a planted role, actor or store changes nothing; the key in no answer or message in any state; one GET of `/sales/daily` and no row of any table changing; *Entered at close* equal to the Sales screen's own reader for vape |
+| `tests/suites/ui-sales-channels.js` | the section only in the Operations app and only for the All and Vape views; drawn after the screen, with a placeholder, and a late answer dropped; each state's message and no figures (off said only to an admin); "no figures" against $0.00; a negative shown as negative; the "to check" and "did not all add up" notes; the side-by-side with no verdict; everything escaped; the Sales screen in Apps Script byte-identical to a frozen copy for every role; the built page carries it |
 | `ops/test/settings.test.ts`, `ops/test/config.test.ts` | the three settings and the secret: accepted and refused values, the secret listed as set or not set and never shown, the registry marks the four as Operations-only |
 | `ops/test/till-contract.test.ts`, `till-rules.test.ts`, `till-check.test.ts` | the Node tool's contract loader, rules and checking run (unchanged) |
 
@@ -396,6 +531,12 @@ the tests, which is also what keeps the hand-written `types.ts` honest.
   settings `till_enabled`, `till_api_url`, `till_key_expires_on` and the secret
   `TILL_API_KEY`, all off and called by nothing
   ([ADR-0024](../adr/0024-the-till-is-read-through-one-client.md)).
+- **Nov 2026 (card P5-03b):** sales by channel. The Sales screen's *From the till*
+  section (Operations app, All and Vape views): the vape till's in-store, online
+  and delivery figures for the screen's range and the selected day, beside what
+  was entered at close, read live and stored nowhere; one new call
+  (`rpcGetSalesByChannel`, the Sales screen's roles). The allowlist of callers is
+  now four files.
 - **Nov 2026 (card P5-02b):** the first caller. People and stores matched (two
   tables, four admin-only calls, the Staff screen's *Till logins* section), every
   state of the link answered in words, and the key-expiry warning from 14 days

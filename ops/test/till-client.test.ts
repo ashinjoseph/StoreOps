@@ -888,7 +888,7 @@ describe("the client has no way to send anything but a GET, and takes time, wait
   });
 });
 
-describe("the client has exactly two callers (the till link's module and handler); the fake is for tests", () => {
+describe("the client has exactly four callers (the till link's and the sales-by-channel module and handler); the fake is for tests", () => {
   function walk(dir: string, out: string[] = []): string[] {
     for (const name of readdirSync(dir)) {
       if (name === "node_modules" || name === "public" || name === ".wrangler") continue;
@@ -901,10 +901,11 @@ describe("the client has exactly two callers (the till link's module and handler
   // The checking tool and the Settings screen use these, and only these, from the till folder.
   const ALLOWED = new Set(["contract", "rules", "address"]);
 
-  // The callers of the client, by name (card P5-02b changed this from "nobody"). Each of them is the till
-  // link's own: the module that makes the reads, and the handler that gives it a timer and a clock.
+  // The callers of the client, by name (card P5-02b changed this from "nobody"; card P5-03b added the last
+  // two). The till link's own: the module that makes the reads and the handler that gives it a timer and a
+  // clock; and sales by channel's: its module (one dailySales read) and its handler (the input's days).
   // Adding a caller is a decision to be made on purpose: it is a change to this list, and to ADR-0024.
-  const CALLERS = ["src/modules/till-link.ts", "src/rpc/handlers/till-link.ts"];
+  const CALLERS = ["src/modules/sales-channels.ts", "src/modules/till-link.ts", "src/rpc/handlers/sales-channels.ts", "src/rpc/handlers/till-link.ts"];
 
   /** Every file outside till/ that imports the client, its index, the fake, the types or the days, or names a thing only a caller uses. */
   function callersOf(files: string[]): string[] {
@@ -924,7 +925,7 @@ describe("the client has exactly two callers (the till link's module and handler
     return [...found].sort();
   }
 
-  it("exactly the till link's module and handler import the client, its index, the fake, the types or the days: no other file of ops/src (outside till/), ops/tools or ops/parity", () => {
+  it("exactly the four callers named above import the client, its index, the fake, the types or the days: no other file of ops/src (outside till/), ops/tools or ops/parity", () => {
     const files = [...walk(join(OPS, "src")), ...walk(join(OPS, "tools")), ...walk(join(OPS, "parity"))].filter((f) => !f.startsWith(TILL_DIR + "/"));
     expect(files.length).toBeGreaterThan(50);
     expect(callersOf(files)).toEqual(CALLERS);

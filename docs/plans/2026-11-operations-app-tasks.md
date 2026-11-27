@@ -81,7 +81,7 @@ hand one out.
 | P5-02a | Till link: the client and a fake till (switched off) | T2 | | security | done (nine questions for the till side, in the card) |
 | P5-02b | Till link: people and stores matched, key expiry | T2 | P5-02a, P4-11 | security | done (switched off; five questions for the till side, in the card) |
 | P5-03 | Vape close from the till snapshot | T2 | P5-02b, P4-05 | money | todo (goes live only after the switch has settled) |
-| P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02b | | in progress |
+| P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02b | | done (switched off; five questions for the till side, in the card) |
 | P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | postponed (the owner, Nov 27: assistants through MCP first) |
 | P5-05 | Purchase receipts, supplier records and product costs | T2 | P5-12b | money | todo (the draft now comes through MCP) |
 | P5-06 | Receipt test set through each assistant | T2 + owner | P5-05 | | todo |
@@ -1044,6 +1044,32 @@ Questions for the till side that it raised:
 3. Is a removed login dropped from the list or marked inactive?
 4. Is the "Not known" person ever in the staff list?
 5. Is a `staff_id` the same across keys and stores?
+
+### P5-03b · sales by channel · done
+On the Sales screen, in the vape and All views, a section "From the till":
+for the range, In store, Online and Delivery, each with its total, the
+amount before tax, the tax, refunds, the number of sales and how many days
+reported it; Delivery adds its orders and its fees (which are inside its
+figures); and the three together. The selected day gets the same lines. It
+is read live from the till, shown beside the app's own figures and never
+mixed with them; nothing from the till is stored. Amounts are added in
+cents. A channel the till did not report says "no figures", never $0.00. A
+day whose takings do not add up is counted as sent and marked "to check in
+the till". "Entered at close" (what cashiers typed) and "Rung at the till"
+are shown side by side with the difference and no verdict. When the till
+cannot be read the section says why in one line and the rest of the screen
+is not delayed. At most the newest 92 days. The figures were proven against
+the fake till and in the page's own tests, not in a browser, for the same
+reason as P5-02b.
+Questions for the till side that it raised:
+1. "Before tax" leaves out the card surcharge and cash rounding, which the
+   total includes: is the surcharge taxed, and should it be in that figure?
+2. Online includes pickups paid at the counter, which the cashier's typed
+   total probably includes too: which of the till's figures is meant to
+   equal what the cashier types?
+3. To which day is a refund booked: the day it was rung, or the sale's?
+4. Will a "to check" day carry a flag, instead of being inferred?
+5. Can the till ever send two rows for one day and channel?
 
 ### P5-02 · Till link: staff sync and key expiry · T2 · security
 **Read:** `ops/contracts/till-api.v1.yaml`; `docs/plans/2026-11-till-api-agreed.md`.

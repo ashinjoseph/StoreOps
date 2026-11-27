@@ -31,6 +31,15 @@ The tiles stay continuous across the cstore ePOS change: a range that mixes
 split days and single-total days shows one **Card** tile, and a Credit/Debit
 breakdown only for the days that had one.
 
+**From the till (Operations app only, card P5-03b).** With the **All** or
+**Vape** view selected, a section under the tiles shows the vape till's own
+sales by channel (in store, online, delivery, and all together) for the same
+range and the selected day, read live from the till after the screen has drawn.
+It sits beside what cashiers entered and is never added into the tiles, the
+trend or the bars; the cstore view and Apps Script have no section. When the till
+cannot be read it says why in one line and the rest of the screen is unchanged.
+See [till-link.md](till-link.md#sales-by-channel-card-p5-03b).
+
 ## How it works
 
 ```mermaid
@@ -83,8 +92,14 @@ flowchart LR
 | `ui-dashboard` | tiles never drop a tender mid-range; the chart opens on the newest day |
 | `perf` | one read per load; a write invalidates the cache; cost doesn't grow with the range |
 | `wiring` | the RPC forwards every `data.*` field `Index.html` reads |
+| `ui-sales-channels` | the *From the till* section only in the Operations app and only for All and Vape; the screen in Apps Script byte-identical to before |
 
 ## History
+
+- **Nov 2026 (card P5-03b):** the Operations app's Sales screen gains *From the
+  till*, the vape till's sales by channel beside the entered figures
+  ([till-link.md](till-link.md#sales-by-channel-card-p5-03b)). Nothing about how
+  the screen's own figures are computed changed.
 
 - **#7, #8 (Aug 2026):** split by company without losing the consolidated
   view; the chart opens on the newest days.

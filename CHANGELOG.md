@@ -1572,3 +1572,25 @@ answer, a manager allowed to match).
 New: `ui-recon-unverified`, seen failing against the old page (46 assertions);
 `ui-reconcile-past` now also freezes the old detail function and shows the
 Apps Script screen differs from it only in those lines.
+
+### The vape till's sales by channel on the Sales screen (P5-03b)
+
+- In the Operations app, the **Sales** screen has a new section, **From the till**,
+  under the totals when the **All** or **Vape** view is selected. It shows the vape
+  till's own sales for the same dates in its three channels (in store, online,
+  delivery) and all together: the total, before tax, tax, refunds, the number of
+  sales and refunds, and for delivery the orders and the delivery fees (which are
+  already inside its figures), and the same lines for the day you have open. It sits
+  beside what the cashiers entered and is never added into the totals, the trend
+  or the bars, and nothing from the till is saved. A range longer than 92 days is
+  cut to the newest 92 and says so; a day the till reported nothing for says
+  "no figures", not $0.00; a day whose takings do not add up is counted as the
+  till reports it and marked "to check in the till". Beside it, "Entered at close"
+  and "Rung at the till" are shown with their difference and no verdict.
+- When the till cannot be read (switched off, not set up, its store not matched,
+  down, slow, refusing the key, answering nonsense) the section says which in one
+  line, and the rest of the Sales screen is unchanged and does not wait for it.
+  Switched off is only said to an admin. Inside Apps Script the Sales screen is
+  exactly as it was.
+- One new call, `rpcGetSalesByChannel` (the Sales screen's own roles, read only,
+  8 seconds at most). The till's client now has four named callers.

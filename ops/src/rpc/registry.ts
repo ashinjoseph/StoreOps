@@ -20,6 +20,7 @@ import { rpcCheckWhatsApp } from "./handlers/notifier";
 import { rpcAddBusinessSign, rpcGetBusinesses, rpcGetReceiptInbox, rpcRemoveBusinessSign, rpcSetReceiptAside, rpcSetReceiptBusiness, rpcUpdateBusiness } from "./handlers/receipts";
 import { rpcGetReconciliation, rpcReconcileDay } from "./handlers/reconcile";
 import { rpcReconcilePastDay } from "./handlers/reconcile-past";
+import { rpcGetSalesByChannel } from "./handlers/sales-channels";
 import { rpcGetSalesDashboard } from "./handlers/sales-dashboard";
 import { rpcGetSettings, rpcUpdateSetting } from "./handlers/settings";
 import { rpcCreateStaff, rpcGetStaffAdmin, rpcPreviewRateChange, rpcSetStaffPin, rpcUpdateStaff } from "./handlers/staff-admin";
@@ -100,6 +101,7 @@ export const handlers: RpcHandlers = {
   rpcAddBusinessSign,
   rpcRemoveBusinessSign,
   rpcGetTillLink,
+  rpcGetSalesByChannel,
   rpcSetTillStore,
   rpcLinkTillStaff,
   rpcUnlinkTillStaff,

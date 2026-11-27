@@ -127,7 +127,7 @@ export interface TillDeps {
   elapsedMs: () => number;
 }
 
-const MESSAGES = {
+export const MESSAGES = {
   off: "The link to the till is switched off (Settings, Till). Sign-in and everything else work as usual.",
   not_configured: "The link to the till is switched on but not set up: it needs the till's address in Settings and the key installed.",
   ok: "The till answered.",

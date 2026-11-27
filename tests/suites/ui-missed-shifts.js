@@ -24,13 +24,13 @@ const NEEDED = ['esc', 'money', 'signedMoney_', 'moneyInput', 'compactMoney', 'd
   'torontoWall_', 'torontoToday_', 'torontoInstant_', 'instantFromLocal_',
   'missedShiftOffers_', 'missedShiftControl_', 'missedShiftShape_', 'missedShiftShapeFrom_', 'missedShiftFiguresHTML_', 'missedShiftHTML_',
   'missedShiftValues_', 'missedShiftInput_', 'missedClock_', 'missedShiftHoursText_', 'missedShiftSummaryHTML_', 'missedShiftResultHTML_',
-  'missedShiftDayBefore_', 'openMissedShift_', 'renderSalesBody'];
+  'missedShiftDayBefore_', 'openMissedShift_', 'renderSalesBody', 'salesTillWanted_', 'salesTillHostHTML_', 'salesTillDayHostHTML_', 'loadSalesTill_'];
 const MINE = NEEDED.filter(n => /^missed|^openMissedShift_$/.test(n));
 
 const pending = [];
 H.uiScripts().forEach(([label, js]) => {
   t.section('Against ' + label);
-  const lifted = NEEDED.map(n => (n === 'openMissedShift_' ? 'async ' : '') + H.fnSource(js, n)).join('\n\n');
+  const lifted = NEEDED.map(n => (n === 'openMissedShift_' || n === 'loadSalesTill_' ? 'async ' : '') + H.fnSource(js, n)).join('\n\n');
 
   function world(opts) {
     let dom = DOM.fromHTML('');
