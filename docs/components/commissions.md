@@ -25,6 +25,29 @@ The **Commissions** screen lists each weekly run and its **proposed** bonuses.
 An approver (payroll admin or admin) approves or cancels each one. Approved
 bonuses appear as owed on [Payroll](payroll.md) and on the person's My Pay.
 
+## Pausing the Monday run (Operations app)
+
+In the Sheet an admin paused the weekly run by removing the trigger from a
+menu. In the Operations app the schedule is part of the app, so the pause is a
+**setting**: `commission_run_paused` (a yes/no, off by default), in the
+Commissions group of [Settings](settings.md).
+
+- **On:** when the Monday run comes round (09:00 Toronto time), it does nothing
+  except write **one** audit row, `commissions.run_skipped` (actor `SYSTEM`,
+  details "paused in Settings (commission_run_paused)", and the week it would
+  have run for). No bonus and no run row is written. The row is in the
+  [audit log](audit-log.md), so the missed Monday is visible, not silent.
+- **Off** (or never set): the run is exactly what it was.
+- **Run engine** on the Commissions screen (a person pressing a button) is
+  **not** affected: it works while the run is paused, and that is how a paused
+  week is caught up.
+- The Commissions screen shows one line when the setting is on: **The Monday run
+  is paused (Settings).** It learns this from one small read of its own,
+  `rpcGetCommissionRunPaused` (admin, manager and payroll admin: the roles that
+  open the screen; the settings list is for admins only). Apps Script never
+  asks: the setting does not exist there.
+- Pausing and un-pausing is a `config.update` row in the audit log, with who.
+
 ## How it works
 
 ```mermaid
@@ -93,14 +116,19 @@ admin decides whether to re-run it.
 | RPC | `src/WebApp.gs`: `rpcGetCommissionRuns`, `rpcRunCommissionEngine`, `rpcGetProposedBonuses`, `rpcApproveBonus`, `rpcCancelBonus`, `rpcGetCommissionRules`, `rpcCreateCommissionRule`, `rpcUpdateCommissionRule` |
 | UI | `src/Index.html`: `renderCommissionsTab`, `triggerCommissionRun`, `renderRulesTab`, `openRuleForm` |
 | Trigger | Sheet menu: **Install Weekly Auto-Trigger**; Mondays at `commission_run_hour` |
+| Pause (Operations app) | `ops/src/cron.ts`: `runWeeklyCommissions` reads `commission_run_paused`; `ops/src/rpc/handlers/commission-pause.ts`: `rpcGetCommissionRunPaused`; `src/Index.html`: `commissionRunPaused_` |
 
 ## Tests
 
 | Suite | Holds down |
 |---|---|
+| `ops/test/cron.test.ts` (the pause) | paused: no run, no bonus, exactly one `commissions.run_skipped` row and a result that says it was skipped; not paused (unset, false, blank, any other word): identical to before; paused then un-paused runs the week; the manual Run engine still works while paused; the setting accepts only true or false through `rpcUpdateSetting`; the small read answers the three roles and refuses the rest |
+| `tests/suites/ui-audit-log.js` (the line) | "The Monday run is paused (Settings)." shows only in the Operations app and only when paused; Apps Script makes no call |
 | `commission-fixed` | a fee pays with or without sales; fee and commission both pay; order doesn't matter; once per week; stops when the rule ends; inactive pays nothing; deleted rule stops blocking; legacy rows still block; threshold makes a fee conditional; percentage rules unchanged; zero-paying rules refused |
 
 ## History
 
+- **Nov 2026 (card P4-13):** the pause setting `commission_run_paused` and the
+  line on the Commissions screen (Operations app only; nothing to port).
 - **#23 (Sep 2026):** fixed-amount rules, for a weekly management fee.
 - **Batch 3:** weekly engine, rules, proposed → approved bonuses.

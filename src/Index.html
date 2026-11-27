@@ -1276,6 +1276,7 @@
     <div class="view" id="view-settings"></div>
     <div class="view" id="view-staff"></div>
     <div class="view" id="view-assistants"></div>
+    <div class="view" id="view-audit"></div>
     <div class="view" id="view-shopping"></div>
     <div class="view" id="view-suppliers"></div>
     <div class="view" id="view-products"></div>
@@ -1718,7 +1719,7 @@
 
   // Tabs accessed only via the "More" drawer (no direct bottom-bar button).
   // Every role gets the More drawer; History/Shopping/Suppliers live there for all.
-  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon', 'settings', 'staff', 'assistants'];
+  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon', 'settings', 'staff', 'assistants', 'audit'];
 
   // Items shown in the "More" drawer, with role visibility.
   const ALL_ROLES = ['admin', 'manager', 'payroll_admin', 'employee'];
@@ -1736,6 +1737,7 @@
     { tab: 'settings',    icon: '🛠️', label: 'Settings',         meta: 'Floats, limits, messages, Clover', roles: ['admin'], opsOnly: true },
     { tab: 'staff',       icon: '👥', label: 'Staff',            meta: 'Add people, PINs, roles, pay rates', roles: ['admin', 'manager'], opsOnly: true },
     { tab: 'assistants',  icon: '🤖', label: 'Assistants',       meta: 'Keys for AI assistants (MCP)',     roles: ['admin'], opsOnly: true },
+    { tab: 'audit',       icon: '🔎', label: 'Audit log',        meta: 'Who did what, newest first',       roles: ['admin'], opsOnly: true },
   ];
 
   // A screen that only the Operations app has is listed with `opsOnly: true` (ADR-0023).
@@ -1767,7 +1769,7 @@
     return {
       shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab,
       payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
-      commissions: loadCommissionsTab, rules: loadRulesTab, settings: loadSettingsTab, staff: loadStaffAdminTab, assistants: loadAssistantsTab, more: loadMoreTab,
+      commissions: loadCommissionsTab, rules: loadRulesTab, settings: loadSettingsTab, staff: loadStaffAdminTab, assistants: loadAssistantsTab, audit: loadAuditLogTab, more: loadMoreTab,
       shopping: loadShoppingTab, suppliers: loadSuppliersTab,
       products: loadProductsTab, cash: loadCashTab, recon: loadReconTab,
     };
@@ -1785,7 +1787,7 @@
     const titles = {
       shift: 'My Shift', schedule: 'Schedule', mypay: 'My Pay',
       payroll: 'Payroll', sales: 'Sales', history: 'History',
-      commissions: 'Commissions', rules: 'Commission Rules', settings: 'Settings', staff: 'Staff', assistants: 'Assistants', more: 'More',
+      commissions: 'Commissions', rules: 'Commission Rules', settings: 'Settings', staff: 'Staff', assistants: 'Assistants', audit: 'Audit log', more: 'More',
       shopping: 'Shopping List', suppliers: 'Suppliers',
       products: 'Product Master', cash: 'Cash Handling', recon: 'Reconcile',
     };
@@ -5172,25 +5174,44 @@
       view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading commissions…</div>';
     }
     try {
-      const [runs, proposed] = await Promise.all([
+      const [runs, proposed, paused] = await Promise.all([
         cachedCall('rpcGetCommissionRuns', [state.token, 12], TTL_SEMI, { force }),
         canSeeProposed
           ? cachedCall('rpcGetProposedBonuses', [state.token], TTL_SEMI, { force }).catch(() => [])
           : Promise.resolve([]),
+        commissionRunPaused_(force),
       ]);
-      renderCommissionsTab(runs, proposed);
+      renderCommissionsTab(runs, proposed, paused);
     } catch (e) {
       handleRpcError(e, view);
     }
   }
 
-  function renderCommissionsTab(runs, proposed) {
+  // Is the Monday run paused? Only the Operations app has the setting, so in Apps Script the answer is no
+  // and no call is made. In the Operations app one small read of its own (rpcGetCommissionRunPaused) answers
+  // it for the three roles that open this screen (the settings list is for admins only). A failed read just
+  // means no line.
+  async function commissionRunPaused_(force) {
+    if (!isOpsApp_()) return false;
+    try {
+      const data = await cachedCall('rpcGetCommissionRunPaused', [state.token], TTL_SEMI, { force });
+      return !!data && data.paused === true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function renderCommissionsTab(runs, proposed, paused) {
     const view = $('view-commissions');
     runs = runs || [];
     proposed = proposed || [];
     const canRun = state.me.role === 'admin' || state.me.role === 'payroll_admin';
 
     let html = moreBack();
+    if (paused === true && isOpsApp_()) {
+      html += '<div id="commissionPausedLine" style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin-bottom:10px">' +
+        'The Monday run is paused (Settings).</div>';
+    }
 
     // Run-engine card
     if (canRun) {
@@ -6315,6 +6336,249 @@
         btn.textContent = 'Withdraw';
       }
     };
+  }
+
+  // ============================================================
+  //  ░░  TAB: AUDIT LOG (the Operations app only; ADR-0023)  ░░
+  // ============================================================
+  //  An admin reads who did what, newest first (the Sheet's audit_log tab,
+  //  as a screen). One read call; reading is not itself
+  //  logged. The server masks phone numbers and hides secret-looking keys
+  //  before anything gets here. Every value goes through esc(): a row may
+  //  hold text a person typed. "Older" asks for the next page with the
+  //  `nextBefore` the last page gave; there is no page number.
+  // ============================================================
+  const AUDIT_PAGE = 50;
+  const AUDIT_WORDS = {
+    'till.open': 'opened a till', 'till.close': 'closed a till', 'till.correct': 'corrected a till', 'till.edit': 'edited a till',
+    'till.enter_missed': 'entered a shift that was never put in',
+    'sales.create': 'saved a till\'s sales', 'sales.update': 'changed a till\'s sales',
+    'config.update': 'changed a setting',
+    'staff.create': 'added a person', 'staff.update': 'changed a person', 'staff.rate_applied': 'applied a new pay rate to unpaid days', 'staff.pin_set': 'set a PIN',
+    'login.success': 'signed in', 'login.fail': 'failed to sign in', 'login.logout': 'signed out',
+    'payment.shifts': 'paid shifts', 'payment.bonus': 'paid a bonus', 'payment.undo': 'undid a payment', 'payment.allocation_error': 'paid, but the shifts did not add up',
+    'bonus.created': 'made a bonus', 'bonus.proposed': 'proposed a bonus', 'bonus.approved': 'approved a bonus', 'bonus.cancelled': 'cancelled a bonus',
+    'bonus.paid': 'marked a bonus paid', 'bonus.reverted': 'put a bonus back to pending',
+    'commission.run': 'ran the commission engine', 'commissions.run_skipped': 'skipped the Monday run (paused)', 'commission.trigger_error': 'the Monday run failed',
+    'commission_rule.create': 'made a commission rule', 'commission_rule.update': 'changed a commission rule',
+    'attendance.schedule': 'scheduled a shift', 'attendance.schedule_update': 'changed a scheduled shift', 'attendance.cancel': 'cancelled a shift',
+    'attendance.edit_times': 'edited a shift\'s times', 'attendance.adjust_hours': 'adjusted a shift\'s hours', 'attendance.correct': 'corrected a day',
+    'attendance.open': 'started a shift', 'attendance.promote': 'started a scheduled shift', 'attendance.complete': 'finished a shift',
+    'cash.handover': 'handed over cash', 'cash.handover.void': 'voided a cash handover',
+    'reconcile.day': 'reconciled a day', 'reconcile.past_day': 'reconciled a past day',
+    'assistant_key.create': 'made an assistant key', 'assistant_key.revoke': 'withdrew an assistant key',
+  };
+  const auditState = { filters: { actorId: '', action: '', day: '' }, rows: [], nextBefore: null, actions: [], actors: [] };
+
+  function auditWords_(action) {
+    if (Object.prototype.hasOwnProperty.call(AUDIT_WORDS, action)) return AUDIT_WORDS[action];
+    if (String(action).indexOf('notify.') === 0) return 'a notice (' + String(action).slice(7) + ')';
+    return String(action || '(no action)');
+  }
+
+  // An ISO instant as Toronto date and time.
+  function auditWhen_(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleString('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+
+  function auditWho_(r) { return r.actorName || r.actorId || 'Someone'; }
+
+  function auditTarget_(r) {
+    if (!r.targetType && !r.targetId) return '';
+    return [r.targetType, r.targetId].filter(Boolean).join(' ');
+  }
+
+  // The question for the server: the filters, a page size, and where the page starts.
+  function auditInput_(before) {
+    const f = auditState.filters;
+    const input = { limit: AUDIT_PAGE };
+    if (f.actorId) input.actorId = f.actorId;
+    if (f.action) input.action = f.action;
+    if (f.day) input.day = f.day;
+    if (before) input.before = before;
+    return input;
+  }
+
+  // A value flattened to [path, text] lines; a null is kept as null (blank), never turned into a zero.
+  function auditFlat_(value, path, out) {
+    if (value !== null && typeof value === 'object') {
+      const isList = Array.isArray(value);
+      const keys = isList ? value.map(function (_, i) { return String(i); }) : Object.keys(value);
+      if (keys.length === 0) { out.push([path || 'value', isList ? '(empty list)' : '(empty)']); return out; }
+      keys.forEach(function (k) {
+        auditFlat_(value[k], path ? (isList ? path + '[' + k + ']' : path + '.' + k) : k, out);
+      });
+      return out;
+    }
+    out.push([path || 'value', value === null || value === undefined ? null : String(value)]);
+    return out;
+  }
+
+  // Before and after as one list of keys, each with both values and whether it changed.
+  function auditDiff_(before, after) {
+    const b = before === null || before === undefined ? [] : auditFlat_(before, '', []);
+    const a = after === null || after === undefined ? [] : auditFlat_(after, '', []);
+    const bMap = new Map(b);
+    const aMap = new Map(a);
+    const keys = b.map(function (x) { return x[0]; });
+    a.forEach(function (x) { if (!bMap.has(x[0])) keys.push(x[0]); });
+    return keys.map(function (k) {
+      const has = { before: bMap.has(k), after: aMap.has(k) };
+      const bv = has.before ? bMap.get(k) : undefined;
+      const av = has.after ? aMap.get(k) : undefined;
+      return { key: k, before: bv, after: av, hasBefore: has.before, hasAfter: has.after, changed: !has.before || !has.after || bv !== av };
+    });
+  }
+
+  function auditValueHTML_(has, v) {
+    if (!has) return '<span style="color:#9aa0ae">—</span>';
+    if (v === null) return '<span style="color:#9aa0ae;font-style:italic">blank</span>';
+    return esc(v);
+  }
+
+  function auditKeyLabel_(k) { return String(k).replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase(); }
+
+  function auditRowHTML_(r, i) {
+    const target = auditTarget_(r);
+    return '<div class="history-item" data-audit-i="' + esc(i) + '" style="cursor:pointer">' +
+      '<div class="history-head"><div style="flex:1;min-width:0">' +
+        '<div class="history-name" style="overflow-wrap:anywhere">' + esc(auditWho_(r)) + ' ' + esc(auditWords_(r.action)) + '</div>' +
+        '<div class="history-meta">' + esc(auditWhen_(r.at)) + (target ? ' · ' + esc(target) : '') + '</div>' +
+        (r.details ? '<div class="history-meta" style="font-style:italic;overflow-wrap:anywhere">' + esc(r.details) + '</div>' : '') +
+      '</div><div style="color:#9aa0ae;font-size:18px;padding-left:8px">›</div></div>' +
+    '</div>';
+  }
+
+  // What a tap on a row opens: the facts, then before and after side by side, changed keys marked.
+  function auditSheetHTML_(r) {
+    const lines = auditDiff_(r.before, r.after);
+    const fact = function (label, text) {
+      return text ? '<div style="font-size:12px;margin-bottom:4px;overflow-wrap:anywhere"><span style="color:#6a6e79">' + esc(label) + ':</span> ' + esc(text) + '</div>' : '';
+    };
+    let html = fact('Action', r.action) + fact('Target', auditTarget_(r)) + fact('Reason or details', r.details) + fact('Row', r.seq);
+    if (lines.length === 0) {
+      html += '<div style="font-size:12px;color:#6a6e79;margin-top:8px">This entry recorded no before and after.</div>';
+      return html;
+    }
+    const cell = 'padding:4px 6px;vertical-align:top;overflow-wrap:anywhere;font-size:12px;border-bottom:1px solid #eceef3';
+    html += '<table style="width:100%;table-layout:fixed;border-collapse:collapse;margin-top:10px">' +
+      '<thead><tr><th style="' + cell + ';text-align:left;color:#6a6e79;width:34%">Item</th><th style="' + cell + ';text-align:left;color:#6a6e79">Before</th><th style="' + cell + ';text-align:left;color:#6a6e79">After</th></tr></thead><tbody>';
+    lines.forEach(function (l) {
+      const mark = l.changed ? 'background:#fff7e0;' : '';
+      html += '<tr data-audit-key="' + esc(l.key) + '"' + (l.changed ? ' data-changed="1"' : '') + '>' +
+        '<td style="' + cell + ';' + mark + 'font-weight:' + (l.changed ? '700' : '400') + '">' + (l.changed ? '● ' : '') + esc(auditKeyLabel_(l.key)) + '</td>' +
+        '<td style="' + cell + ';' + mark + '">' + auditValueHTML_(l.hasBefore, l.before) + '</td>' +
+        '<td style="' + cell + ';' + mark + '">' + auditValueHTML_(l.hasAfter, l.after) + '</td></tr>';
+    });
+    html += '</tbody></table><div style="font-size:11px;color:#6a6e79;margin-top:6px">● marks what changed. Phone numbers show their last four digits only.</div>';
+    return html;
+  }
+
+  function openAuditSheet_(r) {
+    openSheet({
+      title: auditWho_(r) + ' ' + auditWords_(r.action),
+      subtitle: auditWhen_(r.at),
+      bodyHTML: auditSheetHTML_(r),
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Close</button>',
+    });
+  }
+
+  // The filter controls. Kinds of action come from the server's list: every kind, and every group (staff. covers staff.create, staff.update...).
+  function auditFiltersHTML_() {
+    const f = auditState.filters;
+    const actors = auditState.actors || [];
+    const actions = auditState.actions || [];
+    const groups = [];
+    actions.forEach(function (a) {
+      const dot = a.indexOf('.');
+      if (dot > 0 && groups.indexOf(a.slice(0, dot + 1)) < 0) groups.push(a.slice(0, dot + 1));
+    });
+    const opt = function (value, label, current) { return '<option value="' + esc(value) + '"' + (value === current ? ' selected' : '') + '>' + esc(label) + '</option>'; };
+    return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">' +
+      '<div class="sheet-field" style="margin:0"><label for="auditActor">Person</label><select id="auditActor">' +
+        opt('', 'Everyone', f.actorId) + actors.map(function (a) { return opt(a.id, a.name, f.actorId); }).join('') + '</select></div>' +
+      '<div class="sheet-field" style="margin:0"><label for="auditDay">Day</label><input type="date" id="auditDay" value="' + esc(f.day) + '"></div>' +
+      '<div class="sheet-field" style="margin:0;grid-column:1 / -1"><label for="auditAction">Kind of action</label><select id="auditAction">' +
+        opt('', 'Any kind', f.action) +
+        groups.map(function (g) { return opt(g, 'All of ' + g + '*', f.action); }).join('') +
+        actions.map(function (a) { return opt(a, auditWords_(a) + ' (' + a + ')', f.action); }).join('') + '</select></div>' +
+    '</div>';
+  }
+
+  function renderAuditTab() {
+    const view = $('view-audit');
+    const rows = auditState.rows || [];
+    let html = moreBack();
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+      '<div style="font-size:13px;font-weight:700">Audit log</div>' +
+      '<button class="payroll-btn payroll-btn-secondary" id="auditRefresh" style="flex:0 0 auto;padding:6px 10px;font-size:12px">↻ Refresh</button></div>' +
+      '<div style="font-size:11px;color:#6a6e79;margin-bottom:10px">Who did what, newest first. Times are Toronto time. Tap an entry to see what it changed. Reading this page is not itself recorded.</div>';
+    html += auditFiltersHTML_();
+    if (rows.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">🗒️</div>Nothing recorded for these filters.</div>';
+    } else {
+      rows.forEach(function (r, i) { html += auditRowHTML_(r, i); });
+    }
+    if (auditState.nextBefore) {
+      html += '<button class="payroll-btn payroll-btn-secondary" id="auditOlder" style="width:100%;margin-top:10px">Older</button>';
+    } else if (rows.length > 0) {
+      html += '<div style="font-size:11px;color:#6a6e79;text-align:center;margin-top:10px">That is everything.</div>';
+    }
+    view.innerHTML = html;
+
+    const onFilter = function () {
+      auditState.filters = { actorId: $('auditActor').value, action: $('auditAction').value, day: $('auditDay').value };
+      loadAuditLogTab(true);
+    };
+    $('auditActor').onchange = onFilter;
+    $('auditAction').onchange = onFilter;
+    $('auditDay').onchange = onFilter;
+    $('auditRefresh').onclick = function () { haptic(); loadAuditLogTab(true); };
+    const older = $('auditOlder');
+    if (older) older.onclick = function () { haptic(); loadOlderAudit_(older); };
+    view.querySelectorAll('[data-audit-i]').forEach(function (el) {
+      el.onclick = function () {
+        const r = auditState.rows[Number(el.dataset.auditI)];
+        if (r) { haptic(); openAuditSheet_(r); }
+      };
+    });
+  }
+
+  async function loadAuditLogTab(force) {
+    const view = $('view-audit');
+    const input = auditInput_(null);
+    if (force || !cacheFresh('rpcGetAuditLog', [state.token, input], TTL_LIVE)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading the audit log…</div>';
+    }
+    try {
+      const data = await cachedCall('rpcGetAuditLog', [state.token, input], TTL_LIVE, { force });
+      auditState.rows = (data && data.rows) || [];
+      auditState.nextBefore = (data && data.nextBefore) || null;
+      auditState.actions = (data && data.actions) || [];
+      auditState.actors = (data && data.actors) || [];
+      renderAuditTab();
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  async function loadOlderAudit_(btn) {
+    if (!auditState.nextBefore) return;
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+    try {
+      const data = await cachedCall('rpcGetAuditLog', [state.token, auditInput_(auditState.nextBefore)], TTL_LIVE);
+      auditState.rows = auditState.rows.concat((data && data.rows) || []);
+      auditState.nextBefore = (data && data.nextBefore) || null;
+      renderAuditTab();
+    } catch (e) {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+      toast(e.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Older';
+    }
   }
 
   // ============================================================

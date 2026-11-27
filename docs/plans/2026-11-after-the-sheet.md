@@ -57,10 +57,10 @@ someone will ask within the first week.
 
 | # | Ability | Today | Card |
 |---|---|---|---|
-| 7 | Read the audit log: who changed what, when | Scroll the `audit_log` tab | P4-13 |
+| 7 | Read the audit log: who changed what, when | Scroll the `audit_log` tab | P4-13 (done) |
 | 8 | Look anything up in bulk, filter it, hand a copy to the bookkeeper | The Sheet itself | P4-06 (the nightly read-only Google Sheet copy), moved to before the switch |
 | 9 | Go back to how things were yesterday | The Sheet's version history | P4-14 (backups and a restore that has been tried) |
-| 10 | Pause the Monday commission run | Remove the trigger from the menu | P4-13 (one setting) |
+| 10 | Pause the Monday commission run | Remove the trigger from the menu | P4-13 (done: one setting) |
 
 **Can wait.** Rare, or there is a workable route already.
 

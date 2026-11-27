@@ -1464,3 +1464,26 @@ control shown inside Apps Script, one figure a cent off the real run).
 
 New: `ops/test/missed-shifts.test.ts` and the `ui-missed-shifts` suite, seen
 failing before the code existed and against eight deliberate mutations.
+
+### The audit log on a screen, and a setting to pause the Monday run, in the Operations app (P4-13)
+
+- An admin can read the audit log: **More → Audit log** lists who did what,
+  newest first, with filters for a person, a kind of action and a day, **Older**
+  for the next page, and a sheet per entry showing before and after side by
+  side with what changed marked. Phone numbers show their last four digits only
+  and any secret-looking key is hidden; the stored rows are never changed.
+  Reading the log is not itself logged.
+- New admin-only call `rpcGetAuditLog` (ADR-0023). Newest first by the order the
+  rows were written in, 50 a page (100 at most), no page numbers and no count.
+- A new setting, `commission_run_paused` (Settings, Commissions group, off by
+  default): when on, the Monday morning run does nothing but write one audit row,
+  `commissions.run_skipped`. **Run engine** on the Commissions screen still works.
+  The Commissions screen says "The Monday run is paused (Settings)." when it is on,
+  through a new small read, `rpcGetCommissionRunPaused`.
+
+New: `ops/test/audit-view.test.ts`, the pause tests in `ops/test/cron.test.ts` and
+the `ui-audit-log` suite, seen failing against nine deliberate mutations (a manager
+reading the log, ordering by time, phone numbers unmasked, a `pinHash` shown, the
+action put into the SQL, a value rendered without `esc()`, the pause also stopping
+Run engine, the weekly job running while paused, a session id or an amount masked as
+a phone number).

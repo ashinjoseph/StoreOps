@@ -18,6 +18,12 @@
 // transaction, closed in every case. The engine only proposes: every bonus is `proposed`, and a person
 // approves it (ADR-0011).
 //
+// Paused (card P4-13): when the setting commission_run_paused is true, the run does nothing but write ONE
+// audit row, commissions.run_skipped (actor SYSTEM), and says so in its result. In the Sheet an admin paused the
+// run by removing the trigger; here the schedule is part of the app, so the pause is a setting. It is read in
+// the run's own transaction, after the hour has matched. It stops THIS function only: "Run engine" on the
+// Commissions screen is a person pressing a button and never reads the setting.
+//
 // When it fails: one log line, then the error is thrown so the platform records the failure. The old
 // trigger swallowed the error and wrote an audit row (commission.trigger_error, actor SYSTEM); that row is
 // kept, written on the connection after the transaction has rolled back (the failure rolled back the run's
@@ -26,7 +32,7 @@ import type { Db } from "./db/client";
 import { withTransaction } from "./db/tx";
 import * as audit from "./lib/audit";
 import { loadConfig } from "./lib/config";
-import { wallClock } from "./lib/dates";
+import { formatDate, getPreviousWeekRange, wallClock } from "./lib/dates";
 import * as commissions from "./modules/commissions";
 
 /** The two UTC hours of a Monday that can be 09:00 in Toronto (summer time, winter time). Must match wrangler.toml. */
@@ -47,7 +53,19 @@ export interface CronDeps {
   log: (entry: object) => void;
 }
 
-export type CronResult = { ran: false; reason: string } | { ran: true; result: commissions.RunResult };
+/** Why a firing that matched the hour still did nothing: the pause, with the week it would have run for. */
+export interface CronPaused {
+  ran: false;
+  paused: true;
+  reason: string;
+  weekStart: string;
+  weekEnd: string;
+}
+
+export type CronResult = { ran: false; reason: string } | CronPaused | { ran: true; result: commissions.RunResult };
+
+/** The details of the audit row a paused run writes. */
+export const PAUSED_DETAILS = "paused in Settings (commission_run_paused)";
 
 function describe(err: unknown): { errorClass: string; message: string } {
   if (err instanceof Error) {
@@ -78,10 +96,23 @@ export async function runWeeklyCommissions(deps: CronDeps): Promise<CronResult> 
     throw err;
   }
   try {
-    const result = await withTransaction(conn, async (tx) =>
-      commissions.runForPreviousWeek(tx, commissions.TRIGGER_ACTOR, false, { config: await loadConfig(tx), env: deps.env, fetch: deps.fetch, now }),
-    );
-    return { ran: true, result };
+    const outcome = await withTransaction(conn, async (tx): Promise<CronResult> => {
+      const config = await loadConfig(tx);
+      if (config.boolean("commission_run_paused")) {
+        const range = getPreviousWeekRange(now);
+        const weekStart = formatDate(range.start);
+        const weekEnd = formatDate(range.end);
+        await audit.write(
+          tx,
+          { actorId: "SYSTEM", action: "commissions.run_skipped", targetType: "commission_week", targetId: weekStart, after: { weekStart, weekEnd }, details: PAUSED_DETAILS },
+          { now },
+        );
+        return { ran: false, paused: true, reason: PAUSED_DETAILS, weekStart, weekEnd };
+      }
+      const result = await commissions.runForPreviousWeek(tx, commissions.TRIGGER_ACTOR, false, { config, env: deps.env, fetch: deps.fetch, now });
+      return { ran: true, result };
+    });
+    return outcome;
   } catch (err) {
     fail(err);
     try {

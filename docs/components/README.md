@@ -54,6 +54,7 @@ flowchart LR
 | Shopping list | everyone; generate by manager | `ShoppingList`, `ProductMaster` | [shopping-list.md](shopping-list.md) |
 | Settings (Operations app only) | admin | `modules/settings.ts` (in `ops/`) | [settings.md](settings.md) |
 | Staff (Operations app only) | admin; manager adds employees | `modules/staff-admin.ts` (in `ops/`) | [staff-admin.md](staff-admin.md) |
+| Audit log (Operations app only) | admin | `modules/audit-view.ts` (in `ops/`) | [audit-log.md](audit-log.md) |
 | Till link (Operations app only, switched off) | nobody yet: later cards | `till/client.ts`, `till/fake.ts` (in `ops/`) | [till-link.md](till-link.md) |
 | Assistants (Operations app only) | admin (keys); AI assistants (the MCP door) | `mcp/` (in `ops/`) | [assistants.md](assistants.md) |
 

@@ -45,6 +45,8 @@ export const CONFIG_KEYS = {
   login_lockout_mins: setting("number", "60"),
   commission_run_day: setting("number", "1"),
   commission_run_hour: setting("number", "9"),
+  // Operations app only (card P4-13): pauses the weekly run. See OPS_ONLY_KEYS.
+  commission_run_paused: setting("boolean", "false"),
   notifier_enabled: setting("boolean", "false"),
   whatsapp_target_number: setting("list", ""),
   whatsapp_api_url: setting("text", ""),
@@ -103,6 +105,8 @@ export const OPS_ONLY_KEYS: readonly string[] = [
   "assistants_enabled",
   "assistant_calls_per_minute",
   "assistant_proposals_per_day",
+  // card P4-13, pause the Monday commission run
+  "commission_run_paused",
 ];
 
 export const SECRET_KEYS: readonly ConfigKey[] = (Object.keys(CONFIG_KEYS) as ConfigKey[]).filter((key) => CONFIG_KEYS[key].kind === "secret");

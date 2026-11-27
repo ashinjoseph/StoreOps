@@ -50,6 +50,7 @@ shared globals, which hid at least one ordering-dependent pass.
 | `syntax` | every `.gs` file and inline page script compiles |
 | `template-guard` | the Apps Script scriptlet contract, read as the preprocessor reads it |
 | `ui-assistants` | the Assistants screen: opsOnly and admin only; a new key shown once, in the sheet only (not the read cache, a toast, storage or the address bar) and wiped when the sheet closes; the built page carries it |
+| `ui-audit-log` | the Audit log screen: `opsOnly` and admin only, never inside Apps Script; hostile text (`<script>`, quotes) is escaped in the list, the before/after sheet and the filters; changed keys are marked, a missing key is a dash and a blank is the word blank (never 0); Older asks for the page after `nextBefore`; the Commissions screen shows "The Monday run is paused (Settings)." only in the Operations app and only when paused, and Apps Script makes no call; the built page carries the screen |
 | `ui-close-sheet` | card shape, the lotto pot, the sign button, and the running sums |
 | `ui-dashboard` | tender tiles that never lose a tender, and where the chart sits |
 | `ui-picker` | chips show a whole category, needs-detail rows listed but not addable |

@@ -17,6 +17,8 @@
     { "name": "rpcRevokeAssistantKey", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcReconcilePastDay", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
     { "name": "rpcPreviewMissedShift", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
-    { "name": "rpcEnterMissedShift", "params": ["token", "input"], "roles": ["admin"], "needs_session": true }
+    { "name": "rpcEnterMissedShift", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcGetAuditLog", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcGetCommissionRunPaused", "params": ["token"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true }
   ]
 }

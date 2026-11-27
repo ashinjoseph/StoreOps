@@ -10,7 +10,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { connect, type Db } from "../src/db/client";
 import { CRON_SCHEDULES, RUN_HOUR, runWeeklyCommissions, type CronDeps } from "../src/cron";
 import worker from "../src/index";
+import { withTransaction } from "../src/db/tx";
+import { CONFIG_KEYS, OPS_ONLY_KEYS } from "../src/lib/config-keys";
+import { loadConfig } from "../src/lib/config";
 import { wallClock } from "../src/lib/dates";
+import * as settings from "../src/modules/settings";
+import { mergeOpsContract, parseRpcContract } from "../src/rpc/contract";
+import { rpcGetCommissionRunPaused } from "../src/rpc/handlers/commission-pause";
+import { rpcRunCommissionEngine } from "../src/rpc/handlers/commissions";
+import { rpcUpdateSetting } from "../src/rpc/handlers/settings";
 import { createTestDb, type TestDb } from "./helpers/db";
 
 let testDb: TestDb;
@@ -215,5 +223,145 @@ describe("the Worker's scheduled handler", () => {
     expect(await runRows()).toHaveLength(1);
     await scheduled({ scheduledTime: MONDAY_9.getTime() + 3_600_000, cron: "0 14 * * 1" }, env, { waitUntil: () => undefined });
     expect(await runRows()).toHaveLength(1);
+  });
+});
+
+// ── The pause (card P4-13) ──────────────────────────────────
+// A setting, commission_run_paused. On: the Monday run writes ONE audit row and nothing else. Off or never
+// set: exactly what it did before. "Run engine" (a person pressing a button) is never affected.
+describe("the pause setting", () => {
+  const ADMIN_SESSION = { staffId: "S_ASH", name: "Ashin Quill", role: "admin", companiesAuthorized: ["cstore", "vape"], expiresAt: 0 } as const;
+  const setPaused = async (value: string | null) => {
+    await owner.query("delete from ops.config where key = 'commission_run_paused'");
+    if (value !== null) await owner.query("insert into ops.config (key, value) values ('commission_run_paused', $1)", [value]);
+  };
+  const skippedRows = () => db.query<any>("select * from ops.audit_log where action = 'commissions.run_skipped'");
+  afterAll(async () => {
+    await owner?.query("delete from ops.config where key = 'commission_run_paused'");
+  });
+  beforeEach(async () => {
+    await setPaused(null);
+  });
+
+  function ctxFor(tx: Db, session: any, at: Date) {
+    let cfg: ReturnType<typeof loadConfig> | undefined;
+    return {
+      db: tx as any,
+      session,
+      config: () => (cfg ??= loadConfig(tx)),
+      env: {},
+      fetch: (() => {
+        throw new Error("no network");
+      }) as typeof fetch,
+      now: at,
+    };
+  }
+  const asHandler = (h: any, args: unknown[], at: Date = MONDAY_9, session: any = ADMIN_SESSION) => withTransaction(db, async (tx) => h(ctxFor(tx, session, at), ...args));
+
+  it("paused: the run does nothing, writes exactly one commissions.run_skipped row, and says so", async () => {
+    await setPaused("true");
+    const s = spy(MONDAY_9);
+    const r = await runWeeklyCommissions(s.deps);
+    expect(r).toEqual({ ran: false, paused: true, reason: "paused in Settings (commission_run_paused)", weekStart: "2026-09-21", weekEnd: "2026-09-27" });
+    expect(await runRows()).toEqual([]);
+    expect(await bonusRows()).toEqual([]);
+    const rows = await db.query<any>('select actor_id, action, target_type, target_id, "after", details from ops.audit_log');
+    expect(rows).toEqual([
+      {
+        actor_id: "SYSTEM",
+        action: "commissions.run_skipped",
+        target_type: "commission_week",
+        target_id: "2026-09-21",
+        after: JSON.stringify({ weekStart: "2026-09-21", weekEnd: "2026-09-27" }),
+        details: "paused in Settings (commission_run_paused)",
+      },
+    ]);
+    expect(s.opened).toBe(1);
+    expect(s.closed).toBe(1);
+    expect(s.logs).toEqual([]);
+  });
+
+  it("paused, the case of the word does not matter (the reader of every boolean setting is case-insensitive)", async () => {
+    await setPaused("TRUE");
+    expect(await runWeeklyCommissions(spy(MONDAY_9).deps)).toMatchObject({ ran: false, paused: true });
+    expect(await skippedRows()).toHaveLength(1);
+  });
+
+  it("paused, a firing at another hour still does nothing and writes nothing (the note is only for a firing that would have run)", async () => {
+    await setPaused("true");
+    const s = spy(new Date("2026-09-28T14:00:00Z"));
+    expect(await runWeeklyCommissions(s.deps)).toEqual({ ran: false, reason: "not Monday at 9:00 in Toronto" });
+    expect(s.opened).toBe(0);
+    expect(await skippedRows()).toEqual([]);
+  });
+
+  it.each([[null], ["false"], [""], ["no"]])("not paused (%s): the run is exactly what it was, and no skipped row is written", async (value) => {
+    await setPaused(value);
+    const s = spy(MONDAY_9);
+    const r = await runWeeklyCommissions(s.deps);
+    expect(r).toMatchObject({ ran: true, result: { skipped: false, totalAmount: 120, staffCount: 1 } });
+    expect(await runRows()).toEqual([expect.objectContaining({ week_start: "2026-09-21", computed_by: "SYSTEM_TRIGGER", bonuses_created: 1 })]);
+    expect(await skippedRows()).toEqual([]);
+    expect(s.statements.filter((x) => x.toLowerCase() === "begin")).toHaveLength(1);
+    expect(s.statements.filter((x) => x.toLowerCase() === "commit")).toHaveLength(1);
+  });
+
+  it("paused, then un-paused: the next firing runs the week as usual", async () => {
+    await setPaused("true");
+    await runWeeklyCommissions(spy(MONDAY_9).deps);
+    await setPaused("false");
+    expect((await runWeeklyCommissions(spy(MONDAY_9).deps)).ran).toBe(true);
+    expect(await runRows()).toHaveLength(1);
+    expect(await skippedRows()).toHaveLength(1);
+  });
+
+  it("paused: the manual Run engine still works (a person pressing a button is not the Monday run)", async () => {
+    await setPaused("true");
+    await runWeeklyCommissions(spy(MONDAY_9).deps);
+    expect(await runRows()).toEqual([]);
+    const result: any = await asHandler(rpcRunCommissionEngine, [false]);
+    expect(result).toMatchObject({ skipped: false, totalAmount: 120, staffCount: 1 });
+    expect(await runRows()).toEqual([expect.objectContaining({ computed_by: "S_ASH", bonuses_created: 1 })]);
+    expect(await bonusRows()).toEqual([expect.objectContaining({ status: "proposed", created_by: "S_ASH" })]);
+  });
+
+  it("the setting is registered as Operations-only, a boolean that is off by default, in the Commissions group", async () => {
+    expect(CONFIG_KEYS["commission_run_paused"]).toEqual({ kind: "setting", read: "boolean", default: "false" });
+    expect(OPS_ONLY_KEYS).toContain("commission_run_paused");
+    const list = await withTransaction(db, (tx) => settings.list(tx, {}));
+    expect(list.settings.find((x) => x.key === "commission_run_paused")).toMatchObject({ group: "Commissions", default: "false", isDefault: true });
+    expect(list.settings.find((x) => x.key === "commission_run_paused")?.description).toMatch(/does nothing/);
+  });
+
+  it("rpcUpdateSetting takes true or false only, and blank (back to off)", async () => {
+    const put = (value: unknown) => asHandler(rpcUpdateSetting, [{ key: "commission_run_paused", value }]);
+    await expect(put("maybe")).rejects.toThrow("commission_run_paused must be true or false");
+    await expect(put("1")).rejects.toThrow("commission_run_paused must be true or false");
+    await expect(put("yes")).rejects.toThrow("commission_run_paused must be true or false");
+    await expect(put({})).rejects.toThrow();
+    expect(await owner.query("select value from ops.config where key = 'commission_run_paused'")).toEqual([]);
+    expect(await put(true)).toMatchObject({ key: "commission_run_paused", value: "true", changed: true });
+    expect(await put("TRUE")).toMatchObject({ value: "true", changed: false });
+    expect(await put("false")).toMatchObject({ value: "false", changed: true });
+    expect(await put("")).toMatchObject({ value: null, isDefault: true, changed: true });
+  });
+
+  it("the Commissions screen's one small read (rpcGetCommissionRunPaused) answers the setting to the three roles that open the screen, and to no one else", async () => {
+    const contract = parseRpcContract(
+      mergeOpsContract(JSON.parse(readFileSync(new URL("../contracts/rpc.json", import.meta.url), "utf8")), JSON.parse(readFileSync(new URL("../contracts/rpc-ops.json", import.meta.url), "utf8"))),
+    );
+    expect(contract.get("rpcGetCommissionRunPaused")).toMatchObject({ roles: ["admin", "manager", "payroll_admin"], needs_session: true, params: ["token"] });
+    expect(await asHandler(rpcGetCommissionRunPaused, [])).toEqual({ paused: false });
+    await setPaused("true");
+    for (const role of ["admin", "manager", "payroll_admin"]) expect(await asHandler(rpcGetCommissionRunPaused, [], MONDAY_9, { ...ADMIN_SESSION, role })).toEqual({ paused: true });
+    await expect(asHandler(rpcGetCommissionRunPaused, [], MONDAY_9, { ...ADMIN_SESSION, role: "employee" })).rejects.toThrow("FORBIDDEN: requires admin or manager or payroll_admin, got employee");
+    await expect(asHandler(rpcGetCommissionRunPaused, [], MONDAY_9, null)).rejects.toThrow("NOT_LOGGED_IN");
+    await setPaused("false");
+    expect(await asHandler(rpcGetCommissionRunPaused, [])).toEqual({ paused: false });
+  });
+
+  it("a person who is not an admin cannot switch it", async () => {
+    await expect(asHandler(rpcUpdateSetting, [{ key: "commission_run_paused", value: "true" }], MONDAY_9, { ...ADMIN_SESSION, role: "payroll_admin" })).rejects.toThrow("FORBIDDEN");
+    expect(await owner.query("select value from ops.config where key = 'commission_run_paused'")).toEqual([]);
   });
 });

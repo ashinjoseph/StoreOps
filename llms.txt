@@ -26,6 +26,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 
 - [App shell and auth](docs/components/app-shell-and-auth.md): One page that signs a person in with a PIN, shows them the tabs their role allows, and talks to the server through a small, cached RPC layer
 - [Assistants](docs/components/assistants.md): An AI assistant (Muse first, Claude after) reaches the Operations app through one door, `/mcp`, with a key an admin made for one person
+- [Audit log](docs/components/audit-log.md): An admin reads who did what, newest first, on a screen, where it used to be scrolling the Sheet's `audit_log` tab
 - [Cash handling](docs/components/cash-handling.md): Track every dollar a cashier walks out with until it reaches the cash manager, shift by shift, with a record of who said it moved
 - [Commissions](docs/components/commissions.md): Rules say who earns what. Each Monday the engine works out the week and proposes bonuses; a person approves them before anything is paid.
 - [Notifications](docs/components/notifications.md): The owner and manager get a WhatsApp message when a till opens, when the day is reconciled, and when the shopping list is sent

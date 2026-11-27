@@ -5,7 +5,9 @@ import { validateSession } from "../auth/sessions";
 import type { Session } from "../auth/types";
 import type { Tx } from "../db/tx";
 import { loadConfig } from "../lib/config";
-import { rpcCreateAssistantKey, rpcGetAssistantKeys, rpcRevokeAssistantKey } from "./handlers/assistants";
+import { rpcGetAuditLog } from "./handlers/audit-view";
+import { rpcGetCommissionRunPaused } from "./handlers/commission-pause";
+import { rpcCreateAssistantKey,rpcGetAssistantKeys, rpcRevokeAssistantKey } from "./handlers/assistants";
 import { rpcAdjustAttendanceHours, rpcCancelScheduledShift, rpcEditAttendanceTimes, rpcGetWeekSchedule, rpcScheduleShift } from "./handlers/attendance";
 import { rpcCorrectAttendance, rpcGetAttendanceDay } from "./handlers/attendance-corrections";
 import { rpcGetMe, rpcLogin, rpcLogout } from "./handlers/auth";
@@ -86,6 +88,8 @@ export const handlers: RpcHandlers = {
   rpcRevokeAssistantKey,
   rpcPreviewMissedShift,
   rpcEnterMissedShift,
+  rpcGetAuditLog,
+  rpcGetCommissionRunPaused,
 };
 
 /** What the router calls for every RPC the contract marks `needs_session`. Throws Error("NOT_LOGGED_IN"). */

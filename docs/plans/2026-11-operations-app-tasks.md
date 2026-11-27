@@ -75,7 +75,7 @@ hand one out.
 | P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | done (notes in the card) |
 | P4-12c | Reconcile a past day again | T2 | P4-08 | money | done (three things for the owner, in the card) |
 | P4-12d | The Reconcile screen shows unmeasured cards as "not verified", not as a difference | T1 | | money | todo (an existing fault, found by P4-12c) |
-| P4-13 | Audit log on a screen; a setting to pause the Monday run | T2 | P4-09 | security | in progress |
+| P4-13 | Audit log on a screen; a setting to pause the Monday run | T2 | P4-09 | security | done (notes in the card) |
 | P4-14 | Backups, and a restore that has been tried | T2 + owner | P2-10 | money | todo (planned) |
 | P5-01 | Stores and staff assignments | T2 | P4-05 | security | todo |
 | P5-02a | Till link: the client and a fake till (switched off) | T2 | | security | done (nine questions for the till side, in the card) |
@@ -950,6 +950,25 @@ sheet says so. Notes:
    refusal message. It works, and is worth replacing with a plain field.
 4. The float left in the drawer is today's setting; nothing records the one
    in force that day.
+
+**P4-13 is done:** More → Audit log (admin only): newest first, filtered by
+person, kind of action and day, a page at a time; tapping a row shows before
+and after with the changed fields marked. It only reads, and reading it is
+not itself logged. On the way out, phone numbers are shown as their last
+four digits and any field whose name looks like a secret is hidden (a plain
+yes/no such as "has a PIN" is shown; changed in review). The stored rows are
+never altered. The setting `commission_run_paused` makes the Monday run do
+nothing but record that it was skipped; "Run engine" by hand still works,
+and the Commissions screen says when the run is paused (one small call of
+its own, `rpcGetCommissionRunPaused`, because managers see that screen and
+may not read Settings). Notes:
+1. One kind of row stores a full phone number: a failed WhatsApp send
+   records the recipient. The screen masks it; the stored row keeps it, as
+   the current app's does.
+2. A wrong sign-in records the name that was typed. Someone who types their
+   PIN into the name box leaves it in the log, as in the current app.
+3. Filtering by person or by kind of action will get slow once the log has
+   a few hundred thousand rows; two indexes would fix it (not added).
 
 P4-12 is split in three so each can be reviewed on its own: correcting a
 closed till (a), entering a shift that was never put in the app (b), and
