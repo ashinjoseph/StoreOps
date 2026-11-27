@@ -69,6 +69,10 @@ hand one out.
 | P4-08 | The new app's own RPCs and screens: where they are listed, how they are hidden in Apps Script | T1 | P3-12 | security | done |
 | P4-09 | Settings screen: an admin edits the settings | T2 | P4-08 | security | in progress |
 | P4-10 | Schedule corrections after the fact | T3 | P4-08 | money | in progress |
+| P4-11 | Staff screen: add, change, deactivate, PINs | T2 | P4-08 | security | todo (planned; waiting for the owner's go-ahead) |
+| P4-12 | Correct a closed till, enter a missed shift, reconcile a past day | T3 | P4-08 | money | todo (planned) |
+| P4-13 | Audit log on a screen; a setting to pause the Monday run | T1 | P4-09 | security | todo (planned) |
+| P4-14 | Backups, and a restore that has been tried | T2 + owner | P2-10 | money | todo (planned) |
 | P5-01 | Stores and staff assignments | T2 | P4-05 | security | todo |
 | P5-02 | Till link: staff sync and key expiry | T2 | P5-01, P1-02 | security | todo |
 | P5-03 | Vape close from the till snapshot | T2 | P5-02 | money | todo |
@@ -791,6 +795,20 @@ needs come first, both for the admin role only, both before the switch
   The owner's two cases: someone left early and another stayed (two
   corrections, one per person); someone did not show and a stand-in worked
   (cancel one day, add the other).
+
+### P4-11 to P4-14 · the rest of what the Sheet used to do
+Planned Nov 27 in [After the Sheet](2026-11-after-the-sheet.md), part 1: the
+review of the Sheet's menu, every table and every unused write function, the
+gaps found, and what each card builds. Not started: they wait for the
+owner's answers to the questions on that page. P4-06 (the nightly Google
+Sheet copy) is proposed to move before the switch, since the Sheet was also
+where people looked things up.
+
+### The till link, in build order
+[After the Sheet](2026-11-after-the-sheet.md), part 2, puts P5-02, P5-03,
+P5-07 and P5-08 in order, splits P5-02 in two (the client and a fake till;
+then people and stores matched), adds sales by channel as its own step, and
+says what each waits for.
 
 ## Phase 5 — New abilities
 
