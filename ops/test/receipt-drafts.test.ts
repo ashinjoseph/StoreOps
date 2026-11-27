@@ -666,7 +666,7 @@ describe("the original moves to drafted, leaves the waiting list, can be set asi
     expect((await client.callTool({ name: "receipt_original", arguments: { id } })).isError).toBeFalsy();
     // The inbox: a third group.
     const inbox = await rpc("rpcGetReceiptInbox", [tokens["S_004"], { status: "drafted" }]);
-    expect(inbox.result.counts).toEqual({ waiting: 1, drafted: 1, set_aside: 0 });
+    expect(inbox.result.counts).toEqual({ waiting: 1, drafted: 1, confirmed: 0, set_aside: 0 });
     expect(inbox.result.items.map((x: any) => x.id)).toEqual([id]);
     // Set aside: allowed from drafted; the draft leaves the live list, kept.
     const aside = await rpc("rpcSetReceiptAside", [tokens["S_002"], { id, aside: true, reason: "A fictional flyer after all" }]);
@@ -850,13 +850,19 @@ describe("receipt_propose through the SDK client", () => {
     await client.close();
   });
 
-  it("superseded by someone else's: refused in my_proposals, saying by whom", async () => {
+  it("superseded by another assistant's: refused in my_proposals, saying by whom; by a person's reading: it follows that reading (card P5-05b)", async () => {
     const id = await original();
     const client = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
     const first = jsonOf(await client.callTool({ name: "receipt_propose", arguments: { original_id: id, amounts: { total: "2.00" } } })) as any;
-    const theirs = await propose({ original_id: id, amounts: { total: "2.00" } }, PERSON());
+    const theirs = await propose({ original_id: id, amounts: { total: "2.00" } }, await ASSISTANT());
     const mine = (jsonOf(await client.callTool({ name: "my_proposals", arguments: {} })) as any).proposals;
-    expect(mine[0]).toMatchObject({ id: first.draft.id, status: "refused", note: `Replaced by a draft typed by a person (${theirs.draft.id}).` });
+    expect(mine[0]).toMatchObject({ id: first.draft.id, status: "refused", note: `Replaced by another assistant's later proposal (${theirs.draft.id}).` });
+    // A person's reading over an assistant's is the review's work: the draft waits with it (receipt-review.test.ts follows it to the books).
+    const other = await original();
+    const mineToo = jsonOf(await client.callTool({ name: "receipt_propose", arguments: { original_id: other, amounts: { total: "2.00" } } })) as any;
+    const typed = await propose({ original_id: other, amounts: { total: "2.00" } }, PERSON());
+    const now = (jsonOf(await client.callTool({ name: "my_proposals", arguments: {} })) as any).proposals;
+    expect(now[0]).toMatchObject({ id: mineToo.draft.id, status: "waiting", note: `A draft of receipt original ${other}, waiting for a person to review it. A person corrected it (${typed.draft.id}). Needs attention: 1 check failed.` });
     await client.close();
   });
 

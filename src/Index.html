@@ -7049,7 +7049,7 @@
           '<div class="payroll-rate">' + (it.assistant ? 'added by ' + esc(it.addedBy) + '\'s assistant (' + esc(it.assistant.label) + ')' : esc(it.addedBy)) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + (it.email ? ' · from ' + esc(it.email.from) + ', sent ' + esc(receiptWhen_(it.email.date)) : '') + '</div>' +
           '<div class="payroll-rate">' + esc(receiptBusinessLabel_(it.business)) + (it.note ? ' · ' + esc(it.note) : '') + '</div>' +
           (aside ? '<div class="payroll-rate">Set aside by ' + esc(it.setAside.by) + ': ' + esc(it.setAside.reason) + '</div>' : '') +
-          (it.draft ? receiptDraftHeadHTML_(it.draft) : (it.status === 'drafted' ? '<div class="payroll-rate">It has been read.</div>' : '')) +
+          (it.draft ? receiptDraftHeadHTML_(it.draft) : (it.status === 'drafted' ? '<div class="payroll-rate">It has been read.</div>' : it.status === 'confirmed' ? '<div class="payroll-rate">It is on the books.</div>' : '')) +
         '</div>' +
       '</div>' +
     '</div>';
@@ -7084,6 +7084,10 @@
       html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Set aside (' + esc(counts.set_aside || 0) + ')</div>';
       if (!asideItems.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing set aside.</div>';
       asideItems.forEach(it => { html += receiptRowHTML_(it); });
+      html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">On the books (' + esc(counts.confirmed || 0) + ')</div>' +
+        '<div style="font-size:11px;color:#6a6e79;margin-bottom:6px">One business at a time: the two are separate books and are never listed together.</div>' +
+        '<div style="display:flex;gap:8px;margin-bottom:8px"><button class="payroll-btn payroll-btn-secondary" data-books-business="cstore" style="flex:1">cstore</button><button class="payroll-btn payroll-btn-secondary" data-books-business="vape" style="flex:1">vape</button></div>' +
+        '<div id="rcptBooks"></div>';
     }
     view.innerHTML = html;
     wireReceiptAdd_();
@@ -7093,8 +7097,12 @@
       el.onclick = () => {
         haptic();
         const it = all.find(x => x.id === el.dataset.receiptId);
-        if (it) openReceiptSheet_(it, canEdit);
+        if (it && canEdit && it.status === 'drafted') openReceiptReview_(it);
+        else if (it) openReceiptSheet_(it, canEdit);
       };
+    });
+    view.querySelectorAll('[data-books-business]').forEach(el => {
+      el.onclick = () => { haptic(); loadReceiptBooks_(el.dataset.booksBusiness, {}); };
     });
     loadReceiptThumbs_(view);
   }
@@ -7359,7 +7367,7 @@
   }
 
   // The draft, read only: every field, blank as words, each failed check a sentence.
-  function receiptDraftHTML_(d) {
+  function receiptDraftHTML_(d, footer) {
     const blank = '<i style="color:#9a9ea9">not on the receipt</i>';
     const row = (label, v) => '<div style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #f0f1f5"><div style="flex:0 0 42%;color:#6a6e79">' + esc(label) + '</div><div style="flex:1;min-width:0;overflow-wrap:anywhere;color:#1f2330">' + v + '</div></div>';
     const text = v => (v === null || v === undefined || v === '' ? blank : esc(v));
@@ -7400,7 +7408,7 @@
     const whereKeys = Object.keys(where);
     if (whereKeys.length) html += '<div style="font-size:12px;font-weight:700;color:#1f2330;margin:10px 0 4px">Where it was read</div>' + whereKeys.map(k => '<div>' + esc(k) + ': ' + esc(where[k]) + '</div>').join('');
     if (d.note) html += '<div style="margin-top:8px"><b>Note from the reader:</b> ' + esc(d.note) + '</div>';
-    html += '<div style="margin-top:10px;font-weight:600;color:#4a4e59">Reviewing and confirming comes next: nothing here counts yet.</div>';
+    html += footer === undefined ? '<div style="margin-top:10px;font-weight:600;color:#4a4e59">Reviewing and confirming comes next: nothing here counts yet.</div>' : footer;
     return html;
   }
 
@@ -7508,11 +7516,499 @@
         const r = await call('rpcEnterReceiptDraft', state.token, receiptDraftInput_(it.id, lineCount));
         closeSheet();
         toast(r && r.draft && r.draft.needsAttention ? 'Draft kept: it needs attention' : '✓ Draft kept', r && r.draft && r.draft.needsAttention ? 'warning' : 'success');
-        openSheet({ title: 'Draft kept', subtitle: it.fileName || 'Receipt original', bodyHTML: r && r.draft ? receiptDraftHTML_(r.draft) : '', actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Close</button>' });
+        // Straight into the review (card P5-05b).
         loadReceiptsTab(true);
+        await openReceiptReview_(Object.assign({}, it, { status: 'drafted' }));
       } catch (e) {
         if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
         $('rdErr').textContent = e.message;
+        btn.disabled = false;
+      }
+    };
+  }
+
+  // ── Review, confirm, void, the books (card P5-05b; ADR-0029) ──
+  //  Admin and manager review a read original beside its figures: every
+  //  correction is saved as a new reading on the server, which re-runs the
+  //  checks and the business decision and answers them; the page computes
+  //  nothing it shows as a figure. Confirm puts it on the books of ONE
+  //  business; a mistake found later is voided (kept, marked) and redone.
+  //  Payroll admin reads the books; an employee sees "It is on the books."
+
+  function receiptBusinessName_(rv, key) {
+    const names = (rv && rv.businessNames) || {};
+    return key ? (names[key] || key) : 'not chosen';
+  }
+
+  function receiptFailedHTML_(checks) {
+    const failed = (checks || []).filter(c => c.passed === false);
+    if (!failed.length) return '<div id="rvChecks" style="background:#dcfce7;border-radius:6px;padding:8px;margin-bottom:8px;color:#166534;font-size:12px">Every check that could be made passed.</div>';
+    return '<div id="rvChecks" style="background:#fef3c7;border-radius:6px;padding:8px;margin-bottom:8px;color:#92400e;font-size:12px"><b>Needs attention</b>' +
+      failed.map(c => '<div style="margin-top:4px">' + esc(c.words) + '</div>').join('') + '</div>';
+  }
+
+  // The fields of a line as the by-hand sheet's line rows take them (receiptDraftLineHTML_).
+  function receiptLineValues_(l) {
+    return { description: l.description || '', code: l.code || '', quantity: l.quantity == null ? '' : l.quantity, unit_price: l.unitPrice == null ? '' : l.unitPrice, total: l.total == null ? '' : l.total, taxed: l.taxed === true ? 'yes' : l.taxed === false ? 'no' : '' };
+  }
+
+  function receiptReviewLinesHTML_(lines) {
+    return lines.map((l, i) => receiptDraftLineHTML_(i, l) + '<button class="payroll-btn payroll-btn-secondary" id="rvLineDel' + i + '" style="margin:-2px 0 8px">Remove line ' + (i + 1) + '</button>').join('');
+  }
+
+  function receiptReviewOtherHTML_(other) {
+    return other.map((o, i) => '<div style="display:flex;gap:6px;align-items:flex-end">' +
+      '<div class="sheet-field" style="flex:2"><label>Other charge ' + (i + 1) + '</label><input type="text" id="rvOtherLabel' + i + '" maxlength="80" autocomplete="off" value="' + esc(o.label || '') + '"></div>' +
+      '<div class="sheet-field" style="flex:1"><label>Amount</label><input type="text" inputmode="decimal" id="rvOtherAmount' + i + '" autocomplete="off" value="' + esc(o.amount == null ? '' : o.amount) + '"></div>' +
+      '<button class="payroll-btn payroll-btn-secondary" id="rvOtherDel' + i + '" style="margin-bottom:12px">✕</button></div>').join('');
+  }
+
+  // What was typed in the review: the by-hand fields (blank left out, never 0 or ""), the other charges,
+  // the reader's own where-read notes and note unchanged, the business and the supplier chosen.
+  function receiptReviewInput_(st) {
+    const out = receiptDraftInput_(st.it.id, st.lines.length);
+    const v = k => { const el = $(k); return el ? String(el.value == null ? '' : el.value).trim() : ''; };
+    if (out.amounts) delete out.amounts.other;
+    const other = [];
+    for (let i = 0; i < st.other.length; i++) {
+      const o = {};
+      if (v('rvOtherLabel' + i)) o.label = v('rvOtherLabel' + i);
+      if (v('rvOtherAmount' + i)) o.amount = v('rvOtherAmount' + i);
+      if (Object.keys(o).length) other.push(o);
+    }
+    if (other.length) out.amounts.other = other;
+    const d = st.rv.draft;
+    if (d.whereRead) out.where_read = d.whereRead;
+    if (d.note) out.note = d.note; else delete out.note;
+    if (d.suggestedBusiness) out.suggested_business = d.suggestedBusiness;
+    out.draft_id = d.id;
+    const b = v('rvBusiness');
+    out.business = b === 'cstore' || b === 'vape' ? b : null;
+    out.supplier_id = v('rvSupplierPick') || null;
+    return out;
+  }
+
+  // Keep what is typed in the lines and the other charges while one is added or removed.
+  function receiptReviewKeep_(st) {
+    const g = k => { const el = $(k); return el ? String(el.value == null ? '' : el.value) : ''; };
+    st.lines = st.lines.map((l, i) => ({ description: g('rdLineDesc' + i), code: g('rdLineCode' + i), quantity: g('rdLineQty' + i), unit_price: g('rdLinePrice' + i), total: g('rdLineTotal' + i), taxed: g('rdLineTaxed' + i) }));
+    st.other = st.other.map((o, i) => ({ label: g('rvOtherLabel' + i), amount: g('rvOtherAmount' + i) }));
+  }
+
+  function receiptReviewHTML_(st) {
+    const rv = st.rv;
+    const d = rv.draft;
+    const field = (label, id, value, attrs) => '<div class="sheet-field"><label>' + label + '</label><input type="text" id="' + id + '" autocomplete="off" value="' + esc(value == null ? '' : value) + '"' + (attrs || '') + '></div>';
+    const money2 = ' inputmode="decimal" placeholder="as printed, e.g. 12.50"';
+    const opt = (v, label, sel) => '<option value="' + esc(v) + '"' + (sel ? ' selected' : '') + '>' + esc(label) + '</option>';
+    const a = d.amounts || {};
+    const b = d.business || {};
+    const buyer = d.buyer || {};
+    const paid = d.paid || {};
+    const chosen = b.decidedBy && b.decidedBy[0] === 'person' ? b.key : '';
+    const signsWord = b.signsSaid ? (b.signsSaid.business ? receiptBusinessName_(rv, b.signsSaid.business) : 'not known') : (b.key ? receiptBusinessName_(rv, b.key) : 'not known');
+    const cands = rv.supplierCandidates || [];
+    const rb = d.readBy || {};
+    let html = receiptFailedHTML_(d.checks);
+    html += '<div class="payroll-rate" style="margin-bottom:8px">Read by ' + (rb.kind === 'assistant' ? esc(rb.name) + '\'s assistant (' + esc(rb.keyLabel) + ')' : esc(rb.name)) + ' · ' + esc(receiptWhen_(d.readAt)) + '. A blank field is "not on the receipt" and stays blank.</div>';
+    html += field('Supplier, as printed', 'rdSupplier', (d.supplier || {}).name, ' maxlength="120"');
+    html += '<div class="sheet-field"><label>Supplier on the list</label><select id="rvSupplierPick">' + opt('', 'Not chosen yet', !(d.supplier || {}).id) +
+      cands.map(s => opt(s.id, s.displayName + (s.active ? '' : ' (inactive)'), s.id === (d.supplier || {}).id)).join('') + '</select></div>';
+    html += '<div style="display:flex;gap:6px;margin:-4px 0 10px"><input type="text" id="rvSupplierQ" placeholder="Find a supplier by any spelling" autocomplete="off" style="flex:1;min-width:0;padding:8px;border:1px solid #d7dbe4;border-radius:8px">' +
+      '<button class="payroll-btn payroll-btn-secondary" id="rvSupplierFind">Find</button><button class="payroll-btn payroll-btn-secondary" id="rvSupplierNew">New supplier</button></div>';
+    html += '<div id="rvNewSupplier" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:10px">' +
+      field('New supplier\'s name', 'rvNewName', (d.supplier || {}).name, ' maxlength="120"') + field('Its HST number (optional)', 'rvNewHst', '', ' maxlength="40" placeholder="123456789 RT 0001"') +
+      '<button class="payroll-btn payroll-btn-secondary" id="rvNewSave">Add to the supplier list</button></div>';
+    html += field('Supplier\'s HST number', 'rdSupplierHst', (d.supplier || {}).hstNumber, ' maxlength="40"');
+    html += field('Invoice or receipt number', 'rdInvoice', d.invoiceNumber, ' maxlength="60"');
+    html += field('Date (YYYY-MM-DD)', 'rdDate', d.dateAsRead, ' maxlength="40" placeholder="2026-11-27"');
+    html += '<div class="sheet-field"><label>How it was paid</label><select id="rdPaidHow">' + opt('', 'Not on the receipt', !paid.how) + opt('cash', 'Cash', paid.how === 'cash') + opt('card', 'Card', paid.how === 'card') + opt('account', 'On account', paid.how === 'account') + opt('other', 'Other', paid.how === 'other') + '</select></div>';
+    html += field('Card ending (four digits)', 'rdCard', paid.cardLast4, ' maxlength="4" inputmode="numeric"');
+    html += field('Subtotal', 'rdSubtotal', a.subtotal, money2) + field('HST', 'rdHst', a.hst, money2);
+    html += '<div id="rvOther">' + receiptReviewOtherHTML_(st.other) + '</div><button class="payroll-btn payroll-btn-secondary" id="rvOtherAdd" style="margin-bottom:10px">+ Add an other charge</button>';
+    html += field('Total (required)', 'rdTotal', a.total, money2);
+    html += '<div class="sheet-field"><label>Kind of purchase</label><select id="rdKind">' + opt('', 'Not chosen', !d.kind) + Object.keys(RECEIPT_KINDS).map(k => opt(k, RECEIPT_KINDS[k], d.kind === k)).join('') + '</select></div>';
+    html += '<div style="font-size:12px;font-weight:700;margin:8px 0 4px">What it prints about the buyer</div>';
+    html += field('Name (sold to, bill to)', 'rdBuyerName', buyer.name, ' maxlength="120"') + field('Buyer\'s HST number', 'rdBuyerHst', buyer.hstNumber, ' maxlength="40"');
+    html += field('Account or membership number', 'rdBuyerAccount', buyer.accountNumber, ' maxlength="60"') + field('Card ending', 'rdBuyerCard', buyer.cardLast4, ' maxlength="4" inputmode="numeric"');
+    html += '<div style="font-size:12px;font-weight:700;margin:8px 0 4px">Business</div>';
+    html += '<div class="payroll-rate" style="margin-bottom:6px">' + (b.key ? '<b>' + esc(receiptBusinessName_(rv, b.key)) + '</b>, ' : '<b>not known</b>: ') + esc(b.why) + (b.personSaid ? '; a person said ' + esc(b.personSaid) + ' when it was added' : '') + '</div>';
+    html += '<div class="sheet-field"><label>Which business</label><select id="rvBusiness">' + opt('', 'As the signs say (' + signsWord + ')', !chosen) +
+      opt('cstore', receiptBusinessName_(rv, 'cstore') + ' (cstore)', chosen === 'cstore') + opt('vape', receiptBusinessName_(rv, 'vape') + ' (vape)', chosen === 'vape') + '</select></div>';
+    html += '<div style="font-size:12px;font-weight:700;margin:8px 0 4px">Lines</div><div id="rdLines">' + receiptReviewLinesHTML_(st.lines) + '</div>';
+    html += '<button class="payroll-btn payroll-btn-secondary" id="rdAddLine" style="margin-bottom:8px">+ Add a line</button>';
+    const where = d.whereRead || {};
+    const whereKeys = Object.keys(where);
+    if (whereKeys.length) html += '<div style="font-size:12px;font-weight:700;margin:10px 0 4px">Where it was read</div><div style="font-size:12px;color:#4a4e59">' + whereKeys.map(k => esc(k) + ': ' + esc(where[k])).join('<br>') + '</div>';
+    if (d.note) html += '<div style="margin-top:8px;font-size:12px;color:#4a4e59"><b>Note from the reader:</b> ' + esc(d.note) + '</div>';
+    html += '<div id="rvErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px;margin-top:8px"></div>';
+    return html;
+  }
+
+  // The review: the original (above on a phone, kept in sight and made large on request; beside on a wide
+  // screen) and the fields, prefilled from the live draft.
+  async function openReceiptReview_(it) {
+    let rv;
+    try {
+      rv = await cachedCall('rpcGetReceiptReview', [state.token, { id: it.id }], TTL_LIVE, { force: true });
+    } catch (e) {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+      toast(e.message, 'error');
+      return;
+    }
+    if (!rv || !rv.draft) { toast(rv && rv.onBooks ? 'This receipt is on the books.' : 'There is no draft of this original to review.', 'warning'); return; }
+    // On a wide screen the original sits beside the fields, as tall as the screen allows.
+    const st = { it, rv, url: null, open: true, large: !!(window.innerWidth && window.innerWidth >= 760), lines: [], other: [] };
+    receiptState_.review = st;
+    drawReceiptReview_(st);
+    try {
+      const o = await fetchReceiptOriginal_(it.id);
+      if (!st.open) { revokeReceiptUrl_(o.url); return; }
+      st.url = o.url;
+      st.type = o.type;
+      showReceiptReviewOriginal_(st);
+    } catch (e) {
+      const box = $('rvOrig');
+      if (box && st.open) box.textContent = e.message;
+    }
+  }
+
+  function showReceiptReviewOriginal_(st) {
+    const box = $('rvOrig');
+    if (!box || !st.url) return;
+    if (st.it.contentType === 'application/pdf') {
+      box.innerHTML = '<button class="btn-primary" id="rvOpenPdf" style="margin:16px">Open the PDF</button>';
+      $('rvOpenPdf').onclick = () => { haptic(); window.open(st.url, '_blank', 'noopener'); };
+    } else {
+      box.innerHTML = '<img alt="Receipt original" src="' + esc(st.url) + '" style="width:100%;display:block">';
+    }
+  }
+
+  function drawReceiptReview_(st) {
+    const rv = st.rv;
+    st.lines = (rv.draft.lines || []).map(receiptLineValues_);
+    st.other = ((rv.draft.amounts || {}).other || []).map(o => ({ label: o.label, amount: o.amount }));
+    const bodyHTML =
+      '<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">' +
+        '<div style="flex:1 1 320px;min-width:0;position:sticky;top:0;z-index:2;background:#fff;padding-bottom:6px">' +
+          '<div id="rvOrig" style="height:' + (st.large ? '78vh' : '32vh') + ';overflow:auto;-webkit-overflow-scrolling:touch;background:#f6f7f9;border-radius:8px;font-size:12px;color:#6a6e79;display:flex;align-items:flex-start;justify-content:center">Loading the original…</div>' +
+          '<button class="payroll-btn payroll-btn-secondary" id="rvBig" style="margin-top:6px;width:100%">' + (st.large ? 'Make the original smaller' : 'Make the original large') + '</button>' +
+        '</div>' +
+        '<div style="flex:1 1 340px;min-width:0" id="rvFields">' + receiptReviewHTML_(st) + '</div>' +
+      '</div>';
+    const actionsHTML = '<button class="sheet-cancel" id="rvClose">Close</button><button class="sheet-cancel" id="rvAside">Set aside</button><button class="sheet-cancel" id="rvSave">Save corrections</button><button class="sheet-submit" id="rvConfirm">Confirm…</button>';
+    openSheet({ title: 'Review: ' + (st.it.fileName || 'Receipt original'), subtitle: 'Correct what was read, then confirm it onto the books', bodyHTML, actionsHTML });
+    wireReceiptReview_(st);
+    showReceiptReviewOriginal_(st);
+  }
+
+  function closeReceiptReview_(st) {
+    st.open = false;
+    revokeReceiptUrl_(st.url);
+    st.url = null;
+    $('sheetClose').onclick = closeSheet;
+    $('backdrop').onclick = closeSheet;
+    closeSheet();
+  }
+
+  function wireReceiptReview_(st) {
+    const close = () => closeReceiptReview_(st);
+    $('sheetClose').onclick = close;
+    $('backdrop').onclick = close;
+    $('rvClose').onclick = () => { haptic(); close(); };
+    $('rvAside').onclick = () => { haptic(); close(); openReceiptAsideSheet_(st.it); };
+    $('rvBig').onclick = () => {
+      haptic();
+      st.large = !st.large;
+      $('rvOrig').style.height = st.large ? '78vh' : '32vh';
+      $('rvBig').textContent = st.large ? 'Make the original smaller' : 'Make the original large';
+    };
+    const relines = () => {
+      $('rdLines').innerHTML = receiptReviewLinesHTML_(st.lines);
+      $('rvOther').innerHTML = receiptReviewOtherHTML_(st.other);
+      wireReceiptReviewRows_(st, relines);
+    };
+    $('rdAddLine').onclick = () => { haptic(); receiptReviewKeep_(st); st.lines.push({}); relines(); };
+    $('rvOtherAdd').onclick = () => { haptic(); receiptReviewKeep_(st); st.other.push({}); relines(); };
+    wireReceiptReviewRows_(st, relines);
+    $('rvSupplierNew').onclick = () => { haptic(); $('rvNewSupplier').style.display = 'block'; };
+    $('rvSupplierFind').onclick = async () => {
+      haptic();
+      try {
+        const r = await cachedCall('rpcGetReceiptSuppliers', [state.token, { q: $('rvSupplierQ').value, limit: 20 }], TTL_LIVE);
+        const keep = $('rvSupplierPick').value;
+        const found = (r && r.suppliers) || [];
+        $('rvSupplierPick').innerHTML = '<option value="">Not chosen yet</option>' + found.map(s => '<option value="' + esc(s.id) + '"' + (s.id === keep ? ' selected' : '') + '>' + esc(s.displayName) + '</option>').join('');
+        $('rvErr').textContent = found.length ? '' : 'No supplier on the list has that spelling: add a new one.';
+      } catch (e) { $('rvErr').textContent = e.message; }
+    };
+    $('rvNewSave').onclick = async () => {
+      haptic();
+      const btn = $('rvNewSave');
+      btn.disabled = true;
+      try {
+        const r = await call('rpcCreateReceiptSupplier', state.token, { displayName: $('rvNewName').value, hstNumber: $('rvNewHst').value || null });
+        const s = r.supplier;
+        $('rvSupplierPick').innerHTML += '<option value="' + esc(s.id) + '">' + esc(s.displayName) + '</option>';
+        $('rvSupplierPick').value = s.id;
+        $('rvNewSupplier').style.display = 'none';
+        toast('✓ ' + s.displayName + ' added to the supplier list', 'success');
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('rvErr').textContent = e.message;
+      }
+      btn.disabled = false;
+    };
+    $('rvSave').onclick = async () => { haptic(); await saveReceiptReview_(st); };
+    $('rvConfirm').onclick = async () => {
+      haptic();
+      // What is typed is saved first, so what is confirmed is exactly what the server checked.
+      if (JSON.stringify(receiptReviewInput_(st)) !== st.saved) { if (!(await saveReceiptReview_(st))) return; }
+      openReceiptConfirmSheet_(st);
+    };
+    st.saved = JSON.stringify(receiptReviewInput_(st));
+  }
+
+  function wireReceiptReviewRows_(st, relines) {
+    st.lines.forEach((l, i) => { const b = $('rvLineDel' + i); if (b) b.onclick = () => { haptic(); receiptReviewKeep_(st); st.lines.splice(i, 1); relines(); }; });
+    st.other.forEach((o, i) => { const b = $('rvOtherDel' + i); if (b) b.onclick = () => { haptic(); receiptReviewKeep_(st); st.other.splice(i, 1); relines(); }; });
+  }
+
+  // Save the corrections: a new reading on the server; the checks and the business come back from it.
+  async function saveReceiptReview_(st) {
+    const btn = $('rvSave');
+    btn.disabled = true;
+    $('rvErr').textContent = '';
+    try {
+      const r = await call('rpcSaveReceiptCorrection', state.token, receiptReviewInput_(st));
+      st.rv = r.review;
+      drawReceiptReview_(st);
+      toast(r.review.draft.needsAttention ? 'Saved: it still needs attention' : '✓ Corrections saved', r.review.draft.needsAttention ? 'warning' : 'success');
+      return true;
+    } catch (e) {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return false; }
+      $('rvErr').textContent = e.message;
+      btn.disabled = false;
+      return false;
+    }
+  }
+
+  // The last sheet: the business in large words, what goes on the books, what may be learnt, the reason.
+  function openReceiptConfirmSheet_(st) {
+    const rv = st.rv;
+    const d = rv.draft;
+    const c = rv.confirm || { allowed: false, why: [], missing: [], failed: [] };
+    const offers = rv.signOffers || { offers: [], warnings: [], known: [] };
+    const sp = rv.spelling;
+    const name = receiptBusinessName_(rv, d.business.key);
+    let html = d.business.key
+      ? '<div style="font-size:20px;font-weight:800;color:#1a2540;margin-bottom:8px">This goes on the books of ' + esc(name) + '</div>'
+      : '<div style="font-size:18px;font-weight:800;color:#b91c1c;margin-bottom:8px">No business chosen yet</div>';
+    html += '<div class="payroll-rate" style="font-size:13px;margin-bottom:10px">' + esc((d.supplier || {}).listedName || (d.supplier || {}).name || 'no supplier') + ' · ' + esc(d.date || 'no date') + ' · <b>' + esc(money(d.amounts.total)) + '</b></div>';
+    if ((c.missing || []).length) html += '<div style="color:#b91c1c;font-size:12px;font-weight:600;margin-bottom:8px">Settle first: ' + esc(c.missing.join(', ')) + '.</div>';
+    (c.why || []).forEach(w => { html += '<div style="color:#b91c1c;font-size:12px;font-weight:600;margin-bottom:8px">' + esc(w) + '</div>'; });
+    if (offers.offers.length || offers.warnings.length || offers.known.length) {
+      html += '<div style="font-size:12px;font-weight:700;margin:10px 0 4px">Signs printed on it</div>';
+      offers.offers.forEach((o, i) => {
+        html += '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:6px' + (rv.canLearnSigns ? '' : ';opacity:.5') + '"><input type="checkbox" id="rvSign' + i + '"' + (rv.canLearnSigns ? '' : ' disabled') + '> ' + esc(o.words) + '</label>';
+      });
+      if (offers.offers.length && !rv.canLearnSigns) html += '<div style="font-size:11px;color:#6a6e79;margin-bottom:6px">An admin can add these.</div>';
+      offers.warnings.forEach(x => { html += '<div style="font-size:12px;color:#b45309;margin-bottom:4px">⚠ ' + esc(x.words) + '</div>'; });
+      offers.known.forEach(x => { html += '<div style="font-size:12px;color:#6a6e79;margin-bottom:4px">' + esc(x.words) + '</div>'; });
+    }
+    if (sp) {
+      html += sp.offered
+        ? '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:8px 0"><input type="checkbox" id="rvSpelling" checked> ' + esc(sp.words) + '</label>'
+        : '<div style="font-size:12px;color:' + (sp.belongsTo ? '#b45309' : '#6a6e79') + ';margin:8px 0">' + esc(sp.words) + '</div>';
+    }
+    if ((c.failed || []).length) {
+      html += '<div style="background:#fef3c7;border-radius:6px;padding:8px;margin:10px 0;color:#92400e;font-size:12px"><b>Failed checks</b>' + c.failed.map(f => '<div style="margin-top:4px">' + esc(f.words) + '</div>').join('') + '</div>';
+      html += '<div class="sheet-field"><label>Why it is right to confirm it anyway (3 to 300 characters)</label><input type="text" id="rvReason" maxlength="300" autocomplete="off"></div>';
+    }
+    html += '<div style="font-size:11px;color:#6a6e79">Once confirmed it cannot be changed: a mistake found later is voided and done again.</div>';
+    html += '<div id="rvConfirmErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px;margin-top:8px"></div>';
+    const actionsHTML = '<button class="sheet-cancel" id="rvBack">Back to the review</button><button class="sheet-submit" id="rvConfirmGo" disabled>Confirm</button>';
+    st.open = false;
+    openSheet({ title: 'Confirm onto the books', subtitle: st.it.fileName || 'Receipt original', bodyHTML: html, actionsHTML });
+    const go = $('rvConfirmGo');
+    const ready = () => {
+      const reasonOk = !(c.failed || []).length || String($('rvReason').value || '').trim().length >= 3;
+      go.disabled = !(c.allowed && reasonOk);
+    };
+    ready();
+    if ((c.failed || []).length) $('rvReason').oninput = ready;
+    $('rvBack').onclick = () => { haptic(); st.open = true; drawReceiptReview_(st); };
+    $('sheetClose').onclick = () => { revokeReceiptUrl_(st.url); st.url = null; $('sheetClose').onclick = closeSheet; closeSheet(); };
+    go.onclick = async () => {
+      haptic();
+      go.disabled = true;
+      $('rvConfirmErr').textContent = '';
+      const learnSigns = offers.offers.filter((o, i) => rv.canLearnSigns && $('rvSign' + i).checked === true).map(o => o.id);
+      const input = { originalId: st.it.id, draftId: d.id, learnSigns, rememberSpelling: !!(sp && sp.offered && $('rvSpelling').checked === true) };
+      if ((c.failed || []).length) input.reason = $('rvReason').value;
+      try {
+        const r = await call('rpcConfirmReceipt', state.token, input);
+        revokeReceiptUrl_(st.url);
+        st.url = null;
+        $('sheetClose').onclick = closeSheet;
+        toast('✓ ' + r.message, 'success');
+        openSheet({
+          title: 'On the books', subtitle: st.it.fileName || 'Receipt original',
+          bodyHTML: '<div style="font-size:20px;font-weight:800;color:#15803d;margin-bottom:8px">' + esc(r.message) + '</div>' +
+            ((r.learnt && r.learnt.signs || []).length ? '<div class="payroll-rate">Learnt: ' + r.learnt.signs.map(s => esc(BUSINESS_SIGN_KINDS[s.kind] || s.kind) + ' ' + esc(s.value)).join(', ') + '</div>' : '') +
+            (r.learnt && r.learnt.spelling ? '<div class="payroll-rate">Remembered the spelling "' + esc(r.learnt.spelling) + '".</div>' : ''),
+          actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Close</button>' + (r.next ? '<button class="sheet-submit" id="rvNext">Review the next one</button>' : ''),
+        });
+        const nx = $('rvNext');
+        if (nx && r.next) nx.onclick = () => { haptic(); closeSheet(); openReceiptReview_({ id: r.next.originalId, fileName: '', contentType: '' }); };
+        loadReceiptsTab(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('rvConfirmErr').textContent = e.message;
+        ready();
+      }
+    };
+  }
+
+  // ── On the books: one business at a time ──
+
+  async function loadReceiptBooks_(business, opts) {
+    const box = $('rcptBooks');
+    if (!box) return;
+    const o = opts || {};
+    const f = receiptState_.booksFilter || {};
+    const input = { business, limit: 20 };
+    ['from', 'to', 'kind'].forEach(k => { if (f[k]) input[k] = f[k]; });
+    if (o.before) input.before = o.before;
+    try {
+      const r = await cachedCall('rpcGetReceiptBooks', [state.token, input], TTL_LIVE, { force: true });
+      receiptState_.booksBusiness = business;
+      receiptState_.booksItems = (o.before ? (receiptState_.booksItems || []) : []).concat(r.items || []);
+      receiptState_.booksCanVoid = !!r.canVoid;
+      box.innerHTML = receiptBooksHTML_(r, receiptState_.booksItems, f);
+      wireReceiptBooks_(r);
+    } catch (e) {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+      box.textContent = e.message;
+    }
+  }
+
+  function receiptBooksHTML_(r, items, f) {
+    const t = r.totals || {};
+    const opt = (v, label) => '<option value="' + esc(v) + '"' + ((f.kind || '') === v ? ' selected' : '') + '>' + esc(label) + '</option>';
+    let html = '<div style="font-size:14px;font-weight:800;color:#1a2540;margin:8px 0 4px">On the books of ' + esc(r.businessName) + '</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-bottom:8px">' +
+      '<div class="sheet-field" style="flex:1 1 110px;margin:0"><label>From</label><input type="text" id="rbFrom" placeholder="YYYY-MM-DD" value="' + esc(f.from || '') + '"></div>' +
+      '<div class="sheet-field" style="flex:1 1 110px;margin:0"><label>To</label><input type="text" id="rbTo" placeholder="YYYY-MM-DD" value="' + esc(f.to || '') + '"></div>' +
+      '<div class="sheet-field" style="flex:1 1 130px;margin:0"><label>Kind</label><select id="rbKind">' + opt('', 'Every kind') + Object.keys(RECEIPT_KINDS).map(k => opt(k, RECEIPT_KINDS[k])).join('') + '</select></div>' +
+      '<button class="payroll-btn payroll-btn-secondary" id="rbApply">Show</button></div>';
+    html += '<div class="payroll-card" style="margin-bottom:8px;font-size:12px"><b>' + esc(t.count) + ' receipt' + (t.count === 1 ? '' : 's') + '</b> · subtotal ' + esc(money(t.subtotal)) + ' · HST ' + esc(money(t.hst)) + ' · total <b>' + esc(money(t.total)) + '</b>' +
+      (t.voided ? '<div class="payroll-rate">' + esc(t.voided) + ' voided, shown and not counted</div>' : '') +
+      (t.noSubtotal || t.noHst ? '<div class="payroll-rate">' + [t.noSubtotal ? esc(t.noSubtotal) + ' with no subtotal on the receipt' : '', t.noHst ? esc(t.noHst) + ' with no HST on the receipt' : ''].filter(Boolean).join(' · ') + '</div>' : '') + '</div>';
+    if (!items.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing on the books for this choice.</div>';
+    items.forEach(x => {
+      const v = x.status === 'voided';
+      html += '<div class="payroll-card" data-books-id="' + esc(x.id) + '" style="margin-bottom:6px;cursor:pointer' + (v ? ';opacity:.6' : '') + '">' +
+        '<div style="display:flex;gap:8px;font-size:13px"><div style="flex:1;min-width:0;overflow-wrap:anywhere' + (v ? ';text-decoration:line-through' : '') + '"><b>' + esc(x.supplier || x.supplierPrinted || 'supplier') + '</b> · ' + esc(x.date || '') + (x.invoiceNumber ? ' · ' + esc(x.invoiceNumber) : '') + '</div>' +
+        '<div style="font-weight:700' + (v ? ';text-decoration:line-through' : '') + '">' + esc(money(x.total)) + '</div></div>' +
+        '<div class="payroll-rate">' + esc(RECEIPT_KINDS[x.kind] || x.kind || '') + ' · confirmed by ' + esc(x.confirmedBy) + (x.fieldsChanged ? ' · ' + esc(x.fieldsChanged) + ' changed at review' : '') + (x.reason ? ' · checks failed, confirmed with a reason' : '') + '</div>' +
+        (v ? '<div class="payroll-rate" style="color:#b91c1c">VOIDED by ' + esc(x.voided.by) + ': ' + esc(x.voided.reason) + '</div>' : '') + '</div>';
+    });
+    if (r.next) html += '<button class="payroll-btn payroll-btn-secondary" id="rbMore" style="width:100%">More</button>';
+    return html;
+  }
+
+  function wireReceiptBooks_(r) {
+    const view = $('view-receipts');
+    const b = receiptState_.booksBusiness;
+    $('rbApply').onclick = () => {
+      haptic();
+      receiptState_.booksFilter = { from: String($('rbFrom').value || '').trim(), to: String($('rbTo').value || '').trim(), kind: $('rbKind').value };
+      loadReceiptBooks_(b, {});
+    };
+    const more = $('rbMore');
+    if (more) more.onclick = () => { haptic(); loadReceiptBooks_(b, { before: r.next }); };
+    view.querySelectorAll('[data-books-id]').forEach(el => { el.onclick = () => { haptic(); openReceiptOnBooks_(el.dataset.booksId); }; });
+  }
+
+  function receiptChangesHTML_(ch) {
+    if (!ch) return '';
+    const words = { 'supplier.name': 'Supplier as printed', 'supplier.hst_number': 'Supplier\'s HST number', invoice_number: 'Invoice number', date: 'Date', 'paid.how': 'How paid', 'paid.card_last4': 'Card ending', 'amounts.subtotal': 'Subtotal', 'amounts.hst': 'HST', 'amounts.other': 'Other charges', 'amounts.total': 'Total', kind: 'Kind', 'buyer.name': 'Buyer\'s name', 'buyer.hst_number': 'Buyer\'s HST number', 'buyer.account_number': 'Account number', 'buyer.card_last4': 'Buyer\'s card', business: 'Business', supplier: 'Supplier on the list' };
+    const show = v => (v === null || v === undefined ? '<i>blank</i>' : esc(v));
+    let html = '<div style="font-size:12px;font-weight:700;color:#1f2330;margin:10px 0 4px">What was changed at review (' + esc(ch.count) + ', compared with the first reading)</div>';
+    if (!ch.count) return html + '<div style="font-size:12px;color:#6a6e79">Nothing: confirmed as first read.</div>';
+    html += (ch.fields || []).map(x => '<div style="font-size:12px">' + esc(words[x.field] || x.field) + ': ' + show(x.before) + ' → ' + show(x.after) + '</div>').join('');
+    const l = ch.lines || {};
+    if (l.added || l.removed || l.changed) html += '<div style="font-size:12px">Lines: ' + esc(l.added) + ' added, ' + esc(l.removed) + ' removed, ' + esc(l.changed) + ' changed</div>';
+    return html;
+  }
+
+  // A receipt on the books, read only: its original beside its figures, what was changed and by whom.
+  async function openReceiptOnBooks_(id) {
+    let rc;
+    try {
+      rc = (await cachedCall('rpcGetReceiptBooks', [state.token, { receiptId: id }], TTL_LIVE, { force: true })).receipt;
+    } catch (e) {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+      toast(e.message, 'error');
+      return;
+    }
+    const v = rc.status === 'voided';
+    let head = '';
+    if (rc.confirmed) head += '<div style="background:#dcfce7;border-radius:6px;padding:8px;margin-bottom:6px;color:#166534;font-size:12px">On the books of <b>' + esc(rc.businessName) + '</b>: confirmed by ' + esc(rc.confirmed.by) + ', ' + esc(receiptWhen_(rc.confirmed.at)) +
+      (rc.confirmed.reason ? '<br>Checks failed (' + esc((rc.confirmed.failed || []).join(', ')) + '); the reason given: ' + esc(rc.confirmed.reason) : '') + '</div>';
+    if (v) head += '<div style="background:#fee2e2;border-radius:6px;padding:8px;margin-bottom:6px;color:#991b1b;font-size:12px"><b>VOIDED</b> by ' + esc(rc.voided.by) + ', ' + esc(receiptWhen_(rc.voided.at)) + ': ' + esc(rc.voided.reason) + '. It is not counted in the totals.</div>';
+    const readings = (rc.readings || []).map(x => esc(x.readBy.kind === 'assistant' ? x.readBy.name + '\'s assistant (' + (x.readBy.keyLabel || '') + ')' : x.readBy.name) + ', ' + esc(receiptWhen_(x.readAt))).join('<br>');
+    const bodyHTML =
+      '<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">' +
+        '<div style="flex:1 1 320px;min-width:0"><div id="rbOrig" style="max-height:60vh;overflow:auto;background:#f6f7f9;border-radius:8px;font-size:12px;color:#6a6e79;min-height:80px">Loading the original…</div></div>' +
+        '<div style="flex:1 1 340px;min-width:0;font-size:12px">' + head + receiptDraftHTML_(rc, '') + receiptChangesHTML_(rc.changes) +
+          '<div style="font-size:12px;font-weight:700;color:#1f2330;margin:10px 0 4px">Readings, oldest first</div><div style="font-size:12px">' + readings + '</div></div>' +
+      '</div>';
+    const canVoid = receiptState_.booksCanVoid && rc.status === 'confirmed';
+    openSheet({ title: (v ? 'Voided: ' : 'On the books: ') + ((rc.supplier || {}).listedName || (rc.supplier || {}).name || 'receipt'), subtitle: (rc.date || '') + ' · ' + money(rc.amounts.total), bodyHTML,
+      actionsHTML: '<button class="sheet-cancel" id="rbClose">Close</button>' + (canVoid ? '<button class="sheet-submit" id="rbVoid">Void…</button>' : '') });
+    let url = null;
+    const close = () => { revokeReceiptUrl_(url); url = null; $('sheetClose').onclick = closeSheet; closeSheet(); };
+    $('sheetClose').onclick = close;
+    $('rbClose').onclick = () => { haptic(); close(); };
+    const vb = $('rbVoid');
+    if (vb) vb.onclick = () => { haptic(); close(); openReceiptVoidSheet_(rc); };
+    if (!rc.originalId) return;
+    try {
+      const o = await fetchReceiptOriginal_(rc.originalId);
+      url = o.url;
+      const box = $('rbOrig');
+      if (o.type === 'application/pdf') {
+        box.innerHTML = '<button class="btn-primary" id="rbOpenPdf" style="margin:16px">Open the PDF</button>';
+        $('rbOpenPdf').onclick = () => { haptic(); window.open(url, '_blank', 'noopener'); };
+      } else box.innerHTML = '<img alt="Receipt original" src="' + esc(url) + '" style="width:100%;display:block">';
+    } catch (e) { const box = $('rbOrig'); if (box) box.textContent = e.message; }
+  }
+
+  function openReceiptVoidSheet_(rc) {
+    const learnt = rc.learnt || { signs: [], spellings: [] };
+    const listed = learnt.signs.map(s => esc(BUSINESS_SIGN_KINDS[s.kind] || s.kind) + ' ' + esc(s.value) + ' (' + esc(s.business) + ')').concat(learnt.spellings.map(n => 'the spelling "' + esc(n) + '"'));
+    const bodyHTML =
+      '<div style="font-size:13px;color:#1f2330;margin-bottom:8px">' + esc((rc.supplier || {}).listedName || (rc.supplier || {}).name || '') + ' · ' + esc(rc.date || '') + ' · <b>' + esc(money(rc.amounts.total)) + '</b>, on the books of ' + esc(rc.businessName) + '.</div>' +
+      '<div style="font-size:12px;color:#4a4e59;margin-bottom:10px">It stays on file, marked voided, out of the totals. Its original goes back to "Read, waiting for review" with a copy of these figures, to correct and confirm again.</div>' +
+      (listed.length ? '<div style="font-size:12px;color:#b45309;margin-bottom:10px">Learnt from this receipt, and NOT removed by voiding it: ' + listed.join('; ') + '. Remove them by hand on the Businesses screen if they were wrong.</div>' : '') +
+      '<div class="sheet-field"><label>Why it is voided (3 to 300 characters)</label><input type="text" id="rbVoidReason" maxlength="300" autocomplete="off"></div>' +
+      '<div id="rbVoidErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    openSheet({ title: 'Void this receipt', subtitle: 'A mistake found after it was confirmed', bodyHTML, actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="rbVoidGo">Void</button>' });
+    $('rbVoidGo').onclick = async () => {
+      haptic();
+      const btn = $('rbVoidGo');
+      btn.disabled = true;
+      $('rbVoidErr').textContent = '';
+      try {
+        const r = await call('rpcVoidReceipt', state.token, { receiptId: rc.id, reason: $('rbVoidReason').value });
+        toast('✓ Voided', 'success');
+        openSheet({ title: 'Voided', subtitle: '', bodyHTML: '<div style="font-size:13px;margin-bottom:8px">' + esc(r.message) + '</div><div class="payroll-rate">' + esc(r.learnt && r.learnt.words) + '</div>', actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Close</button>' });
+        loadReceiptsTab(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('rbVoidErr').textContent = e.message;
         btn.disabled = false;
       }
     };

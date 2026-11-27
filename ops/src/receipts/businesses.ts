@@ -70,7 +70,7 @@ export function checkHst(v: unknown): string | null {
 }
 
 /** One line of text: trimmed, inner white space kept as single spaces, no control characters, within the limits. */
-function checkLine(v: unknown, what: string, min: number, max: number, required: boolean): string | null {
+export function checkLine(v: unknown, what: string, min: number, max: number, required: boolean): string | null {
   if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) {
     if (required) throw new Error(`${what} is required.`);
     return null;
@@ -84,7 +84,7 @@ function checkLine(v: unknown, what: string, min: number, max: number, required:
   return text;
 }
 
-function checkNotes(v: unknown): string | null {
+export function checkNotes(v: unknown): string | null {
   if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) return null;
   if (typeof v !== "string") throw new Error("Notes must be text.");
   // Notes may have line breaks; nothing else that is a control character.
@@ -265,7 +265,7 @@ export function describeSign(kind: SignKind, value: string, supplier: string | n
   return `the name "${value}"`;
 }
 
-function checkSign(input: AddSignInput): { kind: SignKind; value: string; supplier: string | null } {
+export function checkSign(input: AddSignInput): { kind: SignKind; value: string; supplier: string | null } {
   const kind = input.kind;
   if (typeof kind !== "string" || !(SIGN_KINDS as readonly string[]).includes(kind)) throw new Error("The kind of sign must be name, hst_number, supplier_account or card_last4.");
   switch (kind as SignKind) {
@@ -289,8 +289,12 @@ function checkSign(input: AddSignInput): { kind: SignKind; value: string; suppli
   }
 }
 
-/** Add a sign to a business. Refused, naming the other business, when that sign is already the other one's. */
-export async function addSign(tx: Tx, input: AddSignInput, actor: Actor, config: Config, now: Date): Promise<{ sign: SignView; business: BusinessView }> {
+/**
+ * Add a sign to a business. Refused, naming the other business, when that sign is already the other one's.
+ * `learntFrom` (card P5-05b): the confirmed receipt it was learnt from, when a person ticked it there; the
+ * sign is then recorded learnt_from confirmed_receipt with that receipt. Otherwise typed.
+ */
+export async function addSign(tx: Tx, input: AddSignInput, actor: Actor, config: Config, now: Date, learntFrom: { receiptId: string } | null = null): Promise<{ sign: SignView; business: BusinessView }> {
   const b = checkBusiness(input.business);
   const sign = checkSign(input);
   const key = signKey(sign.kind, sign.value, sign.supplier);
@@ -306,11 +310,13 @@ export async function addSign(tx: Tx, input: AddSignInput, actor: Actor, config:
   }
   const id = newSignId();
   await tx.query(
-    `insert into ops.business_signs (sign_id, business, kind, value, value_key, supplier, learnt_from, added_by, added_at)
-     values ($1, $2, $3, $4, $5, $6, 'typed', $7, $8)`,
-    [id, b, sign.kind, sign.value, key, sign.supplier, actor.staffId, now],
+    `insert into ops.business_signs (sign_id, business, kind, value, value_key, supplier, learnt_from, added_by, added_at, learnt_from_receipt)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [id, b, sign.kind, sign.value, key, sign.supplier, learntFrom === null ? "typed" : "confirmed_receipt", actor.staffId, now, learntFrom?.receiptId ?? null],
   );
-  await audit.write(tx, { actorId: actor.staffId, action: "business_sign.add", targetType: "business_signs", targetId: id, after: { business: b, kind: sign.kind, value: sign.value, supplier: sign.supplier } }, { now });
+  const after: Record<string, unknown> = { business: b, kind: sign.kind, value: sign.value, supplier: sign.supplier };
+  if (learntFrom !== null) Object.assign(after, { learntFrom: "confirmed_receipt", receiptId: learntFrom.receiptId });
+  await audit.write(tx, { actorId: actor.staffId, action: "business_sign.add", targetType: "business_signs", targetId: id, after }, { now });
   const view = (await list(tx, config)).find((x) => x.key === b) as BusinessView;
   return { sign: view.signs.find((s) => s.id === id) as SignView, business: view };
 }

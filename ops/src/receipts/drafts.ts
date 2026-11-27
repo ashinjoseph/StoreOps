@@ -3,7 +3,7 @@
 //
 // A draft is a READING of one stored original: the figures an assistant proposed through the tool
 // receipt_propose, or a person typed by hand (rpcEnterReceiptDraft), both through `propose` below. It
-// counts for nothing until a person confirms it (the next card). The rules:
+// counts for nothing until a person confirms it (card P5-05b, review.ts: a correction is a new reading written here too). The rules:
 //   - The reader reports what is printed; the APP decides the business, from the live signs
 //     (`decideBusiness`, pure). A reader's own guess is stored as a suggestion and decides nothing; a
 //     business a person set at upload is kept beside as "a person said", and a disagreement is flagged.
@@ -75,7 +75,7 @@ const BREAKS = /[\t\n\v\f\r\u2028\u2029]+/g;
 
 const REFUSED: unique symbol = Symbol("ops.receipt_draft.refused");
 /** A plain Error (the router shows its message as it is), marked as a refusal of the draft. Nothing is written. */
-function refuse(message: string): Error {
+export function refuse(message: string): Error {
   const err = new Error(`${message} Nothing was kept.`);
   (err as Error & { [REFUSED]?: true })[REFUSED] = true;
   return err;
@@ -412,7 +412,7 @@ export function decideBusiness(evidence: Evidence, signs: readonly LiveSign[], p
   return { business: null, decidedBy: ["not_known"], why: "not known: nothing printed matched", matched, personSaid, agreesWithPerson: null };
 }
 
-// ── The checks (pure; the next card reruns them when a person edits) ──
+// ── The checks (pure; review.ts reruns them through runChecks when a person corrects or confirms) ──
 
 export type CheckId = "lines_add_up" | "parts_add_up" | "hst_plausible" | "date" | "duplicate" | "supplier_hst_number" | "business";
 export const CHECK_ORDER: readonly CheckId[] = ["lines_add_up", "parts_add_up", "hst_plausible", "date", "duplicate", "supplier_hst_number", "business"];
@@ -525,6 +525,8 @@ export interface DuplicateMatch {
   date: string | null;
   total: number;
   sameInvoice: boolean;
+  /** draft or confirmed (card P5-05b: a duplicate of a confirmed receipt needs an admin to confirm). */
+  status: DraftStatus;
 }
 
 /**
@@ -569,10 +571,10 @@ export async function matchSupplier(db: Db, name: string | null): Promise<{ id: 
   return row === null ? null : { id: row.supplier_id, displayName: row.display_name };
 }
 
-async function findDuplicates(db: Db, f: { originalId: string; supplierKey: string | null; supplierId: string | null; invoiceKey: string | null; date: string | null; total: number }): Promise<DuplicateMatch[]> {
+export async function findDuplicates(db: Db, f: { originalId: string; supplierKey: string | null; supplierId: string | null; invoiceKey: string | null; date: string | null; total: number }): Promise<DuplicateMatch[]> {
   if (f.supplierKey === null && f.supplierId === null) return [];
-  const rows = await db.query<{ purchase_id: string; original_id: string | null; business: Business | null; supplier_name: string | null; invoice_number: string | null; receipt_date: string | null; total: string; same_invoice: boolean }>(
-    `select p.purchase_id, p.original_id, p.business, p.supplier_name, p.invoice_number, p.receipt_date, p.total::text as total,
+  const rows = await db.query<{ purchase_id: string; original_id: string | null; business: Business | null; supplier_name: string | null; invoice_number: string | null; receipt_date: string | null; total: string; same_invoice: boolean; status: DraftStatus }>(
+    `select p.purchase_id, p.original_id, p.business, p.supplier_name, p.invoice_number, p.receipt_date, p.total::text as total, p.status,
             ($3::text is not null and p.invoice_key = $3) as same_invoice
        from ops.purchase_receipts p
        left join ops.receipt_originals o on o.receipt_id = p.original_id
@@ -595,6 +597,7 @@ async function findDuplicates(db: Db, f: { originalId: string; supplierKey: stri
     date: r.receipt_date,
     total: parseMoney(r.total) as number,
     sameInvoice: r.same_invoice,
+    status: r.status,
   }));
 }
 
@@ -615,7 +618,16 @@ export interface DraftView {
   kind: string | null;
   buyer: { name: string | null; hstNumber: string | null; accountNumber: string | null; cardLast4: string | null };
   suggestedBusiness: Business | null;
-  business: { key: Business | null; decidedBy: string[]; why: string; signs: Array<{ kind: string; value: string; supplier: string | null; business: Business }>; personSaid: Business | null; agreesWithPerson: boolean | null };
+  business: {
+    key: Business | null;
+    decidedBy: string[];
+    why: string;
+    signs: Array<{ kind: string; value: string; supplier: string | null; business: Business }>;
+    personSaid: Business | null;
+    agreesWithPerson: boolean | null;
+    /** Card P5-05b: when a person chose the business, what the signs said (else null). */
+    signsSaid: { business: Business | null; decidedBy: string[] } | null;
+  };
   lines: Array<{ line: number; description: string; code: string | null; quantity: string | null; unitPrice: string | null; total: string | null; taxed: boolean | null }>;
   needsAttention: boolean;
   checks: CheckResult[];
@@ -623,6 +635,8 @@ export interface DraftView {
   whereRead: Record<string, string> | null;
   note: string | null;
   supersedes: string | null;
+  /** Card P5-05b: the voided receipt this draft was copied from, or null. */
+  redoOf: string | null;
   hstRatePercent: string;
 }
 
@@ -666,6 +680,9 @@ interface DraftRow {
   where_read: Record<string, string> | null;
   reader_note: string | null;
   supersedes: string | null;
+  signs_business: Business | null;
+  signs_decided_by: string[] | null;
+  redo_of: string | null;
 }
 
 const DRAFT_SELECT = `select p.purchase_id, p.original_id, p.status, p.read_by_kind, p.read_by_key, p.read_by, st.name as read_by_name, ak.label as key_label, p.read_at,
@@ -674,7 +691,8 @@ const DRAFT_SELECT = `select p.purchase_id, p.original_id, p.status, p.read_by_k
                              p.supplier_id, sp.display_name as supplier_display_name, p.supplier_name, p.supplier_hst_number, p.invoice_number,
                              p.receipt_date, p.receipt_date_text, p.paid_how, p.paid_card_last4,
                              p.subtotal::text as subtotal, p.hst::text as hst, p.total::text as total, p.other_total::text as other_total, p.other_charges,
-                             p.hst_rate_percent::text as hst_rate_percent, p.kind, p.needs_attention, p.checks, p.where_read, p.reader_note, p.supersedes
+                             p.hst_rate_percent::text as hst_rate_percent, p.kind, p.needs_attention, p.checks, p.where_read, p.reader_note, p.supersedes,
+                             p.signs_business, p.signs_decided_by, p.redo_of
                         from ops.purchase_receipts p
                         left join ops.staff st on st.staff_id = p.read_by
                         left join ops.assistant_keys ak on ak.key_id = p.read_by_key
@@ -704,7 +722,7 @@ function draftView(r: DraftRow, lines: LineRow[]): DraftView {
     agreesWithPerson: r.business === null || r.business_person_said === null ? null : r.business === r.business_person_said,
   };
   const why =
-    decidedBy[0] === "conflict" ? "the signs point at both businesses" : decidedBy[0] === "not_known" ? "not known: nothing printed matched" : decidedBy[0] === "person" ? "chosen by a person" : `decided by ${and(decision.matched.map((m) => describeSign(m.kind, m.value, m.supplier)))}`;
+    decidedBy[0] === "conflict" ? "the signs point at both businesses" : decidedBy[0] === "not_known" ? "not known: nothing printed matched" : decidedBy[0] === "person" ? `chosen by a person; the signs said ${r.signs_business ?? (r.signs_decided_by?.[0] === "conflict" ? "both businesses" : "not known")}` : `decided by ${and(decision.matched.map((m) => describeSign(m.kind, m.value, m.supplier)))}`;
   return {
     id: r.purchase_id,
     originalId: r.original_id,
@@ -720,7 +738,7 @@ function draftView(r: DraftRow, lines: LineRow[]): DraftView {
     kind: r.kind,
     buyer: { name: r.buyer_name, hstNumber: r.buyer_hst_number, accountNumber: r.buyer_account_number, cardLast4: r.buyer_card_last4 },
     suggestedBusiness: r.suggested_business,
-    business: { key: r.business, decidedBy, why, signs, personSaid: r.business_person_said, agreesWithPerson: decision.agreesWithPerson },
+    business: { key: r.business, decidedBy, why, signs, personSaid: r.business_person_said, agreesWithPerson: decision.agreesWithPerson, signsSaid: r.signs_decided_by === null ? null : { business: r.signs_business, decidedBy: r.signs_decided_by } },
     lines: lines.map((l) => ({ line: l.line_no, description: l.description, code: l.item_code, quantity: quantityOut(l.quantity), unitPrice: l.unit_price === null ? null : unitPriceText(l.unit_price), total: l.line_total, taxed: l.taxed })),
     needsAttention: r.needs_attention,
     checks: r.checks,
@@ -728,11 +746,12 @@ function draftView(r: DraftRow, lines: LineRow[]): DraftView {
     whereRead: r.where_read,
     note: r.reader_note,
     supersedes: r.supersedes,
+    redoOf: r.redo_of,
     hstRatePercent: quantityOut(r.hst_rate_percent) ?? "13",
   };
 }
 
-async function loadDraft(db: Db, purchaseId: string): Promise<DraftView> {
+export async function loadDraft(db: Db, purchaseId: string): Promise<DraftView> {
   const row = await db.one<DraftRow>(`${DRAFT_SELECT} where p.purchase_id = $1`, [purchaseId]);
   const lines = await db.query<LineRow>(
     "select line_no, description, item_code, quantity::text as quantity, unit_price::text as unit_price, line_total::text as line_total, taxed from ops.purchase_receipt_lines where purchase_id = $1 order by line_no",
@@ -752,7 +771,7 @@ export async function getDraft(db: Db, originalId: unknown): Promise<DraftView |
   return row === null ? null : loadDraft(db, row.purchase_id);
 }
 
-// ── Proposing ─────────────────────────────────────────────
+// ── Proposing, correcting, redoing: one way to write a reading ──
 
 export type Reader = { kind: "assistant"; keyId: string; staffId: string } | { kind: "person"; staffId: string };
 
@@ -766,6 +785,106 @@ const hex = (b: Uint8Array): string => Array.from(b, (x) => x.toString(16).padSt
 export const newPurchaseId = (): string => "pr" + hex(crypto.getRandomValues(new Uint8Array(12)));
 const textOrNull = (c: number | null): string | null => (c === null ? null : centsText(c));
 
+/** The refusal for any write to an original whose receipt is on the books (card P5-05b). */
+export const ON_THE_BOOKS = "That receipt is on the books (confirmed): it cannot be changed. To correct it, void it first.";
+
+/**
+ * How a reading is written. `propose`: an assistant's proposal or a person's figures by hand (card
+ * P5-05a: never over a person's draft). `correct` (card P5-05b): a person's correction of the live draft,
+ * which it supersedes, with the business and the supplier the person chose. `redo` (card P5-05b): the
+ * draft a void makes, copied from the voided receipt; it supersedes nothing.
+ */
+export type WriteMode =
+  | { mode: "propose" }
+  | { mode: "correct"; draftId: string | null; business: Business | null; supplierId: string | null }
+  | { mode: "redo"; voidedId: string; business: Business | null; supplierId: string | null };
+
+export interface SupplierRef {
+  id: string;
+  displayName: string;
+  active: boolean;
+}
+
+/** What the checks were run with: how the business and the supplier were settled, and the results. */
+export interface Checked {
+  decision: BusinessDecision;
+  /** The business the reading is written with: the signs', or the person's choice. */
+  business: Business | null;
+  decidedBy: string[];
+  /** When a person chose a business the signs did not decide: what the signs said. */
+  signsSaid: { business: Business | null; decidedBy: string[] } | null;
+  supplier: SupplierRef | null;
+  supplierKey: string | null;
+  invoiceKey: string | null;
+  day: string | null;
+  otherTotal: number | null;
+  duplicates: DuplicateMatch[];
+  rateMilli: number;
+  checks: CheckResult[];
+}
+
+/**
+ * The business when a person chose it and the signs did not decide that one (card P5-05b). Not known or a
+ * conflict, settled by the person: passes. The signs deciding the other business, overruled by the
+ * person: fails (a reason is then needed to confirm), naming what the signs said. Pure.
+ */
+export function checkChosenBusiness(chosen: Business, signs: BusinessDecision): CheckResult {
+  if (signs.business !== null && signs.business !== chosen) {
+    const said = and(signs.matched.map((m) => describeSign(m.kind, m.value, m.supplier)));
+    return result("business", false, `A person chose ${chosen}, overruling the signs, which say ${signs.business} (${said}).`);
+  }
+  const was = signs.decidedBy[0] === "conflict" ? "the signs pointed at both businesses" : "nothing printed matched a sign";
+  return result("business", true, `Chosen by a person: ${chosen} (${was}).`);
+}
+
+/** A supplier by id with its display name and whether it is active, or null. */
+export async function supplierById(db: Db, id: unknown): Promise<SupplierRef | null> {
+  if (typeof id !== "string" || !/^sp[0-9a-f]{20}$/.test(id)) return null;
+  const row = await db.maybeOne<{ supplier_id: string; display_name: string; active: boolean }>("select supplier_id, display_name, active from ops.suppliers where supplier_id = $1", [id]);
+  return row === null ? null : { id: row.supplier_id, displayName: row.display_name, active: row.active };
+}
+
+/**
+ * Settle the business and the supplier and run every check on the fields `f` of `originalId`. `chosen`:
+ * the business a person chose (null: the signs decide); `supplier`: the supplier a person chose (null:
+ * matched by the printed name). Used when a reading is written and again when it is confirmed.
+ */
+export async function runChecks(db: Db, f: Fields, originalId: string, personSaid: Business | null, chosen: Business | null, supplier: SupplierRef | null, config: Config, now: Date): Promise<Checked> {
+  const decision = decideBusiness({ ...f.buyer, paidCardLast4: f.paidCard, supplierName: f.supplierName }, await liveSigns(db), personSaid);
+  const overrule = chosen !== null && chosen !== decision.business;
+  const m = supplier === null ? await matchSupplier(db, f.supplierName) : null;
+  const matched: SupplierRef | null = supplier ?? (m === null ? null : { id: m.id, displayName: m.displayName, active: true });
+  const supplierKey = f.supplierName === null ? null : normalise(f.supplierName) || null;
+  const invoiceKey = f.invoiceNumber === null ? null : normalise(f.invoiceNumber) || null;
+  const day = realDay(f.dateText);
+  const otherTotal = otherTotalOf(f.other);
+  const duplicates = await findDuplicates(db, { originalId, supplierKey, supplierId: matched?.id ?? null, invoiceKey, date: day, total: f.total });
+  const rateMilli = hstRateMilli(config);
+  const checks: CheckResult[] = [
+    checkLinesAddUp(f.lines, f.subtotal),
+    checkPartsAddUp({ subtotal: f.subtotal, hst: f.hst, otherTotal, total: f.total }),
+    checkHstPlausible({ lines: f.lines, subtotal: f.subtotal, hst: f.hst }, rateMilli),
+    checkDate(f.dateText, now),
+    checkDuplicates({ supplierName: f.supplierName, invoiceNumber: f.invoiceNumber, date: day, total: f.total, supplierKnown: supplierKey !== null || matched !== null }, duplicates),
+    checkSupplierHst(f.supplierHst),
+    overrule ? checkChosenBusiness(chosen, decision) : checkBusiness(decision),
+  ];
+  return {
+    decision,
+    business: overrule ? chosen : decision.business,
+    decidedBy: overrule ? ["person"] : decision.decidedBy,
+    signsSaid: overrule ? { business: decision.business, decidedBy: decision.decidedBy } : null,
+    supplier: matched,
+    supplierKey,
+    invoiceKey,
+    day,
+    otherTotal,
+    duplicates,
+    rateMilli,
+    checks,
+  };
+}
+
 /**
  * Make the draft of one original, in `tx` (decisions 1 to 13 of card P5-05a): read and check the fields,
  * take the drafts' lock, lock the original, decide the business, match the supplier, look for
@@ -773,40 +892,59 @@ const textOrNull = (c: number | null): string | null => (c === null ? null : cen
  * draft and its lines, mark the original drafted, audit. Refusals write nothing.
  */
 export async function propose(tx: Tx, input: Record<string, unknown>, reader: Reader, config: Config, now: Date): Promise<ProposeResult> {
-  const f = readFields(input);
+  return writeReading(tx, readFields(input), reader, { mode: "propose" }, config, now);
+}
+
+/** Who made a reading, as a person reads it. */
+export async function whoRead(db: Db, purchaseId: string): Promise<string> {
+  const r = await db.maybeOne<{ read_by_kind: string; name: string | null; read_by: string; label: string | null }>(
+    "select p.read_by_kind, st.name, p.read_by, ak.label from ops.purchase_receipts p left join ops.staff st on st.staff_id = p.read_by left join ops.assistant_keys ak on ak.key_id = p.read_by_key where p.purchase_id = $1",
+    [purchaseId],
+  );
+  if (r === null) return "someone";
+  const name = (r.name ?? r.read_by).trim();
+  return r.read_by_kind === "assistant" ? `${name}'s assistant (${r.label ?? "a key"})` : name;
+}
+
+/** The drafts' lock: every reading, confirm and void takes it first, then the original's row (card P5-05b). */
+export const takeReadingsLock = async (tx: Tx): Promise<void> => {
+  await tx.query(LOCK);
+};
+
+/** Write one reading of an original (see WriteMode): the one path for proposals, corrections and the draft a void makes. */
+export async function writeReading(tx: Tx, f: Fields, reader: Reader, how: WriteMode, config: Config, now: Date): Promise<ProposeResult> {
   if (!ORIGINAL_ID.test(f.originalId)) throw refuse("No receipt original with that id.");
-  // One proposal at a time, for every original: two readings of one original at once are taken one
+  // One reading at a time, for every original: two readings of one original at once are taken one
   // after the other (the second supersedes the first), and the duplicate check sees the other's row.
+  // Confirming and voiding (review.ts) take the same lock first, then the original's row.
   await tx.query(LOCK);
   const orig = await tx.maybeOne<{ status: string; business: Business | null }>("select status, business from ops.receipt_originals where receipt_id = $1 for update", [f.originalId]);
   if (orig === null) throw refuse("No receipt original with that id.");
   if (orig.status === "set_aside") throw refuse("That receipt original is set aside (it is not a receipt). A person can put it back first.");
+  if (orig.status === "confirmed") throw refuse(ON_THE_BOOKS);
   const current = await tx.maybeOne<{ purchase_id: string; read_by_kind: string }>("select purchase_id, read_by_kind from ops.purchase_receipts where original_id = $1 and status = 'draft' for update", [f.originalId]);
-  if (current !== null && current.read_by_kind === "person") throw refuse("A person is working on this one: its draft was typed or changed by a person, so it cannot be replaced by a proposal.");
+  if (how.mode === "propose" && current !== null && current.read_by_kind === "person") throw refuse("A person is working on this one: its draft was typed or changed by a person, so it cannot be replaced by a proposal.");
+  if (how.mode === "correct") {
+    if (current === null) throw refuse("There is no draft of this original to correct.");
+    if (how.draftId !== null && how.draftId !== current.purchase_id) throw refuse(`This draft was replaced by a newer reading (by ${await whoRead(tx, current.purchase_id)}) since you opened it: open it again.`);
+  }
+  if (how.mode === "redo" && current !== null) throw refuse("This original already has a live draft.");
 
-  const decision = decideBusiness({ ...f.buyer, paidCardLast4: f.paidCard, supplierName: f.supplierName }, await liveSigns(tx), orig.business);
-  const supplier = await matchSupplier(tx, f.supplierName);
-  const supplierKey = f.supplierName === null ? null : normalise(f.supplierName) || null;
-  const invoiceKey = f.invoiceNumber === null ? null : normalise(f.invoiceNumber) || null;
-  const day = realDay(f.dateText);
-  const otherTotal = otherTotalOf(f.other);
-  const duplicates = await findDuplicates(tx, { originalId: f.originalId, supplierKey, supplierId: supplier?.id ?? null, invoiceKey, date: day, total: f.total });
-  const rateMilli = hstRateMilli(config);
-  const checks: CheckResult[] = [
-    checkLinesAddUp(f.lines, f.subtotal),
-    checkPartsAddUp({ subtotal: f.subtotal, hst: f.hst, otherTotal, total: f.total }),
-    checkHstPlausible({ lines: f.lines, subtotal: f.subtotal, hst: f.hst }, rateMilli),
-    checkDate(f.dateText, now),
-    checkDuplicates({ supplierName: f.supplierName, invoiceNumber: f.invoiceNumber, date: day, total: f.total, supplierKnown: supplierKey !== null || supplier !== null }, duplicates),
-    checkSupplierHst(f.supplierHst),
-    checkBusiness(decision),
-  ];
-  const needsAttention = checks.some((c) => c.passed === false);
+  let chosenSupplier: SupplierRef | null = null;
+  if (how.mode !== "propose" && how.supplierId !== null) {
+    chosenSupplier = await supplierById(tx, how.supplierId);
+    if (chosenSupplier === null) throw refuse("No supplier with that id.");
+    if (!chosenSupplier.active && how.mode === "correct") throw refuse(`${chosenSupplier.displayName} is no longer an active supplier: choose another, or make it active again on the supplier list.`);
+  }
+  const chosenBusiness = how.mode === "propose" ? null : how.business;
+  const c = await runChecks(tx, f, f.originalId, orig.business, chosenBusiness, chosenSupplier, config, now);
+  const needsAttention = c.checks.some((x) => x.passed === false);
+  const supersedes = how.mode === "redo" ? null : (current?.purchase_id ?? null);
 
   const id = newPurchaseId();
-  if (current !== null) {
+  if (supersedes !== null) {
     // The older reading first (the one-live-reading index); superseded_by is checked at commit.
-    await tx.query("update ops.purchase_receipts set status = 'superseded', superseded_by = $2, superseded_at = $3 where purchase_id = $1", [current.purchase_id, id, now]);
+    await tx.query("update ops.purchase_receipts set status = 'superseded', superseded_by = $2, superseded_at = $3 where purchase_id = $1", [supersedes, id, now]);
   }
   await tx.query(
     `insert into ops.purchase_receipts (
@@ -816,9 +954,9 @@ export async function propose(tx: Tx, input: Record<string, unknown>, reader: Re
        supplier_id, supplier_name, supplier_name_key, supplier_hst_number, invoice_number, invoice_key,
        receipt_date, receipt_date_text, paid_how, paid_card_last4,
        subtotal, hst, total, other_total, other_charges, hst_rate_percent, kind,
-       needs_attention, checks, where_read, reader_note, supersedes)
+       needs_attention, checks, where_read, reader_note, supersedes, signs_business, signs_decided_by, redo_of)
      values ($1, $2, 'draft', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
-             $22::date, $23, $24, $25, $26::numeric, $27::numeric, $28::numeric, $29::numeric, $30, $31::numeric, $32, $33, $34, $35, $36, $37)`,
+             $22::date, $23, $24, $25, $26::numeric, $27::numeric, $28::numeric, $29::numeric, $30, $31::numeric, $32, $33, $34, $35, $36, $37, $38, $39, $40)`,
     [
       id,
       f.originalId,
@@ -826,37 +964,40 @@ export async function propose(tx: Tx, input: Record<string, unknown>, reader: Re
       reader.kind === "assistant" ? reader.keyId : null,
       reader.staffId,
       now,
-      decision.business,
-      decision.decidedBy,
-      JSON.stringify(decision.matched.map((m) => ({ sign_id: m.signId, business: m.business, kind: m.kind, value: m.value, supplier: m.supplier }))),
+      c.business,
+      c.decidedBy,
+      JSON.stringify(c.decision.matched.map((m) => ({ sign_id: m.signId, business: m.business, kind: m.kind, value: m.value, supplier: m.supplier }))),
       orig.business,
       f.buyer.name,
       f.buyer.hstNumber,
       f.buyer.accountNumber,
       f.buyer.cardLast4,
       f.suggested,
-      supplier?.id ?? null,
+      c.supplier?.id ?? null,
       f.supplierName,
-      supplierKey,
+      c.supplierKey,
       f.supplierHst,
       f.invoiceNumber,
-      invoiceKey,
-      day,
+      c.invoiceKey,
+      c.day,
       f.dateText,
       f.paidHow,
       f.paidCard,
       textOrNull(f.subtotal),
       textOrNull(f.hst),
       centsText(f.total),
-      textOrNull(otherTotal),
+      textOrNull(c.otherTotal),
       f.other.length === 0 ? null : JSON.stringify(f.other.map((o) => ({ label: o.label, amount: centsText(o.amount) }))),
-      quantityText(rateMilli),
+      quantityText(c.rateMilli),
       f.kind,
       needsAttention,
-      JSON.stringify(checks),
+      JSON.stringify(c.checks),
       f.whereRead === null ? null : JSON.stringify(f.whereRead),
       f.note,
-      current?.purchase_id ?? null,
+      supersedes,
+      c.signsSaid?.business ?? null,
+      c.signsSaid?.decidedBy ?? null,
+      how.mode === "redo" ? how.voidedId : null,
     ],
   );
   if (f.lines.length > 0) {
@@ -868,43 +1009,64 @@ export async function propose(tx: Tx, input: Record<string, unknown>, reader: Re
     });
     await tx.query(`insert into ops.purchase_receipt_lines (purchase_id, line_no, description, item_code, quantity, unit_price, line_total, taxed) values ${values.join(", ")}`, params);
   }
-  if (orig.status === "waiting") await tx.query("update ops.receipt_originals set status = 'drafted' where receipt_id = $1", [f.originalId]);
+  if (orig.status !== "drafted") await tx.query("update ops.receipt_originals set status = 'drafted' where receipt_id = $1", [f.originalId]);
 
   const readBy = reader.kind === "assistant" ? { kind: "assistant", keyId: reader.keyId, staffId: reader.staffId } : { kind: "person", staffId: reader.staffId };
-  if (current !== null) {
-    await audit.write(tx, { actorId: reader.staffId, action: "receipt_draft.supersede", targetType: "purchase_receipts", targetId: current.purchase_id, before: { status: "draft" }, after: { status: "superseded", supersededBy: id } }, { now });
+  if (supersedes !== null) {
+    await audit.write(tx, { actorId: reader.staffId, action: "receipt_draft.supersede", targetType: "purchase_receipts", targetId: supersedes, before: { status: "draft" }, after: { status: "superseded", supersededBy: id } }, { now });
   }
+  const action = how.mode === "propose" ? "receipt_draft.create" : how.mode === "correct" ? "receipt_draft.correct" : "receipt_draft.redo";
   await audit.write(
     tx,
     {
       actorId: reader.staffId,
-      action: "receipt_draft.create",
+      action,
       targetType: "purchase_receipts",
       targetId: id,
       after: {
         originalId: f.originalId,
         readBy,
-        supersedes: current?.purchase_id ?? null,
+        supersedes,
+        ...(how.mode === "redo" ? { redoOf: how.voidedId } : {}),
         supplierName: f.supplierName,
-        supplierId: supplier?.id ?? null,
+        supplierId: c.supplier?.id ?? null,
         invoiceNumber: f.invoiceNumber,
         date: f.dateText,
         subtotal: textOrNull(f.subtotal),
         hst: textOrNull(f.hst),
-        otherTotal: textOrNull(otherTotal),
+        otherTotal: textOrNull(c.otherTotal),
         total: centsText(f.total),
         lines: f.lines.length,
-        business: decision.business,
-        decidedBy: decision.decidedBy,
+        business: c.business,
+        decidedBy: c.decidedBy,
+        ...(c.signsSaid !== null ? { signsSaid: c.signsSaid } : {}),
         suggestedBusiness: f.suggested,
         needsAttention,
-        failed: checks.filter((c) => c.passed === false).map((c) => c.check),
+        failed: c.checks.filter((x) => x.passed === false).map((x) => x.check),
         originalStatus: "drafted",
       },
     },
     { now },
   );
-  return { draft: await loadDraft(tx, id), replaced: current?.purchase_id ?? null };
+  return { draft: await loadDraft(tx, id), replaced: supersedes };
+}
+
+/** A stored reading as the input `readFields` takes: to re-run the checks on it, or to copy it (a void's redo). */
+export function inputOf(d: DraftView): Record<string, unknown> {
+  return {
+    original_id: d.originalId ?? "",
+    supplier: { name: d.supplier.name, hst_number: d.supplier.hstNumber },
+    invoice_number: d.invoiceNumber,
+    date: d.dateAsRead,
+    paid: d.paid === null ? null : { how: d.paid.how, card_last4: d.paid.cardLast4 },
+    amounts: { subtotal: d.amounts.subtotal, hst: d.amounts.hst, total: d.amounts.total, other: d.amounts.other.map((o) => ({ label: o.label, amount: o.amount })) },
+    kind: d.kind,
+    buyer: { name: d.buyer.name, hst_number: d.buyer.hstNumber, account_number: d.buyer.accountNumber, card_last4: d.buyer.cardLast4 },
+    suggested_business: d.suggestedBusiness,
+    lines: d.lines.map((l) => ({ description: l.description, code: l.code, quantity: l.quantity, unit_price: l.unitPrice, total: l.total, taxed: l.taxed })),
+    where_read: d.whereRead,
+    note: d.note,
+  };
 }
 
 // ── Set aside and put back (called by originals.setAside) ──
@@ -934,9 +1096,17 @@ export interface DraftProposal {
   made_at: string;
   decided_at: string | null;
   note: string;
+  /** Only when confirmed (card P5-05b): how many fields the reviewer changed. A number, never the values. */
+  fields_changed?: number;
 }
 
-/** A key's drafts as proposals, newest first: waiting while a draft; refused when superseded or its original was set aside. */
+/**
+ * A key's drafts as proposals, newest first. A draft's fate follows its chain of readings: replaced by
+ * another proposal (this key's or another assistant's), it is refused; corrected by a person (card
+ * P5-05b: a correction is a new reading that supersedes), it shares the fate of the last reading:
+ * waiting for review, confirmed (with how many fields the reviewer changed, compared with the first
+ * reading of the original), voided (refused), or its original set aside (refused).
+ */
 export async function proposals(db: Db, keyId: string, opts: { status?: ProposalStatus | undefined; limit: number }): Promise<DraftProposal[]> {
   const rows = await db.query<{
     purchase_id: string;
@@ -945,23 +1115,42 @@ export async function proposals(db: Db, keyId: string, opts: { status?: Proposal
     status: DraftStatus;
     superseded_by: string | null;
     superseded_at: Date | null;
-    needs_attention: boolean;
     failed: number;
     original_status: string | null;
     set_aside_at: Date | null;
     new_kind: string | null;
     new_key: string | null;
+    last_id: string;
+    last_status: DraftStatus;
+    last_failed: number;
+    confirmed_at: Date | null;
+    voided_at: Date | null;
+    last_business: Business | null;
+    changed: number | null;
     shown: ProposalStatus;
   }>(
-    `select * from (
-       select p.purchase_id, p.original_id, p.read_at, p.status, p.superseded_by, p.superseded_at, p.needs_attention,
+    `with recursive walk (start_id, cur_id, depth) as (
+         select purchase_id, purchase_id, 0 from ops.purchase_receipts where read_by_key = $1
+         union all
+         select w.start_id, p.superseded_by, w.depth + 1
+           from walk w join ops.purchase_receipts p on p.purchase_id = w.cur_id
+          where p.superseded_by is not null and w.depth < 1000),
+       last as (select distinct on (start_id) start_id, cur_id from walk order by start_id, depth desc)
+     select * from (
+       select p.purchase_id, p.original_id, p.read_at, p.status, p.superseded_by, p.superseded_at,
               (select count(*)::int from jsonb_array_elements(p.checks) c where c->>'passed' = 'false') as failed,
               o.status as original_status, o.set_aside_at, n.read_by_kind as new_kind, n.read_by_key as new_key,
-              case when p.status = 'draft' and o.status = 'set_aside' then 'refused'
-                   when p.status = 'draft' then 'waiting'
-                   when p.status = 'confirmed' then 'confirmed'
+              t.purchase_id as last_id, t.status as last_status,
+              (select count(*)::int from jsonb_array_elements(t.checks) c where c->>'passed' = 'false') as last_failed,
+              t.confirmed_at, t.voided_at, t.business as last_business, (t.review_changes->>'count')::int as changed,
+              case when n.read_by_kind = 'assistant' then 'refused'
+                   when t.status = 'draft' and o.status = 'set_aside' then 'refused'
+                   when t.status = 'draft' then 'waiting'
+                   when t.status = 'confirmed' then 'confirmed'
                    else 'refused' end as shown
          from ops.purchase_receipts p
+         join last l on l.start_id = p.purchase_id
+         join ops.purchase_receipts t on t.purchase_id = l.cur_id
          left join ops.receipt_originals o on o.receipt_id = p.original_id
          left join ops.purchase_receipts n on n.purchase_id = p.superseded_by
         where p.read_by_key = $1) x
@@ -973,15 +1162,25 @@ export async function proposals(db: Db, keyId: string, opts: { status?: Proposal
   return rows.map((r) => {
     const base = { id: r.purchase_id, kind: "receipt_draft" as const, status: r.shown, made_at: r.read_at.toISOString() };
     const of = `receipt original ${r.original_id ?? "(none)"}`;
-    if (r.status === "superseded") {
-      const by = r.new_key === keyId ? `this key's own later proposal ${r.superseded_by}` : r.new_kind === "person" ? `a draft typed by a person (${r.superseded_by})` : `another assistant's later proposal (${r.superseded_by})`;
+    if (r.status === "superseded" && r.new_kind === "assistant") {
+      const by = r.new_key === keyId ? `this key's own later proposal ${r.superseded_by}` : `another assistant's later proposal (${r.superseded_by})`;
       return { ...base, decided_at: r.superseded_at?.toISOString() ?? null, note: `Replaced by ${by}.` };
     }
-    if (r.shown === "refused" && r.original_status === "set_aside") {
-      return { ...base, decided_at: r.set_aside_at?.toISOString() ?? null, note: `Its ${of} was set aside by a person (not a receipt): the draft is out of the live list.` };
+    const corrected = r.last_id !== r.purchase_id ? ` A person corrected it (${r.last_id}).` : "";
+    if (r.shown === "refused" && r.last_status === "draft" && r.original_status === "set_aside") {
+      return { ...base, decided_at: r.set_aside_at?.toISOString() ?? null, note: `Its ${of} was set aside by a person (not a receipt): the draft is out of the live list.${corrected}` };
     }
-    if (r.shown === "confirmed") return { ...base, decided_at: null, note: `Confirmed by a person, from ${of}.` };
-    const checks = r.failed === 0 ? "All checks passed." : `Needs attention: ${r.failed} check${r.failed === 1 ? "" : "s"} failed.`;
-    return { ...base, decided_at: null, note: `A draft of ${of}, waiting for a person to review it. ${checks}` };
+    if (r.last_status === "confirmed") {
+      const n = r.changed ?? 0;
+      return {
+        ...base,
+        decided_at: r.confirmed_at?.toISOString() ?? null,
+        fields_changed: n,
+        note: `Confirmed by a person onto the books of ${r.last_business ?? "(none)"}, from ${of}: ${n === 0 ? "nothing was changed" : `${n} field${n === 1 ? " was" : "s were"} changed`} at review, compared with the first reading of the original.`,
+      };
+    }
+    if (r.last_status === "voided") return { ...base, decided_at: r.voided_at?.toISOString() ?? null, note: `Confirmed, then voided by a person (a mistake found later), from ${of}: it is no longer on the books.` };
+    const checks = r.last_failed === 0 ? "All checks passed." : `Needs attention: ${r.last_failed} check${r.last_failed === 1 ? "" : "s"} failed.`;
+    return { ...base, decided_at: null, note: `A draft of ${of}, waiting for a person to review it.${corrected} ${checks}` };
   });
 }

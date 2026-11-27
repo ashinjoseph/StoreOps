@@ -85,7 +85,7 @@ hand one out.
 | P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02b | | done (switched off; five questions for the till side, in the card) |
 | P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | postponed (the owner, Nov 27: assistants through MCP first) |
 | P5-05a | Receipt drafts: what was read off a receipt, checked by the app | T3 | P5-12b | money | done (kinds of receipt it does not hold well, for the owner, in the card) |
-| P5-05b | Review a draft beside the original: correct, confirm, void; learn signs and supplier spellings | T3 | P5-05a | money | in progress |
+| P5-05b | Review a draft beside the original: correct, confirm, void; learn signs and supplier spellings | T3 | P5-05a | money | done (notes and questions in the card) |
 | P5-06 | Receipt test set through each assistant | T2 + owner | P5-05b, P5-10 | | todo |
 | P5-07 | Delivery runs: spec first, then build | T3 | P5-02a | | spec drafted, with the owner (eight questions; needs new calls from the till side) |
 | P5-08 | Send a vape delivery to the till, on a button | T2 | P5-05, P1-02 | money | todo |
@@ -1374,6 +1374,45 @@ bookkeeper to say which matter):
 6. A statement covering several invoices: one draft, one invoice number.
 Also: nothing creates a supplier yet (P5-05b does, from the review screen),
 so no draft's supplier is matched until then.
+
+**P5-05b is done.** On the Receipts screen, a draft in "Read, waiting for
+review" opens the review: the original on top (beside the fields on a wide
+screen), every field editable, each failed check as a sentence.
+- **Corrections are new readings.** Saving never changes a row's figures:
+  it adds a reading that replaces the live one, and the checks and the
+  business decision run again.
+- **Confirm** needs a date, a kind of purchase, a business and a supplier.
+  The last sheet says in large words whose books it goes on. Failed checks
+  need a typed reason; a duplicate of a receipt already on the books can be
+  confirmed only by an admin, with the reason.
+- **The app learns, by a tick.** On confirming, each thing printed about the
+  buyer that is not yet a sign is offered as a new sign for that business,
+  unticked; only an admin can add one. A supplier is picked or created, and
+  its printed spelling remembered. In the trial run, a card ticked on one
+  receipt decided the business of the next receipt paid with it.
+- **Confirmed is final.** Nobody can change a confirmed receipt: the
+  database itself refuses. A mistake is **voided** with a reason (it stays
+  listed, struck through, out of the totals) and its original returns to
+  review with the same figures, to be corrected and confirmed again.
+- **On the books:** one business at a time, never both; filtered by date,
+  supplier and kind; totals in cents; voided ones shown and not counted.
+- **What the reviewer changed** is recorded field by field against the first
+  reading; an assistant sees only how many fields were changed.
+Migration `0014_receipt_review.sql`;
+[ADR-0029](../adr/0029-a-confirmed-receipt-is-final-and-a-mistake-is-voided.md).
+The supplier calls are named `rpcGetReceiptSuppliers` and so on, because the
+old app already has an `rpcGetSuppliers` for its own, deprecated list.
+Notes and questions:
+1. **On a phone the review is cramped:** the original keeps the top third
+   and about twenty fields scroll under it. It works; a wide screen reads
+   much better. Worth knowing before deciding who reviews, and on what.
+2. A receipt bought for one business with the other's card asks for a
+   reason (overruling the signs is a failed check). Right?
+3. "On the books" is ordered by when a receipt was confirmed. Should the
+   bookkeeper's default be the receipt's own date?
+4. There is no screen yet to rename or retire a supplier (the calls exist).
+5. The export will need its own mark for "already exported"; a confirmed
+   receipt cannot carry it, so it will live beside the receipt.
 
 ## Phase 6 — App
 

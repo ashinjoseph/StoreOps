@@ -75,6 +75,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [0026. Receipt originals are kept as received, and served back only to a signed-in session](docs/adr/0026-receipt-originals-are-kept-as-received.md)
 - [0027. A reader reports what is printed; the app decides the business and checks the arithmetic](docs/adr/0027-the-app-decides-the-business-and-checks-the-arithmetic.md)
 - [0028. The app makes its own nightly copy of every table, and a restore tool proves it](docs/adr/0028-the-app-makes-its-own-nightly-copy.md)
+- [0029. A confirmed receipt is final; a mistake is voided and done again](docs/adr/0029-a-confirmed-receipt-is-final-and-a-mistake-is-voided.md)
 
 ## Guides
 

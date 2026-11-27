@@ -27,8 +27,8 @@ import * as drafts from "./drafts";
 import { type ContentType } from "./sniff";
 import type { ReceiptStorage } from "./storage";
 
-/** drafted (card P5-05a): read, its draft waiting for review (ops/src/receipts/drafts.ts). */
-export const STATUSES = ["waiting", "drafted", "set_aside"] as const;
+/** drafted (card P5-05a): read, its draft waiting for review (ops/src/receipts/drafts.ts). confirmed (card P5-05b): its receipt is on the books (review.ts). */
+export const STATUSES = ["waiting", "drafted", "confirmed", "set_aside"] as const;
 export type Status = (typeof STATUSES)[number];
 export const SOURCES = ["photo", "upload"] as const;
 export type Source = (typeof SOURCES)[number];
@@ -278,7 +278,7 @@ export async function inbox(db: Db, viewer: Viewer, input: InboxInput, now: Date
     const rows = await db.query<Row>(`${SELECT} where o.added_by = $1 and o.added_at > $2 order by o.added_at desc, o.receipt_id desc limit $3`, [viewer.staffId, since, PAGE_MAX]);
     return { scope: "own", days: EMPLOYEE_DAYS, items: rows.map((r) => view(r, viewer)) };
   }
-  const status: Status = input.status === "set_aside" ? "set_aside" : input.status === "drafted" ? "drafted" : "waiting";
+  const status: Status = input.status === "set_aside" ? "set_aside" : input.status === "drafted" ? "drafted" : input.status === "confirmed" ? "confirmed" : "waiting";
   const limitIn = typeof input.limit === "number" && Number.isInteger(input.limit) ? input.limit : PAGE_DEFAULT;
   const limit = Math.min(Math.max(limitIn, 1), PAGE_MAX);
   const before = typeof input.before === "string" && ID.test(input.before) ? input.before : null;
@@ -290,7 +290,7 @@ export async function inbox(db: Db, viewer: Viewer, input: InboxInput, now: Date
       limit $3`,
     [status, before, limit + 1],
   );
-  const counts: Record<Status, number> = { waiting: 0, drafted: 0, set_aside: 0 };
+  const counts: Record<Status, number> = { waiting: 0, drafted: 0, confirmed: 0, set_aside: 0 };
   for (const c of await db.query<{ status: Status; n: number }>("select status, count(*)::int as n from ops.receipt_originals group by status")) {
     if (c.status in counts) counts[c.status] = c.n;
   }
@@ -402,6 +402,8 @@ export async function setAside(tx: Tx, input: { id?: unknown; aside?: unknown; r
   const row = await lockOne(tx, input.id);
   if (input.aside) {
     if (row.status === "set_aside") return { record: view(row, viewer), changed: false };
+    // A confirmed original's receipt is on the books (card P5-05b): it is voided first, then set aside if need be.
+    if (row.status === "confirmed") throw new Error("This receipt is on the books: it cannot be set aside. Void it first (it goes back to Read, waiting for review); then it can be set aside if it is not a receipt.");
     if (row.status !== "waiting" && row.status !== "drafted") throw new Error("Only an original that is waiting or read can be set aside.");
     const raw = typeof input.reason === "string" ? input.reason : "";
     if (/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(raw)) throw new Error("The reason cannot contain a line break or other control character.");

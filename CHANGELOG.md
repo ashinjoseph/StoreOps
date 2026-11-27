@@ -1725,3 +1725,45 @@ read key proposing, an assistant replacing a hand-typed draft, a removed sign
 counted, a duplicate missed in the other business, a supplier created from an
 assistant's draft, two live drafts for one original, a third decimal accepted on
 money, a fifth decimal accepted on a unit price).
+
+### Receipts: review beside the original, confirm onto one business's books, void a mistake (P5-05b)
+
+In the Operations app only. A person now makes a receipt count.
+
+- **Review.** An admin or a manager taps a receipt in *Read, waiting for
+  review* and sees the original (on a phone above the fields, kept in sight and
+  made large on request; on a wide screen beside them) with every field
+  editable: the supplier as printed and the supplier on the list (find by any
+  spelling, or add a new one), invoice number, date, how paid, subtotal, HST,
+  other charges, total, kind, what is printed about the buyer, the business
+  (as the signs say, or chosen) and the lines. **Save corrections** keeps a new
+  reading (the old one is kept unchanged) and the app re-runs every check and
+  the business decision; each failed check reads as a sentence. Typing the
+  figures by hand now goes straight into the review.
+- **Confirm.** Needs a date, a kind, a business and a supplier besides the
+  total. The last sheet says in large words *This goes on the books of
+  <business>*, lists any failed check (a reason is then required) and offers,
+  unticked, each card, name, HST number or account printed on the receipt that
+  is not yet a sign of that business (an admin may tick them; a manager sees
+  them greyed), and *remember this spelling* of the supplier. A duplicate of a
+  receipt already on the books needs an admin. A confirmed receipt cannot be
+  changed by anyone, and records what the reviewer changed compared with the
+  first reading.
+- **On the books.** A new group for admin, manager and payroll admin, one
+  business at a time (never both together): newest first, filtered by date
+  and kind, with the count, subtotal, HST and total of the filter. A receipt
+  opens read only beside its original, with what was changed and who read it.
+- **Void.** An admin or a manager voids a confirmed receipt with a reason: it
+  stays on the list, marked voided and out of the totals, and the original goes
+  back to review with a copy of its figures to correct and confirm again. Signs
+  and spellings learnt from it are listed and not removed.
+- An employee sees that their receipt *is on the books*. An assistant's
+  `my_proposals` shows a draft confirmed (with how many fields were changed) or
+  refused; no assistant tool can confirm, correct or void.
+- Migration 0014 (columns on the receipt tables, the status *confirmed*, and a
+  trigger that keeps a confirmed receipt final), eight new RPCs and ADR-0029.
+
+New: `ops/test/receipt-review.test.ts` (48 tests) and the review, confirm,
+books and void assertions in the `ui-receipts` suite, seen failing first (no
+module, no functions) and against fourteen deliberate mutations, each restored
+byte for byte.

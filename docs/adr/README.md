@@ -41,6 +41,7 @@ requests and the code. Their dates are when the decision took effect.
 | [0026](0026-receipt-originals-are-kept-as-received.md) | Receipt originals are kept as received, and served back only to a signed-in session | Accepted | 2026-11 |
 | [0027](0027-the-app-decides-the-business-and-checks-the-arithmetic.md) | A reader reports what is printed; the app decides the business and checks the arithmetic | Accepted | 2026-11 |
 | [0028](0028-the-app-makes-its-own-nightly-copy.md) | The app makes its own nightly copy of every table, and a restore tool proves it | Accepted | 2026-11 |
+| [0029](0029-a-confirmed-receipt-is-final-and-a-mistake-is-voided.md) | A confirmed receipt is final; a mistake is voided and done again | Accepted | 2026-11 |
 
 ## When to write one
 

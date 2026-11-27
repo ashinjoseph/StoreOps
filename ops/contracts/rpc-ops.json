@@ -34,6 +34,14 @@
     { "name": "rpcGetSalesByChannel", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
     { "name": "rpcRunBackupNow", "params": ["token"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcGetReceiptDraft", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
-    { "name": "rpcEnterReceiptDraft", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true }
+    { "name": "rpcEnterReceiptDraft", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcGetReceiptReview", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
+    { "name": "rpcSaveReceiptCorrection", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcConfirmReceipt", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcVoidReceipt", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcGetReceiptSuppliers", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
+    { "name": "rpcCreateReceiptSupplier", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcUpdateReceiptSupplier", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcGetReceiptBooks", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true }
   ]
 }

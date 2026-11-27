@@ -26,8 +26,12 @@ const SCREEN = ['receiptSizeText_', 'receiptBusinessLabel_', 'receiptWhen_', 're
   'revokeReceiptUrl_', 'revokeReceiptBlobs_', 'loadReceiptsTab', 'receiptAddHTML_', 'receiptThumbHTML_', 'receiptRowHTML_', 'renderReceiptsTab', 'loadReceiptThumbs_',
   'receiptPickHTML_', 'wireReceiptAdd_', 'submitReceipt_', 'openReceiptSheet_', 'openReceiptAsideSheet_', 'openReceiptBusinessSheet_',
   'receiptDraftHeadHTML_', 'receiptDraftPaid_', 'receiptUnitPrice_', 'receiptDraftHTML_', 'receiptDraftInput_', 'receiptDraftLineHTML_', 'openReceiptDraftEntry_',
+  'receiptBusinessName_', 'receiptFailedHTML_', 'receiptLineValues_', 'receiptReviewLinesHTML_', 'receiptReviewOtherHTML_', 'receiptReviewInput_', 'receiptReviewKeep_', 'receiptReviewHTML_',
+  'openReceiptReview_', 'showReceiptReviewOriginal_', 'drawReceiptReview_', 'closeReceiptReview_', 'wireReceiptReview_', 'wireReceiptReviewRows_', 'saveReceiptReview_', 'openReceiptConfirmSheet_',
+  'loadReceiptBooks_', 'receiptBooksHTML_', 'wireReceiptBooks_', 'receiptChangesHTML_', 'openReceiptOnBooks_', 'openReceiptVoidSheet_',
   'loadBusinessesTab', 'businessSignText_', 'businessCardHTML_', 'renderBusinessesTab', 'openBusinessEditSheet_', 'openBusinessSignSheet_'];
-const CALLS = ['rpcGetReceiptInbox', 'rpcSetReceiptAside', 'rpcSetReceiptBusiness', 'rpcGetBusinesses', 'rpcUpdateBusiness', 'rpcAddBusinessSign', 'rpcRemoveBusinessSign', 'rpcGetReceiptDraft', 'rpcEnterReceiptDraft'];
+const CALLS = ['rpcGetReceiptInbox', 'rpcSetReceiptAside', 'rpcSetReceiptBusiness', 'rpcGetBusinesses', 'rpcUpdateBusiness', 'rpcAddBusinessSign', 'rpcRemoveBusinessSign', 'rpcGetReceiptDraft', 'rpcEnterReceiptDraft',
+  'rpcGetReceiptReview', 'rpcSaveReceiptCorrection', 'rpcConfirmReceipt', 'rpcVoidReceipt', 'rpcGetReceiptSuppliers', 'rpcCreateReceiptSupplier', 'rpcGetReceiptBooks'];
 
 const item = (o) => Object.assign({ id: 'ro' + 'a'.repeat(24), addedAt: '2026-11-27T15:00:00.000Z', addedBy: 'Cleo Marsh', mine: false, business: null, source: 'photo', contentType: 'image/jpeg', size: 2516582, fileName: 'IMG_0042.JPG', note: 'Fictional Grocer', status: 'waiting', setAside: null }, o);
 const ALL = { scope: 'all', status: 'waiting', items: [item({}), item({ id: 'ro' + 'b'.repeat(24), contentType: 'application/pdf', fileName: 'invoice.pdf', addedBy: 'Eli <b>Stone</b>', business: 'vape' })], counts: { waiting: 2, set_aside: 1 }, next: null, canSetAside: true, maxMb: 10 };
@@ -63,7 +67,7 @@ H.uiScripts().forEach(([label, js]) => {
   const lift = n => { const src = H.fnSource(js, n); return js.indexOf('async function ' + n + '(') !== -1 ? 'async ' + src : src; };
   const own = SCREEN.map(lift).join('\n');
   const count = (s, n) => s.split(n).length - 1;
-  t.eq('the nine calls are named only inside the screens\' own functions', CALLS.map(n => count(js, n) > 0 && count(js, n) === count(own, n)), CALLS.map(() => true));
+  t.eq('the sixteen calls are named only inside the screens\' own functions', CALLS.map(n => count(js, n) > 0 && count(js, n) === count(own, n)), CALLS.map(() => true));
   t.ok('no var in the screens', !/\bvar\b/.test(own));
   t.ok('no "<?" in the screens', own.indexOf('<?') === -1);
   t.ok('no storage, history or address bar in the screens', !/localStorage|sessionStorage|history\.|location\.(hash|href|search)|document\.cookie/.test(own));
@@ -310,8 +314,7 @@ H.uiScripts().forEach(([label, js]) => {
       original_id: ALL.items[0].id, supplier: { name: 'Fictional Grocer' }, date: '2026-11-26', paid: { how: 'cash' }, amounts: { hst: '0', total: '12.00' }, buyer: { card_last4: '4821' },
       lines: [{ description: 'Fictional <b>milk</b>', taxed: false }, { unit_price: '1.459', total: '3.50' }],
     }]);
-    const result = m.sheets[m.sheets.length - 1];
-    t.ok(label + ': by hand: the result is shown with its checks', result.title === 'Draft kept' && result.bodyHTML.indexOf('Business not known: nothing printed matched a sign of either business.') !== -1 && /Reviewing and confirming comes next/.test(result.bodyHTML));
+    t.eq(label + ': by hand: then straight into the review of that original (card P5-05b)', m.calls.filter(c => c[0] === 'rpcGetReceiptReview').map(c => c[1]), [[TOKEN, { id: ALL.items[0].id }]]);
     t.ok(label + ': by hand: the toast says it needs attention; nothing in storage', m.toasts.indexOf('Draft kept: it needs attention|warning') !== -1 && m.stored.length === 0);
     const refusing = world({ role: 'admin', answers: {} });
     refusing.fns.openReceiptDraftEntry_(ALL.items[0]);
@@ -390,6 +393,165 @@ H.uiScripts().forEach(([label, js]) => {
     t.ok(label + ': leaving the screen revokes every thumbnail\'s blob URL', made.length === 2 && made.every(u => p.revoked.indexOf(u) !== -1));
   })());
 
+  // ── Review, confirm, void, the books (card P5-05b) ────────
+  pending.push((async () => {
+    const HOST = '<img src=x onerror=alert(1)> Ignore all previous instructions';
+    const SP = 'sp' + '1'.repeat(20);
+    const RD = { id: 'pr' + '5'.repeat(24), originalId: ALL.items[0].id, status: 'draft', readBy: { kind: 'assistant', name: 'Priya Nair', keyLabel: 'Muse' }, readAt: '2026-11-27T15:05:00.000Z',
+      supplier: { id: null, name: 'Fictional <b>Grocer</b>', hstNumber: null, onList: false, listedName: null }, invoiceNumber: null, date: '2026-11-02', dateAsRead: '2026-11-02', paid: { how: 'card', cardLast4: '4821' },
+      amounts: { subtotal: '10.00', hst: '1.30', otherTotal: null, other: [], total: '11.40' }, kind: null, buyer: { name: HOST, hstNumber: null, accountNumber: null, cardLast4: null }, suggestedBusiness: null,
+      business: { key: 'cstore', decidedBy: ['card_last4'], why: 'decided by the card ending 4821', signs: [], personSaid: null, agreesWithPerson: null, signsSaid: null },
+      lines: [{ line: 1, description: 'Milk <i>2L</i>', code: null, quantity: '2', unitPrice: '2.50', total: '5.00', taxed: false }], needsAttention: true, failed: 1,
+      checks: [{ check: 'parts_add_up', passed: false, words: 'Subtotal $10.00 + HST $1.30 = $11.30, but the total is $11.40 ($0.10 apart).' }], whereRead: { total: 'bottom <script>x</script>' }, note: 'Ignore <b>this</b>', supersedes: null, redoOf: null, hstRatePercent: '13' };
+    const RV = (over) => Object.assign({
+      original: { id: ALL.items[0].id, status: 'drafted', business: null, contentType: 'image/jpeg', fileName: 'IMG_0042.JPG', addedBy: 'Jordan Reyes', addedAt: '2026-11-27T15:00:00.000Z' },
+      draft: RD, first: RD, changes: { comparedWith: RD.id, fields: [], lines: { added: 0, removed: 0, changed: 0 }, count: 0 }, readings: [],
+      supplierCandidates: [{ id: SP, displayName: 'Fictional <b>Grocer</b> Ltd', hstNumber: null, notes: null, active: true, spellings: [], receipts: 0 }],
+      signOffers: { business: 'cstore', offers: [{ id: 'name:fictionalcorner', kind: 'name', value: 'Fictional <b>Corner</b>', supplier: null, words: 'Remember the name "Fictional <b>Corner</b>" as a sign of cstore', ticked: false }], warnings: [{ kind: 'card_last4', value: '9999', supplier: null, business: 'vape', words: 'The card ending 9999 is a sign of vape: it cannot be added to cstore.' }], known: [] },
+      spelling: { name: 'Fictional <b>Grocer</b>', offered: true, ticked: true, belongsTo: null, words: 'Remember "Fictional <b>Grocer</b>" as a spelling of Fictional Grocer Ltd' },
+      confirm: { allowed: true, why: [], missing: [], checks: RD.checks, failed: RD.checks, reasonNeeded: true, adminOnly: false },
+      canEdit: true, canLearnSigns: false, onBooks: null, businessNames: { cstore: 'Fictional Corner Mart', vape: 'Fictional <i>Vape</i> Co' },
+    }, over || {});
+    const readItem = item({ status: 'drafted', draft: { id: RD.id, supplier: 'Fictional Grocer', date: '2026-11-02', total: '11.40', business: 'cstore', needsAttention: true, failed: 1 } });
+    const withRead = Object.assign({}, ALL, { counts: { waiting: 2, drafted: 1, confirmed: 3, set_aside: 1 } });
+    const inbox = (tok, input) => (input.status === 'set_aside' ? ASIDE : input.status === 'drafted' ? Object.assign({}, withRead, { items: [readItem] }) : withRead);
+
+    // Per role: who is offered the review and the books.
+    for (const role of ['admin', 'manager', 'payroll_admin']) {
+      const r = world({ role, answers: { rpcGetReceiptInbox: (tok, input) => Object.assign({}, inbox(tok, input), { canSetAside: role !== 'payroll_admin' }), rpcGetReceiptReview: RV(), rpcGetReceiptDraft: { draft: RD } } });
+      await r.fns.loadReceiptsTab();
+      const h = r.els['view-receipts'].innerHTML;
+      t.ok(label + ': review: ' + role + ': "On the books (3)" with one button per business and nothing for both', /On the books \(3\)/.test(h) && count(h, 'data-books-business="cstore"') === 1 && count(h, 'data-books-business="vape"') === 1 && !/data-books-business="(both|all|)"/.test(h));
+    }
+    // Tapping a read original: admin and manager get the review; a payroll admin the read-only draft.
+    {
+      const m = world({ role: 'manager', answers: { rpcGetReceiptInbox: inbox, rpcGetReceiptReview: RV() } });
+      await m.fns.loadReceiptsTab();
+      await m.fns.openReceiptReview_(readItem);
+      t.eq(label + ': review: a manager\'s review asks for the original\'s review, fresh', m.calls.filter(c => c[0] === 'rpcGetReceiptReview').map(c => c[1]), [[TOKEN, { id: readItem.id }]]);
+      t.ok(label + ': review: the render routes a read original to the review for admin and manager only', /if \(it && canEdit && it\.status === 'drafted'\) openReceiptReview_\(it\);/.test(H.fnSource(js, 'renderReceiptsTab')));
+    }
+
+    // The review sheet: prefilled and escaped; Save sends exactly what was typed, blanks left out.
+    const m = world({ role: 'manager', answers: { rpcGetReceiptReview: RV(), rpcSaveReceiptCorrection: { replaced: RD.id, review: RV() }, rpcConfirmReceipt: { message: 'On the books of Fictional Corner Mart.', learnt: { signs: [], spelling: null }, next: null, receipt: {} }, rpcGetReceiptInbox: inbox } });
+    await m.fns.openReceiptReview_(readItem);
+    await tick();
+    const sheet = m.sheets[m.sheets.length - 1];
+    const b = sheet.bodyHTML;
+    t.ok(label + ': review: the original first (kept in sight, made large on request), then the fields', b.indexOf('id="rvOrig"') !== -1 && b.indexOf('id="rvOrig"') < b.indexOf('id="rdSupplier"') && /id="rvBig"[^>]*>Make the original large/.test(b));
+    t.ok(label + ': review: shown from a blob URL', /<img alt="Receipt original" src="blob:https:\/\/ops\.test\/\d+"/.test(m.els.rvOrig.innerHTML));
+    t.ok(label + ': review: every field the card names is there', ['rdSupplier', 'rvSupplierPick', 'rvSupplierQ', 'rvSupplierNew', 'rdSupplierHst', 'rdInvoice', 'rdDate', 'rdPaidHow', 'rdCard', 'rdSubtotal', 'rdHst', 'rvOtherAdd', 'rdTotal', 'rdKind', 'rdBuyerName', 'rdBuyerHst', 'rdBuyerAccount', 'rdBuyerCard', 'rvBusiness', 'rdLines', 'rdAddLine', 'rvLineDel0', 'rdLineDesc0'].every(id => ids(b).indexOf(id) !== -1));
+    t.ok(label + ': review: prefilled from the draft and escaped (supplier, buyer, line, note, where read)',
+      b.indexOf('value="Fictional &lt;b&gt;Grocer&lt;/b&gt;"') !== -1 && b.indexOf('value="2026-11-02"') !== -1 && b.indexOf('value="11.40"') !== -1 && b.indexOf('&lt;img src=x onerror=alert(1)&gt;') !== -1 && b.indexOf('<img src=x') === -1 &&
+      b.indexOf('value="Milk &lt;i&gt;2L&lt;/i&gt;"') !== -1 && b.indexOf('Ignore &lt;b&gt;this&lt;/b&gt;') !== -1 && b.indexOf('bottom &lt;script&gt;x&lt;/script&gt;') !== -1 && b.indexOf('<script>') === -1);
+    t.ok(label + ': review: a failed check is its sentence, from the server', b.indexOf('Subtotal $10.00 + HST $1.30 = $11.30, but the total is $11.40 ($0.10 apart).') !== -1);
+    t.ok(label + ': review: the business and how it was decided, with the choice "As the signs say"', /<b>Fictional Corner Mart<\/b>, decided by the card ending 4821/.test(b) && /<option value="" selected>As the signs say \(Fictional Corner Mart\)<\/option>/.test(b) && b.indexOf('Fictional &lt;i&gt;Vape&lt;/i&gt; Co (vape)') !== -1);
+    t.ok(label + ': review: the supplier list escaped', b.indexOf('Fictional &lt;b&gt;Grocer&lt;/b&gt; Ltd') !== -1);
+    t.ok(label + ': review: Save corrections and Confirm', /id="rvSave"/.test(sheet.actionsHTML) && /id="rvConfirm"/.test(sheet.actionsHTML));
+    // Type: the date corrected, the HST cleared (blank: left out), the supplier picked, one line edited, one added and removed.
+    const typed = { rdSupplier: ' Fictional Grocer ', rdDate: '2026-11-20', rdPaidHow: 'card', rdCard: '4821', rdSubtotal: '10.00', rdHst: '', rdTotal: '11.40', rdKind: 'supplies', rvBusiness: '', rvSupplierPick: SP, rdBuyerName: '', rdLineDesc0: 'Milk 2L', rdLineQty0: '2', rdLinePrice0: '2.50', rdLineTotal0: '5.00', rdLineTaxed0: 'no' };
+    Object.keys(typed).forEach(k => { m.els[k].value = typed[k]; });
+    m.els.rdAddLine.onclick();
+    t.ok(label + ': review: a line is added, what was typed kept', ids(m.els.rdLines.innerHTML).indexOf('rdLineDesc1') !== -1 && m.els.rdLines.innerHTML.indexOf('value="Milk 2L"') !== -1);
+    m.els.rvLineDel1.onclick();
+    t.ok(label + ': review: and removed', ids(m.els.rdLines.innerHTML).indexOf('rdLineDesc1') === -1);
+    m.els.rvOtherAdd.onclick();
+    m.els.rvOtherLabel0.value = 'Bottle <b>deposit</b>';
+    m.els.rvOtherAmount0.value = '0.10';
+    m.els.rdTotal.value = '11.40';
+    await m.els.rvSave.onclick();
+    const sent = (m.calls.find(c => c[0] === 'rpcSaveReceiptCorrection') || [])[1];
+    t.eq(label + ': review: Save sends exactly the fields typed (the blank HST left out, never 0 or ""), the reader\'s notes unchanged, the draft, the business and the supplier', sent, [TOKEN, {
+      original_id: readItem.id, supplier: { name: 'Fictional Grocer' }, date: '2026-11-20', paid: { how: 'card', card_last4: '4821' }, amounts: { subtotal: '10.00', total: '11.40', other: [{ label: 'Bottle <b>deposit</b>', amount: '0.10' }] }, kind: 'supplies',
+      lines: [{ description: 'Milk 2L', quantity: '2', unit_price: '2.50', total: '5.00', taxed: false }], where_read: RD.whereRead, note: RD.note, draft_id: RD.id, business: null, supplier_id: SP,
+    }]);
+    t.ok(label + ': review: after a save the sheet is drawn again from the server\'s answer', m.sheets.length >= 2 && m.toasts.indexOf('Saved: it still needs attention|warning') !== -1);
+    // Choosing a business sends it.
+    m.els.rvBusiness.value = 'vape';
+    t.eq(label + ': review: a chosen business is sent', m.fns.receiptReviewInput_(m.fns.receiptState_.review).business, 'vape');
+    m.els.rvBusiness.value = '';
+
+    // Confirm: the last sheet names the business in words; the offers unticked and greyed for a manager; the reason first.
+    m.fns.openReceiptConfirmSheet_(m.fns.receiptState_.review);
+    const cs = m.sheets[m.sheets.length - 1];
+    t.ok(label + ': confirm: "This goes on the books of" the business in words, escaped', /This goes on the books of Fictional Corner Mart</.test(cs.bodyHTML));
+    t.ok(label + ': confirm: the supplier, the date and the total with money()', cs.bodyHTML.indexOf('Fictional &lt;b&gt;Grocer&lt;/b&gt; · 2026-11-02 · <b>$11.40</b>') !== -1);
+    t.ok(label + ': confirm: a sign offer is unticked by default and greyed for a manager, saying an admin can add it', /<input type="checkbox" id="rvSign0" disabled>/.test(cs.bodyHTML) && !/id="rvSign0"[^>]*checked/.test(cs.bodyHTML) && /An admin can add these\./.test(cs.bodyHTML) && cs.bodyHTML.indexOf('Fictional &lt;b&gt;Corner&lt;/b&gt;') !== -1);
+    t.ok(label + ': confirm: the other business\'s sign is a warning, not an offer', /⚠ The card ending 9999 is a sign of vape: it cannot be added to cstore\./.test(cs.bodyHTML) && !/id="rvSign1"/.test(cs.bodyHTML));
+    t.ok(label + ': confirm: "remember this spelling" ticked by default', /<input type="checkbox" id="rvSpelling" checked>/.test(cs.bodyHTML));
+    t.ok(label + ': confirm: the failed checks in words, with the reason box', cs.bodyHTML.indexOf('but the total is $11.40 ($0.10 apart).') !== -1 && ids(cs.bodyHTML).indexOf('rvReason') !== -1);
+    t.ok(label + ': confirm: Confirm is disabled until a reason is typed', m.els.rvConfirmGo.disabled === true);
+    m.els.rvReason.value = 'ab';
+    m.els.rvReason.oninput();
+    t.ok(label + ': confirm: still disabled with two characters', m.els.rvConfirmGo.disabled === true);
+    m.els.rvReason.value = 'The till added ten cents';
+    m.els.rvReason.oninput();
+    t.ok(label + ': confirm: enabled with a reason', m.els.rvConfirmGo.disabled === false);
+    m.els.rvSign0.checked = true; // a forced tick on a greyed box is not sent for a manager
+    m.els.rvSpelling.checked = true;
+    await m.els.rvConfirmGo.onclick();
+    t.eq(label + ': confirm: sends the original, the draft, the reason, no sign for a manager, the spelling', (m.calls.find(c => c[0] === 'rpcConfirmReceipt') || [])[1], [TOKEN, { originalId: readItem.id, draftId: RD.id, learnSigns: [], rememberSpelling: true, reason: 'The till added ten cents' }]);
+    t.ok(label + ': confirm: "On the books of <business>."', /On the books of Fictional Corner Mart\./.test(m.sheets[m.sheets.length - 1].bodyHTML) && m.toasts.indexOf('✓ On the books of Fictional Corner Mart.|success') !== -1);
+
+    // An admin: the offers are not greyed, and a tick is sent; not allowed: Confirm stays disabled whatever is typed.
+    const a = world({ role: 'admin', answers: { rpcGetReceiptReview: RV({ canLearnSigns: true, confirm: { allowed: true, why: [], missing: [], checks: [], failed: [], reasonNeeded: false, adminOnly: false } }), rpcConfirmReceipt: { message: 'On the books of Fictional Corner Mart.', learnt: { signs: [], spelling: null }, next: { originalId: 'ro' + 'd'.repeat(24) } } } });
+    await a.fns.openReceiptReview_(readItem);
+    await a.els.rvConfirm.onclick();
+    const acs = a.sheets[a.sheets.length - 1];
+    t.ok(label + ': confirm: admin: the offer can be ticked, unticked by default; no reason box when nothing failed; Confirm enabled', /<input type="checkbox" id="rvSign0">/.test(acs.bodyHTML) && ids(acs.bodyHTML).indexOf('rvReason') === -1 && a.els.rvConfirmGo.disabled === false);
+    a.els.rvSign0.checked = true;
+    a.els.rvSpelling.checked = false;
+    await a.els.rvConfirmGo.onclick();
+    t.eq(label + ': confirm: admin: the ticked sign sent by its id; the spelling unticked', (a.calls.find(c => c[0] === 'rpcConfirmReceipt') || [])[1][1], { originalId: readItem.id, draftId: RD.id, learnSigns: ['name:fictionalcorner'], rememberSpelling: false });
+    t.ok(label + ': confirm: the next waiting draft is offered', /id="rvNext"[^>]*>Review the next one/.test(a.sheets[a.sheets.length - 1].actionsHTML));
+    const no = world({ role: 'manager', answers: { rpcGetReceiptReview: RV({ confirm: { allowed: false, why: ['It duplicates a receipt already on the books: only an admin can confirm it, with a reason.'], missing: ['the supplier'], checks: [], failed: RD.checks, reasonNeeded: true, adminOnly: true } }) } });
+    await no.fns.openReceiptReview_(readItem);
+    no.fns.openReceiptConfirmSheet_(no.fns.receiptState_.review);
+    no.els.rvReason.value = 'a long enough reason';
+    no.els.rvReason.oninput();
+    t.ok(label + ': confirm: not allowed (missing, admin only): the reasons in words and Confirm stays disabled', no.els.rvConfirmGo.disabled === true && /Settle first: the supplier\./.test(no.sheets[no.sheets.length - 1].bodyHTML) && /only an admin can confirm it/.test(no.sheets[no.sheets.length - 1].bodyHTML));
+
+    // The books: asked for one business at a time; totals and rows from the server, voided marked; void for admin and manager.
+    const BOOKS = { business: 'vape', businessName: 'Fictional <i>Vape</i> Co', items: [
+      { id: 'pr' + '7'.repeat(24), originalId: ALL.items[0].id, business: 'vape', status: 'confirmed', date: '2026-11-20', invoiceNumber: 'W-<b>1</b>', supplier: 'Fictional <b>Wholesale</b>', supplierId: SP, supplierActive: true, supplierPrinted: null, kind: 'stock', subtotal: '100.00', hst: '13.00', total: '113.00', confirmedBy: 'Daniel Okafor', confirmedAt: '2026-11-27T15:00:00.000Z', reason: null, failedAtConfirm: 0, fieldsChanged: 1, voided: null },
+      { id: 'pr' + '8'.repeat(24), originalId: ALL.items[0].id, business: 'vape', status: 'voided', date: '2026-11-19', invoiceNumber: null, supplier: 'Fictional Hardware', supplierId: SP, supplierActive: true, supplierPrinted: null, kind: 'supplies', subtotal: null, hst: null, total: '20.00', confirmedBy: 'Priya Nair', confirmedAt: '2026-11-26T15:00:00.000Z', reason: 'r', failedAtConfirm: 1, fieldsChanged: 0, voided: { by: 'Priya Nair', at: '2026-11-27T16:00:00.000Z', reason: 'Wrong <b>total</b>' } },
+    ], next: 'pr' + '7'.repeat(24), totals: { count: 1, subtotal: '100.00', hst: '13.00', total: '113.00', voided: 1, noSubtotal: 0, noHst: 0 }, canVoid: true };
+    const DETAIL = Object.assign({}, RD, { id: BOOKS.items[0].id, status: 'confirmed', businessName: 'Fictional <i>Vape</i> Co', confirmed: { by: 'Daniel Okafor', at: '2026-11-27T15:00:00.000Z', reason: null, failed: [], checks: [] }, voided: null,
+      changes: { comparedWith: RD.id, fields: [{ field: 'date', before: '2026-11-02', after: '2026-11-<b>20</b>' }], lines: { added: 1, removed: 0, changed: 0 }, count: 2 }, readings: [{ id: RD.id, status: 'superseded', readBy: { kind: 'assistant', name: 'Priya Nair', keyLabel: 'Muse' }, readAt: '2026-11-27T15:05:00.000Z' }], learnt: { signs: [{ kind: 'card_last4', value: '4821', supplier: null, business: 'vape', removed: false }], spellings: ['Fictional <b>W</b>'] }, redo: null });
+    for (const role of ['manager', 'payroll_admin']) {
+      const books = (tok, input) => (input.receiptId ? { receipt: DETAIL } : Object.assign({}, BOOKS, { canVoid: role !== 'payroll_admin' }));
+      const w2 = world({ role, answers: { rpcGetReceiptInbox: inbox, rpcGetReceiptBooks: books, rpcVoidReceipt: { message: 'Voided. It stays on file.', learnt: { words: 'Learnt from this receipt and NOT removed: the card ending 4821 (vape).' } } } });
+      await w2.fns.loadReceiptsTab();
+      await w2.fns.loadReceiptBooks_('vape', {});
+      const bh = w2.els.rcptBooks.innerHTML;
+      t.ok(label + ': books: ' + role + ': one business, named and escaped; the totals from the server with money(); voided shown and not counted',
+        bh.indexOf('On the books of Fictional &lt;i&gt;Vape&lt;/i&gt; Co') !== -1 && /<b>1 receipt<\/b> · subtotal \$100\.00 · HST \$13\.00 · total <b>\$113\.00<\/b>/.test(bh) && /1 voided, shown and not counted/.test(bh));
+      t.ok(label + ': books: ' + role + ': rows escaped, the voided one marked with who and why', bh.indexOf('Fictional &lt;b&gt;Wholesale&lt;/b&gt;') !== -1 && bh.indexOf('W-&lt;b&gt;1&lt;/b&gt;') !== -1 && /VOIDED by Priya Nair: Wrong &lt;b&gt;total&lt;\/b&gt;/.test(bh) && bh.indexOf('<b>Wholesale') === -1);
+      w2.els.rbMore.onclick();
+      await tick();
+      const asked = w2.calls.filter(c => c[0] === 'rpcGetReceiptBooks').map(c => c[1][1]);
+      t.ok(label + ': books: ' + role + ': every list asked for names one business, and the next page carries the cursor', asked.every(x => x.receiptId || x.business === 'vape' || x.business === 'cstore') && asked.some(x => x.before === BOOKS.next));
+      await w2.fns.openReceiptOnBooks_(BOOKS.items[0].id);
+      const ds = w2.sheets[w2.sheets.length - 1];
+      t.ok(label + ': books: ' + role + ': a receipt opens read only with its original, who confirmed it, what was changed (escaped) and who read it',
+        !/<input|<select/.test(ds.bodyHTML) && /confirmed by Daniel Okafor/.test(ds.bodyHTML) && ds.bodyHTML.indexOf('Date: 2026-11-02 → 2026-11-&lt;b&gt;20&lt;/b&gt;') !== -1 && /Lines: 1 added, 0 removed, 0 changed/.test(ds.bodyHTML) && /Priya Nair&#39;s assistant \(Muse\)/.test(ds.bodyHTML) && !/Reviewing and confirming comes next/.test(ds.bodyHTML));
+      t.ok(label + ': books: ' + role + ': Void only for admin and manager', /id="rbVoid"/.test(ds.actionsHTML) === (role === 'manager'));
+      if (role === 'manager') {
+        w2.els.rbVoid.onclick();
+        const vs = w2.sheets[w2.sheets.length - 1];
+        t.ok(label + ': void: the sheet says what happens and lists what was learnt, escaped, and that it is not removed', /stays on file, marked voided, out of the totals/.test(vs.bodyHTML) && /NOT removed by voiding it: Card ending 4821 \(vape\); the spelling "Fictional &lt;b&gt;W&lt;\/b&gt;"/.test(vs.bodyHTML));
+        w2.els.rbVoidReason.value = 'The total was <b>misread</b>';
+        await w2.els.rbVoidGo.onclick();
+        t.eq(label + ': void: sends the receipt and the reason as typed', (w2.calls.find(c => c[0] === 'rpcVoidReceipt') || [])[1], [TOKEN, { receiptId: BOOKS.items[0].id, reason: 'The total was <b>misread</b>' }]);
+      }
+    }
+    // An employee: nothing of the books; their own confirmed original says it is on the books.
+    const e = world({ role: 'employee', answers: { rpcGetReceiptInbox: { scope: 'own', days: 7, items: [item({ mine: true, addedBy: 'Jordan Reyes', status: 'confirmed' })], maxMb: 10 } } });
+    await e.fns.loadReceiptsTab();
+    const eh = e.els['view-receipts'].innerHTML;
+    t.ok(label + ': books: employee: "It is on the books." and no books, no review', /It is on the books\./.test(eh) && !/On the books \(|data-books-business/.test(eh) && e.calls.every(c => c[0] === 'rpcGetReceiptInbox'));
+  })());
+
   // ── Businesses ────────────────────────────────────────────
   pending.push((async () => {
     const data = (canEdit) => ({ canEdit, businesses: [
@@ -425,6 +587,8 @@ H.uiScripts().forEach(([label, js]) => {
   t.ok('the built page has the drafts (card P5-05a): the review group, the read-only view and the by-hand sheet with its call',
     built.indexOf('Read, waiting for review (') !== -1 && built.indexOf('function receiptDraftHTML_(') !== -1 && built.indexOf('function openReceiptDraftEntry_(') !== -1 &&
     built.indexOf("'rpcEnterReceiptDraft'") !== -1 && built.indexOf("'rpcGetReceiptDraft'") !== -1 && built.indexOf('Reviewing and confirming comes next: nothing here counts yet.') !== -1);
+  t.ok('the built page has the review, the confirm sheet, the books and the void sheet (card P5-05b), with their calls',
+    ['async function openReceiptReview_(', 'function openReceiptConfirmSheet_(', 'async function loadReceiptBooks_(', 'function openReceiptVoidSheet_(', "'rpcConfirmReceipt'", "'rpcSaveReceiptCorrection'", "'rpcVoidReceipt'", "'rpcGetReceiptBooks'", 'This goes on the books of '].every(x => built.indexOf(x) !== -1));
   const src = fs.readFileSync(path.join(H.SRC, 'Index.html'), 'utf8');
   t.ok('the Apps Script page never loads the transport, so the entries are hidden there', src.indexOf('/transport.js') === -1);
   t.ok('no template tag in the page', src.indexOf('<?') === -1);

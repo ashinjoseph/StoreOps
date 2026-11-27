@@ -10,7 +10,7 @@
 
 ## What it does
 
-Built so far (cards P5-12a and P5-12b), in the Operations app only (inside
+Built so far (cards P5-12a, P5-12b, P5-05a and P5-05b), in the Operations app only (inside
 Apps Script neither entry exists):
 
 **More → Receipts**, for everyone signed in.
@@ -87,11 +87,50 @@ comes next: nothing here counts yet.* A read original can be set aside (admin,
 manager); its business is not changed there. An employee's own list says only
 *It has been read.*
 
-**Not built yet** (later cards): no review screen (correct, confirm, void); no
-cost history; no QuickBooks export; no import of the old purchase list; no
-"this email is handled" list beyond the message ids of originals filed
-(P5-13). The supplier list has no screen: a supplier is matched only when a
-row for it exists.
+**Review, confirm, void, the books** (card P5-05b;
+[ADR-0029](../adr/0029-a-confirmed-receipt-is-final-and-a-mistake-is-voided.md)).
+An admin or a manager taps an original in *Read, waiting for review* and the
+**review** opens: the original (fetched and shown from a blob URL as before;
+on a phone it sits above the fields, stays in sight while they scroll, and
+*Make the original large* gives it most of the screen; on a wide screen it sits
+beside them), then every field, editable and prefilled from the live draft:
+the supplier as printed, the supplier **on the list** (picked from the
+candidates for the printed name, found by any known spelling, or added with
+*New supplier*), the supplier's HST number, invoice number, date, how paid and
+the card's last four, subtotal, HST, other charges (add, remove), total, kind,
+what is printed about the buyer, the business (*As the signs say (…)*, or
+cstore, or vape) with how it was decided, and the lines (add, edit, remove;
+unit price to four decimals, quantity to three). The where-read notes and the
+reader's note are shown read only and kept. Each failed check is a sentence
+from the server. **Save corrections** sends the fields; the server keeps a new
+reading and answers the checks and the business decided again, and the sheet
+is drawn from that answer. **Confirm…** saves what is typed first, then shows
+the last sheet: *This goes on the books of <business name>* in large words,
+the supplier, date and total, what is still missing or forbidden (in words,
+Confirm disabled), the **sign offers** (each unticked; greyed with *An admin
+can add these.* for a manager), signs of the other business as warnings,
+*remember this spelling* (ticked), and the failed checks with a reason box
+(Confirm is enabled only with a reason of 3 characters or more). Afterwards:
+*On the books of <business name>.* and *Review the next one*. *Enter the
+figures by hand* on a waiting original now goes straight into the review.
+
+**On the books**, a group under Set aside for admin, manager and payroll admin:
+one button per business (the two are never listed together; there is no
+*both*), then that business's confirmed and voided receipts, newest on the
+books first, 20 at a time (*More*), filtered by date range and kind, with the
+totals of the filter: *N receipts · subtotal · HST · total*, voided ones shown
+struck through and *not counted*, and how many have no subtotal or no HST on
+the receipt. A receipt opens read only beside its original: who confirmed it
+and when, the reason and the failed checks if any, *VOIDED by … : reason* if
+voided, every field, what was changed at review and every reading of it.
+**Void…** (admin, manager) asks a reason and lists what was learnt from the
+receipt, which a void does not remove. An employee's own original says *It has
+been read.* or *It is on the books.*
+
+**Not built yet** (later cards): no cost history; no QuickBooks export; no
+import of the old purchase list; no emailed invoices beyond P5-12b; no screen
+listing the suppliers on their own (the review's picker and *New supplier*
+are the way in; `rpcUpdateReceiptSupplier` has no page yet).
 
 ## How it works
 
@@ -225,9 +264,13 @@ replace an original during the retention period. That is a step of the hosted
 setup, not of this code.
 
 **Statuses.** An original is `waiting` (to be read), `drafted` (read: it has a
-live draft; card P5-05a) or `set_aside` (not a receipt: reason, by whom, when).
-The column's CHECK is named (`receipt_originals_status`); migration 0013 dropped
-and re-added it with `drafted` (a check, not a table rewrite). The set-aside
+live draft; card P5-05a), `confirmed` (its receipt is on the books; card
+P5-05b) or `set_aside` (not a receipt: reason, by whom, when). All four are
+reachable. The column's CHECK is named (`receipt_originals_status`); migrations
+0013 and 0014 dropped and re-added it (a check, not a table rewrite). A
+confirmed original cannot be set aside (*This receipt is on the books: it
+cannot be set aside. Void it first …*) nor have its business changed; a void
+takes it back to `drafted`. The set-aside
 columns are tied to `set_aside` only. A drafted original may be set aside; its
 draft leaves the live list with it (kept, unchanged) and putting it back makes
 it `drafted` again. The sources
@@ -378,18 +421,217 @@ assistant's draft supersedes it. Two proposals for one original at the same
 instant are taken one after the other (the drafts' advisory lock, then the
 original's row lock): exactly one is live afterwards.
 
-**Statuses of a draft.** `draft` (live) and `superseded` are the only ones this
-card reaches. `confirmed` (with `confirmed_by`, `confirmed_at`) and `voided`
-(`voided_by`, `voided_at`, `void_reason`) are allowed by the CHECK and their
-columns exist, unused, for the next cards.
+**Statuses of a reading.** `draft` (live), `superseded`, `confirmed` (with
+`confirmed_by`, `confirmed_at`; card P5-05b) and `voided` (`voided_by`,
+`voided_at`, `void_reason`; card P5-05b): all four are reached.
 
-**What the next card needs.** A person's correction is a new row that
-supersedes (the figures never change after insert), with `read_by_kind`
-`person`; "every field the person changed" is the difference between the two
-rows. Confirming and voiding fill the columns above (the app role may already
-update them). Learning a sign or a supplier's spelling from a confirmed receipt
-inserts into `business_signs` (`learnt_from` `confirmed_receipt`, there since
-0010) or `supplier_names` (`learnt_from` `confirmed_receipt`).
+### Review, confirm, void (card P5-05b)
+
+All in `ops/src/receipts/review.ts`, through `drafts.ts`'s own parsers, checks
+and `decideBusiness` (nothing is computed twice);
+[ADR-0029](../adr/0029-a-confirmed-receipt-is-final-and-a-mistake-is-voided.md).
+
+**A correction is a new reading.** `rpcSaveReceiptCorrection` takes the fields
+`rpcEnterReceiptDraft` takes, plus `draft_id` (the live draft the person was
+looking at), `business` (`cstore`, `vape`, or `null`: the signs decide) and
+`supplier_id` (a supplier on the list, or `null`: matched by the printed name).
+It goes through the one writing path of P5-05a (`drafts.writeReading`, mode
+`correct`): the drafts' lock, the original's row lock, a new row read by the
+person that supersedes the live draft (the old row is byte for byte as it was,
+marked `superseded`), the checks and the business decision run again, audit
+`receipt_draft.supersede` and `receipt_draft.correct`. Refused with *Nothing was
+kept.*: no draft to correct; *This draft was replaced by a newer reading (by
+<who>) since you opened it: open it again.*; a business that is not one of the
+two; an unknown or inactive supplier (*<name> is no longer an active supplier:
+choose another, or make it active again on the supplier list.*); an original on
+the books (*That receipt is on the books (confirmed): it cannot be changed. To
+correct it, void it first.*: also for `receipt_propose` and
+`rpcEnterReceiptDraft`). As many corrections as the person likes before
+confirming.
+
+**The business a person chooses.** Choosing what the signs already say is the
+signs' decision (`business_decided_by` the kinds). Choosing otherwise, when the
+signs say *not known*, a *conflict*, or the other business, records
+`business_decided_by = {person}` and keeps what the signs said in
+`signs_business` and `signs_decided_by` (the matched signs stay in
+`business_signs`), so a later report can count which kinds of sign were right.
+The `business` check then reads *Chosen by a person: cstore (nothing printed
+matched a sign).* (passes), or, overruling a decision of the other business,
+*A person chose vape, overruling the signs, which say cstore (the card ending
+4821).* (fails: confirming then needs a reason).
+
+**Confirm** (`rpcConfirmReceipt`, `{ originalId, draftId, reason?, learnSigns,
+rememberSpelling }`), in one transaction, in this order (every refusal ends
+*Nothing was confirmed.* and writes nothing):
+
+1. the drafts' advisory lock, then the original's row (`for update`);
+2. already confirmed: *This receipt is already on the books of <business name>
+   (confirmed by <name>).*; set aside; no draft; `draftId` not the live draft:
+   *This draft was replaced by a newer reading (by <who>) since you opened it:
+   open it again.*;
+3. the checks re-run on the figures being confirmed (`drafts.runChecks`, the
+   same functions, today's signs and duplicates);
+4. what must be settled (decision 3), named together: *To confirm, settle the
+   receipt date, the kind of purchase, the business and the supplier.* (the
+   date must be a real day; the total is always there);
+5. an inactive supplier; a sign changed since the draft was saved so the
+   business would be decided otherwise (*save the corrections again*);
+6. a `duplicate` of a receipt already **confirmed** (the same supplier and
+   invoice number, either business): only an admin (*It duplicates a receipt
+   already on the books (the same supplier and invoice number): only an admin
+   can confirm it, with a reason.*). A duplicate of a mere draft, and a
+   *possible duplicate*, are failed checks like the others;
+7. any failed check: a reason of 3 to 300 characters on one line (*A check
+   failed: say why it is right to confirm it anyway, in 3 to 300 characters.*;
+   a line break or control character: *The reason cannot contain a line break
+   or other control character.*), stored in `confirm_reason` with the failing
+   checks' ids in `confirm_failed` and every result in `confirm_checks`. With
+   no failed check no reason is stored;
+8. signs to learn: only an admin (*Only an admin can add a sign (as on the
+   Businesses screen): untick it, or ask an admin to confirm.*), and only offers
+   of this receipt (*That sign is not offered for this receipt …*); the
+   spelling: refused when it is another supplier's (*"FG Market" is already a
+   spelling of Fictional Grocer: a spelling belongs to one supplier. Untick
+   it.*);
+9. the row marked `confirmed` (`confirmed_by`, `confirmed_at`, the confirm
+   record, `review_changes`, `compared_with`); the original `confirmed`; each
+   ticked sign added through `businesses.addSign` with
+   `learnt_from = 'confirmed_receipt'` and `learnt_from_receipt`; the spelling
+   added the same way; audit `receipt.confirm` (the figures, the business, the
+   supplier, the reason, the failed checks, how many fields changed, the signs
+   and spelling learnt). The answer: the receipt, *On the books of <business
+   name>.*, what was learnt and the next original waiting for review.
+
+**Confirmed is final.** Nothing about a confirmed receipt can be changed: the
+app role has no update right on its figures, business, supplier or
+`redo_of` (column grants since 0013), and a trigger
+(`purchase_receipts_final`, 0014) refuses every update of a confirmed or voided
+row, by any role, except the single change of a confirmed one to `voided`
+with its three void columns. One original has at most one confirmed receipt
+(the one-live-reading index of 0013). Its original is `confirmed` and leaves the
+review group; `receipts_to_read` and `receipt_original` do not show it.
+
+**Void** (`rpcVoidReceipt`, `{ receiptId, reason }`, admin or manager): a reason
+of 3 to 300 characters (*Say why it is voided, in 3 to 300 characters.*), the
+drafts' lock, the receipt's row lock; refused when already voided (*That
+receipt is already voided (by <name>).*) or not on the books. The row is
+marked `voided` (who, when, why), never removed: it stays in every list,
+struck through, out of the totals. Its original goes back to `drafted` with a
+**new draft copied from it** (read by the person who voided it, `supersedes`
+nothing, `redo_of` the voided receipt; its business is the voided one's, its
+supplier the same), audited `receipt_draft.redo`, then `receipt.void`. It can
+be corrected and confirmed again: the original then has one voided and one
+confirmed receipt. Signs and spellings learnt from the voided receipt are
+**not** removed; the answer lists them (*Learnt from this receipt and NOT
+removed: the card ending 1357 (cstore); the spelling "…" of …. Remove them by
+hand if they were wrong.*).
+
+**Learning signs** (the owner's answer 5). The review's offers are computed
+from the live draft's buyer evidence, in the Businesses card's kind order:
+the buyer's name, HST number, account number (at the printed supplier) and
+card's last four, and the card it was paid with. Each is first put through the
+Businesses card's own rules (`checkSign`: a one-character name or an HST
+number of the wrong shape is not offered). For the business the receipt will
+be confirmed for: already a live sign of it, *known* (listed); a live sign of
+the other business, a **warning** (*The card ending 9999 is a sign of vape: it
+cannot be added to cstore.*), never offered; otherwise an **offer**, id
+`<kind>:<value key>`, `ticked: false`. Nothing is offered until a business is
+settled. Each offer added is the Businesses card's `addSign` (its normal form,
+its one-business-per-sign rule and message, its lock, its audit action
+`business_sign.add` with `learntFrom` and `receiptId` added). From then on
+`decideBusiness` matches it for every new draft. The receipt keeps which signs
+decided it (`business_decided_by`, `business_signs`) or that a person chose
+(and what the signs said): nothing else is reported yet.
+
+**Suppliers and spellings.** `ops.suppliers` gains `display_key` (the
+normal form of the display name) with a partial unique index among active
+suppliers. `rpcCreateReceiptSupplier` (admin, manager): the display name 2 to
+120 characters on one line (*The supplier's name is required.*), unique among
+active suppliers ignoring case, spaces and dashes (*There is already an
+active supplier called "…".*), the HST number optional in the Canadian shape,
+notes optional; the name becomes the supplier's first spelling when no one has
+it. `rpcUpdateReceiptSupplier`: name, HST number, notes, active; a supplier is
+never removed, only made inactive (its receipts still show it; an inactive
+supplier cannot be chosen for a correction or a confirm). `rpcGetReceiptSuppliers`
+(admin, manager, payroll admin) finds suppliers by any live spelling or the
+display name in the normal form, active ones unless `includeInactive`, 20 at a
+time (`after`). The names were to be `rpcGetSuppliers` and so on, but the old
+app's contract already has an `rpcGetSuppliers` (the deprecated tab), and an
+own RPC needs a name of its own. At confirm, when the printed name is not yet
+a spelling of anyone, *remember this spelling* is offered ticked and adds it
+to the chosen supplier (`learnt_from = 'confirmed_receipt'`, audited
+`supplier_name.add`); one spelling belongs to one supplier (the 0013 index and
+the suppliers' advisory lock). Matching then finds that supplier for new drafts.
+
+#### What was changed
+
+At confirm, `compareReadings` (pure) compares the confirmed reading with the
+**first reading of the original** (the earliest row for it: the assistant's
+first draft, or the first typed one, even after later proposals, corrections
+and a void), stored in `review_changes` with `compared_with`:
+`{ comparedWith, fields: [ { field, before, after } ], lines: { added, removed,
+changed }, count }`. The fields compared, in order: `supplier.name`,
+`supplier.hst_number`, `invoice_number`, `date` (as written), `paid.how`,
+`paid.card_last4`, `amounts.subtotal`, `amounts.hst`, `amounts.other` (the
+charges as *label amount; …*), `amounts.total`, `kind`, `buyer.name`,
+`buyer.hst_number`, `buyer.account_number`, `buyer.card_last4`, `business`,
+`supplier` (the supplier on the list, by id). Money is compared as a number
+(`12.5` and `12.50` are equal) and shown as stored (`"12.50"`); text exactly as
+stored (cleaned); a blank is `null`: blank to a value is a change, a value to
+blank is a change, a value to the same value is not. Lines are compared by
+position: the extra ones on either side are added or removed, a line whose
+description, code, taxed mark, quantity, unit price or total differs (numbers
+as numbers) is changed. The note and the where-read phrases are the reader's
+own words and are not compared. `count` = fields + lines added + removed +
+changed; it is what `my_proposals` answers as `fields_changed`. The business and
+the supplier settled by a person count as changes from a first reading that
+had none.
+
+**The books** (`rpcGetReceiptBooks`, admin, manager, payroll admin). One
+business is required (*Choose one business: cstore or vape. The two are never
+listed together.*), and an optional date range (on the receipt date), supplier
+and kind. Confirmed and voided receipts, newest on the books first
+(`confirmed_at`, then id), 20 a page (up to 50) with a keyset cursor
+(`before`): a receipt confirmed between two pages is newer than the cursor, so
+no row is missed or repeated. The totals are for the whole filter, every page,
+summed by Postgres over `numeric` (exact): the count, subtotal, HST and total
+of the confirmed ones, the number voided (not in the sums), and how many have
+no subtotal or no HST on the receipt (a blank counts as nothing in a sum and is
+counted apart). With `{ receiptId }` it answers one receipt read only: the
+draft view plus who confirmed it, the reason and failed checks, who voided it
+and why, what was changed, its readings (the chain of readings that led to it)
+and what was learnt from it.
+
+**Two at once.** Every reading (proposal, correction, the redo), every confirm
+and every void takes the drafts' advisory lock
+(`hashtextextended('ops.purchase_receipts', 0)`) first, then the original's (or
+the receipt's) row lock, so they run one after the other. Two confirms of one
+original: the second finds it confirmed and is refused by name. A confirm and a
+correction: whichever is second finds the original on the books, or its draft
+replaced. A confirm and an assistant's new proposal: the same. Two voids: the
+second finds it voided. The one-live-reading unique index holds it past the
+code.
+
+**What the later cards find ready.**
+
+- *Cost history:* a confirmed receipt's lines are `ops.purchase_receipt_lines`
+  of the row with `status = 'confirmed'` (description, the supplier's item
+  code, quantity, unit price to four decimals, line total, taxed), its
+  supplier is `supplier_id` (one row per supplier, with every spelling seen),
+  its date `receipt_date` and its business `business`. An item is identified
+  only by the supplier and its printed code (or description): there is no
+  product link yet.
+- *The export:* per business, the rows with `status = 'confirmed'` and that
+  `business`: date, supplier (display name, HST number), invoice number, kind,
+  subtotal, HST, other charges, total, how paid, the original's id. A voided
+  receipt is `status = 'voided'` (with who, when and why), and its redo is the
+  row whose `redo_of` names it. Nothing marks a receipt exported yet: a column
+  such as `exported_at` (granted for update) or a table of export runs naming
+  receipts would; the trigger would then need to allow that one change.
+- *The old purchase list:* `original_id` may be NULL (0013), so a receipt with
+  no original can be inserted as a reading and confirmed; the books list
+  already shows a row with no original (no original to open). The confirm
+  record requires a supplier, a date and a kind, which the old list must supply.
 
 ### What the model cannot hold yet
 
@@ -409,20 +651,22 @@ Questions for the owner and the bookkeeper. Each is what happens **today**:
 
 | Table | Reads | Writes |
 |---|:-:|:-:|
-| `ops.receipt_originals` | ✓ | ✓ (add; status, set-aside, business only) |
+| `ops.receipt_originals` | ✓ | ✓ (add; status, set-aside, business only; `confirmed` since 0014) |
 | `ops.receipt_upload_tickets` | ✓ | ✓ (add; spend and outcome only) |
 | `ops.assistant_calls` | | ✓ (a PUT to the ticket route) |
 | `ops.businesses` | ✓ | ✓ (legal name, HST number, notes only; the two rows are seeded) |
-| `ops.business_signs` | ✓ | ✓ (add; mark removed only) |
-| `ops.purchase_receipts` | ✓ | ✓ (add; status and the superseded link only; the confirm and void columns for the next cards) |
+| `ops.business_signs` | ✓ | ✓ (add, also learnt from a confirmed receipt with `learnt_from_receipt`; mark removed only) |
+| `ops.purchase_receipts` | ✓ | ✓ (add; status, the superseded link, the confirm record and the void columns only; a confirmed or voided row only to void it, by a trigger) |
 | `ops.purchase_receipt_lines` | ✓ | ✓ (add only) |
-| `ops.suppliers`, `ops.supplier_names` | ✓ (matching) | (none in this card; the app role may add, rename or mark inactive a supplier and mark a spelling removed) |
+| `ops.suppliers`, `ops.supplier_names` | ✓ | ✓ (add a supplier, rename it, its HST number and notes, mark it inactive; add a spelling, typed or learnt; never removed) |
 | `ops.audit_log` | | ✓ |
 | `ops.config` | `receipt_max_mb`, `cstore_business_name`, `vape_business_name`, `hst_rate_percent` | |
 
 The first three tables come from `ops/migrations/0010_receipt_inbox.sql`, the
 upload tickets from `ops/migrations/0012_receipt_upload_tickets.sql`, the drafts
-and the supplier list from `ops/migrations/0013_receipt_drafts.sql`; all are the
+and the supplier list from `ops/migrations/0013_receipt_drafts.sql`, the review's
+columns, the status `confirmed` and the trigger from
+`ops/migrations/0014_receipt_review.sql` (no new table); all are the
 Operations app's own (no Sheet tab feeds them) and are not loaded or compared
 by the cutover tools (`LATER_OPS_TABLES` in `ops/src/cutover/compare.ts`).
 `ops.suppliers` has the name of the Sheet's deprecated `suppliers` tab: it is
@@ -462,7 +706,19 @@ settings, so the screen shows the setting's name until one is typed.
   (the figures as text, the reader, the business decision, the failed checks;
   never the original's bytes or hash), `receipt_draft.supersede`,
   `receipt_draft.taken_out` (its original set aside) and
-  `receipt_draft.restored` (put back).
+  `receipt_draft.restored` (put back); and for the review (card P5-05b)
+  `receipt_draft.correct`, `receipt_draft.redo`, `receipt.confirm`,
+  `receipt.void`, `supplier.create`, `supplier.update`, `supplier_name.add`,
+  and `business_sign.add` (with `learntFrom` and `receiptId`) for a learnt sign.
+- **A confirmed receipt is final** (ADR-0029): no figure, business or supplier
+  of any reading ever changes; a confirmed one can only be voided, once, with
+  a reason, and stays on file; one original has at most one confirmed receipt.
+- **The two businesses' books are never mixed**: the books list cannot be asked
+  for without one business, and every sum is of one business's confirmed
+  receipts only.
+- **The app learns only from a person**: a sign only by an admin's tick at
+  confirm, a spelling only at confirm; never from an assistant, never by
+  default, never removed by a void.
 - **The reader reports; the app decides the business** from the live signs
   ([ADR-0027](../adr/0027-the-app-decides-the-business-and-checks-the-arithmetic.md)).
   A reader's guess, the supplier and what a person said at upload never decide
@@ -478,13 +734,13 @@ settings, so the screen shows the setting's name until one is typed.
 - **What a reader wrote is data**: cleaned and capped, through `asData` to an
   assistant and `esc()` on the page.
 
-| Who | Add an original | List and view | Set aside, put back, change business | Read businesses | Change businesses | See a draft | Enter a draft by hand |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| employee | ✓ | own, last 7 days (*It has been read.*) | | | | | |
-| payroll admin | ✓ | ✓ | | ✓ | | ✓ | |
-| manager | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ |
-| admin | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| an assistant key | | waiting and read originals (tools) | | ✓ (tool) | | its own (`my_proposals`) | `propose` right: `receipt_propose` |
+| Who | Add an original | List and view | Set aside, put back, change business | Read businesses | Change businesses | See a draft | Enter a draft by hand | Correct, confirm, void; add suppliers | Learn a sign at confirm | The books |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| employee | ✓ | own, last 7 days (*It has been read.*, *It is on the books.*) | | | | | | | | |
+| payroll admin | ✓ | ✓ | | ✓ | | ✓ (read only) | | | | ✓ (read) |
+| manager | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | ✓ (a duplicate of a confirmed receipt: no) | (greyed) | ✓ |
+| admin | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| an assistant key | | waiting and read originals (tools; not confirmed ones) | | ✓ (tool) | | its own (`my_proposals`, with `fields_changed` when confirmed) | `propose` right: `receipt_propose` | never | never | |
 
 ## Questions for a real phone test
 
@@ -515,12 +771,13 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 | The type | `ops/src/receipts/sniff.ts`: `sniff`, `CONTENT_TYPES`, `NOT_ACCEPTED` |
 | Storage | `ops/src/receipts/storage.ts`: `ReceiptStorage`, `bucketStorage`, `memoryBucket`, `isBucket`; the binding in `ops/wrangler.toml` (`[[r2_buckets]]`, `RECEIPTS`) |
 | Businesses | `ops/src/receipts/businesses.ts`: `list`, `update`, `addSign`, `removeSign`, `normalise`, `signKey`, `checkHst` |
+| Review (card P5-05b) | `ops/src/receipts/review.ts`: `getReview`, `saveCorrection`, `confirm`, `voidReceipt`, `books`, `receiptDetail`, `listSuppliers`, `createSupplier`, `updateSupplier`, `signOffers`, `spellingOffer`, the pure `compareReadings` and `COMPARED_FIELDS`; in `drafts.ts` the one writing path `writeReading` (modes `propose`, `correct`, `redo`), `runChecks`, `checkChosenBusiness`, `inputOf`, `supplierById`, `whoRead`, `takeReadingsLock`, `ON_THE_BOOKS`; in `businesses.ts` `addSign`'s `learntFrom` |
 | Drafts (card P5-05a) | `ops/src/receipts/drafts.ts`: `propose`, `getDraft`, `proposals`, `takenOut`, `restore`; the pure parts `readFields`, `decideBusiness`, `checkLinesAddUp`, `checkPartsAddUp`, `checkHstPlausible`, `checkDate`, `checkDuplicates`, `checkSupplierHst`, `checkBusiness`, `parseMoney`, `parseQuantity`, `centsText`, `moneyText`, `expectedHst`, `hstRateMilli`; the shared input `draftInputSchema`, `parsePageInput`; `matchSupplier`, `liveSigns`, `isRefusal` |
-| RPCs | `ops/src/rpc/handlers/receipts.ts`: `rpcGetReceiptInbox`, `rpcSetReceiptAside`, `rpcSetReceiptBusiness`, `rpcGetBusinesses`, `rpcUpdateBusiness`, `rpcAddBusinessSign`, `rpcRemoveBusinessSign`, `rpcGetReceiptDraft`, `rpcEnterReceiptDraft` (card P5-05a); listed in `ops/contracts/rpc-ops.json` |
-| Tables | `ops/migrations/0010_receipt_inbox.sql`; `ops/migrations/0012_receipt_upload_tickets.sql` (the tickets); `ops/migrations/0013_receipt_drafts.sql` (drafts, lines, suppliers and their spellings; `drafted`) |
+| RPCs | `ops/src/rpc/handlers/receipts.ts`: `rpcGetReceiptInbox`, `rpcSetReceiptAside`, `rpcSetReceiptBusiness`, `rpcGetBusinesses`, `rpcUpdateBusiness`, `rpcAddBusinessSign`, `rpcRemoveBusinessSign`, `rpcGetReceiptDraft`, `rpcEnterReceiptDraft` (card P5-05a); `rpcGetReceiptReview`, `rpcSaveReceiptCorrection`, `rpcConfirmReceipt`, `rpcVoidReceipt`, `rpcGetReceiptSuppliers`, `rpcCreateReceiptSupplier`, `rpcUpdateReceiptSupplier`, `rpcGetReceiptBooks` (card P5-05b); listed in `ops/contracts/rpc-ops.json` |
+| Tables | `ops/migrations/0010_receipt_inbox.sql`; `ops/migrations/0012_receipt_upload_tickets.sql` (the tickets); `ops/migrations/0013_receipt_drafts.sql` (drafts, lines, suppliers and their spellings; `drafted`); `ops/migrations/0014_receipt_review.sql` (`confirmed`, the confirm record, what the signs said, `redo_of`, learnt-from links, the supplier's display key, the trigger `purchase_receipts_final`) |
 | Setting | `receipt_max_mb` and `hst_rate_percent` in `ops/src/lib/config-keys.ts` (`OPS_ONLY_KEYS`) and `ops/src/modules/settings.ts` (group *Other*) |
 | The assistant's view | the `businesses`, `receipts_to_read`, `receipt_original`, `receipt_upload_start`, `receipts_from_email` and `receipt_propose` tools in `ops/src/mcp/tools.ts` ([assistants](assistants.md)) |
-| UI | `src/Index.html`: `loadReceiptsTab`, `renderReceiptsTab`, `sendReceiptOriginal_`, `fetchReceiptOriginal_`, `receiptTooLarge_`, `openReceiptSheet_`, `revokeReceiptBlobs_`, `receiptDraftHeadHTML_`, `receiptDraftHTML_`, `openReceiptDraftEntry_`, `receiptDraftInput_`, `receiptDraftLineHTML_`, `loadBusinessesTab`, `renderBusinessesTab`, `openBusinessSignSheet_`; the `receipts` and `businesses` entries of `MORE_ITEMS` (`opsOnly`) |
+| UI | `src/Index.html`: `loadReceiptsTab`, `renderReceiptsTab`, `sendReceiptOriginal_`, `fetchReceiptOriginal_`, `receiptTooLarge_`, `openReceiptSheet_`, `revokeReceiptBlobs_`, `receiptDraftHeadHTML_`, `receiptDraftHTML_`, `openReceiptDraftEntry_`, `receiptDraftInput_`, `receiptDraftLineHTML_`; card P5-05b: `openReceiptReview_`, `drawReceiptReview_`, `receiptReviewHTML_`, `receiptReviewInput_`, `saveReceiptReview_`, `openReceiptConfirmSheet_`, `loadReceiptBooks_`, `receiptBooksHTML_`, `openReceiptOnBooks_`, `receiptChangesHTML_`, `openReceiptVoidSheet_`; `loadBusinessesTab`, `renderBusinessesTab`, `openBusinessSignSheet_`; the `receipts` and `businesses` entries of `MORE_ITEMS` (`opsOnly`) |
 
 ## Tests
 
@@ -529,12 +786,24 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 | `ops/test/receipt-inbox.test.ts` | through the Worker's own `fetch` with the in-memory bucket: each of the five types kept with the type its bytes say, whatever was sent; the exact signatures; SVG, HTML, zip, GIF, empty, cut-short refused with nothing stored or written; over the limit refused before the body is read, a lying `Content-Length` stopped at its claim, the limit following the setting; byte for byte and the real SHA-256; the same bytes twice (and twice at once on two connections) one object and one row; no `delete` under `src/receipts/`, no key reused, the database role unable to remove or rewrite; set aside and put back leaving the object and hash; who may add, list, view, set aside and change business; a foreign `Origin`; the view's headers for an image and a PDF, no cookie, no CORS, the same 404 for a forbidden and a missing id, no answer without the header; the audit rows; names and notes cleaned and kept out of the key; a failure after the object was stored; no other table moved |
 | `ops/test/mcp-receipts.test.ts` | card P5-12b: an assistant's originals by ticket through the Worker's `fetch` and the tools through the SDK client: the whole flow; byte for byte both ways for the five kinds; the ticket single use, 10 minutes exactly, the same 404 for every refused ticket, one file from two PUTs at once, nowhere stored or answered but once; the page's file rules on this route; who it belongs to and what is recorded; email ids; planted text cleaned; nothing else moved. The refactor of the upload path (`checkLength`, `receiveFile`) is held by `ops/test/receipt-inbox.test.ts`, unchanged |
 | `ops/test/receipt-drafts.test.ts` | card P5-05a, against a real database, the pure functions directly, the tool through the SDK's own client and the RPCs through the real router: money spellings accepted and refused and sums in cents where floats differ; every check at and just past its tolerance with its sentence; a draft with every check failing kept and flagged; only a total; the business decision as a table (each kind, two agreeing, both businesses, nothing, a removed sign, spellings, the paid card, a person's word at upload agreeing and disagreeing, a suggestion deciding nothing); supplier matching, never created; every left-out field NULL; HST 0 checked; duplicates across both businesses, possible duplicates, superseded and set-aside ones not counted; replacing, a person's draft not replaceable, two at once one live, the unique index; each refusal writing nothing; a fuel receipt kept exactly (quantity 41.287, unit price 1.459) through the tool and the by-hand RPC, a fifth decimal refused, nothing computed from quantity × unit price; drafted, `receipts_to_read`, set aside and put back; who may (tool rights, daily cap, RPC roles, planted fields); hostile text cleaned; audit rows; the role's rights; nothing else moved; the setting; the by-hand path and the inbox headline |
+| `ops/test/receipt-review.test.ts` | card P5-05b, against a real database, the RPCs through the real router, the assistant through the SDK client: the whole chain for two receipts (an assistant's draft decided by a card, one field corrected, confirmed by a manager with one change recorded; a hand-typed one with the business not known, chosen by a person, a printed name learnt by an admin's tick, then a new draft decided by it); each confirm requirement with its message and nothing written; corrections as new readings (the old row byte-identical, the checks and the decision re-run both ways); the app role unable to update figures, business or supplier, unable to delete, and the trigger refusing any change of a confirmed row but one void, also for the owner; the business chosen when not known, on conflict, overruling the signs (`person`, what the signs said kept, a reason needed), *not sure* refused, and the two books never mixing (a property over a mixed set); sign offers (printed and not yet a sign, unticked, the other business's a warning and refused when forged, a manager's tick refused server-side, the Businesses card's rules and audit, matched afterwards); suppliers (name rules, uniqueness ignoring case and spaces, search by spelling and paging, one supplier per spelling, remember on and off, matching after, inactive not choosable but still shown); failed checks needing a reason, stored with the failing checks; a duplicate of a confirmed receipt for an admin only, of a draft a warning; what was changed as a table (no change, a field, blank to value, value to blank, 12.5 = 12.50, business, supplier, other charges, lines added, removed, changed) and against the first reading after corrections and a second proposal; every write path refusing a confirmed original (correction, a proposal, by hand, set aside, confirm again); void (reason, roles, kept and marked, out of the totals, the copy equal to the voided figures, confirmed again, learnt signs and spellings listed and kept, twice refused); the books (filters, paging with a confirm between pages, totals in cents equal to the rows, a float trap, voided excluded, one receipt read only); two at once on two connections (two confirms, confirm and correction, confirm and a proposal, two voids and a confirm of the redo); `my_proposals` waiting → confirmed with a count and no values → refused once voided; no tool confirms, corrects or voids and nothing in `src/mcp/` imports the review; every RPC per role and without a token, planted fields ignored; hostile text kept as text; the audit rows; nothing else moved; a nightly copy and restore round trip with drafts, a confirmed and a voided receipt |
 | `ops/test/businesses.test.ts` | the seven RPCs' roles in the merged contract; the two seeded businesses, blank until typed; every field rule; the HST number normalised and never shared; each kind of sign, normalised; a sign refused at the other business however it is spaced, dashed or cased, also by the database; two admins at once; removal kept and audited; who may; the assistant's `businesses` tool through the SDK client showing the new fields and nothing else |
 | `ops/test/mcp-door.test.ts` | the `businesses` tool's exact keys; the pinned tool list (with `receipt_propose`, card P5-05a) |
-| `ops/test/db-migrate.test.ts`, `ops/test/cutover-tool.test.ts` | the new tables (0010, 0012, 0013) present and skipped by the cutover tools |
-| `tests/suites/ui-receipts.js` | an assistant's original says *added by <person>'s assistant (<key label>)*, an emailed one its sender and date, all escaped (card P5-12b); both drawer entries `opsOnly` with their roles; per role, what is rendered (an employee: no list of others, no set-aside or business control); the oversize photo refused before any request; the token only in an `Authorization` header, never in a URL, a toast or storage; blob URLs revoked; the built page carries both screens and Apps Script hides them; card P5-05a: the *Read, waiting for review* group between Waiting and Set aside (asked for only when there are some), its headline, the read-only draft per role (blank reads *not on the receipt*, a failed check reads as its sentence, hostile text escaped), an employee's *It has been read.*, *Enter the figures by hand* for admin and manager only, the by-hand sheet sending exactly the fields typed (nothing as 0 or ""), lines added one at a time |
+| `ops/test/db-migrate.test.ts`, `ops/test/cutover-tool.test.ts` | the new tables (0010, 0012, 0013) present and skipped by the cutover tools (0014 adds no table) |
+| `tests/suites/ui-receipts.js` | an assistant's original says *added by <person>'s assistant (<key label>)*, an emailed one its sender and date, all escaped (card P5-12b); both drawer entries `opsOnly` with their roles; per role, what is rendered (an employee: no list of others, no set-aside or business control); the oversize photo refused before any request; the token only in an `Authorization` header, never in a URL, a toast or storage; blob URLs revoked; the built page carries both screens and Apps Script hides them; card P5-05a: the *Read, waiting for review* group between Waiting and Set aside (asked for only when there are some), its headline, the read-only draft per role (blank reads *not on the receipt*, a failed check reads as its sentence, hostile text escaped), an employee's *It has been read.*, *Enter the figures by hand* for admin and manager only, the by-hand sheet sending exactly the fields typed (nothing as 0 or ""), lines added one at a time; card P5-05b: the review and *On the books* offered to admin, manager and payroll admin and not to an employee (*It is on the books.*); the review prefilled from the draft and escaped, its fields, a line added and removed, an other charge, Save sending exactly what was typed (a blank left out, the reader's notes unchanged, the draft, the business and the supplier); the confirm sheet naming the business in words, the sign offers unticked and greyed for a manager (a forced tick not sent), the other business's sign a warning, the spelling ticked, Confirm disabled until a reason of 3 characters when a check failed and while not allowed; an admin's tick sent by its id and the next receipt offered; the books asked for one business at a time with the cursor, totals and rows from the server escaped, voided marked, a receipt read only with what was changed, Void for admin and manager only and its sheet listing what was learnt; by hand goes straight into the review |
 
 ## History
+
+- **Nov 2026 (card P5-05b):** review, confirm, void and the books: a person
+  corrects a draft beside its original (each correction a new reading, the
+  checks and the business decided again), settles the business and the
+  supplier, and confirms it onto the books of one business, final; a mistake is
+  voided and redone from a copy; *On the books* lists one business at a time
+  with its totals; signs are learnt only by an admin's tick at confirm and
+  supplier spellings at confirm; what the reviewer changed is recorded against
+  the first reading; the original's status `confirmed`; migration 0014 (no new
+  table) and eight RPCs
+  ([ADR-0029](../adr/0029-a-confirmed-receipt-is-final-and-a-mistake-is-voided.md)).
 
 - **Nov 2026 (card P5-05a):** drafts: what was read off an original, proposed
   by an assistant (`receipt_propose`) or typed by an admin or manager (*Enter the
