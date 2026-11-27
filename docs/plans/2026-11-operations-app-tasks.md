@@ -80,12 +80,17 @@ hand one out.
 | P5-02b | Till link: people and stores matched, key expiry | T2 | P5-02a, P4-11 | security | todo |
 | P5-03 | Vape close from the till snapshot | T2 | P5-02b, P4-05 | money | todo (goes live only after the switch has settled) |
 | P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02a | | todo |
-| P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | todo |
-| P5-05 | Purchase receipts, supplier records and product costs | T2 | P5-04 | money | todo |
-| P5-06 | Receipt test set through both models | T2 + owner | P5-04 | | todo |
+| P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | postponed (the owner, Nov 27: assistants through MCP first) |
+| P5-05 | Purchase receipts, supplier records and product costs | T2 | P5-12 | money | todo (the draft now comes through MCP) |
+| P5-06 | Receipt test set through each assistant | T2 + owner | P5-05 | | todo |
 | P5-07 | Delivery runs: spec first, then build | T3 | P5-02a | | spec being written (needs new calls from the till side) |
 | P5-08 | Send a vape delivery to the till, on a button | T2 | P5-05, P1-02 | money | todo |
-| P5-09 | Bookkeeping export of receipts | T2 | P5-05 | money | todo |
+| P5-09 | Bookkeeping export of receipts, per business, in QuickBooks's layout | T2 | P5-05 | money | todo |
+| P5-10 | Trial: can an assistant hand over an original, and how does it connect | T2 + owner | | security | todo (proposed) |
+| P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | P5-10 | security | todo (proposed) |
+| P5-12 | The two businesses and the receipt inbox (originals kept) | T2 | P5-11 | money | todo (proposed) |
+| P5-13 | Emailed invoices through the assistant | T2 | P5-05 | security | todo (proposed) |
+| P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo (proposed) |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
 | P6-02 | Store listings: decide | owner | P6-01 | | todo |
 
@@ -1003,6 +1008,20 @@ receipts are included and marked.
 **Done when:** the CSV totals match the receipts screen for the same range.
 An integration with QuickBooks or similar is a later decision; this export
 is what it will start from.
+
+### P5-10 to P5-14 · Assistants through MCP (owner, Nov 27)
+Proposed in [Assistants through MCP](2026-11-assistants-through-mcp.md): for
+the first iteration the app runs no model of its own (P5-04 is postponed).
+An AI assistant reaches the app through an MCP server and may read a short
+list of things and propose a short list of things; a person confirms every
+proposal beside the original document. It covers purchase receipts (the
+original kept for audit, the figures taken from it, one business per
+receipt, an export per business for QuickBooks), invoices that arrive by
+email (found by the assistant through its own mailbox connection; the app is
+given no access to email), and delivery planning. Not started: it waits for
+the owner's answers to the eight questions on that page. P5-05 keeps its
+tables, its checks and its review screen; only where the draft comes from
+changes. P5-06 becomes a test of the assistants on real receipts.
 
 ## Phase 6 — App
 
