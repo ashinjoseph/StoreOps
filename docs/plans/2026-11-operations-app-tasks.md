@@ -68,18 +68,22 @@ hand one out.
 | P4-07 | Retire the Apps Script deploy | T1 | P4-05 + 30 days | | todo |
 | P4-08 | The new app's own RPCs and screens: where they are listed, how they are hidden in Apps Script | T1 | P3-12 | security | done |
 | P4-09 | Settings screen: an admin edits the settings | T2 | P4-08 | security | done (four things for the owner, in the card) |
-| P4-10 | Schedule corrections after the fact | T3 | P4-08 | money | done (three questions for the owner, in the card) |
-| P4-11 | Staff screen: add, change, deactivate, PINs | T2 | P4-08 | security | todo (planned; waiting for the owner's go-ahead) |
-| P4-12 | Correct a closed till, enter a missed shift, reconcile a past day | T3 | P4-08 | money | todo (planned) |
+| P4-10 | Schedule corrections after the fact | T3 | P4-08 | money | done (the owner confirmed its three rules, Nov 27) |
+| P4-11 | Staff screen: add, change, deactivate, PINs, raises | T3 | P4-08 | security, money | in progress |
+| P4-12a | Correct a closed till | T3 | P4-08 | money | in progress |
+| P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | todo |
+| P4-12c | Reconcile a past day again | T2 | P4-08 | money | todo |
 | P4-13 | Audit log on a screen; a setting to pause the Monday run | T1 | P4-09 | security | todo (planned) |
 | P4-14 | Backups, and a restore that has been tried | T2 + owner | P2-10 | money | todo (planned) |
 | P5-01 | Stores and staff assignments | T2 | P4-05 | security | todo |
-| P5-02 | Till link: staff sync and key expiry | T2 | P5-01, P1-02 | security | todo |
-| P5-03 | Vape close from the till snapshot | T2 | P5-02 | money | todo |
+| P5-02a | Till link: the client and a fake till (switched off) | T2 | | security | in progress |
+| P5-02b | Till link: people and stores matched, key expiry | T2 | P5-02a, P4-11 | security | todo |
+| P5-03 | Vape close from the till snapshot | T2 | P5-02b, P4-05 | money | todo (goes live only after the switch has settled) |
+| P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02a | | todo |
 | P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | todo |
 | P5-05 | Purchase receipts, supplier records and product costs | T2 | P5-04 | money | todo |
 | P5-06 | Receipt test set through both models | T2 + owner | P5-04 | | todo |
-| P5-07 | Delivery runs: spec first, then build | T3 | P5-04 | | todo |
+| P5-07 | Delivery runs: spec first, then build | T3 | P5-02a | | spec being written (needs new calls from the till side) |
 | P5-08 | Send a vape delivery to the till, on a button | T2 | P5-05, P1-02 | money | todo |
 | P5-09 | Bookkeeping export of receipts | T2 | P5-05 | money | todo |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
@@ -835,6 +839,31 @@ gaps found, and what each card builds. Not started: they wait for the
 owner's answers to the questions on that page. P4-06 (the nightly Google
 Sheet copy) is proposed to move before the switch, since the Sheet was also
 where people looked things up.
+
+### The owner's answers (Nov 27)
+1. **Go ahead** with the staff screen and with corrections to a closed till.
+2. **A manager may add people.** Built as: a manager adds an employee (name,
+   tills, start date, a first PIN) and nothing else; the pay rate, roles
+   above employee, changes, deactivating and PIN resets stay with an admin.
+   A manager does not see pay rates anywhere today, and this keeps it so.
+3. **A raise may also apply to unpaid days.** When an admin changes a rate
+   they may say "also from this date": worked days from that date with
+   nothing paid against them take the new rate; days with any payment are
+   left and listed.
+4. **People do not change their own PIN.** An admin sets it.
+5. **"Delivery" means delivery runs:** see the deliveries, mark them
+   delivered, see the delivery plan. The till's API has no call for either
+   yet, so P5-07 starts with a spec and a request to the till side.
+6. **Build the read-only till link now,** switched off (P5-02a, P5-02b,
+   P5-03b).
+7. **Schedule corrections (P4-10) are right as built:** a day with no rate
+   yet takes the person's current rate; a day set to "did not work" keeps its
+   rate, is not in payroll and is owed nothing; notes capped at 2,000
+   characters.
+
+P4-12 is split in three so each can be reviewed on its own: correcting a
+closed till (a), entering a shift that was never put in the app (b), and
+running the reconcile again for a past day (c).
 
 ### The till link, in build order
 [After the Sheet](2026-11-after-the-sheet.md), part 2, puts P5-02, P5-03,

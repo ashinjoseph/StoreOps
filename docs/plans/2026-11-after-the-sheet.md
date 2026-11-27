@@ -92,8 +92,9 @@ proposed for it:
 
 ### P4-11: staff (the plan the owner asked for)
 
-**Who:** admin only. **Where:** a "Staff" entry in the More drawer, new app
-only.
+**Who:** an admin, for everything. A manager may add an employee and
+nothing else (the owner, Nov 27; see the answers below). **Where:** a
+"Staff" entry in the More drawer, new app only.
 
 **Adding a person.** The admin fills in:
 
@@ -126,17 +127,19 @@ and never contains the PIN.
 
 - An admin can set a new PIN for anyone who forgot theirs. That signs the
   person out everywhere and clears any lockout.
-- Anyone can change their own PIN by giving the old one and a new one.
+- Nobody changes their own PIN (the owner, Nov 27): they ask an admin.
 
-**Questions for the owner.**
+**The owner's answers (Nov 27).**
 
-1. Should a manager be able to add people, or only an admin? Planned: admin
-   only.
-2. Back-dated raises: when a rate changes, should the admin be able to say
-   "apply to unpaid days from this date"? Planned: no, new days only, since a
-   quiet change to past pay is what an audit log is for. Say if raises are
-   usually back-dated.
-3. Should people be able to change their own PIN? Planned: yes.
+1. A manager may add people. Built as: a manager adds an employee with a
+   name, tills, a start date and a first PIN. The pay rate, any role above
+   employee, later changes, deactivating and PIN resets stay with an admin,
+   because a manager sees no pay rates today.
+2. A raise may also apply to unpaid days: the admin gives a date, and worked
+   days from that date with nothing paid against them take the new rate.
+   Days with any payment are left as they are and listed. The change is
+   shown (how many days, how much more is owed) before it is saved.
+3. People do not change their own PIN. An admin sets it.
 
 ### P4-12: correcting a closed till, and entering a missed shift
 
@@ -222,10 +225,10 @@ what each one waits for.
   flagged-sales field, more staging data, what an auto-closed shift returns,
   and the production key.
 
-### Questions for the owner
+### The owner's answers (Nov 27)
 
-1. Is "delivery" in the request the door cash and the delivery channel
-   (steps 4 and 5), or delivery runs (step 6)? The first two can be built
-   from the till's figures; the third needs a spec written together.
-2. Should steps 1, 2 and 5 be built before the switch, switched off, or wait
-   until after it?
+1. "Delivery" means delivery runs (step 6): see the deliveries, mark them
+   delivered, and see the delivery plan. The till's API has no call that
+   lists deliveries or marks one delivered, so step 6 starts with a spec and
+   a request to the till side; it no longer waits for step 4.
+2. Steps 1, 2 and 5 are built now and left switched off.
