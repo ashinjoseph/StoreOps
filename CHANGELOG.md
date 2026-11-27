@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versions `vX.Y.Z`.
 
 ## [Unreleased] — v1.0.0
 
+### Settings screen in the Operations app (card P4-09)
+
+After the move off Sheets there is no `config` tab to edit. An admin now has
+**More → Settings** (Operations app only, hidden in Apps Script): every setting
+under a heading, its default, a sheet to change it, and "Use the default".
+`rpcGetSettings` and `rpcUpdateSetting` are the first calls only the Operations
+app has (listed in `ops/contracts/rpc-ops.json`, admin only). A value is refused
+where its reader would misread it (a zero read as the default, an address the
+Clover or WhatsApp token would not be sent to, a number that is not a number); a
+blank stores NULL; the three credentials are listed as set or not set and never
+shown or stored here. Every change is audited, with phone numbers masked to their
+last four digits. See [settings](docs/components/settings.md).
+
+New assertions in `ops/test/settings.test.ts` and `ops-ui-build`; each was seen
+failing first, and against a deliberate mutation of the fix.
+
 ### Foundation (Batch 1)
 - Project scaffolding (clasp + git ready)
 - `Util.gs` — date, ID, money, shift-time parsing helpers

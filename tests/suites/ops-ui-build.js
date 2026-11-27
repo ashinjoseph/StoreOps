@@ -120,6 +120,54 @@ const warmOf = js => js.split('\n').map(warmOfLine).filter(Boolean);
     t.ok('the built page keeps both functions', out.indexOf('function moreItemsFor_(') !== -1 && out.indexOf('function isOpsApp_(') !== -1);
   }
 
+  // Card P4-09: the Settings screen is the first such screen. It is the page's own code, listed
+  // opsOnly and for admins only, and the only code that names its two calls.
+  t.section('The Settings screen');
+  {
+    const js = scriptOf(SRC_HTML);
+    const lifted = /const ALL_ROLES = [^\n]*\n  const MORE_ITEMS = \[[\s\S]*?\n  \];/.exec(js)[0];
+    const items = new Function(lifted + '; return MORE_ITEMS;')();
+    const entry = items.filter(i => i.tab === 'settings');
+    t.eq('one entry in the real MORE_ITEMS', entry.length, 1);
+    t.ok('it is opsOnly', entry[0].opsOnly === true);
+    t.eq('and admin only', entry[0].roles, ['admin']);
+    t.ok('written on one line, as the build reads the list', /^\s*\{ tab: 'settings'.*\},\s*$/m.test(js));
+    const pick = new Function(H.fnSource(js, 'moreItemsFor_') + '; return moreItemsFor_;')();
+    const has = (role, ops) => pick(items, role, ops).some(i => i.tab === 'settings');
+    t.eq('absent from the drawer for an admin inside Apps Script', has('admin', false), false);
+    t.eq('present for an admin in the Operations app', has('admin', true), true);
+    t.eq('absent for the other three roles even there', ['manager', 'payroll_admin', 'employee'].map(r => has(r, true)), [false, false, false]);
+    t.ok('tabLoaders_ has a settings loader', /settings:\s*loadSettingsTab\b/.test(H.fnSource(js, 'tabLoaders_')));
+    t.ok('the loader exists', js.indexOf('async function loadSettingsTab(') !== -1);
+    t.ok('it is a drawer tab with a title and a view', /const DRAWER_TABS = \[[^\]]*'settings'/.test(js) && /settings: 'Settings'/.test(H.fnSource(js, 'switchTab')) && SRC_HTML.indexOf('<div class="view" id="view-settings"></div>') !== -1);
+    const own = H.fnSource(js, 'loadSettingsTab') + H.fnSource(js, 'openSettingSheet');
+    const count = (s, n) => s.split(n).length - 1;
+    t.eq('the two calls are named only inside the screen\'s own functions',
+      ['rpcGetSettings', 'rpcUpdateSetting'].map(n => count(js, n) === count(own, n) && count(js, n) > 0), [true, true]);
+    t.ok('no var in the screen (it would hoist over a module helper)', !/\bvar\b/.test(own + H.fnSource(js, 'renderSettingsTab') + H.fnSource(js, 'settingShown_')));
+    t.ok('the built page keeps the screen', out.indexOf('id="view-settings"') !== -1 && out.indexOf('async function loadSettingsTab(') !== -1 && /\{ tab: 'settings'[^\n]*opsOnly: true/.test(out));
+
+    // Render it with what the server sends, hostile text included: nothing reaches the page unescaped,
+    // a secret is listed by name and "set" only, and a default is shown as a default.
+    const view = { innerHTML: '', querySelectorAll: () => [] };
+    const render = new Function('$', 'haptic', 'openSettingSheet',
+      [H.fnSource(js, 'esc'), H.fnSource(js, 'moreBack'), H.fnSource(js, 'settingShown_'), H.fnSource(js, 'renderSettingsTab')].join('\n') + '; return renderSettingsTab;')(() => view, () => {}, () => {});
+    render({
+      settings: [
+        { key: 'vape_default_opening_float', value: null, default: '100', blankReads: '100', read: 'number', description: 'Vape <img src=x onerror=1> float', isDefault: true, group: 'Tills and cash' },
+        { key: 'notifier_enabled', value: 'true', default: 'false', blankReads: 'false', read: 'boolean', description: 'Messages', isDefault: false, group: 'WhatsApp' },
+      ],
+      other: [{ key: 'x"><b>', value: '<i>', description: '' }],
+      secrets: [{ key: 'clover_vape_token', binding: 'CLOVER_VAPE_TOKEN', isSet: true }, { key: 'whatsapp_api_token', binding: 'WHATSAPP_API_TOKEN', isSet: false }],
+    });
+    const h = view.innerHTML;
+    t.ok('hostile text is escaped', h.indexOf('<img') === -1 && h.indexOf('<b>') === -1 && h.indexOf('<i>') === -1 && h.indexOf('&lt;img') !== -1);
+    t.ok('a setting on its default says default: and its value', /default: 100/.test(h));
+    t.ok('a boolean reads Yes', />Yes</.test(h));
+    t.ok('groups are headed', h.indexOf('Tills and cash') !== -1 && h.indexOf('>WhatsApp<') !== -1);
+    t.ok('a secret is "Kept by Cloudflare · set" or "· not set"', h.indexOf('Kept by Cloudflare · set') !== -1 && h.indexOf('Kept by Cloudflare · not set') !== -1);
+  }
+
   t.section('Deterministic');
   t.ok('building twice gives the same bytes', buildUi({ write: false }) === buildUi({ write: false }));
 

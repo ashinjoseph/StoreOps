@@ -1273,6 +1273,7 @@
     <div class="view" id="view-sales"></div>
     <div class="view" id="view-commissions"></div>
     <div class="view" id="view-rules"></div>
+    <div class="view" id="view-settings"></div>
     <div class="view" id="view-shopping"></div>
     <div class="view" id="view-suppliers"></div>
     <div class="view" id="view-products"></div>
@@ -1715,7 +1716,7 @@
 
   // Tabs accessed only via the "More" drawer (no direct bottom-bar button).
   // Every role gets the More drawer; History/Shopping/Suppliers live there for all.
-  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon'];
+  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon', 'settings'];
 
   // Items shown in the "More" drawer, with role visibility.
   const ALL_ROLES = ['admin', 'manager', 'payroll_admin', 'employee'];
@@ -1730,6 +1731,7 @@
     { tab: 'payroll',     icon: '💰', label: 'Payroll',          meta: 'Pay owed shifts & bonuses',       roles: ['admin', 'payroll_admin'] },
     { tab: 'commissions', icon: '🎯', label: 'Commissions',      meta: 'Run engine, approve runs',        roles: ['admin', 'manager', 'payroll_admin'] },
     { tab: 'rules',       icon: '⚙️', label: 'Commission Rules', meta: 'Create & manage commission rules', roles: ['admin', 'payroll_admin'] },
+    { tab: 'settings',    icon: '🛠️', label: 'Settings',         meta: 'Floats, limits, messages, Clover', roles: ['admin'], opsOnly: true },
   ];
 
   // A screen that only the Operations app has is listed with `opsOnly: true` (ADR-0023).
@@ -1761,7 +1763,7 @@
     return {
       shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab,
       payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
-      commissions: loadCommissionsTab, rules: loadRulesTab, more: loadMoreTab,
+      commissions: loadCommissionsTab, rules: loadRulesTab, settings: loadSettingsTab, more: loadMoreTab,
       shopping: loadShoppingTab, suppliers: loadSuppliersTab,
       products: loadProductsTab, cash: loadCashTab, recon: loadReconTab,
     };
@@ -1779,7 +1781,7 @@
     const titles = {
       shift: 'My Shift', schedule: 'Schedule', mypay: 'My Pay',
       payroll: 'Payroll', sales: 'Sales', history: 'History',
-      commissions: 'Commissions', rules: 'Commission Rules', more: 'More',
+      commissions: 'Commissions', rules: 'Commission Rules', settings: 'Settings', more: 'More',
       shopping: 'Shopping List', suppliers: 'Suppliers',
       products: 'Product Master', cash: 'Cash Handling', recon: 'Reconcile',
     };
@@ -4893,6 +4895,191 @@
         btn.textContent = isEdit ? 'Save changes' : 'Create rule';
       }
     };
+  }
+
+  // ============================================================
+  //  ░░  TAB: SETTINGS (the Operations app only; ADR-0023)  ░░
+  // ============================================================
+  //  An admin edits what used to be a cell of the Sheet's config tab.
+  //  The server refuses a value its reader would misread, in words a
+  //  person can read: those messages are shown as they are. A secret
+  //  (a credential) is listed read-only: it is kept by Cloudflare.
+  //  "Use the default" sends a blank; the setting is never deleted.
+  // ============================================================
+  async function loadSettingsTab(force) {
+    const view = $('view-settings');
+    if (force || !cacheFresh('rpcGetSettings', [state.token], TTL_REF)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading settings…</div>';
+    }
+    try {
+      const data = await cachedCall('rpcGetSettings', [state.token], TTL_REF, { force });
+      renderSettingsTab(data);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  // How a stored value reads on screen. A blank is never shown as 0 or as nothing.
+  function settingShown_(read, text) {
+    if (text === null || text === undefined || text === '') return 'not set';
+    if (read === 'boolean') return String(text).toLowerCase() === 'true' ? 'Yes' : 'No';
+    return String(text);
+  }
+
+  function renderSettingsTab(data) {
+    const view = $('view-settings');
+    const settings = (data && data.settings) || [];
+    const other = (data && data.other) || [];
+    const secrets = (data && data.secrets) || [];
+
+    let html = moreBack();
+    html += '<div style="font-size:13px;font-weight:700;margin-bottom:4px">Settings</div>' +
+      '<div style="font-size:11px;color:#6a6e79;margin-bottom:12px">Tap a setting to change it. A change is saved at once and recorded.</div>';
+
+    const groups = [];
+    settings.forEach(s => {
+      let g = groups.find(x => x.name === s.group);
+      if (!g) { g = { name: s.group, items: [] }; groups.push(g); }
+      g.items.push(s);
+    });
+
+    const headingStyle = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#6a6e79;margin:16px 0 6px';
+    const rowHTML = (key, desc, valueHTML) =>
+      '<div class="payroll-card" data-setting-key="' + esc(key) + '" style="cursor:pointer;margin-bottom:8px">' +
+        '<div class="payroll-card-head">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(desc) + '</div>' +
+            '<div class="payroll-rate" style="font-family:monospace;overflow-wrap:anywhere">' + esc(key) + '</div>' +
+          '</div>' +
+          '<div style="font-size:13px;font-weight:700;text-align:right;max-width:45%;overflow-wrap:anywhere">' + valueHTML + '</div>' +
+        '</div>' +
+      '</div>';
+
+    groups.forEach(g => {
+      html += '<div style="' + headingStyle + '">' + esc(g.name) + '</div>';
+      g.items.forEach(s => {
+        const valueHTML = s.isDefault
+          ? '<span style="color:#8a8e98;font-weight:500">default: ' + esc(settingShown_(s.read, s.blankReads !== undefined ? s.blankReads : s.default)) + '</span>'
+          : esc(settingShown_(s.read, s.value));
+        html += rowHTML(s.key, s.description, valueHTML);
+      });
+    });
+
+    if (other.length) {
+      html += '<div style="' + headingStyle + '">Other saved values</div>';
+      other.forEach(o => {
+        html += rowHTML(o.key, o.description || o.key,
+          o.value === null ? '<span style="color:#8a8e98;font-weight:500">not set</span>' : esc(o.value));
+      });
+    }
+
+    html += '<div style="' + headingStyle + '">Kept by Cloudflare</div>' +
+      '<div style="font-size:11px;color:#6a6e79;margin-bottom:8px">Keys and tokens are not stored here and cannot be changed here. ' +
+      'Change one in the Cloudflare dashboard (the Worker\'s secrets) or with <code>wrangler secret put NAME</code>.</div>';
+    secrets.forEach(s => {
+      html += '<div class="payroll-card" style="margin-bottom:8px"><div class="payroll-card-head">' +
+        '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;font-family:monospace">' + esc(s.binding) + '</div>' +
+        '<div class="payroll-rate">Kept by Cloudflare · ' + (s.isSet ? 'set' : 'not set') + '</div></div>' +
+        '<div style="font-size:12px;font-weight:700;color:' + (s.isSet ? '#15803d' : '#b45309') + '">' + (s.isSet ? 'set' : 'not set') + '</div>' +
+        '</div></div>';
+    });
+
+    view.innerHTML = html;
+
+    view.querySelectorAll('[data-setting-key]').forEach(el => {
+      el.onclick = () => {
+        haptic();
+        const key = el.dataset.settingKey;
+        const s = settings.find(x => x.key === key);
+        if (s) { openSettingSheet(s); return; }
+        const o = other.find(x => x.key === key);
+        if (o) openSettingSheet({ key: o.key, value: o.value, default: '', blankReads: '', read: 'text', description: o.description || o.key, isDefault: o.value === null, group: 'Other saved values' });
+      };
+    });
+  }
+
+  async function openSettingSheet(s) {
+    // Two-button choice for a yes/no setting; a number box; a people list for the cash manager; text otherwise.
+    let people = [];
+    if (s.key === 'cash_manager_staff_id') {
+      try { people = await cachedCall('rpcGetStaffDirectory', [state.token], TTL_REF); } catch (e) { people = []; }
+    }
+    let boolValue = s.value === null || s.value === undefined ? '' : String(s.value).toLowerCase();
+    const current = s.value === null || s.value === undefined ? '' : String(s.value);
+
+    let inputHTML;
+    if (s.read === 'boolean') {
+      inputHTML = '<div style="display:flex;gap:8px" id="settingBool">' +
+        '<button type="button" class="sheet-cancel" data-bool="true" style="flex:1">Yes</button>' +
+        '<button type="button" class="sheet-cancel" data-bool="false" style="flex:1">No</button></div>';
+    } else if (s.read === 'number') {
+      inputHTML = '<input type="number" step="any" inputmode="decimal" id="settingInput" value="' + esc(current) + '" placeholder="' + esc(s.default) + '">';
+    } else if (s.key === 'cash_manager_staff_id') {
+      inputHTML = '<select id="settingInput"><option value="">Nobody (cash handling off)</option>' +
+        people.filter(p => p.active || p.staffId === current).map(p =>
+          '<option value="' + esc(p.staffId) + '"' + (p.staffId === current ? ' selected' : '') + '>' + esc(p.name) + (p.active ? '' : ' (inactive)') + '</option>'
+        ).join('') + '</select>';
+    } else {
+      inputHTML = '<input type="text" id="settingInput" autocomplete="off" value="' + esc(current) + '" placeholder="' + esc(s.default) + '">';
+    }
+
+    const bodyHTML =
+      '<div style="font-size:12px;color:#4a4e59;margin-bottom:10px">' + esc(s.description) + '</div>' +
+      '<div style="font-size:11px;color:#8a8e98;margin-bottom:10px">Default: ' +
+        esc(settingShown_(s.read, s.blankReads !== undefined ? s.blankReads : s.default)) +
+        (s.isDefault ? ' (in use now)' : '') + '</div>' +
+      '<div class="sheet-field"><label>' + esc(s.key) + '</label>' + inputHTML + '</div>' +
+      '<div id="settingErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-cancel" id="settingDefaultBtn">Use the default</button>' +
+      '<button class="sheet-submit" id="settingSaveBtn">Save</button>';
+
+    openSheet({ title: 'Change setting', subtitle: s.group || 'Other', bodyHTML, actionsHTML });
+
+    function paintBool() {
+      document.querySelectorAll('#settingBool [data-bool]').forEach(b => {
+        const on = b.dataset.bool === boolValue;
+        b.style.background = on ? '#1a2540' : '';
+        b.style.color = on ? '#fff' : '';
+      });
+    }
+    if (s.read === 'boolean') {
+      document.querySelectorAll('#settingBool [data-bool]').forEach(b => {
+        b.onclick = () => { boolValue = b.dataset.bool; paintBool(); };
+      });
+      paintBool();
+    }
+
+    async function send(value, buttonId, busyText) {
+      const errEl = $('settingErr');
+      errEl.textContent = '';
+      const saveBtn = $('settingSaveBtn');
+      const defBtn = $('settingDefaultBtn');
+      const btn = $(buttonId);
+      const idle = btn.textContent;
+      saveBtn.disabled = true; defBtn.disabled = true;
+      btn.textContent = busyText;
+      try {
+        const res = await call('rpcUpdateSetting', state.token, { key: s.key, value: value });
+        closeSheet();
+        toast(res.changed ? '✓ Saved' : 'Nothing changed', res.changed ? 'success' : 'warning');
+        loadSettingsTab();
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        errEl.textContent = e.message;
+        saveBtn.disabled = false; defBtn.disabled = false;
+        btn.textContent = idle;
+      }
+    }
+
+    $('settingSaveBtn').onclick = () => {
+      haptic();
+      const value = s.read === 'boolean' ? boolValue : $('settingInput').value;
+      send(value, 'settingSaveBtn', 'Saving…');
+    };
+    $('settingDefaultBtn').onclick = () => { haptic(); send('', 'settingDefaultBtn', 'Saving…'); };
   }
 
   // ============================================================

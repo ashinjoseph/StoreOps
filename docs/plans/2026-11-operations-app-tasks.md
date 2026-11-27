@@ -67,7 +67,7 @@ hand one out.
 | P4-06 | Nightly export to a Google Sheet | T2 | P4-05 | | todo |
 | P4-07 | Retire the Apps Script deploy | T1 | P4-05 + 30 days | | todo |
 | P4-08 | The new app's own RPCs and screens: where they are listed, how they are hidden in Apps Script | T1 | P3-12 | security | done |
-| P4-09 | Settings screen: an admin edits the settings | T2 | P4-08 | security | in progress |
+| P4-09 | Settings screen: an admin edits the settings | T2 | P4-08 | security | done (four things for the owner, in the card) |
 | P4-10 | Schedule corrections after the fact | T3 | P4-08 | money | in progress |
 | P4-11 | Staff screen: add, change, deactivate, PINs | T2 | P4-08 | security | todo (planned; waiting for the owner's go-ahead) |
 | P4-12 | Correct a closed till, enter a missed shift, reconcile a past day | T3 | P4-08 | money | todo (planned) |
@@ -786,6 +786,23 @@ needs come first, both for the admin role only, both before the switch
   with before and after, blank meaning "use the default". The three keys
   (WhatsApp, the two Clover tokens) are not settings any more: they are held
   by Cloudflare and are shown only as set or not set.
+  **Done.** `rpcGetSettings` and `rpcUpdateSetting`, admin only; a value is
+  refused where the code that reads it would misread it (a zero that reads
+  as the default, an address a key would not be sent to, a cash manager who
+  is not active). Checked in a browser as an admin and as an employee.
+  Four things it showed, for the owner:
+  1. `cstore_card_split` is listed with the default "false", but the code
+     that reads it (in the current app too) treats a blank as "true". So
+     "Use the default" on the cstore till means "splits credit and debit".
+     The screen shows what a blank really reads as. Leave the saved "false"
+     alone; decide later whether the reader or the list should change.
+  2. `commission_run_day` and `commission_run_hour` are read by nothing in
+     the new app: the weekly run's time is part of the app (P3-10b). The
+     screen says so.
+  3. Nothing stops the "minor" variance limit being set below the "OK"
+     limit.
+  4. A cash manager chosen here can later be deactivated; cash handling then
+     reads as "nobody". The staff screen (P4-11) is to refuse that.
 - **P4-10 · Schedule corrections.** An admin corrects a day for one person,
   today or in the past, with a reason: scheduled times, actual start and
   end, and whether the day was worked or cancelled; or adds a day worked by

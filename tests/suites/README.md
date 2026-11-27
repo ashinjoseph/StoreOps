@@ -34,7 +34,7 @@ shared globals, which hid at least one ordering-dependent pass.
 | `lotto-payout` | netting, reserve-fed-to-till derived from two counts, no double-counted top-up |
 | `notifier` | the wire payload, flattening, and what a Meta rejection reports back |
 | `ops-schema-contract` | the Postgres contract covers every migrated tab and column, leaves out the deprecated ones by name, no money default, append-only audit grants |
-| `ops-ui-build` | the Worker's copy of the page: no template tags, transport loaded first, the three unmoved screens out of the More drawer and nothing else changed, build fails loudly on altered input |
+| `ops-ui-build` | the Worker's copy of the page: no template tags, transport loaded first, the three unmoved screens out of the More drawer and nothing else changed, build fails loudly on altered input; the Settings screen (opsOnly, admin only, its two calls named only by its own functions, escaped) |
 | `parity` | the app and the public page rendering one payload the same way |
 | `perf` | the dashboard read path, counted |
 | `public-chart` | bar labels, proportional heights, and opening on the newest day |

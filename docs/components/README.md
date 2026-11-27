@@ -52,6 +52,7 @@ flowchart LR
 | Public reports | owners, no login | `PublicReport`, `Public.html`, `PublicSales.html` | [public-reports.md](public-reports.md) |
 | Product master | everyone; imports by admin | `ProductMaster`, `ProductTypes`, `Setup` (imports) | [product-master.md](product-master.md) |
 | Shopping list | everyone; generate by manager | `ShoppingList`, `ProductMaster` | [shopping-list.md](shopping-list.md) |
+| Settings (Operations app only) | admin | `modules/settings.ts` (in `ops/`) | [settings.md](settings.md) |
 
 Writing a new page? Start from [_template.md](_template.md). When a phase
 changes a component, its page changes in the same pull request

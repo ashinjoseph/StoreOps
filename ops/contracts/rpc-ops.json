@@ -1,4 +1,7 @@
 {
   "about": "RPCs that only the Operations app has (ADR-0023). Written by hand. rpc.json beside it is generated from the current app and is what the comparison harness checks; nothing here has a counterpart there, so each entry is covered by unit tests instead. Every entry needs a session and names its roles.",
-  "rpcs": []
+  "rpcs": [
+    { "name": "rpcGetSettings", "params": ["token"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcUpdateSetting", "params": ["token", "input"], "roles": ["admin"], "needs_session": true }
+  ]
 }
