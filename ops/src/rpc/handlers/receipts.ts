@@ -6,6 +6,7 @@
 import { requireRole } from "../../auth/roles";
 import { NOT_LOGGED_IN, type Session } from "../../auth/types";
 import * as businesses from "../../receipts/businesses";
+import * as costs from "../../receipts/costs";
 import * as drafts from "../../receipts/drafts";
 import * as legacy from "../../receipts/legacy";
 import * as originals from "../../receipts/originals";
@@ -168,4 +169,48 @@ export const rpcLinkLegacySupplier: RpcHandler = async (ctx, input) => {
   const s = caller(ctx, legacy.LEGACY_EDIT_ROLES);
   const o = fields(input);
   return legacy.linkSupplier(ctx.db, { spellingKey: o["spellingKey"], supplierId: o["supplierId"] }, actor(s), ctx.now);
+};
+
+// ── The cost history and price-rise flags (card P5-15; ADR-0030) ──
+// Costs are shown and acted on for ONE business at a time (a call with no business is refused). Admin and
+// manager see and act; payroll admin reads; an employee sees nothing. Identity and role are the session's.
+
+/** Admin, manager, payroll admin: `{ business, state?, before?, limit? }`. Flags newest rise first, with the counts per state. */
+export const rpcGetPriceFlags: RpcHandler = async (ctx, input) => {
+  caller(ctx, costs.READ_ROLES);
+  const o = fields(input);
+  return costs.getPriceFlags(ctx.db, { business: o["business"], state: o["state"], before: o["before"], limit: o["limit"] });
+};
+
+/** Admin or manager: `{ flagId, state: "seen" | "price_raised" | "new", note? }`. */
+export const rpcSetPriceFlag: RpcHandler = async (ctx, input) => {
+  const s = caller(ctx, costs.ACT_ROLES);
+  const o = fields(input);
+  return costs.setFlagState(ctx.db, { flagId: o["flagId"], state: o["state"], note: o["note"] }, { staffId: s.staffId, role: s.role }, ctx.now);
+};
+
+/** Admin, manager, payroll admin: `{ itemId }`. The item, what is joined into it and its counted history in order. */
+export const rpcGetItemCosts: RpcHandler = async (ctx, input) => {
+  caller(ctx, costs.READ_ROLES);
+  return costs.getItemCosts(ctx.db, { itemId: fields(input)["itemId"] });
+};
+
+/** Admin, manager, payroll admin: `{ business, supplierId?, text?, before?, limit? }`. */
+export const rpcFindItems: RpcHandler = async (ctx, input) => {
+  caller(ctx, costs.READ_ROLES);
+  const o = fields(input);
+  return costs.findItems(ctx.db, { business: o["business"], supplierId: o["supplierId"], text: o["text"], before: o["before"], limit: o["limit"] });
+};
+
+/** Admin or manager: `{ itemId, intoItemId | null, reason }`. null undoes a join. */
+export const rpcJoinItems: RpcHandler = async (ctx, input) => {
+  const s = caller(ctx, costs.ACT_ROLES);
+  const o = fields(input);
+  return costs.joinItems(ctx.db, { itemId: o["itemId"], intoItemId: o["intoItemId"], reason: o["reason"] }, { staffId: s.staffId, role: s.role }, ctx.now);
+};
+
+/** Admin: observe every confirmed receipt that has not been (a batch at a time); safe to run twice. */
+export const rpcObserveEarlierReceipts: RpcHandler = async (ctx) => {
+  const s = caller(ctx, costs.CATCH_UP_ROLES);
+  return costs.observeEarlierReceipts(ctx.db, { staffId: s.staffId, role: s.role }, await ctx.config(), ctx.now);
 };

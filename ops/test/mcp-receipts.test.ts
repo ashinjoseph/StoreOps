@@ -38,7 +38,7 @@ beforeEach(async () => {
   w.clock.now = new Date();
   w.extraTools = [];
   w.bucket = memoryBucket();
-  for (const t of ["purchase_receipt_lines", "purchase_receipts", "receipt_upload_tickets", "receipt_originals", "assistant_calls", "audit_log", "config"]) await w.owner.query(`delete from ops.${t}`);
+  for (const t of ["price_flags", "item_costs", "receipt_observations", "supplier_items", "purchase_receipt_lines", "purchase_receipts", "receipt_upload_tickets", "receipt_originals", "assistant_calls", "audit_log", "config"]) await w.owner.query(`delete from ops.${t}`);
   await w.owner.query("update ops.staff set active = (staff_id <> 'S_005')");
   await setDoor(w, true);
 });

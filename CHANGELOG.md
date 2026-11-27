@@ -1776,3 +1776,42 @@ byte for byte.
 - Migration 0015 (two tables, and `old_list` as a way a spelling is learnt), four RPCs, [the guide](docs/guides/import-the-old-purchase-list.md).
 
 New: `ops/test/legacy-purchases.test.ts` and the old-purchase-list assertions in the `ui-receipts` suite, seen failing against twelve deliberate mutations, each restored byte for byte.
+
+### Costs from receipt lines, and price-rise flags for a manager (P5-15)
+
+For the Operations app. What each item costs from each supplier is now kept
+from the receipts on the books, and a rise is flagged for a manager to decide
+on. The app changes no selling price: those live in the tills.
+
+- **An item is a supplier's own line**: the business, the supplier and the
+  supplier's printed code for the line, else its description. There is no
+  product list here, so the same goods from two suppliers are two items. An admin
+  or a manager can say two items are the same (**This is the same item as…**,
+  with a reason); nothing moves or is erased, the histories read as one, and it
+  can be undone.
+- **A cost is kept when a receipt is confirmed**, for each line that gives one
+  exactly: a printed unit price (up to four decimals), or the line total divided
+  by the quantity, worked out exactly and rounded half up to four decimals and
+  marked *worked out from the line total*. A line with no price, a quantity or
+  total of zero or less, or too little to know is counted as *no cost* and is
+  never stored as 0 or guessed. Costs are as printed, before tax.
+- **A flag** when a cost is more than a set percentage above the one before it
+  from the same supplier (the new setting `price_rise_flag_percent`, default 5),
+  compared in the order of the receipts' dates, in whole numbers, never floats.
+  *New*, *Seen*, *Price raised* (with an optional note) or *Withdrawn* (by the
+  app, when a receipt it rested on was voided or an older receipt changed the
+  history). Changing the setting does not rewrite old flags.
+- **More → Costs** (admin, manager, payroll admin; one business at a time): the
+  flags as sentences (*Cola 12-pack from Fictional Wholesale: $6.00 → $6.72 each,
+  up 12.0%, on the receipt of Nov 20*), find an item, its history with the costs
+  that are not counted apart, and, for an admin, **Work out costs for earlier
+  receipts**. After a confirm or a void the result sheet says what it did to the
+  cost history.
+- Migration 0016 (four tables: `supplier_items`, `item_costs`, `price_flags` and
+  `receipt_observations`; the app role cannot remove or rewrite a row), six new
+  RPCs, `rpcConfirmReceipt` and `rpcVoidReceipt` answer a `costs` summary, and
+  ADR-0030.
+
+New: `ops/test/costs.test.ts` (134 tests), checked against twelve deliberate
+mutations (each restored byte for byte), and `tests/suites/ui-costs.js` (139
+assertions).

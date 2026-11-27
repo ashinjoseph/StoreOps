@@ -65,6 +65,11 @@ export const LATER_OPS_TABLES: readonly string[] = [
   // card P5-16, the old purchase list as history (0015_legacy_purchases.sql)
   "legacy_purchase_files",
   "legacy_purchases",
+  // card P5-15, the cost history (0016_cost_history.sql)
+  "supplier_items",
+  "item_costs",
+  "receipt_observations",
+  "price_flags",
 ];
 
 /** The column each table's rows are grouped by, per month (America/Toronto). null: the table has no date. */

@@ -48,7 +48,7 @@ const LAYOUT: ReadonlyArray<readonly [Group, readonly string[]]> = [
   ["Till", ["till_enabled", "till_api_url", "till_key_expires_on"]],
   ["Commissions", ["commission_run_day", "commission_run_hour", "commission_run_paused"]],
   ["Public report", ["public_report_url"]],
-  ["Other", ["cstore_business_name", "vape_business_name", "timezone", "receipt_max_mb", "hst_rate_percent"]],
+  ["Other", ["cstore_business_name", "vape_business_name", "timezone", "receipt_max_mb", "hst_rate_percent", "price_rise_flag_percent"]],
   ["Assistants", ["assistants_enabled", "assistant_calls_per_minute", "assistant_proposals_per_day", "assistant_show_max_mb"]],
 ];
 
@@ -97,6 +97,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   assistant_show_max_mb: "Largest receipt original an assistant is shown in one answer, in MB (1 to 25). A larger one is not shown, never shrunk",
   receipt_max_mb: "Largest receipt original (photo or PDF) the Receipts screen accepts, in MB (1 to 25)",
   hst_rate_percent: "HST rate (percent) a receipt draft's tax is checked against: 0 to 30, up to three decimals. Ontario is 13",
+  price_rise_flag_percent: "A cost more than this percent above the one before it, from the same supplier, is flagged on the Costs screen: 0.1 to 500, up to two decimals. A change applies to receipts confirmed after it; flags already raised stay as they are",
 };
 
 /** A sentence added to the description the screen shows, whatever the table row says. */
@@ -145,6 +146,7 @@ const NUMBER_RULES: Readonly<Record<string, NumberRule>> = {
   assistant_show_max_mb: { min: 1, max: 25, integer: true },
   receipt_max_mb: { min: 1, max: 25, integer: true },
   hst_rate_percent: { min: 0, max: 30, decimals: 3 },
+  price_rise_flag_percent: { min: 0.1, max: 500, decimals: 2 },
 };
 
 const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/;

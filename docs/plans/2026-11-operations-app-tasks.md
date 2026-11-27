@@ -96,7 +96,7 @@ hand one out.
 | P5-12b | The assistant's tools for the inbox: hand over an original, see one, list those waiting | T3 | P5-12a, P5-11 | security | done (questions for the trial and the owner, in the card) |
 | P5-13 | Emailed invoices through the assistant | T2 | P5-05b | security | todo (the owner to decide how an invoice with no attachment is kept) |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
-| P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | in progress |
+| P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | done (where "an item" breaks on real receipts, for the owner, in the card) |
 | P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | done (the owner runs the import; things to check in the real file, in the card) |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
 | P6-02 | Store listings: decide | owner | P6-01 | | todo |
@@ -1444,6 +1444,40 @@ the real file has never been in the repository or in a builder's hands.
 Questions for the owner: should the import refuse to finish until the
 rejects are accepted by number, as the Sheet import does? And a spelling
 linked to the wrong supplier cannot be moved to another from the screen yet.
+
+**P5-15 is done.** More → Costs (admin and manager act; payroll admin
+reads), one business at a time.
+- **An item is a supplier's own line:** the supplier plus its printed code,
+  or its description when there is no code. The app has no product list, so
+  the same goods from two suppliers are two items.
+- **A cost is recorded when a receipt is confirmed,** for each line that
+  gives one exactly: the printed unit price, or the line total divided by
+  the quantity (marked "worked out"). A line that gives neither records
+  nothing; it is never a guess and never $0.
+- **A flag** when an item costs more than on the receipt before it, in the
+  order of the receipts' own dates, by more than the setting
+  `price_rise_flag_percent` (5%). It reads as a sentence ("Cola 12-pack from
+  Fictional Wholesale Ltd: $6.00 → $6.72 each, up 12.0%, on the receipt of
+  Nov 20") and a manager marks it "seen" or "price raised", with a note.
+  The app changes no price anywhere.
+- **Voiding a receipt** takes its costs out of the history and withdraws
+  the flags that rested on them; nothing is deleted.
+- **Two items can be joined** by a person ("this is the same item"), and
+  un-joined; a rise across the join is then flagged.
+Migration `0016_cost_history.sql` (four tables);
+[ADR-0030](../adr/0030-an-item-is-a-suppliers-own-line.md);
+[costs](../components/costs.md).
+**Where "an item" breaks on real receipts** (for the owner to say which
+matter):
+1. A supplier that prints no codes and rewords a line: two items, and a
+   real rise goes unflagged until a person joins them.
+2. A pack that shrinks (12 for $6.00 becomes 10 for $6.00): seen only when
+   the receipt prints a quantity; nothing knows the pack changed.
+3. A case price after a single price under the same code: flagged as a
+   huge rise.
+4. A promotional price followed by the normal one: flagged as a rise.
+5. The same item twice on one receipt at two prices: the second can be
+   flagged against the first.
 
 ## Phase 6 — App
 

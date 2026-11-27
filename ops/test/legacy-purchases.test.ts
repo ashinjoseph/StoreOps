@@ -62,7 +62,8 @@ afterAll(async () => {
 const RECEIPT_TABLES = ["business_signs", "supplier_names", "purchase_receipt_lines", "purchase_receipts", "suppliers", "receipt_upload_tickets", "receipt_originals"];
 beforeEach(async () => {
   w.clock.now = NOW;
-  for (const t of ["legacy_purchases", "legacy_purchase_files", ...RECEIPT_TABLES, "assistant_calls", "audit_log"]) await w.owner.query(`delete from ops.${t}`);
+  // The cost history (card P5-15) hangs off a confirmed receipt and its supplier: its rows go first.
+  for (const t of ["legacy_purchases", "legacy_purchase_files", "price_flags", "item_costs", "receipt_observations", "supplier_items", ...RECEIPT_TABLES, "assistant_calls", "audit_log"]) await w.owner.query(`delete from ops.${t}`);
 });
 
 // ── The fictional workbook ────────────────────────────────

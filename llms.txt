@@ -30,6 +30,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [Backups: the nightly copy and the restore](docs/components/backups.md): Every night the app writes every table to dated files in its own bucket, and a tool on the owner's computer can load any of those copies into an empty database and prove that…
 - [Cash handling](docs/components/cash-handling.md): Track every dollar a cashier walks out with until it reaches the cash manager, shift by shift, with a record of who said it moved
 - [Commissions](docs/components/commissions.md): Rules say who earns what. Each Monday the engine works out the week and proposes bonuses; a person approves them before anything is paid.
+- [Costs and price rises](docs/components/costs.md): What each item costs from each supplier, kept from the receipts on the books, and a flag when a cost rises, so a manager can decide whether to raise a selling price
 - [Notifications](docs/components/notifications.md): The owner and manager get a WhatsApp message when a till opens, when the day is reconciled, and when the shopping list is sent
 - [Payroll](docs/components/payroll.md): Pay people for the days they worked, oldest first, and let each person check the arithmetic for themselves
 - [Product master](docs/components/product-master.md): One catalogue of everything the store sells, with cost, price and margin worked out from the inputs each kind of product actually has
@@ -76,6 +77,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [0027. A reader reports what is printed; the app decides the business and checks the arithmetic](docs/adr/0027-the-app-decides-the-business-and-checks-the-arithmetic.md)
 - [0028. The app makes its own nightly copy of every table, and a restore tool proves it](docs/adr/0028-the-app-makes-its-own-nightly-copy.md)
 - [0029. A confirmed receipt is final; a mistake is voided and done again](docs/adr/0029-a-confirmed-receipt-is-final-and-a-mistake-is-voided.md)
+- [0030. An item is a supplier's own line; a cost is kept only when it is known exactly; a rise is a flag for a person](docs/adr/0030-an-item-is-a-suppliers-own-line.md)
 
 ## Guides
 

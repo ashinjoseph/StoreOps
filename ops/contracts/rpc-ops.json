@@ -46,6 +46,12 @@
     { "name": "rpcGetLegacyPurchases", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
     { "name": "rpcGetLegacySpellings", "params": ["token"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
     { "name": "rpcSetLegacyBusiness", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
-    { "name": "rpcLinkLegacySupplier", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true }
+    { "name": "rpcLinkLegacySupplier", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcGetPriceFlags", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
+    { "name": "rpcSetPriceFlag", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcGetItemCosts", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
+    { "name": "rpcFindItems", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
+    { "name": "rpcJoinItems", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcObserveEarlierReceipts", "params": ["token"], "roles": ["admin"], "needs_session": true }
   ]
 }

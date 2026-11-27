@@ -129,7 +129,9 @@ voided, every field, what was changed at review and every reading of it.
 receipt, which a void does not remove. An employee's own original says *It has
 been read.* or *It is on the books.*
 
-**Not built yet** (later cards): no cost history; no QuickBooks export; no
+**Costs** (card P5-15; [costs](costs.md), [ADR-0030](../adr/0030-an-item-is-a-suppliers-own-line.md)). Confirming a receipt now also writes the cost of each line that gives one exactly (a printed unit price, or line total ÷ quantity, marked *worked out*) onto the history of that supplier's own line, in the business's books, and may flag a rise for a manager; a void stops those costs counting and works the flags out again. The confirm and void answers carry a short `costs` summary that the result sheets repeat. Nothing about the receipt changes, and a failure to observe fails the confirm or the void as a whole.
+
+**Not built yet** (later cards): no QuickBooks export; no
 import of the old purchase list; no emailed invoices beyond P5-12b; no screen
 listing the suppliers on their own (the review's picker and *New supplier*
 are the way in; `rpcUpdateReceiptSupplier` has no page yet).
@@ -743,6 +745,7 @@ two tables, four RPCs, `ops/tools/import-purchases.ts`.
 | `ops.purchase_receipt_lines` | ✓ | ✓ (add only) |
 | `ops.suppliers`, `ops.supplier_names` | ✓ | ✓ (add a supplier, rename it, its HST number and notes, mark it inactive; add a spelling, typed or learnt; never removed) |
 | `ops.legacy_purchase_files`, `ops.legacy_purchases` | ✓ | ✓ (add by the owner's tool; the business, the supplier link and the superseded mark only; never removed; never among the receipts) |
+| `ops.supplier_items`, `ops.item_costs`, `ops.receipt_observations`, `ops.price_flags` | ✓ | ✓ (card P5-15, migration 0016: written at confirm and void; [costs](costs.md)) |
 | `ops.audit_log` | | ✓ |
 | `ops.config` | `receipt_max_mb`, `cstore_business_name`, `vape_business_name`, `hst_rate_percent` | |
 
@@ -890,6 +893,7 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
   business (one row, or every row written one way) or link a spelling to a
   supplier, which also teaches the supplier that spelling; four RPCs. See
   [the guide](../guides/import-the-old-purchase-list.md).
+- **Nov 2026 (card P5-15):** the cost history: `confirm` and `voidReceipt` each call one function of `ops/src/receipts/costs.ts` inside their transaction and answer a `costs` summary; four tables (migration 0015); the **Costs** screen ([costs](costs.md), [ADR-0030](../adr/0030-an-item-is-a-suppliers-own-line.md)).
 
 - **Nov 2026 (card P5-05b):** review, confirm, void and the books: a person
   corrects a draft beside its original (each correction a new reading, the

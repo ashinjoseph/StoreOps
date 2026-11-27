@@ -57,6 +57,7 @@ flowchart LR
 | Audit log (Operations app only) | admin | `modules/audit-view.ts` (in `ops/`) | [audit-log.md](audit-log.md) |
 | Till link (Operations app only, switched off) | nobody yet: later cards | `till/client.ts`, `till/fake.ts` (in `ops/`) | [till-link.md](till-link.md) |
 | Assistants (Operations app only) | admin (keys); AI assistants (the MCP door) | `mcp/` (in `ops/`) | [assistants.md](assistants.md) |
+| Costs and price rises (Operations app only) | admin, manager (see and act); payroll admin (read) | `receipts/costs.ts` (in `ops/`) | [costs.md](costs.md) |
 | Receipts and businesses (Operations app only) | everyone (add a receipt); admin, manager, payroll admin (the list, the businesses) | `receipts/` (in `ops/`) | [receipts.md](receipts.md) |
 | Backups (Operations app only) | admin (the line on Settings, "Make a copy now"); the owner (the restore) | `backup/` (in `ops/`) | [backups.md](backups.md) |
 

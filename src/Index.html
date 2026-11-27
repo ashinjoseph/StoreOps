@@ -1292,6 +1292,7 @@
     <div class="view" id="view-audit"></div>
     <div class="view" id="view-receipts"></div>
     <div class="view" id="view-businesses"></div>
+    <div class="view" id="view-costs"></div>
     <div class="view" id="view-shopping"></div>
     <div class="view" id="view-suppliers"></div>
     <div class="view" id="view-products"></div>
@@ -1734,7 +1735,7 @@
 
   // Tabs accessed only via the "More" drawer (no direct bottom-bar button).
   // Every role gets the More drawer; History/Shopping/Suppliers live there for all.
-  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon', 'settings', 'staff', 'assistants', 'audit', 'receipts', 'businesses'];
+  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon', 'settings', 'staff', 'assistants', 'audit', 'receipts', 'businesses', 'costs'];
 
   // Items shown in the "More" drawer, with role visibility.
   const ALL_ROLES = ['admin', 'manager', 'payroll_admin', 'employee'];
@@ -1755,6 +1756,7 @@
     { tab: 'audit',       icon: '🔎', label: 'Audit log',        meta: 'Who did what, newest first',       roles: ['admin'], opsOnly: true },
     { tab: 'receipts',    icon: '🧾', label: 'Receipts',         meta: 'Add a photo or PDF of a receipt',  roles: ALL_ROLES, opsOnly: true },
     { tab: 'businesses',  icon: '🏢', label: 'Businesses',       meta: 'Legal names, HST numbers, signs',  roles: ['admin', 'manager', 'payroll_admin'], opsOnly: true },
+    { tab: 'costs',       icon: '💲', label: 'Costs',            meta: 'What items cost, and price rises', roles: ['admin', 'manager', 'payroll_admin'], opsOnly: true },
   ];
 
   // A screen that only the Operations app has is listed with `opsOnly: true` (ADR-0023).
@@ -1786,7 +1788,7 @@
     return {
       shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab,
       payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
-      commissions: loadCommissionsTab, rules: loadRulesTab, settings: loadSettingsTab, staff: loadStaffAdminTab, assistants: loadAssistantsTab, audit: loadAuditLogTab, receipts: loadReceiptsTab, businesses: loadBusinessesTab, more: loadMoreTab,
+      commissions: loadCommissionsTab, rules: loadRulesTab, settings: loadSettingsTab, staff: loadStaffAdminTab, assistants: loadAssistantsTab, audit: loadAuditLogTab, receipts: loadReceiptsTab, businesses: loadBusinessesTab, costs: loadCostsTab, more: loadMoreTab,
       shopping: loadShoppingTab, suppliers: loadSuppliersTab,
       products: loadProductsTab, cash: loadCashTab, recon: loadReconTab,
     };
@@ -1804,7 +1806,7 @@
     const titles = {
       shift: 'My Shift', schedule: 'Schedule', mypay: 'My Pay',
       payroll: 'Payroll', sales: 'Sales', history: 'History',
-      commissions: 'Commissions', rules: 'Commission Rules', settings: 'Settings', staff: 'Staff', assistants: 'Assistants', audit: 'Audit log', receipts: 'Receipts', businesses: 'Businesses', more: 'More',
+      commissions: 'Commissions', rules: 'Commission Rules', settings: 'Settings', staff: 'Staff', assistants: 'Assistants', audit: 'Audit log', receipts: 'Receipts', businesses: 'Businesses', costs: 'Costs', more: 'More',
       shopping: 'Shopping List', suppliers: 'Suppliers',
       products: 'Product Master', cash: 'Cash Handling', recon: 'Reconcile',
     };
@@ -7863,7 +7865,8 @@
           title: 'On the books', subtitle: st.it.fileName || 'Receipt original',
           bodyHTML: '<div style="font-size:20px;font-weight:800;color:#15803d;margin-bottom:8px">' + esc(r.message) + '</div>' +
             ((r.learnt && r.learnt.signs || []).length ? '<div class="payroll-rate">Learnt: ' + r.learnt.signs.map(s => esc(BUSINESS_SIGN_KINDS[s.kind] || s.kind) + ' ' + esc(s.value)).join(', ') + '</div>' : '') +
-            (r.learnt && r.learnt.spelling ? '<div class="payroll-rate">Remembered the spelling "' + esc(r.learnt.spelling) + '".</div>' : ''),
+            (r.learnt && r.learnt.spelling ? '<div class="payroll-rate">Remembered the spelling "' + esc(r.learnt.spelling) + '".</div>' : '') +
+            (r.costs && r.costs.message ? '<div class="payroll-rate">' + esc(r.costs.message) + '</div>' : ''),
           actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Close</button>' + (r.next ? '<button class="sheet-submit" id="rvNext">Review the next one</button>' : ''),
         });
         const nx = $('rvNext');
@@ -8212,12 +8215,417 @@
       try {
         const r = await call('rpcVoidReceipt', state.token, { receiptId: rc.id, reason: $('rbVoidReason').value });
         toast('✓ Voided', 'success');
-        openSheet({ title: 'Voided', subtitle: '', bodyHTML: '<div style="font-size:13px;margin-bottom:8px">' + esc(r.message) + '</div><div class="payroll-rate">' + esc(r.learnt && r.learnt.words) + '</div>', actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Close</button>' });
+        openSheet({ title: 'Voided', subtitle: '', bodyHTML: '<div style="font-size:13px;margin-bottom:8px">' + esc(r.message) + '</div><div class="payroll-rate">' + esc(r.learnt && r.learnt.words) + '</div>' + (r.costs && r.costs.message ? '<div class="payroll-rate">' + esc(r.costs.message) + '</div>' : ''), actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Close</button>' });
         loadReceiptsTab(true);
       } catch (e) {
         if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
         $('rbVoidErr').textContent = e.message;
         btn.disabled = false;
+      }
+    };
+  }
+
+  // ============================================================
+  //  ░░  TAB: COSTS (the Operations app only; ADR-0023, ADR-0030)  ░░
+  // ============================================================
+  //  What each item costs, from each supplier, over time, and a flag when a
+  //  cost rises, so a manager can decide whether to raise a selling price.
+  //  "An item" is a supplier's own line (its printed code, else its
+  //  description): the app has no product list and changes no price.
+  //  One business at a time (a required choice: the two are never listed
+  //  together). Admin and manager act; payroll admin reads.
+  // ============================================================
+  const costsState_ = { business: null, flagState: 'new', flagList: [], flagNext: null, counts: null, suppliers: null, query: { supplierId: '', text: '' }, catchUp: '' };
+  const COST_MONTHS_ = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const COST_STATES_ = [['new', 'New'], ['seen', 'Seen'], ['price_raised', 'Price raised'], ['withdrawn', 'Withdrawn']];
+
+  // 2026-11-20 -> "Nov 20" (with the year when it is not this year's).
+  function costDate_(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso == null ? '' : iso));
+    if (!m) return String(iso == null ? '' : iso);
+    const year = Number(m[1]);
+    return COST_MONTHS_[Number(m[2]) - 1] + ' ' + Number(m[3]) + (year !== new Date().getFullYear() ? ', ' + year : '');
+  }
+
+  // A unit cost, never rounded to cents and never "$0.00" for a cost that is not there.
+  function costEach_(cost) {
+    return cost === null || cost === undefined || cost === '' ? 'no cost recorded' : receiptUnitPrice_(cost) + ' each';
+  }
+
+  const COST_WORKED_ = 'worked out from the line total';
+
+  // The flag as one sentence a manager can act on (HTML; every interpolated value escaped).
+  function costFlagSentence_(f) {
+    const it = f.item || {};
+    let s = '<b>' + esc(it.name) + '</b>' + (it.code ? ' (' + esc(it.code) + ')' : '') + ' from ' + esc((f.supplier || {}).name) + ': ' +
+      esc(receiptUnitPrice_(f.from.cost)) + ' → ' + esc(receiptUnitPrice_(f.to.cost)) + ' each, up ' + esc(f.risePercent) + '%, on the receipt of ' + esc(costDate_(f.to.date));
+    const notes = [];
+    if (f.from.how === 'worked_out') notes.push('the earlier cost was ' + COST_WORKED_);
+    if (f.to.how === 'worked_out') notes.push('the new cost was ' + COST_WORKED_);
+    if (notes.length) s += ' (' + esc(notes.join('; ')) + ')';
+    return s;
+  }
+
+  const COST_WITHDRAWN_ = {
+    receipt_voided: 'a receipt it rested on was voided',
+    history_changed: 'another receipt changed the history it rested on',
+    joined: 'two items were joined and the history read again',
+    unjoined: 'two items were separated and the history read again',
+  };
+  const COST_BECAUSE_ = {
+    join: 'found when two items were joined as one',
+    unjoin: 'found when two items were separated',
+    void: 'found again after a receipt was voided',
+    catch_up: 'found when earlier receipts were worked out',
+  };
+
+  function costFlagNotes_(f) {
+    const parts = [];
+    if (f.item && f.item.joined) parts.push('across items joined as one (this line read "' + f.item.printedAs + '")');
+    if (COST_BECAUSE_[f.raisedBecause]) parts.push(COST_BECAUSE_[f.raisedBecause]);
+    if (f.mark) parts.push('last marked by ' + f.mark.by + ', ' + receiptWhen_(f.mark.at) + (f.mark.note ? ': "' + f.mark.note + '"' : ''));
+    if (f.withdrawn) parts.push('withdrawn: ' + (COST_WITHDRAWN_[f.withdrawn.reason] || f.withdrawn.reason));
+    parts.push('flagged for a rise of more than ' + f.thresholdPercent + '%');
+    return parts.map(function (p) { return esc(p); }).join(' · ');
+  }
+
+  function costFlagHTML_(f, canAct) {
+    let h = '<div class="payroll-card" data-flag-id="' + esc(f.id) + '" style="margin-bottom:8px' + (f.state === 'withdrawn' ? ';opacity:.7' : '') + '">' +
+      '<div style="font-size:13px;line-height:1.4;overflow-wrap:anywhere">' + costFlagSentence_(f) + '</div>' +
+      '<div class="payroll-rate" style="overflow-wrap:anywhere">' + costFlagNotes_(f) + '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">';
+    if (canAct && f.state !== 'withdrawn') {
+      if (f.state !== 'seen') h += '<button class="payroll-btn payroll-btn-secondary" style="flex:0 0 auto;padding:7px 12px" data-flag-seen="' + esc(f.id) + '">Seen</button>';
+      if (f.state !== 'price_raised') h += '<button class="payroll-btn payroll-btn-primary" style="flex:0 0 auto;padding:7px 12px" data-flag-raised="' + esc(f.id) + '">Price raised</button>';
+      if (f.state !== 'new') h += '<button class="payroll-btn payroll-btn-secondary" style="flex:0 0 auto;padding:7px 12px" data-flag-new="' + esc(f.id) + '">Mark new again</button>';
+    }
+    h += '<button class="payroll-btn payroll-btn-secondary" style="flex:0 0 auto;padding:7px 12px" data-flag-history="' + esc((f.item || {}).id) + '">History</button>' +
+      '</div></div>';
+    return h;
+  }
+
+  function costBusinessName_(b) { return b === 'vape' ? 'vape' : 'cstore'; }
+
+  async function loadCostsTab(force) {
+    const view = $('view-costs');
+    const role = state.me && state.me.role;
+    let html = moreBack() +
+      '<div style="font-size:13px;font-weight:700;margin-bottom:4px">Costs</div>' +
+      '<div style="font-size:11px;color:#6a6e79;margin-bottom:12px">What each item costs from each supplier, kept from the receipts on the books, and a flag when a cost rises. An item is a supplier\'s own line (its code, else its description). This only shows costs: it changes no selling price. Costs are as printed, before tax. Changing the percentage in Settings applies to receipts confirmed after it; flags already raised stay as they are.</div>' +
+      '<div style="font-size:13px;font-weight:700;margin-bottom:6px">Which business</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:12px">' +
+        ['cstore', 'vape'].map(function (b) { return '<button class="payroll-btn ' + (costsState_.business === b ? 'payroll-btn-primary' : 'payroll-btn-secondary') + '" data-costs-business="' + b + '">' + b + '</button>'; }).join('') +
+      '</div>' +
+      '<div id="costsBody"></div>';
+    if (role === 'admin') {
+      html += '<div class="payroll-card" style="margin-top:14px"><div style="font-size:13px;font-weight:700;margin-bottom:4px">Receipts confirmed before this screen</div>' +
+        '<div style="font-size:11px;color:#6a6e79;margin-bottom:8px">Their costs are not in the history yet. This works them out (safe to run twice; a lot of receipts take a few clicks).</div>' +
+        '<button class="payroll-btn payroll-btn-secondary" id="costsCatchUp">Work out costs for earlier receipts</button>' +
+        '<div id="costsCatchUpMsg" style="font-size:12px;font-weight:600;margin-top:8px;min-height:16px">' + esc(costsState_.catchUp) + '</div></div>';
+    }
+    view.innerHTML = html;
+    view.querySelectorAll('[data-costs-business]').forEach(function (el) {
+      el.onclick = function () {
+        haptic();
+        costsState_.business = costBusinessName_(el.dataset.costsBusiness);
+        costsState_.suppliers = null;
+        costsState_.flagState = 'new';
+        costsState_.query = { supplierId: '', text: '' };
+        loadCostsTab(true);
+      };
+    });
+    const cu = $('costsCatchUp');
+    if (cu) cu.onclick = async function () {
+      haptic();
+      cu.disabled = true;
+      $('costsCatchUpMsg').style.color = '#6a6e79';
+      $('costsCatchUpMsg').textContent = 'Working out…';
+      try {
+        const r = await call('rpcObserveEarlierReceipts', state.token);
+        costsState_.catchUp = r.message;
+        $('costsCatchUpMsg').style.color = '#15803d';
+        $('costsCatchUpMsg').textContent = r.message;
+        if (costsState_.business) loadCostFlags_(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('costsCatchUpMsg').style.color = '#b91c1c';
+        $('costsCatchUpMsg').textContent = e.message;
+      }
+      cu.disabled = false;
+    };
+    if (costsState_.business !== 'cstore' && costsState_.business !== 'vape') {
+      $('costsBody').innerHTML = '<div style="font-size:12px;color:#6a6e79">Choose a business to see its costs. The two businesses are separate and are never listed together.</div>';
+      return;
+    }
+    $('costsBody').innerHTML = '<div style="font-size:13px;font-weight:700;margin-bottom:6px">Price rises</div><div id="costFlags"></div>' +
+      '<div style="font-size:13px;font-weight:700;margin:16px 0 6px">Find an item</div><div id="costFind"></div><div id="costItems"></div>';
+    await loadCostFlags_(true);
+    drawCostFind_();
+  }
+
+  async function loadCostFlags_(fresh) {
+    const box = $('costFlags');
+    const business = costsState_.business;
+    if (!box || (business !== 'cstore' && business !== 'vape')) return;
+    if (fresh) box.innerHTML = '<div class="loading"><div class="spinner"></div>Loading price rises…</div>';
+    try {
+      const input = { business: business, state: costsState_.flagState, limit: 20 };
+      if (!fresh && costsState_.flagNext) input.before = costsState_.flagNext;
+      const r = await call('rpcGetPriceFlags', state.token, input);
+      if (r.business !== costsState_.business) return;
+      costsState_.flagList = fresh ? r.flags : costsState_.flagList.concat(r.flags);
+      costsState_.flagNext = r.next;
+      costsState_.counts = r.counts;
+      drawCostFlags_();
+    } catch (e) {
+      handleRpcError(e, box);
+    }
+  }
+
+  function drawCostFlags_() {
+    const box = $('costFlags');
+    if (!box) return;
+    const canAct = !!state.me && (state.me.role === 'admin' || state.me.role === 'manager');
+    const counts = costsState_.counts || {};
+    let h = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
+      COST_STATES_.map(function (s) {
+        return '<button class="payroll-btn ' + (costsState_.flagState === s[0] ? 'payroll-btn-primary' : 'payroll-btn-secondary') + '" style="flex:0 0 auto;padding:7px 12px" data-flag-filter="' + s[0] + '">' + esc(s[1]) + ' (' + esc(counts[s[0]] || 0) + ')</button>';
+      }).join('') + '</div>';
+    if (!costsState_.flagList.length) {
+      h += '<div style="font-size:12px;color:#6a6e79">' + (costsState_.flagState === 'new' ? 'No new price rises for ' + esc(costsState_.business) + '.' : 'Nothing here.') + '</div>';
+    }
+    costsState_.flagList.forEach(function (f) { h += costFlagHTML_(f, canAct); });
+    if (costsState_.flagNext) h += '<button class="payroll-btn payroll-btn-secondary" id="costFlagsMore" style="width:100%">More</button>';
+    box.innerHTML = h;
+    box.querySelectorAll('[data-flag-filter]').forEach(function (el) {
+      el.onclick = function () { haptic(); costsState_.flagState = el.dataset.flagFilter; costsState_.flagNext = null; loadCostFlags_(true); };
+    });
+    const more = $('costFlagsMore');
+    if (more) more.onclick = function () { haptic(); loadCostFlags_(false); };
+    box.querySelectorAll('[data-flag-history]').forEach(function (el) { el.onclick = function () { haptic(); openCostItem_(el.dataset.flagHistory); }; });
+    box.querySelectorAll('[data-flag-seen]').forEach(function (el) { el.onclick = function () { setCostFlag_(el.dataset.flagSeen, 'seen', null, el); }; });
+    box.querySelectorAll('[data-flag-new]').forEach(function (el) { el.onclick = function () { setCostFlag_(el.dataset.flagNew, 'new', null, el); }; });
+    box.querySelectorAll('[data-flag-raised]').forEach(function (el) { el.onclick = function () { haptic(); openCostRaisedSheet_(el.dataset.flagRaised); }; });
+  }
+
+  async function setCostFlag_(flagId, newState, note, button) {
+    haptic();
+    if (button) button.disabled = true;
+    try {
+      const input = { flagId: flagId, state: newState };
+      if (note) input.note = note;
+      const r = await call('rpcSetPriceFlag', state.token, input);
+      toast('✓ ' + r.message, 'success');
+      closeSheet();
+      loadCostFlags_(true);
+    } catch (e) {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+      toast(e.message, 'error');
+      if (button) button.disabled = false;
+      const err = $('costRaisedErr');
+      if (err) err.textContent = e.message;
+    }
+  }
+
+  function openCostRaisedSheet_(flagId) {
+    openSheet({
+      title: 'Price raised',
+      subtitle: 'You raised the selling price yourself, on the till. This only records it.',
+      bodyHTML: '<div class="sheet-field"><label>Note (optional, up to 300 characters)</label><input type="text" id="costRaisedNote" maxlength="300" autocomplete="off"></div>' +
+        '<div id="costRaisedErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>',
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="costRaisedGo">Mark price raised</button>',
+    });
+    $('costRaisedGo').onclick = function () { setCostFlag_(flagId, 'price_raised', $('costRaisedNote').value, $('costRaisedGo')); };
+  }
+
+  // ── Find an item ──
+
+  // The suppliers that have items in this business, as the server lists them with the items.
+  function costSupplierOptions_() {
+    return '<option value="">Any supplier</option>' + (costsState_.suppliers || []).map(function (s) {
+      return '<option value="' + esc(s.id) + '"' + (costsState_.query.supplierId === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>';
+    }).join('');
+  }
+
+  async function drawCostFind_() {
+    const box = $('costFind');
+    if (!box) return;
+    box.innerHTML = '<div class="sheet-field"><label>Supplier</label><select id="costFindSupplier">' + costSupplierOptions_() + '</select></div>' +
+      '<div class="sheet-field"><label>Part of its name or code</label><input type="text" id="costFindText" maxlength="100" autocomplete="off" value="' + esc(costsState_.query.text) + '"></div>' +
+      '<button class="payroll-btn payroll-btn-primary" id="costFindGo" style="width:100%;margin-bottom:10px">Find</button>';
+    $('costFindGo').onclick = function () {
+      haptic();
+      costsState_.query = { supplierId: $('costFindSupplier').value, text: $('costFindText').value };
+      loadCostItems_(null);
+    };
+    loadCostItems_(null);
+  }
+
+  function costItemRowHTML_(it) {
+    const latest = it.latest;
+    return '<div class="payroll-card" data-cost-item="' + esc(it.id) + '" style="margin-bottom:8px;cursor:pointer">' +
+      '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(it.name) + (it.code ? ' <span style="color:#6a6e79;font-weight:400">(' + esc(it.code) + ')</span>' : '') + '</div>' +
+      '<div class="payroll-rate">' + esc(it.supplier.name) + ' · ' + (latest ? 'latest ' + esc(costEach_(latest.cost)) + ', ' + esc(costDate_(latest.date)) + (latest.how === 'worked_out' ? ' (' + esc(COST_WORKED_) + ')' : '') : 'no cost recorded') + ' · ' + esc(it.observations) + (it.observations === 1 ? ' cost' : ' costs') + (it.joinedCount ? ' · ' + esc(it.joinedCount) + ' joined in' : '') + '</div></div>';
+  }
+
+  async function loadCostItems_(before) {
+    const box = $('costItems');
+    const business = costsState_.business;
+    if (!box || (business !== 'cstore' && business !== 'vape')) return;
+    if (!before) box.innerHTML = '<div class="loading"><div class="spinner"></div>Looking…</div>';
+    try {
+      const input = { business: business, limit: 20 };
+      if (costsState_.query.supplierId) input.supplierId = costsState_.query.supplierId;
+      if (costsState_.query.text && costsState_.query.text.trim()) input.text = costsState_.query.text;
+      if (before) input.before = before;
+      const r = await call('rpcFindItems', state.token, input);
+      if (r.business !== costsState_.business) return;
+      if (costsState_.suppliers === null) {
+        costsState_.suppliers = r.suppliers || [];
+        const sel = $('costFindSupplier');
+        if (sel) sel.innerHTML = costSupplierOptions_();
+      }
+      if (!before) box.innerHTML = '';
+      const old = $('costItemsMore');
+      if (old) old.remove();
+      let h = '';
+      if (!before && !r.items.length) h = '<div style="font-size:12px;color:#6a6e79">No items match. Items appear once a receipt with lines has been confirmed.</div>';
+      r.items.forEach(function (it) { h += costItemRowHTML_(it); });
+      if (r.next) h += '<button class="payroll-btn payroll-btn-secondary" id="costItemsMore" style="width:100%">More</button>';
+      box.insertAdjacentHTML('beforeend', h);
+      box.querySelectorAll('[data-cost-item]').forEach(function (el) { el.onclick = function () { haptic(); openCostItem_(el.dataset.costItem); }; });
+      const more = $('costItemsMore');
+      if (more) more.onclick = function () { haptic(); loadCostItems_(r.next); };
+    } catch (e) {
+      handleRpcError(e, box);
+    }
+  }
+
+  // ── One item's history ──
+
+  const COST_NOT_COUNTED_ = { receipt_voided: 'its receipt was voided' };
+
+  function costHistoryRowHTML_(c, struck) {
+    const printed = c.printedAs || {};
+    let h = '<div style="padding:7px 0;border-bottom:1px solid #f0f1f5' + (struck ? ';opacity:.65' : '') + '">' +
+      '<div style="display:flex;gap:8px;justify-content:space-between;align-items:baseline">' +
+        '<div style="font-size:12px;color:#6a6e79;flex:0 0 auto">' + esc(costDate_(c.date)) + '</div>' +
+        '<div style="font-size:14px;font-weight:700' + (struck ? ';text-decoration:line-through' : '') + '">' + esc(costEach_(c.cost)) + '</div>' +
+      '</div>' +
+      '<div class="payroll-rate" style="overflow-wrap:anywhere">' +
+        (c.how === 'worked_out' ? esc(COST_WORKED_) + (c.lineTotal !== null && c.lineTotal !== undefined ? ' (' + esc(money(c.lineTotal)) + ' ÷ ' + esc(c.quantity) + ')' : '') : 'printed on the receipt') +
+        (c.quantity !== null && c.quantity !== undefined && c.how !== 'worked_out' ? ' · quantity ' + esc(c.quantity) : '') +
+        (c.invoiceNumber ? ' · invoice ' + esc(c.invoiceNumber) : '') +
+        ' · read as "' + esc(printed.description) + '"' + (printed.code ? ' (' + esc(printed.code) + ')' : '') +
+      '</div>';
+    if (c.flag) h += '<div style="font-size:11px;font-weight:700;color:#b45309;margin-top:2px">Up ' + esc(c.flag.risePercent) + '% on the cost before it (' + esc(c.flag.state === 'price_raised' ? 'price raised' : c.flag.state) + ')</div>';
+    if (struck && c.notCounted) h += '<div style="font-size:11px;font-weight:700;color:#b91c1c;margin-top:2px">Not counted: ' + esc(COST_NOT_COUNTED_[c.notCounted.reason] || c.notCounted.reason) + '</div>';
+    return h + '</div>';
+  }
+
+  function costItemHTML_(h, canAct) {
+    let html = '<div style="font-size:12px;color:#6a6e79;margin-bottom:8px">' + esc(h.item.supplier.name) + ' · ' + esc(costBusinessName_(h.business)) + (h.item.code ? ' · code ' + esc(h.item.code) : '') + '</div>';
+    if (h.askedFor && h.askedFor.joinedInto) html += '<div style="font-size:12px;color:#1d4ed8;margin-bottom:8px">That line is joined into this item: its costs read here as one history.</div>';
+    html += '<div style="font-size:12px;font-weight:700;margin:4px 0">Costs, oldest first</div>';
+    if (!h.history.length) html += '<div style="font-size:12px;color:#6a6e79">No cost counted yet.</div>';
+    if (h.earlierNotShown) html += '<div class="payroll-rate">' + esc(h.earlierNotShown) + ' older costs are not shown.</div>';
+    h.history.forEach(function (c) { html += costHistoryRowHTML_(c, false); });
+    if (h.notCounted && h.notCounted.length) {
+      html += '<div style="font-size:12px;font-weight:700;margin:12px 0 4px">Not counted</div>';
+      h.notCounted.forEach(function (c) { html += costHistoryRowHTML_(c, true); });
+    }
+    if (h.members && h.members.length > 1) {
+      html += '<div style="font-size:12px;font-weight:700;margin:12px 0 4px">Read as one item</div>';
+      h.members.forEach(function (m) {
+        html += '<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid #f0f1f5"><div style="flex:1;min-width:0;overflow-wrap:anywhere;font-size:12px">' + esc(m.name) + (m.code ? ' (' + esc(m.code) + ')' : '') +
+          (m.join ? '<div class="payroll-rate">joined by ' + esc(m.join.by) + ', ' + esc(receiptWhen_(m.join.at)) + ': ' + esc(m.join.reason) + '</div>' : '<div class="payroll-rate">the one the others were joined into</div>') + '</div>' +
+          (m.join && canAct ? '<button class="payroll-btn payroll-btn-secondary" style="flex:0 0 auto;padding:6px 10px" data-cost-unjoin="' + esc(m.id) + '">Undo</button>' : '') + '</div>';
+      });
+    }
+    if (canAct) html += '<button class="payroll-btn payroll-btn-secondary" id="costJoinOpen" style="width:100%;margin-top:12px">This is the same item as…</button>';
+    html += '<div id="costJoinBox"></div>';
+    return html;
+  }
+
+  async function openCostItem_(itemId, note) {
+    openSheet({ title: 'Cost history', subtitle: '', bodyHTML: '<div class="loading"><div class="spinner"></div>Loading…</div>', actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Close</button>' });
+    try {
+      const h = await call('rpcGetItemCosts', state.token, { itemId: itemId });
+      drawCostItem_(h, note);
+    } catch (e) {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+      $('sheetBody').innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>' + esc(e.message) + '</div>';
+    }
+  }
+
+  function drawCostItem_(h, note) {
+    const canAct = !!state.me && (state.me.role === 'admin' || state.me.role === 'manager');
+    $('sheetTitle').textContent = h.item.name;
+    $('sheetSubtitle').textContent = h.item.supplier.name;
+    $('sheetBody').innerHTML = (note ? '<div style="background:#dcfce7;border-radius:6px;padding:8px;margin-bottom:8px;color:#166534;font-size:12px">' + esc(note) + '</div>' : '') + costItemHTML_(h, canAct);
+    $('sheetBody').querySelectorAll('[data-cost-unjoin]').forEach(function (el) {
+      el.onclick = function () { haptic(); askCostReason_(h, 'Separate this line again', 'Why are they not the same item? (3 to 300 characters)', 'Separate', function (reason) { return call('rpcJoinItems', state.token, { itemId: el.dataset.costUnjoin, intoItemId: null, reason: reason }); }); };
+    });
+    const open = $('costJoinOpen');
+    if (open) open.onclick = function () { haptic(); drawCostJoinPicker_(h); };
+  }
+
+  function drawCostJoinPicker_(h) {
+    const box = $('costJoinBox');
+    box.innerHTML = '<div style="margin-top:10px;padding:10px;background:#f6f7fa;border-radius:8px">' +
+      '<div style="font-size:12px;font-weight:700;margin-bottom:6px">Which of ' + esc(h.item.supplier.name) + '\'s items is it the same as?</div>' +
+      '<div class="sheet-field"><input type="text" id="costJoinText" maxlength="100" placeholder="Part of its name or code" autocomplete="off"></div>' +
+      '<button class="payroll-btn payroll-btn-secondary" id="costJoinFind" style="width:100%;margin-bottom:8px">Find</button><div id="costJoinList"></div></div>';
+    const find = async function () {
+      const list = $('costJoinList');
+      list.innerHTML = '<div class="loading"><div class="spinner"></div>Looking…</div>';
+      try {
+        const input = { business: h.business, supplierId: h.item.supplier.id, limit: 20 };
+        const text = $('costJoinText').value;
+        if (text && text.trim()) input.text = text;
+        const r = await call('rpcFindItems', state.token, input);
+        const others = r.items.filter(function (it) { return it.id !== h.item.id; });
+        list.innerHTML = others.length ? others.map(function (it) {
+          return '<div class="payroll-card" data-join-into="' + esc(it.id) + '" style="margin-bottom:6px;cursor:pointer"><div style="font-size:12px;font-weight:600;overflow-wrap:anywhere">' + esc(it.name) + (it.code ? ' (' + esc(it.code) + ')' : '') + '</div>' +
+            '<div class="payroll-rate">' + (it.latest ? 'latest ' + esc(costEach_(it.latest.cost)) + ', ' + esc(costDate_(it.latest.date)) : 'no cost recorded') + '</div></div>';
+        }).join('') : '<div style="font-size:12px;color:#6a6e79">No other item of this supplier matches.</div>';
+        list.querySelectorAll('[data-join-into]').forEach(function (el) {
+          el.onclick = function () {
+            haptic();
+            const target = others.find(function (x) { return x.id === el.dataset.joinInto; });
+            askCostReason_(h, 'Same item', 'Why is "' + h.item.name + '" the same as "' + (target ? target.name : '') + '"? (3 to 300 characters)', 'Join', function (reason) { return call('rpcJoinItems', state.token, { itemId: h.item.id, intoItemId: el.dataset.joinInto, reason: reason }); });
+          };
+        });
+      } catch (e) {
+        list.innerHTML = '<div style="color:#b91c1c;font-size:12px">' + esc(e.message) + '</div>';
+      }
+    };
+    $('costJoinFind').onclick = function () { haptic(); find(); };
+    find();
+  }
+
+  // Ask for a reason, run the join or the separation, and show what it did.
+  function askCostReason_(h, title, label, goLabel, run) {
+    $('sheetTitle').textContent = title;
+    $('sheetBody').innerHTML = '<div style="font-size:12px;color:#6a6e79;margin-bottom:10px">Nothing is moved or deleted: the histories are read together, the flags are worked out again, and it can be undone.</div>' +
+      '<div class="sheet-field"><label>' + esc(label) + '</label><input type="text" id="costReason" maxlength="300" autocomplete="off"></div>' +
+      '<div id="costReasonErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    $('sheetActions').innerHTML = '<button class="sheet-cancel" id="costReasonBack">Back</button><button class="sheet-submit" id="costReasonGo" disabled>' + esc(goLabel) + '</button>';
+    $('costReason').oninput = function () { $('costReasonGo').disabled = $('costReason').value.trim().length < 3; };
+    $('costReasonBack').onclick = function () { haptic(); openCostItem_(h.item.id); };
+    $('costReasonGo').onclick = async function () {
+      haptic();
+      $('costReasonGo').disabled = true;
+      try {
+        const r = await run($('costReason').value);
+        toast('✓ Done', 'success');
+        openCostItem_(h.item.id, r.message);
+        loadCostFlags_(true);
+        if ($('costItems') && $('costItems').innerHTML) loadCostItems_(null);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('costReasonErr').textContent = e.message;
+        $('costReasonGo').disabled = false;
       }
     };
   }

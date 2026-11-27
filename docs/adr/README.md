@@ -42,6 +42,7 @@ requests and the code. Their dates are when the decision took effect.
 | [0027](0027-the-app-decides-the-business-and-checks-the-arithmetic.md) | A reader reports what is printed; the app decides the business and checks the arithmetic | Accepted | 2026-11 |
 | [0028](0028-the-app-makes-its-own-nightly-copy.md) | The app makes its own nightly copy of every table, and a restore tool proves it | Accepted | 2026-11 |
 | [0029](0029-a-confirmed-receipt-is-final-and-a-mistake-is-voided.md) | A confirmed receipt is final; a mistake is voided and done again | Accepted | 2026-11 |
+| [0030](0030-an-item-is-a-suppliers-own-line.md) | An item is a supplier's own line; a cost is kept only when known exactly; a rise is a flag for a person | Accepted | 2026-11 |
 
 ## When to write one
 

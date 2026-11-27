@@ -32,7 +32,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   w.clock.now = NOW;
-  for (const t of ["purchase_receipt_lines", "purchase_receipts", "supplier_names", "suppliers", "receipt_upload_tickets", "receipt_originals", "business_signs", "assistant_calls", "audit_log", "sessions", "config"]) {
+  for (const t of ["price_flags", "item_costs", "receipt_observations", "supplier_items", "purchase_receipt_lines", "purchase_receipts", "supplier_names", "suppliers", "receipt_upload_tickets", "receipt_originals", "business_signs", "assistant_calls", "audit_log", "sessions", "config"]) {
     await w.owner.query(`delete from ops.${t}`);
   }
   await w.owner.query("update ops.staff set active = (staff_id <> 'S_005')");

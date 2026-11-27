@@ -30,6 +30,7 @@ import type { Tx } from "../db/tx";
 import * as audit from "../lib/audit";
 import type { Config } from "../lib/config";
 import { type Business, type SignKind, type SignView, SIGN_KINDS, addSign, checkHst, checkLine, checkNotes, checkSign, describeSign, displayName, isBusiness, normalise, signKey } from "./businesses";
+import * as costs from "./costs";
 import * as drafts from "./drafts";
 
 export const REVIEW_ROLES: readonly string[] = ["admin", "manager"];
@@ -629,7 +630,7 @@ export interface ConfirmInput {
 }
 
 /** Confirm the live draft of an original: it goes on the books of its business and is final. */
-export async function confirm(tx: Tx, input: ConfirmInput, actor: Actor, config: Config, now: Date): Promise<{ receipt: ReceiptDetail; message: string; learnt: { signs: SignView[]; spelling: string | null }; next: { originalId: string } | null }> {
+export async function confirm(tx: Tx, input: ConfirmInput, actor: Actor, config: Config, now: Date): Promise<{ receipt: ReceiptDetail; message: string; learnt: { signs: SignView[]; spelling: string | null }; next: { originalId: string } | null; costs: costs.CostSummary }> {
   mayReview(actor);
   const originalId = typeof input.originalId === "string" && ORIGINAL_ID.test(input.originalId) ? input.originalId : null;
   if (originalId === null) throw notConfirmed("No such receipt original.");
@@ -712,14 +713,15 @@ export async function confirm(tx: Tx, input: ConfirmInput, actor: Actor, config:
     },
     { now },
   );
+  const observed = await costs.observeReceipt(tx, draft.id, actor, config, now);
   const next = await tx.maybeOne<{ receipt_id: string }>("select receipt_id from ops.receipt_originals where status = 'drafted' order by added_at, receipt_id limit 1");
-  return { receipt: await receiptDetail(tx, draft.id, config), message: `On the books of ${displayName(config, business)}.`, learnt: { signs, spelling }, next: next === null ? null : { originalId: next.receipt_id } };
+  return { receipt: await receiptDetail(tx, draft.id, config), message: `On the books of ${displayName(config, business)}.`, learnt: { signs, spelling }, next: next === null ? null : { originalId: next.receipt_id }, costs: observed };
 }
 
 // ── Voiding (decision 10) ─────────────────────────────────
 
 /** Void a confirmed receipt with a reason: kept and marked; its original goes back to review with a new draft copied from it. */
-export async function voidReceipt(tx: Tx, input: { receiptId?: unknown; reason?: unknown }, actor: Actor, config: Config, now: Date): Promise<{ receipt: ReceiptDetail; redo: drafts.DraftView; learnt: ReceiptDetail["learnt"] & { words: string }; message: string }> {
+export async function voidReceipt(tx: Tx, input: { receiptId?: unknown; reason?: unknown }, actor: Actor, config: Config, now: Date): Promise<{ receipt: ReceiptDetail; redo: drafts.DraftView; learnt: ReceiptDetail["learnt"] & { words: string }; message: string; costs: costs.CostSummary }> {
   mayReview(actor);
   const reason = cleanReason(input.reason, `Say why it is voided, in ${REASON_MIN} to ${REASON_MAX} characters.`, notVoided);
   const id = typeof input.receiptId === "string" && PURCHASE_ID.test(input.receiptId) ? input.receiptId : null;
@@ -746,10 +748,12 @@ export async function voidReceipt(tx: Tx, input: { receiptId?: unknown; reason?:
     { actorId: actor.staffId, action: "receipt.void", targetType: "purchase_receipts", targetId: id, before: { status: "confirmed" }, after: { status: "voided", reason, originalId: row.original_id, total: view.amounts.total, business: view.business.key, redo: redo.draft.id, learntSigns: learnt.signs.length, learntSpellings: learnt.spellings } },
     { now },
   );
+  const unobserved = await costs.unobserveReceipt(tx, id, actor, now);
   return {
     receipt: await receiptDetail(tx, id, config),
     redo: redo.draft,
     learnt: { ...learnt, words },
+    costs: unobserved,
     message: "Voided. It stays on file, marked voided; the original is back in Read, waiting for review, with a copy of its figures to correct.",
   };
 }

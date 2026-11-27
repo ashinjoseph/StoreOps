@@ -88,6 +88,8 @@ export const CONFIG_KEYS = {
   receipt_max_mb: setting("number", "10"),
   // card P5-05a: the HST rate the receipt drafts' checks use (percent; read as exact text, so 0 is 0).
   hst_rate_percent: setting("number", "13"),
+  // card P5-15: a cost this many percent above the one before it is flagged for a manager (0.1 to 500).
+  price_rise_flag_percent: setting("number", "5"),
 } as const satisfies Record<string, ConfigKeySpec>;
 
 export type ConfigKey = keyof typeof CONFIG_KEYS;
@@ -118,6 +120,8 @@ export const OPS_ONLY_KEYS: readonly string[] = [
   "receipt_max_mb",
   // card P5-05a, receipt drafts
   "hst_rate_percent",
+  // card P5-15, cost history
+  "price_rise_flag_percent",
 ];
 
 export const SECRET_KEYS: readonly ConfigKey[] = (Object.keys(CONFIG_KEYS) as ConfigKey[]).filter((key) => CONFIG_KEYS[key].kind === "secret");
