@@ -96,8 +96,8 @@ hand one out.
 | P5-12b | The assistant's tools for the inbox: hand over an original, see one, list those waiting | T3 | P5-12a, P5-11 | security | done (questions for the trial and the owner, in the card) |
 | P5-13 | Emailed invoices through the assistant | T2 | P5-05b | security | todo (the owner to decide how an invoice with no attachment is kept) |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
-| P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | todo |
-| P5-16 | The old purchase list brought in as history | T1 | P5-05a | money | todo |
+| P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | in progress |
+| P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | in progress |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
 | P6-02 | Store listings: decide | owner | P6-01 | | todo |
 
