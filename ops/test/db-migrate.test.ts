@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { LATER_OPS_TABLES } from "../src/cutover/compare";
 import { DEFAULT_MIGRATIONS_DIR, migrate, readMigrationFiles } from "../src/db/migrate";
 import { createEmptyDb, createTestDb, type TestDb } from "./helpers/db";
 
@@ -77,7 +78,8 @@ describe("migrate()", () => {
     expect(result.applied).toEqual(REAL_IDS);
     expect(REAL_IDS[0]).toBe("0001_init");
     const tables = (await tablesIn(db.ownerUrl)).filter((t) => t !== "schema_migrations");
-    expect(tables).toEqual(contractTables);
+    // The contract's tables, plus the Operations-only tables later migrations add (and the cutover tools skip).
+    expect(tables).toEqual([...contractTables, ...LATER_OPS_TABLES].sort());
     expect(contractTables.length).toBeGreaterThan(15);
     const recorded = await rows<{ version: number; name: string; checksum: string; applied_at: Date }>(
       db.ownerUrl,

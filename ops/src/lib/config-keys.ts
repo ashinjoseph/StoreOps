@@ -76,6 +76,10 @@ export const CONFIG_KEYS = {
   till_api_url: setting("text", ""),
   till_key_expires_on: setting("text", ""),
   till_api_key: credential,
+  // Operations app only (card P5-11, the MCP door): not in Setup.gs; listed in OPS_ONLY_KEYS below.
+  assistants_enabled: setting("boolean", "false"),
+  assistant_calls_per_minute: setting("number", "30"),
+  assistant_proposals_per_day: setting("number", "200"),
 } as const satisfies Record<string, ConfigKeySpec>;
 
 export type ConfigKey = keyof typeof CONFIG_KEYS;
@@ -84,5 +88,21 @@ export type ConfigKey = keyof typeof CONFIG_KEYS;
 export function configKeySpec(key: string): ConfigKeySpec | undefined {
   return Object.prototype.hasOwnProperty.call(CONFIG_KEYS, key) ? (CONFIG_KEYS as Record<string, ConfigKeySpec>)[key] : undefined;
 }
+
+/**
+ * Keys that exist only in the Operations app: the Sheet's config tab never had them, so they are not
+ * in Setup.gs (test/config.test.ts checks both directions against this list).
+ */
+export const OPS_ONLY_KEYS: readonly string[] = [
+  // card P5-02a, the till link
+  "till_enabled",
+  "till_api_url",
+  "till_key_expires_on",
+  "till_api_key",
+  // card P5-11, the MCP door
+  "assistants_enabled",
+  "assistant_calls_per_minute",
+  "assistant_proposals_per_day",
+];
 
 export const SECRET_KEYS: readonly ConfigKey[] = (Object.keys(CONFIG_KEYS) as ConfigKey[]).filter((key) => CONFIG_KEYS[key].kind === "secret");

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CONFIG_KEYS, type ConfigKey } from "../src/lib/config-keys";
+import { CONFIG_KEYS, OPS_ONLY_KEYS, type ConfigKey } from "../src/lib/config-keys";
 import {
   Config,
   MissingSecretError,
@@ -73,7 +73,10 @@ describe("registry honesty against src/Setup.gs", () => {
 
   it("every registry key exists in Setup.gs with the same default", () => {
     for (const [key, spec] of Object.entries(CONFIG_KEYS)) {
-      if (key in OPS_ONLY) continue;
+      if (OPS_ONLY_KEYS.includes(key)) {
+        expect(defaults.has(key), `${key} is listed as Operations-only but is in Setup.gs`).toBe(false);
+        continue;
+      }
       expect(defaults.has(key), `${key} is not in Setup.gs`).toBe(true);
       if (key in DYNAMIC_DEFAULT) continue;
       expect(spec.default, `default of ${key}`).toBe(defaults.get(key));
@@ -89,6 +92,7 @@ describe("registry honesty against src/Setup.gs", () => {
     }
     for (const key of Object.keys(LEFT_OUT)) expect(defaults.has(key), `stale left-out entry ${key}`).toBe(true);
     for (const key of Object.keys(DYNAMIC_DEFAULT)) expect(key in CONFIG_KEYS).toBe(true);
+    for (const key of OPS_ONLY_KEYS) expect(key in CONFIG_KEYS, `stale Operations-only entry ${key}`).toBe(true);
   });
 
   it("the Operations-only keys are registered, and Setup.gs really does not have them", () => {

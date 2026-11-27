@@ -12,7 +12,8 @@
 **More → Settings** (admins only, and only in the Operations app: inside Apps
 Script the entry is hidden, because the Sheet is still the place to edit a
 cell). The screen lists every setting under a heading: *Tills and cash*,
-*Sign-in*, *WhatsApp*, *Clover*, *Till*, *Commissions*, *Public report* and *Other*.
+*Sign-in*, *WhatsApp*, *Clover*, *Till*, *Commissions*, *Public report*, *Other*
+and *Assistants*.
 Each row shows the setting's plain-language description, its key, and its
 current value, or **default: X** in grey when nothing is set.
 
@@ -92,6 +93,8 @@ roles `["admin"]`. The handlers check the role again themselves.
 | `till_key_expires_on` | text | blank | not a real date `yyyy-mm-dd` | recorded by the admin when the key is installed; the warning 14 days ahead is a later card |
 | `public_report_url` | text | blank | not an `https:` address | the reconcile message links to it |
 | `commission_run_day` (0 to 6), `commission_run_hour` (0 to 23) | number | 1, 9 | outside the range | **they do not move the weekly run**: its time is fixed in the app's configuration (card P3-10b); the screen says so |
+| `assistants_enabled` | boolean | false | anything but true/false | opens the door for AI assistants ([assistants](assistants.md)); off, `/mcp` answers nothing |
+| `assistant_calls_per_minute`, `assistant_proposals_per_day` | number | 30, 200 | not a whole number from 1 to 600, or from 1 to 5000 | the door's limits per key |
 | business names, template names and language, merchant ids, `timezone` | text | | over 500 characters, or a line break or other control character | a newline in a name would break a WhatsApp template parameter; `timezone` must also be a real zone |
 
 Every number must be written in plain decimal form (`250` or `250.50`): no
@@ -147,3 +150,6 @@ letting "default: No" stand for something the app does not do.
 - **Nov 2026 (card P5-02a):** a *Till* group (`till_enabled`, `till_api_url`,
   `till_key_expires_on`) and a fourth credential, `TILL_API_KEY`, in *Kept by
   Cloudflare* ([till link](till-link.md), [ADR-0024](../adr/0024-the-till-is-read-through-one-client.md)).
+- **Nov 2026 (card P5-11):** the *Assistants* group: `assistants_enabled` and
+  the door's two limits ([assistants](assistants.md)). They exist only in the
+  Operations app, so they are listed in `OPS_ONLY_KEYS` rather than in Setup.gs.

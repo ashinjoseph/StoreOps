@@ -37,6 +37,7 @@ requests and the code. Their dates are when the decision took effect.
 | [0022](0022-llm-calls-go-to-the-free-model-first.md) | LLM calls go to the free model first, with Claude behind a flag | Proposed | 2026-11 |
 | [0023](0023-the-operations-app-has-rpcs-and-screens-of-its-own.md) | The Operations app has RPCs and screens of its own, listed apart and hidden in Apps Script | Accepted | 2026-11 |
 | [0024](0024-the-till-is-read-through-one-client.md) | The till is read through one client that never throws, and ships switched off | Accepted | 2026-11 |
+| [0025](0025-assistants-come-in-through-mcp-and-only-propose.md) | Assistants come in through MCP, with a key per person, and only propose | Accepted | 2026-11 |
 
 ## When to write one
 

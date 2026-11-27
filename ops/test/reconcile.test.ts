@@ -667,7 +667,10 @@ describe("two runs of the same day at once (the advisory lock)", () => {
     await new Promise((r) => setTimeout(r, 150));
     const second = run(net(), "auto", { on: db2, actor: "S_005" });
     await new Promise((r) => setTimeout(r, 150));
-    const waiting = await owner.query<{ n: number }>("select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted");
+    // Only this test's own database: other test files wait on advisory locks of their own at the same time.
+    const waiting = await owner.query<{ n: number }>(
+      "select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted and database = (select oid from pg_database where datname = current_database())",
+    );
     expect(waiting[0]!.n).toBe(1);
     release();
     const [a, b] = await Promise.all([slow, second]);

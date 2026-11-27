@@ -55,6 +55,7 @@ flowchart LR
 | Settings (Operations app only) | admin | `modules/settings.ts` (in `ops/`) | [settings.md](settings.md) |
 | Staff (Operations app only) | admin; manager adds employees | `modules/staff-admin.ts` (in `ops/`) | [staff-admin.md](staff-admin.md) |
 | Till link (Operations app only, switched off) | nobody yet: later cards | `till/client.ts`, `till/fake.ts` (in `ops/`) | [till-link.md](till-link.md) |
+| Assistants (Operations app only) | admin (keys); AI assistants (the MCP door) | `mcp/` (in `ops/`) | [assistants.md](assistants.md) |
 
 Writing a new page? Start from [_template.md](_template.md). When a phase
 changes a component, its page changes in the same pull request

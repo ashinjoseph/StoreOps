@@ -212,7 +212,7 @@ describe("rpcGetSettings", () => {
       expect(row.description.length, key).toBeGreaterThan(5);
       expect(row.group.length, key).toBeGreaterThan(2);
     }
-    expect(new Set(r.settings.map((s) => s.group))).toEqual(new Set(["Tills and cash", "Sign-in", "WhatsApp", "Clover", "Till", "Commissions", "Public report", "Other"]));
+    expect(new Set(r.settings.map((s) => s.group))).toEqual(new Set(["Tills and cash", "Sign-in", "WhatsApp", "Clover", "Till", "Commissions", "Public report", "Other", "Assistants"]));
     // stable: asking twice gives the same order
     expect((await rpc<Listed>(rpcGetSettings, [])).settings.map((s) => s.key)).toEqual(r.settings.map((s) => s.key));
   });

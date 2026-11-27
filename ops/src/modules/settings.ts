@@ -35,7 +35,7 @@ import { isCloverUrl } from "./clover";
 import { isMetaUrl } from "./notifier";
 import { tillBaseUrl } from "../till/address";
 
-export const GROUPS = ["Tills and cash", "Sign-in", "WhatsApp", "Clover", "Till", "Commissions", "Public report", "Other"] as const;
+export const GROUPS = ["Tills and cash", "Sign-in", "WhatsApp", "Clover", "Till", "Commissions", "Public report", "Other", "Assistants"] as const;
 export type Group = (typeof GROUPS)[number];
 
 /** The order the screen shows: group by group, the keys of each in this order. */
@@ -48,6 +48,7 @@ const LAYOUT: ReadonlyArray<readonly [Group, readonly string[]]> = [
   ["Commissions", ["commission_run_day", "commission_run_hour"]],
   ["Public report", ["public_report_url"]],
   ["Other", ["cstore_business_name", "vape_business_name", "timezone"]],
+  ["Assistants", ["assistants_enabled", "assistant_calls_per_minute", "assistant_proposals_per_day"]],
 ];
 
 /** What the Sheet's config tab said for each key (src/Setup.gs), used when the table row has no description. */
@@ -88,6 +89,9 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   till_enabled: "Switch for the link to the till (reads its stores, staff, shifts and daily sales). Off until the key and address are set",
   till_api_url: "The till's Operations API address, e.g. https://office.scarbromart.ca/ops/v1 (staging: https://staging--scarbromart-office.netlify.app/ops/v1). Blank = the link is off",
   till_key_expires_on: "The day the till key in use expires (yyyy-MM-dd): type it in when the key is installed. Blank = not recorded",
+  assistants_enabled: "Open the door for AI assistants (/mcp). Off: the address answers nothing to anyone, key or no key",
+  assistant_calls_per_minute: "Tool calls one assistant key may make in a minute",
+  assistant_proposals_per_day: "Proposals one assistant key may make in a Toronto day",
 };
 
 /** A sentence added to the description the screen shows, whatever the table row says. */
@@ -129,6 +133,8 @@ const NUMBER_RULES: Readonly<Record<string, NumberRule>> = {
   commission_run_day: { min: 0, max: 6, integer: true },
   commission_run_hour: { min: 0, max: 23, integer: true },
   cash_handover_stale_days: { min: 1, max: 365, integer: true },
+  assistant_calls_per_minute: { min: 1, max: 600, integer: true },
+  assistant_proposals_per_day: { min: 1, max: 5000, integer: true },
 };
 
 const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/;

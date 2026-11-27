@@ -1382,3 +1382,37 @@ New: `ops/test/till-corrections.test.ts` and the `ui-till-corrections` suite,
 seen failing before the code existed and against seven deliberate mutations
 (handed-over guard, blank as 0, both card shapes, variance status, the role
 gate, the session lock, a one-cent drift from the close).
+
+### A door for AI assistants, with keys an admin makes and withdraws (P5-11)
+
+The Operations app gets a second way in, beside the screens, for AI assistants
+(Muse first, Claude after): `/mcp`, an MCP server on the official SDK
+(`@modelcontextprotocol/sdk` 1.32.2, with its required `zod`), stateless,
+answering with JSON. It ships **off**: until an admin sets
+`assistants_enabled` to Yes in Settings it answers nothing to anyone.
+
+- **More → Assistants** (admins, Operations app only): make a key for one
+  person and one assistant (label, read only or read and propose, personal
+  details yes/no, 1 to 365 days), shown **once** and never stored (only its
+  SHA-256); withdraw it with a reason. Three admin-only calls,
+  `rpcGetAssistantKeys`, `rpcCreateAssistantKey`, `rpcRevokeAssistantKey`,
+  each key made or withdrawn audited.
+- Three read tools: `whoami`, `businesses`, `my_proposals` (empty until a
+  propose tool exists). Every answer is a summary line and JSON; outside text
+  goes through `asData`.
+- Every wrong key gets the same 401; a request from a browser (`Origin`) is
+  refused; calls per minute and proposals per Toronto day are limited per key,
+  counted under the key's row lock; every call is recorded in
+  `ops.assistant_calls` without its arguments or answer.
+- Two new tables (migration 0009), not loaded or compared by the cutover tools.
+
+Why, and what was rejected: [ADR-0025](docs/adr/0025-assistants-come-in-through-mcp-and-only-propose.md).
+How the owner connects an assistant: [Connect an assistant](docs/guides/connect-an-assistant.md).
+See [assistants](docs/components/assistants.md).
+
+New: `ops/test/mcp-door.test.ts` and `ops/test/mcp-keys.test.ts` (driving the
+door with the SDK's own client against a real database) and the
+`ui-assistants` suite; each failed before the code existed, and against nine
+deliberate mutations of the door (open while off, a stored key, a telling
+401, a read key proposing, no rate limit, a browser let in, an unpinned tool,
+a role in `whoami`, a withdrawn key working).

@@ -39,6 +39,16 @@ export const LIST_CAP = 50;
 
 /** Tables that only the new app has: no tab feeds them. Listed with their counts, never compared. */
 export const OPS_ONLY_TABLES: readonly string[] = ["stores", "staff_stores", "sessions", "login_failures"];
+/**
+ * Operations-only tables that later migrations add, outside the frozen contract (schema.sql is 0001):
+ * no tab feeds them, so they are never loaded, read or compared, and they are not "a table the contract
+ * does not have". Each later card that adds such a table adds its name here.
+ */
+export const LATER_OPS_TABLES: readonly string[] = [
+  // card P5-11, the MCP door (0009_assistant_keys.sql)
+  "assistant_keys",
+  "assistant_calls",
+];
 
 /** The column each table's rows are grouped by, per month (America/Toronto). null: the table has no date. */
 export const DATE_COLUMN: Readonly<Record<string, string | null>> = {
@@ -1107,7 +1117,7 @@ export function compareExportToDatabase(input: CompareInput): ReconcileResult {
     if (inDb) other.push({ table: tabName, kind: "schema", message: `the Sheet's deprecated tab ${tabName} has a table in the database` });
   }
   const expectedTables = new Set([...Object.keys(contract.tables)]);
-  const unknownTables = db.allTables.filter((t) => !expectedTables.has(t));
+  const unknownTables = db.allTables.filter((t) => !expectedTables.has(t) && !LATER_OPS_TABLES.includes(t));
   for (const t of unknownTables) if (!contract.leftTabs.has(t)) other.push({ table: t, kind: "schema", message: `the database has a table ${t} that the contract does not have` });
   checks.push({
     name: "the deprecated tabs have no table",

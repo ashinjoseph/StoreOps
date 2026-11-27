@@ -88,7 +88,7 @@ hand one out.
 | P5-08 | Send a vape delivery to the till, on a button | T2 | P5-05, P1-02 | money | todo |
 | P5-09 | Bookkeeping export of receipts, per business, in QuickBooks's layout | T2 | P5-05 | money | todo |
 | P5-10 | Trial with Muse: can it hand over an original, and how does it connect | T2 + owner | P2-10 | security | todo (needs a public address: the hosted setup) |
-| P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | | security | in progress |
+| P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | | security | done (switched off; questions for the trial and the owner, in the card) |
 | P5-12 | The two businesses and the receipt inbox (originals kept) | T2 | P5-11 | money | todo |
 | P5-13 | Emailed invoices through the assistant | T2 | P5-05 | security | todo |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
@@ -1097,6 +1097,29 @@ planning. The trial (P5-10) needs a public address, so it waits for the
 hosted setup; the door itself (P5-11) can be built and tested without it. P5-05 keeps its
 tables, its checks and its review screen; only where the draft comes from
 changes. P5-06 becomes a test of the assistants on real receipts.
+
+**P5-11 is done:** `POST /mcp` on the app, off until the setting
+`assistants_enabled` is on (it answers 404 to everyone until then). An admin
+makes a key for a named person on More → Assistants: a label, read or read
+and propose, 1 to 365 days, shown once; only its hash is stored; withdrawn
+with a reason. A key stops at once when it expires, is withdrawn, or its
+person is deactivated. Every wrong key gets the same answer. A request from
+a web page is refused. Limits per key (30 calls a minute, 200 proposals a
+day, both settings) hold for two calls at the same instant. Every call is
+recorded (never its content) in its own table. Three tools so far: `whoami`,
+`businesses`, `my_proposals`. It uses the official MCP library, checked with
+that library's own client over real HTTP; the app's upload grows from about
+0.5 MB to 1.8 MB (0.33 MB compressed). How to add a tool is in
+[assistants](../components/assistants.md); how to connect one is in
+[the guide](../guides/connect-an-assistant.md);
+[ADR-0025](../adr/0025-assistants-come-in-through-mcp-and-only-propose.md).
+For the trial (P5-10): does Muse send the `Accept` header the library
+insists on, no `Origin` header, and cope with a server that keeps no
+session? Claude's connectors may want a sign-in page instead of a key; that
+would be a card of its own. For the owner: how long to keep the record of
+calls (it is never deleted today), and whether 30 calls a minute suits how
+Muse works. Still to write: the new way in belongs in the architecture and
+security pages too.
 
 ## Phase 6 — App
 

@@ -60,7 +60,7 @@ More: [architecture overview](docs/architecture/overview.md) ·
 | Server | 23 Apps Script modules, ~11k lines, 61 RPC endpoints |
 | Client | one single-page app + two public pages |
 | Tests | 27 suites, 1,000+ assertions over the real source, in CI on every push |
-| Docs | 12 component pages, 19 ADRs, generated schema, code map and screenshots |
+| Docs | 12 component pages, 25 ADRs, generated schema, code map and screenshots |
 
 ## Quick start
 
@@ -85,7 +85,7 @@ agent? Point it at **[AGENTS.md](AGENTS.md)** and **[llms.txt](llms.txt)**.
 | [Context](docs/context.md) | the business, goals, constraints, glossary |
 | [Architecture](docs/architecture/overview.md) | system context, layers, module map, the daily flow |
 | [Components](docs/components/README.md) | one page per feature, with screenshots |
-| [ADRs](docs/adr/README.md) | 24 decisions (21 accepted, 3 proposed) and the reasoning behind them |
+| [ADRs](docs/adr/README.md) | 25 decisions (22 accepted, 3 proposed) and the reasoning behind them |
 | [Testing](docs/guides/testing.md) | how the suites run the real code |
 | [Docs process](docs/guides/docs-process.md) | how the docs stay current, enforced in CI |
 | [Code map](docs/reference/code-map.md) | every module, RPC and its roles, generated from the code |

@@ -1275,6 +1275,7 @@
     <div class="view" id="view-rules"></div>
     <div class="view" id="view-settings"></div>
     <div class="view" id="view-staff"></div>
+    <div class="view" id="view-assistants"></div>
     <div class="view" id="view-shopping"></div>
     <div class="view" id="view-suppliers"></div>
     <div class="view" id="view-products"></div>
@@ -1717,7 +1718,7 @@
 
   // Tabs accessed only via the "More" drawer (no direct bottom-bar button).
   // Every role gets the More drawer; History/Shopping/Suppliers live there for all.
-  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon', 'settings', 'staff'];
+  const DRAWER_TABS = ['shopping', 'suppliers', 'products', 'history', 'payroll', 'sales', 'commissions', 'rules', 'cash', 'recon', 'settings', 'staff', 'assistants'];
 
   // Items shown in the "More" drawer, with role visibility.
   const ALL_ROLES = ['admin', 'manager', 'payroll_admin', 'employee'];
@@ -1734,6 +1735,7 @@
     { tab: 'rules',       icon: '⚙️', label: 'Commission Rules', meta: 'Create & manage commission rules', roles: ['admin', 'payroll_admin'] },
     { tab: 'settings',    icon: '🛠️', label: 'Settings',         meta: 'Floats, limits, messages, Clover', roles: ['admin'], opsOnly: true },
     { tab: 'staff',       icon: '👥', label: 'Staff',            meta: 'Add people, PINs, roles, pay rates', roles: ['admin', 'manager'], opsOnly: true },
+    { tab: 'assistants',  icon: '🤖', label: 'Assistants',       meta: 'Keys for AI assistants (MCP)',     roles: ['admin'], opsOnly: true },
   ];
 
   // A screen that only the Operations app has is listed with `opsOnly: true` (ADR-0023).
@@ -1765,7 +1767,7 @@
     return {
       shift: loadShiftTab, schedule: loadScheduleTab, mypay: loadMyPayTab,
       payroll: loadPayrollTab, sales: loadSalesTab, history: loadHistoryTab,
-      commissions: loadCommissionsTab, rules: loadRulesTab, settings: loadSettingsTab, staff: loadStaffAdminTab, more: loadMoreTab,
+      commissions: loadCommissionsTab, rules: loadRulesTab, settings: loadSettingsTab, staff: loadStaffAdminTab, assistants: loadAssistantsTab, more: loadMoreTab,
       shopping: loadShoppingTab, suppliers: loadSuppliersTab,
       products: loadProductsTab, cash: loadCashTab, recon: loadReconTab,
     };
@@ -1783,7 +1785,7 @@
     const titles = {
       shift: 'My Shift', schedule: 'Schedule', mypay: 'My Pay',
       payroll: 'Payroll', sales: 'Sales', history: 'History',
-      commissions: 'Commissions', rules: 'Commission Rules', settings: 'Settings', staff: 'Staff', more: 'More',
+      commissions: 'Commissions', rules: 'Commission Rules', settings: 'Settings', staff: 'Staff', assistants: 'Assistants', more: 'More',
       shopping: 'Shopping List', suppliers: 'Suppliers',
       products: 'Product Master', cash: 'Cash Handling', recon: 'Reconcile',
     };
@@ -5828,6 +5830,205 @@
         if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
         $('staffErr').textContent = e.message;
         $('staffPinSave').disabled = false;
+      }
+    };
+  }
+
+  // ============================================================
+  //  ░░  TAB: ASSISTANTS (the Operations app only; ADR-0023, ADR-0025)  ░░
+  // ============================================================
+  //  An admin makes and withdraws the keys AI assistants use at /mcp.
+  //  A new key is shown ONCE, in a sheet, and is never put in a toast,
+  //  the address bar, localStorage or the read cache (it comes back from
+  //  a write, which `call` never caches); the sheet's text is wiped when
+  //  it closes. Whether the door is open is a setting (Settings).
+  // ============================================================
+  async function loadAssistantsTab(force) {
+    const view = $('view-assistants');
+    if (force || !cacheFresh('rpcGetAssistantKeys', [state.token], TTL_LIVE)) {
+      view.innerHTML = '<div class="loading"><div class="spinner"></div>Loading keys…</div>';
+    }
+    try {
+      const data = await cachedCall('rpcGetAssistantKeys', [state.token], TTL_LIVE, { force });
+      renderAssistantsTab(data);
+    } catch (e) {
+      handleRpcError(e, view);
+    }
+  }
+
+  // An ISO instant as a Toronto date and time; null is "never".
+  function assistantWhen_(iso) {
+    if (!iso) return 'never';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return 'never';
+    return d.toLocaleString('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function assistantStatus_(k) {
+    if (k.status === 'withdrawn') return 'Withdrawn ' + assistantWhen_(k.withdrawnAt) + (k.withdrawnBy ? ' by ' + k.withdrawnBy : '');
+    if (k.status === 'expired') return 'Expired';
+    if (k.status === 'person_inactive') return 'Stopped: ' + k.staffName + ' is no longer active';
+    return 'Expires in ' + k.daysLeft + ' day' + (k.daysLeft === 1 ? '' : 's');
+  }
+
+  function renderAssistantsTab(data) {
+    const view = $('view-assistants');
+    const list = (data && data.keys) || [];
+    const people = (data && data.people) || [];
+    const on = !!(data && data.enabled);
+
+    let html = moreBack();
+    html += '<div style="font-size:13px;font-weight:700;margin-bottom:4px">Assistants</div>' +
+      '<div style="font-size:11px;color:#6a6e79;margin-bottom:12px">A key lets one AI assistant, for one person, read a few things and propose a few things. ' +
+      'A proposal changes nothing until a person confirms it.</div>';
+    html += '<div class="payroll-card" style="margin-bottom:12px"><div class="payroll-card-head"><div style="flex:1;min-width:0">' +
+      '<div style="font-size:13px;font-weight:700;color:' + (on ? '#15803d' : '#b45309') + '" id="assistantsDoor">' +
+      (on ? 'The door is open: assistants with a key can connect.' : 'The door is closed: no assistant can connect, key or no key.') + '</div>' +
+      '<div class="payroll-rate">Opened and closed in Settings (assistants_enabled).</div>' +
+      '</div></div></div>';
+    html += '<button class="btn-primary" id="assistantMakeBtn" style="margin-bottom:12px">Make a key</button>';
+
+    if (!list.length) {
+      html += '<div style="font-size:12px;color:#6a6e79">No keys yet.</div>';
+    }
+    list.forEach(k => {
+      const live = k.status === 'live';
+      html += '<div class="payroll-card" data-assistant-key="' + esc(k.keyId) + '" style="margin-bottom:8px;' + (live ? '' : 'opacity:.5') + '">' +
+        '<div class="payroll-card-head">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(k.label) + '</div>' +
+            '<div class="payroll-rate">' + esc(k.staffName) + ' · ' + (k.right === 'propose' ? 'read and propose' : 'read only') +
+              (k.personalDetails ? ' · may see customers\' details' : '') + '</div>' +
+            '<div class="payroll-rate">' + esc(assistantStatus_(k)) + ' · last used ' + esc(assistantWhen_(k.lastUsedAt)) + ' · ' + esc(k.callsToday) + ' call' + (k.callsToday === 1 ? '' : 's') + ' today</div>' +
+          '</div>' +
+          (live ? '<button class="payroll-btn payroll-btn-secondary" style="flex:0 0 auto" data-assistant-withdraw="' + esc(k.keyId) + '">Withdraw</button>' : '') +
+        '</div>' +
+      '</div>';
+    });
+
+    view.innerHTML = html;
+    const make = $('assistantMakeBtn');
+    if (make) make.onclick = () => { haptic(); openMakeKeySheet(people); };
+    view.querySelectorAll('[data-assistant-withdraw]').forEach(el => {
+      el.onclick = () => {
+        haptic();
+        const k = list.find(x => x.keyId === el.dataset.assistantWithdraw);
+        if (k) openWithdrawKeySheet(k);
+      };
+    });
+  }
+
+  function openMakeKeySheet(people) {
+    const bodyHTML =
+      '<div class="sheet-field"><label>Person</label><select id="akStaff"><option value="">Choose a person…</option>' +
+        people.map(p => '<option value="' + esc(p.staffId) + '">' + esc(p.name) + '</option>').join('') + '</select></div>' +
+      '<div class="sheet-field"><label>Label (which assistant, e.g. "Priya\'s Muse")</label><input type="text" id="akLabel" maxlength="60" autocomplete="off"></div>' +
+      '<div class="sheet-field"><label>What it may do</label><select id="akRight">' +
+        '<option value="read">Read only</option><option value="propose">Read and propose</option></select></div>' +
+      '<div class="sheet-field"><label>May it see customers\' personal details?</label><select id="akPersonal">' +
+        '<option value="no">No</option><option value="yes">Yes</option></select></div>' +
+      '<div class="sheet-field"><label>Days until it expires (1 to 365)</label><input type="number" id="akDays" inputmode="numeric" value="90" min="1" max="365"></div>' +
+      '<div id="akErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-submit" id="akMakeBtn">Make the key</button>';
+    openSheet({ title: 'Make a key', subtitle: 'For one person and one assistant', bodyHTML, actionsHTML });
+
+    $('akMakeBtn').onclick = async () => {
+      haptic();
+      const btn = $('akMakeBtn');
+      const errEl = $('akErr');
+      errEl.textContent = '';
+      const input = {
+        staffId: $('akStaff').value,
+        label: $('akLabel').value,
+        right: $('akRight').value,
+        personalDetails: $('akPersonal').value === 'yes',
+        days: Number($('akDays').value),
+      };
+      btn.disabled = true;
+      btn.textContent = 'Making…';
+      try {
+        const res = await call('rpcCreateAssistantKey', state.token, input);
+        showNewKeySheet_(res);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        errEl.textContent = e.message;
+        btn.disabled = false;
+        btn.textContent = 'Make the key';
+      }
+    };
+  }
+
+  // The one place a key is shown. It is written into the sheet only, and wiped from it on close.
+  function showNewKeySheet_(res) {
+    const record = (res && res.record) || {};
+    const address = location.origin + '/mcp';
+    const bodyHTML =
+      '<div style="font-size:12px;color:#4a4e59;margin-bottom:10px">' + esc(record.label) + ' for ' + esc(record.staffName) + ' · ' +
+        (record.right === 'propose' ? 'read and propose' : 'read only') + '</div>' +
+      '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:10px;font-size:12px;font-weight:600;margin-bottom:12px">' +
+        'This key is shown once and will not be shown again. Paste it only into the assistant\'s own secure field for a key or token, never into a chat. ' +
+        'If it is lost, withdraw it and make a new one.</div>' +
+      '<div class="sheet-field"><label>Address to give the assistant</label><input type="text" id="akAddress" readonly value="' + esc(address) + '"></div>' +
+      '<div class="sheet-field"><label>Header: Authorization: Bearer, then this key</label>' +
+        '<textarea id="akKey" readonly rows="3" style="font-family:monospace;font-size:12px;word-break:break-all">' + esc(res && res.key) + '</textarea></div>';
+    const actionsHTML =
+      '<button class="sheet-cancel" id="akCopyBtn">Copy the key</button>' +
+      '<button class="sheet-submit" id="akDoneBtn">Done</button>';
+    openSheet({ title: 'Your new key', subtitle: 'Shown once', bodyHTML, actionsHTML });
+
+    const wipe = () => {
+      $('sheetBody').innerHTML = '';
+      $('sheetActions').innerHTML = '';
+      $('sheetClose').onclick = closeSheet;
+      $('backdrop').onclick = closeSheet;
+      closeSheet();
+      loadAssistantsTab(true);
+    };
+    $('sheetClose').onclick = wipe;
+    $('backdrop').onclick = wipe;
+    $('akDoneBtn').onclick = () => { haptic(); wipe(); };
+    $('akCopyBtn').onclick = async () => {
+      haptic();
+      const box = $('akKey');
+      box.focus();
+      box.select();
+      try {
+        await navigator.clipboard.writeText(box.value);
+        toast('Copied', 'success');
+      } catch (e) {
+        toast('Select the key and copy it', 'warning');
+      }
+    };
+  }
+
+  function openWithdrawKeySheet(k) {
+    const bodyHTML =
+      '<div style="font-size:12px;color:#4a4e59;margin-bottom:10px">' + esc(k.label) + ' for ' + esc(k.staffName) +
+        '. It stops working at once, for good.</div>' +
+      '<div class="sheet-field"><label>Why (3 to 300 characters)</label><input type="text" id="akReason" maxlength="300" autocomplete="off"></div>' +
+      '<div id="akWErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-submit" id="akWithdrawBtn">Withdraw</button>';
+    openSheet({ title: 'Withdraw a key', subtitle: 'Assistants', bodyHTML, actionsHTML });
+    $('akWithdrawBtn').onclick = async () => {
+      haptic();
+      const btn = $('akWithdrawBtn');
+      $('akWErr').textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Withdrawing…';
+      try {
+        await call('rpcRevokeAssistantKey', state.token, { keyId: k.keyId, reason: $('akReason').value });
+        closeSheet();
+        toast('✓ Key withdrawn', 'success');
+        loadAssistantsTab(true);
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('akWErr').textContent = e.message;
+        btn.disabled = false;
+        btn.textContent = 'Withdraw';
       }
     };
   }

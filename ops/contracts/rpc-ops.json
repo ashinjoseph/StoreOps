@@ -11,6 +11,9 @@
     { "name": "rpcPreviewRateChange", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcSetStaffPin", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcGetTillCorrection", "params": ["token", "sessionId"], "roles": ["admin"], "needs_session": true },
-    { "name": "rpcCorrectTillSession", "params": ["token", "input"], "roles": ["admin"], "needs_session": true }
+    { "name": "rpcCorrectTillSession", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcGetAssistantKeys", "params": ["token"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcCreateAssistantKey", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcRevokeAssistantKey", "params": ["token", "input"], "roles": ["admin"], "needs_session": true }
   ]
 }

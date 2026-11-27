@@ -25,6 +25,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 ## Components
 
 - [App shell and auth](docs/components/app-shell-and-auth.md): One page that signs a person in with a PIN, shows them the tabs their role allows, and talks to the server through a small, cached RPC layer
+- [Assistants](docs/components/assistants.md): An AI assistant (Muse first, Claude after) reaches the Operations app through one door, `/mcp`, with a key an admin made for one person
 - [Cash handling](docs/components/cash-handling.md): Track every dollar a cashier walks out with until it reaches the cash manager, shift by shift, with a record of who said it moved
 - [Commissions](docs/components/commissions.md): Rules say who earns what. Each Monday the engine works out the week and proposes bonuses; a person approves them before anything is paid.
 - [Notifications](docs/components/notifications.md): The owner and manager get a WhatsApp message when a till opens, when the day is reconciled, and when the shopping list is sent
@@ -67,9 +68,11 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [0022. LLM calls go to the free model first, with Claude behind a flag](docs/adr/0022-llm-calls-go-to-the-free-model-first.md)
 - [0023. The Operations app has RPCs and screens of its own, listed apart and hidden in Apps Script](docs/adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)
 - [0024. The till is read through one client that never throws, and ships switched off](docs/adr/0024-the-till-is-read-through-one-client.md)
+- [0025. Assistants come in through MCP, with a key per person, and only propose](docs/adr/0025-assistants-come-in-through-mcp-and-only-propose.md)
 
 ## Guides
 
+- [Connect an assistant](docs/guides/connect-an-assistant.md): How to let an AI assistant (Muse, later Claude) into the Operations app
 - [Dry run: the real Sheet into a local database](docs/guides/cutover-dry-run.md): This is the rehearsal for the move off Google Sheets (card P4-04 in the task cards)
 - [Keeping the docs current](docs/guides/docs-process.md): The docs are part of the change, not a follow-up
 - [Setting up StoreOps](docs/guides/setup.md): From nothing to a working web app in about 30 minutes

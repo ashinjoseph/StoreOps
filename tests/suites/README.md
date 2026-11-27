@@ -49,6 +49,7 @@ shared globals, which hid at least one ordering-dependent pass.
 | `shopping-gate` | a needs-detail product can't be ordered until completed |
 | `syntax` | every `.gs` file and inline page script compiles |
 | `template-guard` | the Apps Script scriptlet contract, read as the preprocessor reads it |
+| `ui-assistants` | the Assistants screen: opsOnly and admin only; a new key shown once, in the sheet only (not the read cache, a toast, storage or the address bar) and wiped when the sheet closes; the built page carries it |
 | `ui-close-sheet` | card shape, the lotto pot, the sign button, and the running sums |
 | `ui-dashboard` | tender tiles that never lose a tender, and where the chart sits |
 | `ui-picker` | chips show a whole category, needs-detail rows listed but not addable |
