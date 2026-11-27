@@ -90,7 +90,7 @@ roles `["admin"]`. The handlers check the role again themselves.
 | `clover_base_url` | text | `https://api.clover.com` | not one of Clover's addresses | the token is only ever sent there (`isCloverUrl`) |
 | `till_enabled` | boolean | false | anything but true/false | the switch of the [till link](till-link.md); off until the address and key are set |
 | `till_api_url` | text | blank | not one of the till's own addresses (`isTillUrl`: https, no user name, port or query, an exact host of the contract's `servers`, under `/ops/v1`) | the till's key is only ever sent there |
-| `till_key_expires_on` | text | blank | not a real date `yyyy-mm-dd` | recorded by the admin when the key is installed; the warning 14 days ahead is a later card |
+| `till_key_expires_on` | text | blank | not a real date `yyyy-mm-dd` | recorded by the admin when the key is installed; from 14 days before it (and after) a warning shows above the *Till* group and on the Staff screen ([till link](till-link.md)) |
 | `public_report_url` | text | blank | not an `https:` address | the reconcile message links to it |
 | `commission_run_day` (0 to 6), `commission_run_hour` (0 to 23) | number | 1, 9 | outside the range | **they do not move the weekly run**: its time is fixed in the app's configuration (card P3-10b); the screen says so |
 | `commission_run_paused` | boolean | false | anything but true/false | **pauses the weekly run** (card P4-13): when true, the Monday morning run does nothing except write one audit row, `commissions.run_skipped`; no bonuses are proposed. It stops that run only: **Run engine** on the Commissions screen still works. In the Sheet an admin paused the run by removing the trigger; here the schedule is part of the app. See [commissions](commissions.md) |
@@ -148,6 +148,9 @@ letting "default: No" stand for something the app does not do.
 - **Nov 2026 (card P4-09):** the Settings screen, `rpcGetSettings` and
   `rpcUpdateSetting`: the first screen and calls only the Operations app has
   ([ADR-0023](../adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)).
+- **Nov 2026 (card P5-02b):** `rpcGetSettings` also answers `tillKeyExpiry`, and
+  the screen shows its warning line above the *Till* group when it applies
+  ([till link](till-link.md)).
 - **Nov 2026 (card P5-02a):** a *Till* group (`till_enabled`, `till_api_url`,
   `till_key_expires_on`) and a fourth credential, `TILL_API_KEY`, in *Kept by
   Cloudflare* ([till link](till-link.md), [ADR-0024](../adr/0024-the-till-is-read-through-one-client.md)).

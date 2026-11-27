@@ -1,12 +1,20 @@
 # Till link
 
-> The one place the Operations app calls the vape till's API, and a fake till
-> to test every later card against. Built, tested and **switched off**: nothing
-> calls it yet.
+> The one place the Operations app calls the vape till's API, a fake till to
+> test every card against, and the first thing built on it: an admin matches
+> each person here to their till login and the till's store to this store, and
+> is warned before the till's key expires. The till is only read. **Switched
+> off** until the setting, the address and the key are all set.
 
-<!-- No screenshot: nothing on screen uses the link yet. The only screen it
-     touches is Settings (ops-only, see settings.md), which the docs runtime
-     cannot render. -->
+<!-- No screenshot: the Till logins section and the warning are in the
+     Operations app only (ADR-0023), and the docs runtime
+     (scripts/docs/runtime.js) runs the Apps Script server, which has no
+     rpcGetTillLink. Nothing in scripts/docs/screens.js can render them. -->
+
+> **Contents:** [What it does](#what-it-does) · [What an admin does](#what-an-admin-does-card-p5-02b)
+> (states, rules, what is stored) · [Settings and the secret](#settings-and-the-secret)
+> · [Using the client](#using-it-and-the-errors) · [How it works](#how-it-works)
+> · [Rules it must not break](#rules-it-must-not-break) · [Tests](#tests)
 
 ## What it does
 
@@ -28,10 +36,166 @@ match people and stores, show sales by channel, prefill the vape close and
 - `tillClientFor(env, config, deps)`, which gives a client that answers
   `not_configured` unless everything is set.
 
-**What is not built:** anything that uses it (no RPC, no screen, no cron), the
-matching of people and stores and the key-expiry warning (card P5-02b), any
-write to the till (a proposal is a later card, and the client has no code path
-that can write), and `GET /proposals/{id}` (it comes with proposals).
+**What is built (card P5-02b):** the first caller of the client: the matches
+between Operations' people and stores and the till's, four admin-only calls, the
+Staff screen's *Till logins* section, and the key-expiry warning on the Staff
+and Settings screens (below).
+
+**What is not built:** anything that *uses* the matches (sales by channel, the
+vape close from the till's figures: later cards), any cron or message about the
+key, any write to the till (a proposal is a later card, and the client has no
+code path that can write), and `GET /proposals/{id}` (it comes with proposals).
+
+### What an admin does (card P5-02b)
+
+**More → Staff → Till logins**, for an **admin** in the Operations app. A manager's
+Staff screen is unchanged: it makes no till call and has no section. Inside
+Apps Script nothing changes.
+
+1. **The store.** One line, *Main store ↔ Fictional Corner Store*, with a sheet to
+   choose from the till's stores (only a store the till lists *now*). Changing it
+   is two steps: end the match, then match again; and a match cannot be ended
+   while people are matched through it (*"1 person is matched through it: end
+   their match first."*).
+2. **People.** Each person on the Staff list shows *Matched to Maya Chen (till) ·
+   cashier · last seen 2026-11-26* or *not matched*. Nothing is ever matched by
+   the app, even on an exact name: where the till's name equals theirs (ignoring
+   case and repeated spaces, and only if exactly one till person has that name
+   and is not already matched) it offers a **Match to Maya Chen?** button, which
+   opens a confirm sheet; only that sheet's *Match* calls the server. Tapping *not
+   matched* offers the till's unmatched people instead. An inactive person may be
+   matched (their history is still theirs).
+3. **In the till, not matched here.** The till's people with no match are listed
+   from the live answer, with a note that they are **not created here** and stay
+   the till's business. Nothing about them is stored. The nil uuid ("Not known")
+   is never listed, offered or accepted.
+4. **End a match.** Tap a matched person, give a reason (3 to 300 characters). It
+   works with the till down. The row is kept with who, when and why. A match the
+   till no longer lists is flagged *no longer in the till's list* and kept; it is
+   never deleted or ended by itself.
+5. **The key's expiry.** The day typed into the setting `till_key_expires_on` when
+   the key was installed. From **14 days before** that day (Toronto calendar days,
+   so a clock-change day is one day), on it and after it, a warning sits at the
+   top of the section and above the *Till* group on Settings: *"The till's key
+   expires on 2026-12-07 (in 10 days). Make a new key in the till's Office and
+   install it, then change the date in Settings."* At 15 days there is none. A
+   blank date while the link is switched on says *"The key's expiry date is not
+   recorded"*. No message is sent anywhere.
+
+Sign-in stays Operations' own (name and PIN): the till has no part in it, and
+nothing here can change it.
+
+#### The states, and what the screen says
+
+`rpcGetTillLink` always answers. `state` is one of six; the words are the
+server's, shown as written (the till's own text is never shown):
+
+| `state` | When (client error kinds) | Message |
+|---|---|---|
+| `off` | `till_enabled` is not true. No request, no client | *The link to the till is switched off (Settings, Till). Sign-in and everything else work as usual.* |
+| `not_configured` | enabled but no address, an address that is not the till's, or no key (`not_configured`, `bad_address`). No request | *The link to the till is switched on but not set up: it needs the till's address in Settings and the key installed.* |
+| `ok` | answered | *The till answered.* |
+| `unreachable` | `network`, `server` | *The till could not be reached just now (it may be down). What is saved is shown; try again later.* |
+| | `timeout`, or the 8-second budget ran out | *The till did not answer in time.* / *…in time (8 seconds)…* |
+| | `rate_limited` | *The till asked us to slow down (try again in N seconds). …* |
+| `refused` | `unauthorized` | *The till did not accept the key. It may have expired or been withdrawn: install a new one.* |
+| | `forbidden` (a store the key may not see) | *The till's key may not see the till store matched here. Check which store the key was made for.* |
+| | `not_found`, `rejected` | *The till refused the request. Nothing was changed.* |
+| `bad_answer` | `bad_answer` (not JSON, a redirect, the wrong store), `bad_input` | *The till answered with something this app does not understand. Nothing was changed; tell whoever looks after the till link.* |
+
+In every state but `ok` the screen shows that one line, the stored store match and
+the stored person matches **read-only**, and no matching control; the Staff
+screen's own list, sign-in and every other call are unaffected. The writes that
+need the till *now* (match a store, match a person) refuse with the same words
+plus *"Nothing was changed."* Ending a person's match needs no till.
+
+#### The calls
+
+All in `ops/contracts/rpc-ops.json`, `"roles": ["admin"]`, needing a session
+([ADR-0023](../adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)).
+
+| Call | Does |
+|---|---|
+| `rpcGetTillLink(token)` | `{ state, message, keyExpiry: { day, daysLeft, warn, recorded, message }, stores: [{ storeId, name, tillStore }], tillStores, people: [{ staffId, name, active, link, suggestion }], unmatchedTillPeople }`. No pay rate, PIN, hash, email or notes of anyone. One `GET /stores` and one `GET /staff` together, inside one 8-second budget. Notes `last_seen_at` for matched people the till's list holds (the one write of a read) |
+| `rpcSetTillStore(token, { storeId, tillStoreId \| null })` | match, or end the match (`null`). Needs the till to list that store now: *"The till does not list that store."* |
+| `rpcLinkTillStaff(token, { staffId, tillStaffId })` | match one person to one till login |
+| `rpcUnlinkTillStaff(token, { staffId, reason })` | end a match, with who, when and why |
+
+The rules of `rpcLinkTillStaff`, as built (messages as the screen shows them):
+
+| Refused when | Message |
+|---|---|
+| the person does not exist | *There is no such person.* |
+| the till id is not a uuid | *Choose the person in the till to match.* |
+| it is the nil uuid | *"Not known" is the till's name for no one: it cannot be matched to a person.* |
+| no store is matched | *Match the till's store to this store first.* |
+| the till cannot be read | the state's words, then *Nothing was changed.* |
+| the till does not list them now, for the matched store | *That person is not in the till's list for this store now.* |
+| the person already has a match | *Ada Quill is already matched to Ada Q.: end that match first.* |
+| the till login belongs to someone | *Maya Chen is already matched to Ada Quill.* |
+
+It locks the person's staff row first, then one advisory lock for the whole link
+(two admins matching the same till login to two people hold different staff rows,
+so the second must read the first's committed row), and the tables' partial unique
+indexes are the last guard. Identity and role come from the session only; time
+from `ctx.now`; every change writes an audit row (`till_link.store_matched`,
+`till_link.store_ended`, `till_link.staff_linked`, `till_link.staff_unlinked`).
+
+#### What is stored, and what is not
+
+In Operations' own database (migration `0011_till_links.sql`), never in the till:
+
+- `ops.till_stores`: Operations store ↔ the till's store uuid and its name as
+  given, who matched it and when, who ended it and when. One live row per store
+  and per till store.
+- `ops.till_staff_links`: Operations person ↔ the till's `staff_id` (uuid, never
+  the nil uuid) for one till store, the till's **name and role as given when
+  matched** (so the screen can say *matched to Maya Chen (till)* with the till
+  down), when matched and by whom, when the till's list last held them, and who
+  ended it, when and why. One live login per person per till store, and one
+  person per till login.
+- The app role may add rows and read them; it may update only `last_seen_at` and
+  the *ended* columns, and cannot delete. Nothing else about a till person is kept,
+  and unmatched till people are **not stored at all**. Neither table is read by the
+  cutover tools (`LATER_OPS_TABLES`).
+
+#### The time budget, `sleep`, and what to cache later
+
+The whole RPC has **8 seconds** (`BUDGET_MS`). The handler supplies what a Worker
+needs and the client must not own (ADR-0024): `sleep` is a `setTimeout` that also
+resolves, clearing its timer, when its signal aborts; `elapsedMs` is
+`performance.now()` since the call began (because `ctx.now` is the instant it
+*started*). The client is given `timeoutMs` 7.5 s (so its own timeout answers
+first) and `maxWaitMs` 3 s for a 429, and the module races the calls against the
+budget on the same `sleep`; if the budget wins the answer is `unreachable` and a
+late reply is ignored. The client's own rules are untouched. The connection and
+the transaction stay open while the till is read (at most the budget), and no
+lock is taken until the till has answered.
+
+A later card should cache the till's **stores list** (it changes about never: an
+hour) and **staff list** (a few minutes, dropped by any match or end), so opening
+the screen does not call the till each time; this card calls it once per screen
+load.
+
+#### What the till's staff list gives, and what is uncertain
+
+`GET /staff?store_id=` answers `{ store_id, staff: [{ staff_id, display_name, role
+(owner, area_manager, store_manager, cashier), active, all_stores, store_ids,
+has_pin }] }`. A person appears **once** in the answer, whatever their stores
+(`all_stores` true with empty `store_ids`, or listed ids). Questions for the till
+side are in the card's report: whether the list is filtered to the stores asked
+about (the fake returns everyone), whether an inactive person is ever removed,
+and whether `display_name` can repeat or change.
+
+#### Who may call the client
+
+A test names them (`ops/test/till-client.test.ts`): exactly
+`ops/src/modules/till-link.ts` and `ops/src/rpc/handlers/till-link.ts` import the
+client, its index, the types or the days. The module makes the reads; the
+handler gives it a timer and a clock. A third caller is a decision: it is a change
+to that list and to [ADR-0024](../adr/0024-the-till-is-read-through-one-client.md).
+`ops/src/modules/settings.ts` imports `keyExpiryWarning` from the module (a pure
+function) and `till/address` (the address rule), neither of which calls the till.
 
 ### Settings and the secret
 
@@ -39,7 +203,7 @@ that can write), and `GET /proposals/{id}` (it comes with proposals).
 |---|---|---|---|
 | `till_enabled` | setting (boolean) | `false` | not `true` or `false` |
 | `till_api_url` | setting (text) | blank | not one of the till's own addresses (`isTillUrl`, no query) |
-| `till_key_expires_on` | setting (text) | blank | not a real date `yyyy-mm-dd`. The admin types in the day the key in use expires when installing it; the 14-day warning is a later card |
+| `till_key_expires_on` | setting (text) | blank | not a real date `yyyy-mm-dd`. The admin types in the day the key in use expires when installing it; the warning from 14 days before is shown on the Staff and Settings screens (below) |
 | `TILL_API_KEY` | Worker secret (`till_api_key` in the registry) | not bound | cannot be set on the Settings screen: it is listed under *Kept by Cloudflare* as set or not set |
 
 The client answers `not_configured` to everything, and makes no request, unless
@@ -144,7 +308,7 @@ client waited for and `clock.deadlines` its request timeouts, and
 
 ```mermaid
 flowchart LR
-    later["a later card<br/>(not built yet)"] -->|"tillClientFor(env, config, deps)"| gate{"till_enabled<br/>+ till_api_url ok<br/>+ TILL_API_KEY bound?"}
+    later["modules/till-link.ts<br/>(the matches; card P5-02b)"] -->|"tillClientFor(env, config, deps)"| gate{"till_enabled<br/>+ till_api_url ok<br/>+ TILL_API_KEY bound?"}
     gate -- no --> off["every call: not_configured<br/>no request"]
     gate -- yes --> client["client.ts"]
     client --> check["inputs checked<br/>isTillUrl(request address)"]
@@ -179,9 +343,18 @@ the tests, which is also what keeps the hand-written `types.ts` honest.
   all, by the injected `sleep`. A 5xx or a timeout is the caller's to decide.
 - **Time, waiting, the network and the key come from outside.** No
   `new Date()`, timer, `process`, `fetch` or randomness in the client.
-- **Switched off:** nothing outside `ops/src/till` and the tests imports the
-  client or the fake (a test searches for it). When a card first calls
-  `tillClientFor`, that card changes this rule on purpose.
+- **Two callers, named:** only `ops/src/modules/till-link.ts` and
+  `ops/src/rpc/handlers/till-link.ts` import the client; the fake is for tests
+  (`ops/test/till-client.test.ts` lists them and fails for any other). A new
+  caller changes that list on purpose, and ADR-0024.
+- **The matches, not the till, are Operations' record.** A person is matched only
+  by a person at the screen, never by the app, never from the nil uuid, and
+  never created from the till's side; a match is ended, never deleted.
+- **When the till cannot be read, nothing else is affected.** `rpcGetTillLink`
+  answers a state and its words, the stored matches stay, sign-in and every other
+  call are untouched, and the whole RPC stays inside 8 seconds.
+- **The warning is pure and shared:** `keyExpiryWarning(config, now)` serves the
+  Staff section and the Settings answer: 14 days before, warn; 15, not.
 - **Never the real till in a test.** Every test uses the fake; a test that
   reaches the global `fetch` fails.
 - **Blank is not zero:** a null `counted`, `expected` or `variance` is *not
@@ -198,6 +371,10 @@ the tests, which is also what keeps the hand-written `types.ts` honest.
 | The fake till and its clock | `ops/src/till/fake.ts`: `createFakeTill`, `createFakeClock`, `FAKE_DAYS`, `FAKE_PEOPLE` |
 | Day arithmetic | `ops/src/till/days.ts` |
 | The contract loader and rules (Node only, for the tool) | `ops/src/till/contract.ts`, `ops/src/till/rules.ts` |
+| The matches, the states, the budget, the expiry warning | `ops/src/modules/till-link.ts`: `get`, `setStore`, `linkStaff`, `unlinkStaff`, `keyExpiryWarning`, `explain`, `BUDGET_MS` |
+| The four calls, `sleep` and the clock for a Worker | `ops/src/rpc/handlers/till-link.ts`; entries in `ops/contracts/rpc-ops.json`; lines in `ops/src/rpc/registry.ts` |
+| The two tables | `ops/migrations/0011_till_links.sql` (`ops.till_stores`, `ops.till_staff_links`); named in `LATER_OPS_TABLES` (`ops/src/cutover/compare.ts`) |
+| The screen | `src/Index.html`: *Till logins* (`loadTillSection_`, `renderTillSection_`, `tillSectionHTML_`, the three sheets) on the Staff screen, and `tillWarnHTML_` above the *Till* group of Settings |
 | The registry entries | `ops/src/lib/config-keys.ts`: `till_enabled`, `till_api_url`, `till_key_expires_on`, `till_api_key` |
 | The Settings rules for them | `ops/src/modules/settings.ts` (group *Till*) |
 | The secret's name | `ops/wrangler.toml` (comment), `ops/.dev.vars.example` |
@@ -206,8 +383,10 @@ the tests, which is also what keeps the hand-written `types.ts` honest.
 
 | Suite | Holds down |
 |---|---|
-| `ops/test/till-client.test.ts` | every `kind` of error through the fake's switches; the address table (look-alike hosts, sub-domains, user info, ports, IPs, trailing dots, look-alike letters, paths); the servers equal the contract's; the key only in the header and in no result, request record or log, including what the till echoes (raw, URL-encoded, escaped, base64) and a redirect that is not followed; 429 waits (seconds, HTTP date, unreadable), the retry cap and the total-wait cap; the timeout by the injected clock; inputs refused before any request; the typed results equal the fake's data; the light checks; no way to send anything but a GET and no ambient time or randomness; the shapes and parameters equal the contract's; `tillClientFor` for each missing piece; nothing outside `ops/src/till` imports the client |
+| `ops/test/till-client.test.ts` | every `kind` of error through the fake's switches; the address table (look-alike hosts, sub-domains, user info, ports, IPs, trailing dots, look-alike letters, paths); the servers equal the contract's; the key only in the header and in no result, request record or log, including what the till echoes (raw, URL-encoded, escaped, base64) and a redirect that is not followed; 429 waits (seconds, HTTP date, unreadable), the retry cap and the total-wait cap; the timeout by the injected clock; inputs refused before any request; the typed results equal the fake's data; the light checks; no way to send anything but a GET and no ambient time or randomness; the shapes and parameters equal the contract's; `tillClientFor` for each missing piece; exactly the two named callers import the client |
 | `ops/test/till-fake.test.ts` | every normal answer validates against the contract with no error and no warning; the arithmetic rules hold apart from the "To check" day; the cases later cards need are present; each switch; the request record never holds the key; the fake clock |
+| `ops/test/till-link.test.ts` | against a real database and the fake till: linking a person; a till person not in Operations is listed and never created (`staff` unchanged); the till down with sign-in still working; the warning at 14 days and not 15, on the day, after, blank, and across both clock changes; every state (off, not configured by setting, key or address, ok, unreachable by down, slow, failing and throttled, refused by a wrong key and a store the key may not see, bad answer by garbage and a redirect) answering inside the budget with the stored matches listed; a till so slow that the 8 seconds run out; suggestions on equal names only and never automatic; the nil uuid never offered and refused; a till person not listed now; both already-matched messages; an inactive person; ending a match with the till down; a match the till dropped flagged and kept; two admins at once on two connections; the store map; who may call (the router and each handler alone); planted `role` and `actorId`; no pay, PIN, hash, email or notes in the answer; the key in no answer, audit row or message in every state (with `echoKey`); only GETs, once per endpoint; nothing else moves; the tables' own constraints and grants; one real-time run of the Worker's timers |
+| `tests/suites/ui-till-link.js` | the section only for an admin in the Operations app (a manager makes no till call; Apps Script unchanged); each state's message and no matching control when not ok, stored matches read-only; the suggestion sends nothing until the confirm; choosing, ending, the store sheet; the warning at the top of the section and above the Till group on Settings; everything escaped; the built page carries it |
 | `ops/test/settings.test.ts`, `ops/test/config.test.ts` | the three settings and the secret: accepted and refused values, the secret listed as set or not set and never shown, the registry marks the four as Operations-only |
 | `ops/test/till-contract.test.ts`, `till-rules.test.ts`, `till-check.test.ts` | the Node tool's contract loader, rules and checking run (unchanged) |
 
@@ -217,3 +396,8 @@ the tests, which is also what keeps the hand-written `types.ts` honest.
   settings `till_enabled`, `till_api_url`, `till_key_expires_on` and the secret
   `TILL_API_KEY`, all off and called by nothing
   ([ADR-0024](../adr/0024-the-till-is-read-through-one-client.md)).
+- **Nov 2026 (card P5-02b):** the first caller. People and stores matched (two
+  tables, four admin-only calls, the Staff screen's *Till logins* section), every
+  state of the link answered in words, and the key-expiry warning from 14 days
+  before on the Staff and Settings screens. The allowlist of callers replaces
+  "nobody". Still nothing sent to the till, and still off until configured.

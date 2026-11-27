@@ -5733,6 +5733,7 @@
 
     groups.forEach(g => {
       html += '<div style="' + headingStyle + '">' + esc(g.name) + '</div>';
+      if (g.name === 'Till') html += tillWarnHTML_(data && data.tillKeyExpiry);
       g.items.forEach(s => {
         const valueHTML = s.isDefault
           ? '<span style="color:#8a8e98;font-weight:500">default: ' + esc(settingShown_(s.read, s.blankReads !== undefined ? s.blankReads : s.default)) + '</span>'
@@ -5880,6 +5881,12 @@
     try {
       const data = await cachedCall('rpcGetStaffAdmin', [state.token], TTL_SEMI, { force });
       renderStaffAdminTab(data);
+      // An admin in the Operations app also gets the till section, loaded on its own so that a slow or
+      // silent till can never hold up (or break) the list above. A manager's screen is the list alone.
+      if (data && data.viewerRole === 'admin' && isOpsApp_()) {
+        view.insertAdjacentHTML('beforeend', '<div id="staffTillSection"></div>');
+        loadTillSection_();
+      }
     } catch (e) {
       handleRpcError(e, view);
     }
@@ -6142,6 +6149,253 @@
         $('staffPinSave').disabled = false;
       }
     };
+  }
+
+  // ============================================================
+  //  Till logins: the Staff screen's section, and the key warning on Settings
+  //  (the Operations app only, an admin only; card P5-02b, ADR-0024)
+  // ============================================================
+  //  Matches each person here to their login in the vape till, and the till's
+  //  store to this store. The till is only read. A person is never matched
+  //  by the app: it suggests (equal names) and an admin confirms. A till
+  //  person with no match is listed, not created. When the till cannot be
+  //  read the section says so in one line and shows what is stored, with no
+  //  matching control; the rest of the screen is untouched. One call to
+  //  the server per load of the screen; the server decides, and its
+  //  messages are shown as they are. A manager's Staff screen never gets here.
+  // ============================================================
+  function tillWarnHTML_(k) {
+    if (!k || !k.warn || !k.message) return '';
+    return '<div data-till-warning="1" role="alert" style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin:0 0 10px;overflow-wrap:anywhere">⚠️ ' + esc(k.message) + '</div>';
+  }
+
+  function tillRoleText_(role) {
+    return String(role || '').replace(/_/g, ' ');
+  }
+  function tillDay_(iso) {
+    return iso ? String(iso).slice(0, 10) : 'never';
+  }
+
+  function tillStoreLineHTML_(s, canChange) {
+    const text = s.tillStore ? esc(s.name) + ' ↔ ' + esc(s.tillStore.name) : esc(s.name) + ': not matched to a till store';
+    return '<div class="payroll-card" data-till-store="' + esc(s.storeId) + '" style="margin-bottom:8px"><div class="payroll-card-head">' +
+      '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;overflow-wrap:anywhere">' + text + '</div>' +
+      (canChange ? '<button class="sheet-cancel" data-till-act="store" data-store-id="' + esc(s.storeId) + '" style="flex:0 0 auto;padding:6px 10px">' + (s.tillStore ? 'Change' : 'Choose') + '</button>' : '') +
+      '</div></div>';
+  }
+
+  function tillPersonHTML_(p, ok) {
+    const l = p.link;
+    let line = 'not matched';
+    let badges = '';
+    if (l) {
+      line = 'Matched to ' + l.tillName + ' (till) · ' + tillRoleText_(l.tillRole) + ' · last seen ' + tillDay_(l.lastSeenAt);
+      if (l.inTillList === false) badges += staffBadge_('no longer in the till\'s list', '#fee2e2', '#b91c1c');
+    }
+    if (!p.active) badges += staffBadge_('inactive', '#e5e7eb', '#4b5563');
+    let act = '';
+    let button = '';
+    if (ok && l) act = ' data-till-act="unlink" data-staff-id="' + esc(p.staffId) + '" style="cursor:pointer;';
+    else if (ok) act = ' data-till-act="choose" data-staff-id="' + esc(p.staffId) + '" style="cursor:pointer;';
+    else act = ' style="';
+    if (ok && !l && p.suggestion) {
+      button = '<button class="sheet-submit" data-till-act="suggest" data-staff-id="' + esc(p.staffId) + '" style="flex:0 0 auto;padding:6px 10px">Match to ' + esc(p.suggestion.tillName) + '?</button>';
+    }
+    return '<div class="payroll-card" data-till-person="' + esc(p.staffId) + '"' + act + 'margin-bottom:8px' + (p.active ? '' : ';opacity:.7') + '">' +
+      '<div class="payroll-card-head"><div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:600">' + esc(p.name) + '</div>' +
+        '<div class="payroll-rate" style="overflow-wrap:anywhere">' + esc(line) + '</div>' +
+        (badges ? '<div>' + badges + '</div>' : '') +
+      '</div>' + button + '</div></div>';
+  }
+
+  function tillSectionHTML_(d) {
+    if (!d) return '';
+    const ok = d.state === 'ok';
+    const headingStyle = 'font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#6a6e79;margin:20px 0 6px';
+    let h = '<div style="' + headingStyle + '">Till logins</div>';
+    h += tillWarnHTML_(d.keyExpiry);
+    if (!ok) {
+      h += '<div data-till-state="' + esc(d.state) + '" style="background:#f3f4f6;color:#374151;border-radius:8px;padding:8px 10px;font-size:12px;margin:0 0 10px;overflow-wrap:anywhere">' + esc(d.message) + '</div>';
+    }
+    const stores = d.stores || [];
+    stores.forEach(s => { h += tillStoreLineHTML_(s, ok); });
+    const anyStore = stores.some(s => s.tillStore);
+    const people = (d.people || []).filter(p => ok || p.link);
+    if (ok && !anyStore) {
+      h += '<div style="font-size:11px;color:#6a6e79;margin-bottom:8px">Match the store first: then each person can be matched to their till login.</div>';
+      return h;
+    }
+    people.forEach(p => { h += tillPersonHTML_(p, ok); });
+    const free = d.unmatchedTillPeople || [];
+    if (ok && free.length) {
+      h += '<div style="' + headingStyle + '">In the till, not matched here</div>' +
+        '<div style="font-size:11px;color:#6a6e79;margin-bottom:8px">These people are in the till, not here. They are not created here and stay the till\'s business; match one only to a person already on the Staff list.</div>';
+      free.forEach(f => {
+        h += '<div class="payroll-card" data-till-unmatched="' + esc(f.tillStaffId) + '" style="margin-bottom:8px' + (f.active ? '' : ';opacity:.7') + '"><div class="payroll-card-head"><div style="flex:1;min-width:0">' +
+          '<div style="font-size:13px;font-weight:600">' + esc(f.name) + '</div>' +
+          '<div class="payroll-rate">' + esc(tillRoleText_(f.role)) + (f.active ? '' : ' · not active in the till') + '</div></div></div></div>';
+      });
+    }
+    return h;
+  }
+
+  async function loadTillSection_() {
+    const box = $('staffTillSection');
+    if (!box) return;
+    box.innerHTML = '<div style="font-size:12px;color:#8a8e98;padding:12px 0">Checking the till…</div>';
+    try {
+      const data = await call('rpcGetTillLink', state.token);
+      renderTillSection_(data);
+    } catch (e) {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+      const again = $('staffTillSection');
+      if (again) again.innerHTML = '<div style="background:#f3f4f6;color:#374151;border-radius:8px;padding:8px 10px;font-size:12px;margin-top:20px;overflow-wrap:anywhere">The till section could not be loaded: ' + esc(e.message) + '</div>';
+    }
+  }
+
+  function renderTillSection_(data) {
+    const box = $('staffTillSection');
+    if (!box) return;
+    box.innerHTML = tillSectionHTML_(data);
+    box.querySelectorAll('[data-till-act]').forEach(el => {
+      el.onclick = ev => {
+        haptic();
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        const act = el.dataset.tillAct;
+        if (act === 'store') { openTillStoreSheet_(data, el.dataset.storeId); return; }
+        const person = (data.people || []).find(p => p.staffId === el.dataset.staffId);
+        if (!person) return;
+        if (act === 'unlink') openTillUnlinkSheet_(person);
+        else openTillMatchSheet_(data, person, act === 'suggest');
+      };
+    });
+  }
+
+  // The same handling for every failure in the three sheets: a lost sign-in leaves, anything else is
+  // shown in the sheet, and the button comes back.
+  function tillSheetFail_(e, btn) {
+    if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+    $('tillErr').textContent = e.message;
+    btn.disabled = false;
+  }
+  const TILL_ERR_ = '<div id="tillErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+
+  // Match a person here to a till login. From a suggestion ("Match to X?") the sheet is the confirm and
+  // says which two are being called the same person; from a tap on "not matched" it offers the till's
+  // unmatched people. Nothing is sent until the Match button is pressed.
+  function openTillMatchSheet_(data, person, fromSuggestion) {
+    const free = data.unmatchedTillPeople || [];
+    const sug = person.suggestion;
+    let body;
+    let canMatch = true;
+    if (fromSuggestion && sug) {
+      const t = free.find(f => f.tillStaffId === sug.tillStaffId);
+      body = '<div style="font-size:13px;line-height:1.5;margin-bottom:10px">Match <b>' + esc(person.name) + '</b> here to <b>' + esc(sug.tillName) + '</b> in the till' +
+        (t ? ' (' + esc(tillRoleText_(t.role)) + ')' : '') + '? You are saying they are the same person. Signing in stays the same: the till has no part in it.</div>';
+    } else if (!free.length) {
+      body = '<div style="font-size:13px;margin-bottom:10px">Everyone in the till is already matched.</div>';
+      canMatch = false;
+    } else {
+      body = '<div class="sheet-field"><label>Their login in the till</label><select id="tillChoice">' +
+        '<option value="">Choose…</option>' +
+        free.map(f => '<option value="' + esc(f.tillStaffId) + '"' + (sug && sug.tillStaffId === f.tillStaffId ? ' selected' : '') + '>' + esc(f.name) + ' · ' + esc(tillRoleText_(f.role)) + (f.active ? '' : ' · not active') + '</option>').join('') +
+        '</select></div><div style="font-size:11px;color:#6a6e79;margin-bottom:8px">Only people already on the Staff list can be matched; nobody is created from the till.</div>';
+    }
+    openSheet({
+      title: 'Match ' + person.name,
+      subtitle: 'To their login in the till',
+      bodyHTML: body + TILL_ERR_,
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' + (canMatch ? '<button class="sheet-submit" id="tillMatchBtn">Match</button>' : ''),
+    });
+    if (!canMatch) return;
+    $('tillMatchBtn').onclick = async () => {
+      haptic();
+      $('tillErr').textContent = '';
+      const id = $('tillChoice') ? $('tillChoice').value : (sug ? sug.tillStaffId : '');
+      if (!id) { $('tillErr').textContent = 'Choose the person in the till.'; return; }
+      const btn = $('tillMatchBtn');
+      btn.disabled = true;
+      try {
+        const res = await call('rpcLinkTillStaff', state.token, { staffId: person.staffId, tillStaffId: id });
+        closeSheet();
+        toast('✓ ' + res.name + ' matched to ' + res.link.tillName + ' (till)', 'success');
+        loadTillSection_();
+      } catch (e) {
+        tillSheetFail_(e, btn);
+      }
+    };
+  }
+
+  function openTillUnlinkSheet_(person) {
+    const l = person.link;
+    openSheet({
+      title: person.name,
+      subtitle: 'Matched to ' + l.tillName + ' (till)',
+      bodyHTML: '<div style="font-size:12px;color:#4a4e59;margin-bottom:10px">Ending the match does not change anything in the till or here: it only stops the two being treated as one person. The record of it is kept.</div>' +
+        '<div class="sheet-field"><label>Reason (3 to 300 characters)</label><input type="text" id="tillReason" maxlength="300" autocomplete="off" value=""></div>' + TILL_ERR_,
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="tillUnlinkBtn">End this match</button>',
+    });
+    $('tillUnlinkBtn').onclick = async () => {
+      haptic();
+      $('tillErr').textContent = '';
+      const btn = $('tillUnlinkBtn');
+      btn.disabled = true;
+      try {
+        const res = await call('rpcUnlinkTillStaff', state.token, { staffId: person.staffId, reason: $('tillReason').value });
+        closeSheet();
+        toast('✓ ' + res.name + ' is no longer matched to ' + res.tillName + ' (till)', 'success');
+        loadTillSection_();
+      } catch (e) {
+        tillSheetFail_(e, btn);
+      }
+    };
+  }
+
+  // The store match: choose one of the till's stores, or end the match (the server refuses while people
+  // are matched through it, and says so).
+  function openTillStoreSheet_(data, storeId) {
+    const store = (data.stores || []).find(s => s.storeId === storeId);
+    if (!store) return;
+    const matched = !!store.tillStore;
+    const tills = data.tillStores || [];
+    let body;
+    if (matched) {
+      body = '<div style="font-size:13px;line-height:1.5;margin-bottom:10px">' + esc(store.name) + ' is matched to <b>' + esc(store.tillStore.name) + '</b>. To match another till store, end this match first.</div>';
+    } else if (!tills.length) {
+      body = '<div style="font-size:13px;margin-bottom:10px">The till lists no store this key may see.</div>';
+    } else {
+      body = '<div class="sheet-field"><label>The till\'s store</label><select id="tillStoreChoice"><option value="">Choose…</option>' +
+        tills.map(t => '<option value="' + esc(t.id) + '">' + esc(t.name) + (t.active ? '' : ' (not active)') + '</option>').join('') + '</select></div>';
+    }
+    openSheet({
+      title: 'Store: ' + store.name,
+      subtitle: 'Matched to a store in the till',
+      bodyHTML: body + TILL_ERR_,
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+        (matched ? '<button class="sheet-submit" id="tillStoreEnd">End this match</button>' : (tills.length ? '<button class="sheet-submit" id="tillStoreSave">Match</button>' : '')),
+    });
+    const send = async (btn, tillStoreId) => {
+      haptic();
+      $('tillErr').textContent = '';
+      btn.disabled = true;
+      try {
+        const res = await call('rpcSetTillStore', state.token, { storeId: store.storeId, tillStoreId });
+        closeSheet();
+        toast(res.tillStore ? '✓ ' + store.name + ' matched to ' + res.tillStore.name : '✓ The store match was ended', 'success');
+        loadTillSection_();
+      } catch (e) {
+        tillSheetFail_(e, btn);
+      }
+    };
+    if (matched) $('tillStoreEnd').onclick = () => send($('tillStoreEnd'), null);
+    else if (tills.length) {
+      $('tillStoreSave').onclick = () => {
+        const id = $('tillStoreChoice').value;
+        if (!id) { $('tillErr').textContent = 'Choose the till\'s store.'; return; }
+        send($('tillStoreSave'), id);
+      };
+    }
   }
 
   // ============================================================

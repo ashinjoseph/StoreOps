@@ -26,6 +26,10 @@
     { "name": "rpcGetBusinesses", "params": ["token"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
     { "name": "rpcUpdateBusiness", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcAddBusinessSign", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
-    { "name": "rpcRemoveBusinessSign", "params": ["token", "input"], "roles": ["admin"], "needs_session": true }
+    { "name": "rpcRemoveBusinessSign", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcGetTillLink", "params": ["token"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcSetTillStore", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcLinkTillStaff", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcUnlinkTillStaff", "params": ["token", "input"], "roles": ["admin"], "needs_session": true }
   ]
 }

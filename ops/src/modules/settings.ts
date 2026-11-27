@@ -30,10 +30,11 @@ import type { Db } from "../db/client";
 import type { Tx } from "../db/tx";
 import * as audit from "../lib/audit";
 import { CONFIG_KEYS, SECRET_KEYS, configKeySpec } from "../lib/config-keys";
-import { maybeSecret } from "../lib/config";
+import { Config, maybeSecret } from "../lib/config";
 import { isCloverUrl } from "./clover";
 import { isMetaUrl } from "./notifier";
 import { tillBaseUrl } from "../till/address";
+import { keyExpiryWarning, type KeyExpiry } from "./till-link";
 
 export const GROUPS = ["Tills and cash", "Sign-in", "WhatsApp", "Clover", "Till", "Commissions", "Public report", "Other", "Assistants"] as const;
 export type Group = (typeof GROUPS)[number];
@@ -265,6 +266,8 @@ export interface SettingsList {
   settings: SettingRow[];
   other: OtherRow[];
   secrets: SecretRow[];
+  /** The till key's expiry warning (card P5-02b), so the Settings screen shows it without a second call. Absent when the caller gave no time. */
+  tillKeyExpiry?: KeyExpiry;
 }
 
 interface Row {
@@ -281,7 +284,7 @@ function describe(key: string, rowDescription: string | null | undefined): strin
   return note !== undefined && !base.includes(note) ? `${base} ${note}` : base;
 }
 
-export async function list(db: Db, env: Readonly<Record<string, unknown>>): Promise<SettingsList> {
+export async function list(db: Db, env: Readonly<Record<string, unknown>>, now?: Date): Promise<SettingsList> {
   const rows = await db.query<Row>("select key, value, description from ops.config order by key");
   const byKey = new Map(rows.map((r) => [r.key, r]));
   const settings: SettingRow[] = [];
@@ -305,7 +308,7 @@ export async function list(db: Db, env: Readonly<Record<string, unknown>>): Prom
     .filter((r) => configKeySpec(r.key) === undefined && !looksLikeCredential(r.key))
     .map((r) => ({ key: r.key, value: present(r.value), description: (r.description ?? "").trim() }));
   const secrets: SecretRow[] = SECRET_KEYS.map((key) => ({ key, binding: key.toUpperCase(), isSet: maybeSecret(env, key) !== null }));
-  return { settings, other, secrets };
+  return now === undefined ? { settings, other, secrets } : { settings, other, secrets, tillKeyExpiry: keyExpiryWarning(Config.fromRows(rows), now) };
 }
 
 // ── Writing ────────────────────────────────────────────────

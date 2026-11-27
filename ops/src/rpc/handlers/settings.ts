@@ -11,10 +11,10 @@ function admin(ctx: RpcContext): { staffId: string } {
   return ctx.session as { staffId: string };
 }
 
-/** Admin only: every setting with its default and how it is read, the unknown rows, and the secrets (by name and set/not set only). */
+/** Admin only: every setting with its default and how it is read, the unknown rows, the secrets (by name and set/not set only), and the till key's expiry warning. */
 export const rpcGetSettings: RpcHandler = async (ctx) => {
   admin(ctx);
-  return settings.list(ctx.db, ctx.env);
+  return settings.list(ctx.db, ctx.env, ctx.now);
 };
 
 /** Admin only: `{ key, value }`. A blank value goes back to the default. Answers `{ key, value, isDefault, changed }`. */

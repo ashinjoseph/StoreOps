@@ -69,7 +69,10 @@ to call `fetch` for itself.
 - **It ships off.** `till_enabled` is false by default, `till_api_url` is blank,
   and the key (`TILL_API_KEY`) is a Worker secret that is not bound. Until all
   three are set, every call answers `not_configured` and makes no request.
-  Nothing calls the client yet; a test finds any caller outside `ops/src/till`.
+  Nothing called the client when this was written; a test found any caller
+  outside `ops/src/till`. Since card P5-02b the test holds a short list of
+  the files that may (the till link's module and its handler) and fails for
+  any other.
 
 ## Consequences
 

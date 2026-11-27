@@ -79,7 +79,7 @@ hand one out.
 | P4-14 | Backups, and a restore that has been tried | T2 + owner | P2-10 | money | todo (planned) |
 | P5-01 | Stores and staff assignments | T2 | P4-05 | security | todo |
 | P5-02a | Till link: the client and a fake till (switched off) | T2 | | security | done (nine questions for the till side, in the card) |
-| P5-02b | Till link: people and stores matched, key expiry | T2 | P5-02a, P4-11 | security | in progress |
+| P5-02b | Till link: people and stores matched, key expiry | T2 | P5-02a, P4-11 | security | done (switched off; five questions for the till side, in the card) |
 | P5-03 | Vape close from the till snapshot | T2 | P5-02b, P4-05 | money | todo (goes live only after the switch has settled) |
 | P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02a | | todo |
 | P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | postponed (the owner, Nov 27: assistants through MCP first) |
@@ -1012,6 +1012,27 @@ Questions for the till side that it raised:
 8. Is the daily-sales limit 92 days inclusive?
 9. The four driver-handover fields (asked Nov 23) are not in the contract.
 It also confirmed that the contract has no call about customer deliveries.
+
+### P5-02b · people and stores matched, key expiry · done
+At the bottom of the Staff screen an admin has "Till logins": the store
+matched to the till's store, then each person matched to their till login.
+The app suggests a match when the names are equal and never makes one by
+itself; a till person with no match is listed and never created here. A
+match is ended with a reason, never deleted. When the till is switched off,
+not set up, down, slow or refusing the key, the section says which in plain
+words, shows the stored matches read-only, and nothing else in the app is
+affected (a test signs in while the till is down). From 14 days before the
+day in `till_key_expires_on`, admins see a warning on the Staff and Settings
+screens. The till is only read. Migration `0011_till_links.sql`.
+The matching itself was proven through tests against the fake till, not in
+a browser: the app can only be pointed at the till's two real addresses,
+and that rule was not loosened for a demonstration.
+Questions for the till side that it raised:
+1. Is the staff list filtered to the store asked about?
+2. Is a display name unique, and can it change?
+3. Is a removed login dropped from the list or marked inactive?
+4. Is the "Not known" person ever in the staff list?
+5. Is a `staff_id` the same across keys and stores?
 
 ### P5-02 · Till link: staff sync and key expiry · T2 · security
 **Read:** `ops/contracts/till-api.v1.yaml`; `docs/plans/2026-11-till-api-agreed.md`.

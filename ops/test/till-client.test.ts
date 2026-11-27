@@ -8,7 +8,7 @@
 //     most maxWaitMs in all; a slow request times out through the injected clock;
 //   - inputs are refused before any request; the answer is checked lightly;
 //   - the hand-written types and the shapes the client checks match the contract;
-//   - it is switched off: nothing outside ops/src/till calls it.
+//   - it has exactly two callers, named in this file (card P5-02b): the till link's module and handler.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -888,7 +888,7 @@ describe("the client has no way to send anything but a GET, and takes time, wait
   });
 });
 
-describe("it is switched off: nothing outside ops/src/till and the tests uses the client or the fake", () => {
+describe("the client has exactly two callers (the till link's module and handler); the fake is for tests", () => {
   function walk(dir: string, out: string[] = []): string[] {
     for (const name of readdirSync(dir)) {
       if (name === "node_modules" || name === "public" || name === ".wrangler") continue;
@@ -901,10 +901,14 @@ describe("it is switched off: nothing outside ops/src/till and the tests uses th
   // The checking tool and the Settings screen use these, and only these, from the till folder.
   const ALLOWED = new Set(["contract", "rules", "address"]);
 
-  it("no file of ops/src (outside till/), ops/tools or ops/parity imports the client, its index, the fake, the types or the days", () => {
-    const files = [...walk(join(OPS, "src")), ...walk(join(OPS, "tools")), ...walk(join(OPS, "parity"))].filter((f) => !f.startsWith(TILL_DIR + "/"));
-    expect(files.length).toBeGreaterThan(50);
-    const importers: string[] = [];
+  // The callers of the client, by name (card P5-02b changed this from "nobody"). Each of them is the till
+  // link's own: the module that makes the reads, and the handler that gives it a timer and a clock.
+  // Adding a caller is a decision to be made on purpose: it is a change to this list, and to ADR-0024.
+  const CALLERS = ["src/modules/till-link.ts", "src/rpc/handlers/till-link.ts"];
+
+  /** Every file outside till/ that imports the client, its index, the fake, the types or the days, or names a thing only a caller uses. */
+  function callersOf(files: string[]): string[] {
+    const found = new Set<string>();
     for (const file of files) {
       const src = readFileSync(file, "utf8");
       for (const m of src.matchAll(/(?:from|import\(|require\()\s*["']([^"']+)["']/g)) {
@@ -912,13 +916,25 @@ describe("it is switched off: nothing outside ops/src/till and the tests uses th
         if (!spec.startsWith(".")) continue;
         const target = resolve(dirname(file), spec).replace(/\.(ts|js|mjs)$/, "");
         if (target === TILL_DIR || target.startsWith(TILL_DIR + "/")) {
-          const name = relative(TILL_DIR, target);
-          if (!ALLOWED.has(name)) importers.push(`${relative(OPS, file)} imports till/${name}`);
+          if (!ALLOWED.has(relative(TILL_DIR, target))) found.add(relative(OPS, file));
         }
       }
-      for (const word of ["tillClientFor", "createFakeTill", "createFakeClock"]) if (src.includes(word)) importers.push(`${relative(OPS, file)} names ${word}`);
+      for (const word of ["tillClientFor", "createFakeTill", "createFakeClock"]) if (src.includes(word)) found.add(relative(OPS, file));
     }
-    expect(importers).toEqual([]);
+    return [...found].sort();
+  }
+
+  it("exactly the till link's module and handler import the client, its index, the fake, the types or the days: no other file of ops/src (outside till/), ops/tools or ops/parity", () => {
+    const files = [...walk(join(OPS, "src")), ...walk(join(OPS, "tools")), ...walk(join(OPS, "parity"))].filter((f) => !f.startsWith(TILL_DIR + "/"));
+    expect(files.length).toBeGreaterThan(50);
+    expect(callersOf(files)).toEqual(CALLERS);
+  });
+
+  it("the fake is never used outside the tests: neither caller names it", () => {
+    for (const rel of CALLERS) {
+      const src = readFileSync(join(OPS, rel), "utf8");
+      expect(src, rel).not.toMatch(/createFakeTill|createFakeClock|till\/fake/);
+    }
   });
 
   it("the search itself finds a caller when there is one (it has teeth)", () => {

@@ -41,7 +41,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [Shifts and the close](docs/components/shifts-and-close.md): A cashier opens a till, works the shift, and closes it in one sheet
 - [Shopping list](docs/components/shopping-list.md): Anyone who notices something running low adds it from the catalogue in a tap
 - [Staff](docs/components/staff-admin.md): Add a person, change them, deactivate them, set their PIN and give a raise, in the Operations app, where it used to be typing into the Sheet's `staff` tab
-- [Till link](docs/components/till-link.md): The one place the Operations app calls the vape till's API, and a fake till to test every later card against
+- [Till link](docs/components/till-link.md): The one place the Operations app calls the vape till's API, a fake till to test every card against, and the first thing built on it
 
 ## Decisions (ADRs)
 

@@ -33,6 +33,10 @@ left alone, and, after a deactivation, the shop cash the person still holds.
 Every message from the server is shown as written; nothing is saved when one
 appears.
 
+An admin's Staff screen also ends with a **Till logins** section (matching each
+person to their login in the vape till, and the key's expiry warning): see
+[till link](till-link.md). A manager's screen is unchanged.
+
 ## How it works
 
 ```mermaid
@@ -209,3 +213,5 @@ day in progress and a scheduled day are not touched.
 - **Nov 2026 (card P4-11):** the Staff screen and its five calls, in the
   Operations app only
   ([ADR-0023](../adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)).
+- **Nov 2026 (card P5-02b):** an admin's screen gets a *Till logins* section
+  below the list ([till link](till-link.md)); the list and a manager's screen are unchanged.

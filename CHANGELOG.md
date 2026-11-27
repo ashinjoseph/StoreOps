@@ -1527,3 +1527,33 @@ type trusted, SVG accepted, no size cap, an employee viewing another's
 original, no sandbox or `nosniff`, a second object for the same hash, a
 `delete` in the storage interface, the file name in the storage key, one sign
 for both businesses, an original served without a session).
+
+### Till logins: people and stores matched, and a warning before the key expires (P5-02b)
+
+- An admin can now match each person on the Staff list to their login in the
+  vape till, and the till's store to this store, from **More → Staff → Till
+  logins** (Operations app only; a manager's Staff screen is unchanged). Nothing
+  is matched by the app: it suggests where the names are equal (ignoring case and
+  repeated spaces) and an admin confirms. A till person with no match is listed,
+  never created here, and nothing about them is kept. A match the till no longer
+  lists is flagged and kept; ending one needs a reason and works with the till
+  down. Sign-in is unchanged: name and PIN, no till.
+- When the till cannot be read (switched off, not set up, down, slow, refusing the
+  key, answering nonsense) the section says which in plain words and shows what
+  is saved, with no matching; nothing else in the app is affected. The whole call
+  stays inside 8 seconds. Nothing is sent to the till.
+- From 14 days before the day typed into `till_key_expires_on` (and after it) a
+  warning shows on the Staff section and above the Till group on Settings; at 15
+  days there is none; a blank date with the link on says it is not recorded. No
+  message is sent.
+- Four new admin-only calls (`rpcGetTillLink`, `rpcSetTillStore`, `rpcLinkTillStaff`,
+  `rpcUnlinkTillStaff`; ADR-0023), two new tables (migration 0011), and
+  `rpcGetSettings` also answers `tillKeyExpiry`. The client now has exactly two
+  named callers (the till link's module and handler).
+
+New: `ops/test/till-link.test.ts` and the `ui-till-link` suite, run against the
+fake till and a real database, and seen failing against nine deliberate
+mutations (matching on an equal name by itself, accepting the nil uuid, throwing
+when the till is down, one till login for two people, warning at 15 days, creating
+a person from a till person, a third caller of the client, a pay rate in the
+answer, a manager allowed to match).

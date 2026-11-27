@@ -25,6 +25,7 @@ import { rpcGetSettings, rpcUpdateSetting } from "./handlers/settings";
 import { rpcCreateStaff, rpcGetStaffAdmin, rpcPreviewRateChange, rpcSetStaffPin, rpcUpdateStaff } from "./handlers/staff-admin";
 import { rpcCloseShift, rpcNotifyShiftOpen, rpcOpenShift } from "./handlers/shifts";
 import { rpcCorrectTillSession, rpcGetTillCorrection } from "./handlers/till-corrections";
+import { rpcGetTillLink, rpcLinkTillStaff, rpcSetTillStore, rpcUnlinkTillStaff } from "./handlers/till-link";
 import { rpcEnterMissedShift, rpcPreviewMissedShift } from "./handlers/missed-shifts";
 import { rpcGetMyOwedSummary, rpcGetOwedSummary, rpcGetPaymentHistory, rpcGetPayrollOverview, rpcPayBonus, rpcPayShifts, rpcUndoPayment } from "./handlers/payments";
 import { rpcGetActiveStaffForLogin, rpcGetAllStaff, rpcGetStaffDirectory } from "./handlers/staff";
@@ -98,6 +99,10 @@ export const handlers: RpcHandlers = {
   rpcUpdateBusiness,
   rpcAddBusinessSign,
   rpcRemoveBusinessSign,
+  rpcGetTillLink,
+  rpcSetTillStore,
+  rpcLinkTillStaff,
+  rpcUnlinkTillStaff,
 };
 
 /** What the router calls for every RPC the contract marks `needs_session`. Throws Error("NOT_LOGGED_IN"). */

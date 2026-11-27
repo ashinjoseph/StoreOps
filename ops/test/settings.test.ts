@@ -227,6 +227,21 @@ describe("rpcGetSettings", () => {
     expect(by("variance_ok_threshold")).toMatchObject({ value: null, isDefault: true });
   });
 
+  it("also answers the till key's expiry warning (card P5-02b), so the screen needs no second call", async () => {
+    // NOW is 2026-11-20 in Toronto. Blank and the link off: no warning. A date 14 days away: warning; 15: none.
+    const blank = await rpc<Record<string, any>>(rpcGetSettings, []);
+    expect(blank["tillKeyExpiry"]).toEqual({ day: null, daysLeft: null, warn: false, recorded: false, message: null });
+    await update("till_key_expires_on", "2026-12-04");
+    expect((await rpc<Record<string, any>>(rpcGetSettings, []))["tillKeyExpiry"]).toMatchObject({ day: "2026-12-04", daysLeft: 14, warn: true, recorded: true });
+    await update("till_key_expires_on", "2026-12-05");
+    expect((await rpc<Record<string, any>>(rpcGetSettings, []))["tillKeyExpiry"]).toMatchObject({ daysLeft: 15, warn: false });
+    await update("till_key_expires_on", "");
+    await update("till_enabled", "true");
+    expect((await rpc<Record<string, any>>(rpcGetSettings, []))["tillKeyExpiry"]).toMatchObject({ day: null, warn: true, recorded: false });
+    // the module's own list(), asked without a time, has no such field (other callers are unaffected)
+    expect(await withTransaction(db, (tx) => settings.list(tx, ENV))).not.toHaveProperty("tillKeyExpiry");
+  });
+
   it("the commission day and hour say the weekly run's time is fixed elsewhere", async () => {
     const r = await rpc<Listed>(rpcGetSettings, []);
     for (const k of ["commission_run_day", "commission_run_hour"]) expect(r.settings.find((s) => s.key === k)?.description).toMatch(/P3-10b/);
