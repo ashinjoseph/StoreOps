@@ -83,7 +83,7 @@ hand one out.
 | P5-04 | LLM gateway: free model first, Claude behind a flag | T2 | P4-05 | security | postponed (the owner, Nov 27: assistants through MCP first) |
 | P5-05 | Purchase receipts, supplier records and product costs | T2 | P5-12 | money | todo (the draft now comes through MCP) |
 | P5-06 | Receipt test set through each assistant | T2 + owner | P5-05 | | todo |
-| P5-07 | Delivery runs: spec first, then build | T3 | P5-02a | | spec being written (needs new calls from the till side) |
+| P5-07 | Delivery runs: spec first, then build | T3 | P5-02a | | spec drafted, with the owner (eight questions; needs new calls from the till side) |
 | P5-08 | Send a vape delivery to the till, on a button | T2 | P5-05, P1-02 | money | todo |
 | P5-09 | Bookkeeping export of receipts, per business, in QuickBooks's layout | T2 | P5-05 | money | todo |
 | P5-10 | Trial: can an assistant hand over an original, and how does it connect | T2 + owner | | security | todo (proposed) |
@@ -966,6 +966,11 @@ per model: passed validators, fields a person had to correct, cost.
 **Done when:** the owner picks the starting mode from the report.
 
 ### P5-07 · Delivery runs · T3
+First draft of the spec: [Delivery runs](2026-11-delivery-runs-spec.md)
+(Nov 27), from the owner's request to see the deliveries, mark them
+delivered and see the plan. It holds the request to the till side (a list of
+deliveries, the customer's details on a call of their own, and recording
+the outcome) and eight questions for the owner.
 Write the spec with the owner first (who drives, what an order needs at the
 door, what counts as delivered). Then split the build into cards.
 The spec must cover the driver's door cash: per run, cash the deliveries
