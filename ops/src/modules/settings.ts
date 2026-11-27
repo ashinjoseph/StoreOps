@@ -4,7 +4,7 @@
 // what a cell would have let through.
 //
 // What is kept apart:
-//   - A SECRET (the three credentials) lives in a Worker binding and never in this table. It is listed
+//   - A SECRET (the credentials: the WhatsApp token, the two Clover tokens and the till key) lives in a Worker binding and never in this table. It is listed
 //     by binding name and whether it holds a value, and nothing else (not the value, not its length).
 //     It cannot be edited here. An unknown key whose name looks like a credential is treated the same
 //     way: neither shown nor edited.
@@ -33,8 +33,9 @@ import { CONFIG_KEYS, SECRET_KEYS, configKeySpec } from "../lib/config-keys";
 import { maybeSecret } from "../lib/config";
 import { isCloverUrl } from "./clover";
 import { isMetaUrl } from "./notifier";
+import { tillBaseUrl } from "../till/address";
 
-export const GROUPS = ["Tills and cash", "Sign-in", "WhatsApp", "Clover", "Commissions", "Public report", "Other"] as const;
+export const GROUPS = ["Tills and cash", "Sign-in", "WhatsApp", "Clover", "Till", "Commissions", "Public report", "Other"] as const;
 export type Group = (typeof GROUPS)[number];
 
 /** The order the screen shows: group by group, the keys of each in this order. */
@@ -43,6 +44,7 @@ const LAYOUT: ReadonlyArray<readonly [Group, readonly string[]]> = [
   ["Sign-in", ["session_hours", "login_max_fails", "login_lockout_mins"]],
   ["WhatsApp", ["notifier_enabled", "whatsapp_target_number", "whatsapp_api_url", "whatsapp_template_name", "whatsapp_template_lang", "whatsapp_template_shift_open", "whatsapp_template_shift_close", "whatsapp_template_shift_close_cstore", "whatsapp_template_shift_close_vape"]],
   ["Clover", ["clover_enabled", "clover_base_url", "clover_cstore_merchant_id", "clover_vape_merchant_id"]],
+  ["Till", ["till_enabled", "till_api_url", "till_key_expires_on"]],
   ["Commissions", ["commission_run_day", "commission_run_hour"]],
   ["Public report", ["public_report_url"]],
   ["Other", ["cstore_business_name", "vape_business_name", "timezone"]],
@@ -83,6 +85,9 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   cash_handover_stale_days: "Flag cash still out with a cashier after this many days",
   public_report_url: "Deployed web app /exec URL. The reconcile message links to <url>?v=recon (7-day read-only report, no login). Blank = no link sent",
   timezone: "Default timezone (script setting overrides)",
+  till_enabled: "Switch for the link to the till (reads its stores, staff, shifts and daily sales). Off until the key and address are set",
+  till_api_url: "The till's Operations API address, e.g. https://office.scarbromart.ca/ops/v1 (staging: https://staging--scarbromart-office.netlify.app/ops/v1). Blank = the link is off",
+  till_key_expires_on: "The day the till key in use expires (yyyy-MM-dd): type it in when the key is installed. Blank = not recorded",
 };
 
 /** A sentence added to the description the screen shows, whatever the table row says. */
@@ -332,6 +337,11 @@ async function validate(db: Tx, key: string, raw: unknown): Promise<string | nul
     case "clover_base_url":
       if (!isCloverUrl(text)) throw new Error("clover_base_url must be a Clover address (https://api.clover.com or https://sandbox.dev.clover.com); the token is only ever sent there");
       return checkText(key, text);
+    case "till_api_url":
+      if (tillBaseUrl(text) === null) throw new Error("till_api_url must be one of the till's own addresses (https://office.scarbromart.ca/ops/v1 or the staging one, with no port, user name or query); the key is only ever sent there");
+      return checkText(key, text);
+    case "till_key_expires_on":
+      return checkDate(key, text);
     case "public_report_url":
       return checkText(key, checkHttps(key, text));
     case "cash_manager_staff_id": {

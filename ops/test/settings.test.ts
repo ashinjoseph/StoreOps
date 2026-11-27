@@ -31,6 +31,7 @@ const ENV = {
   WHATSAPP_API_TOKEN: "WA-SECRET-aaaa1111bbbb2222",
   CLOVER_CSTORE_TOKEN: "CLV-SECRET-cccc3333dddd4444",
   CLOVER_VAPE_TOKEN: "",
+  TILL_API_KEY: "TILL-SECRET-eeee5555ffff6666",
 };
 
 const contract = parseRpcContract(
@@ -211,7 +212,7 @@ describe("rpcGetSettings", () => {
       expect(row.description.length, key).toBeGreaterThan(5);
       expect(row.group.length, key).toBeGreaterThan(2);
     }
-    expect(new Set(r.settings.map((s) => s.group))).toEqual(new Set(["Tills and cash", "Sign-in", "WhatsApp", "Clover", "Commissions", "Public report", "Other"]));
+    expect(new Set(r.settings.map((s) => s.group))).toEqual(new Set(["Tills and cash", "Sign-in", "WhatsApp", "Clover", "Till", "Commissions", "Public report", "Other"]));
     // stable: asking twice gives the same order
     expect((await rpc<Listed>(rpcGetSettings, [])).settings.map((s) => s.key)).toEqual(r.settings.map((s) => s.key));
   });
@@ -249,10 +250,11 @@ describe("rpcGetSettings", () => {
       { key: "whatsapp_api_token", binding: "WHATSAPP_API_TOKEN", isSet: true },
       { key: "clover_cstore_token", binding: "CLOVER_CSTORE_TOKEN", isSet: true },
       { key: "clover_vape_token", binding: "CLOVER_VAPE_TOKEN", isSet: false },
+      { key: "till_api_key", binding: "TILL_API_KEY", isSet: true },
     ]);
     expect(r.secrets.map((s) => s.key)).toEqual([...SECRET_KEYS]);
     const text = JSON.stringify(r);
-    for (const leaked of [ENV.WHATSAPP_API_TOKEN, ENV.CLOVER_CSTORE_TOKEN, "TABLE-LEAK", "SECRET-aaaa", "SECRET-cccc", "aaaa1111"]) expect(text, leaked).not.toContain(leaked);
+    for (const leaked of [ENV.WHATSAPP_API_TOKEN, ENV.CLOVER_CSTORE_TOKEN, ENV.TILL_API_KEY, "TILL-SECRET", "TABLE-LEAK", "SECRET-aaaa", "SECRET-cccc", "aaaa1111"]) expect(text, leaked).not.toContain(leaked);
     expect(r.other.map((o) => o.key)).toEqual([]);
     for (const s of r.secrets) expect(Object.keys(s).sort()).toEqual(["binding", "isSet", "key"]);
   });
@@ -446,6 +448,46 @@ describe("addresses", () => {
     await refused("whatsapp_api_url", "https://user:pw@graph.facebook.com/x", /graph\.facebook\.com/);
     await refused("whatsapp_api_url", "not a url", /graph\.facebook\.com/);
     await accepted("whatsapp_api_url", "", null);
+  });
+  it("till_enabled: true or false, and off by default", async () => {
+    expect(CONFIG_KEYS.till_enabled).toEqual({ kind: "setting", read: "boolean", default: "false" });
+    await accepted("till_enabled", "TRUE", "true");
+    await accepted("till_enabled", false, "false");
+    await refused("till_enabled", "yes", /till_enabled must be true or false/);
+    await refused("till_enabled", "1", /true or false/);
+    await accepted("till_enabled", "", null);
+  });
+  it("till_api_url: blank or one of the till's own addresses only (the key is only ever sent there)", async () => {
+    expect(CONFIG_KEYS.till_api_url).toEqual({ kind: "setting", read: "text", default: "" });
+    await accepted("till_api_url", " https://office.scarbromart.ca/ops/v1 ", "https://office.scarbromart.ca/ops/v1");
+    await accepted("till_api_url", "https://staging--scarbromart-office.netlify.app/ops/v1", "https://staging--scarbromart-office.netlify.app/ops/v1");
+    for (const bad of [
+      "https://example.com/ops/v1",
+      "http://office.scarbromart.ca/ops/v1",
+      "https://office.scarbromart.ca.evil.test/ops/v1",
+      "https://office.scarbromart.ca@evil.test/ops/v1",
+      "https://user:pw@office.scarbromart.ca/ops/v1",
+      "https://office.scarbromart.ca:8443/ops/v1",
+      "https://office.scarbromart.ca/other",
+      "https://office.scarbromart.ca/ops/v1?x=1",
+      "not a url",
+    ]) {
+      await refused("till_api_url", bad, /till_api_url must be one of the till's own addresses/);
+    }
+    await accepted("till_api_url", "", null);
+  });
+  it("till_key_expires_on: blank or a real date yyyy-mm-dd", async () => {
+    expect(CONFIG_KEYS.till_key_expires_on).toEqual({ kind: "setting", read: "text", default: "" });
+    await accepted("till_key_expires_on", "2027-02-19", "2027-02-19");
+    await refused("till_key_expires_on", "2027-02-30", /till_key_expires_on must be a date written yyyy-mm-dd/);
+    await refused("till_key_expires_on", "19/02/2027", /yyyy-mm-dd/);
+    await refused("till_key_expires_on", "soon", /yyyy-mm-dd/);
+    await accepted("till_key_expires_on", "", null);
+  });
+  it("the till's key is a secret: it cannot be set here, with or without a value", async () => {
+    await expect(update("till_api_key", "TILL-SECRET-typed")).rejects.toThrow(/till_api_key is kept by Cloudflare/);
+    await expect(update("till_api_key", "")).rejects.toThrow(/kept by Cloudflare/);
+    expect(await hasRow("till_api_key")).toBe(false);
   });
   it("clover_base_url: blank or one of Clover's addresses only", async () => {
     await accepted("clover_base_url", "https://api.clover.com", "https://api.clover.com");

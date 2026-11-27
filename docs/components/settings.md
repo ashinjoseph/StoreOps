@@ -12,7 +12,7 @@
 **More → Settings** (admins only, and only in the Operations app: inside Apps
 Script the entry is hidden, because the Sheet is still the place to edit a
 cell). The screen lists every setting under a heading: *Tills and cash*,
-*Sign-in*, *WhatsApp*, *Clover*, *Commissions*, *Public report* and *Other*.
+*Sign-in*, *WhatsApp*, *Clover*, *Till*, *Commissions*, *Public report* and *Other*.
 Each row shows the setting's plain-language description, its key, and its
 current value, or **default: X** in grey when nothing is set.
 
@@ -22,8 +22,9 @@ the cash manager, text otherwise), **Use the default** (sends a blank) and
 **Save**. If the server refuses the value, its message is shown under the
 input exactly as written; nothing is saved.
 
-Below the settings, **Kept by Cloudflare** lists the three credentials (the
-WhatsApp token and the two Clover tokens) by name, as *set* or *not set*. They
+Below the settings, **Kept by Cloudflare** lists the four credentials (the
+WhatsApp token, the two Clover tokens and the till's key) by name, as *set* or
+*not set*. They
 are never shown, never stored in the table and cannot be changed here: the
 screen says where they are changed (the Worker's secrets in Cloudflare).
 
@@ -86,6 +87,9 @@ roles `["admin"]`. The handlers check the role again themselves.
 | `whatsapp_target_number` | list | blank | an entry that is not 8 to 15 digits (spaces, `+`, `-`, brackets are removed first), or more than 20 | stored as comma-separated digits; a repeat is kept once |
 | `whatsapp_api_url` | text | blank | not an `https://graph.facebook.com` address | the token is only ever sent there (`isMetaUrl`) |
 | `clover_base_url` | text | `https://api.clover.com` | not one of Clover's addresses | the token is only ever sent there (`isCloverUrl`) |
+| `till_enabled` | boolean | false | anything but true/false | the switch of the [till link](till-link.md); off until the address and key are set |
+| `till_api_url` | text | blank | not one of the till's own addresses (`isTillUrl`: https, no user name, port or query, an exact host of the contract's `servers`, under `/ops/v1`) | the till's key is only ever sent there |
+| `till_key_expires_on` | text | blank | not a real date `yyyy-mm-dd` | recorded by the admin when the key is installed; the warning 14 days ahead is a later card |
 | `public_report_url` | text | blank | not an `https:` address | the reconcile message links to it |
 | `commission_run_day` (0 to 6), `commission_run_hour` (0 to 23) | number | 1, 9 | outside the range | **they do not move the weekly run**: its time is fixed in the app's configuration (card P3-10b); the screen says so |
 | business names, template names and language, merchant ids, `timezone` | text | | over 500 characters, or a line break or other control character | a newline in a name would break a WhatsApp template parameter; `timezone` must also be a real zone |
@@ -125,6 +129,7 @@ letting "default: No" stand for something the app does not do.
 | Module | `ops/src/modules/settings.ts`: `list`, `update` |
 | RPCs | `ops/src/rpc/handlers/settings.ts`: `rpcGetSettings`, `rpcUpdateSetting`; listed in `ops/contracts/rpc-ops.json` |
 | Registry of keys | `ops/src/lib/config-keys.ts` (not changed by this screen) |
+| The till's address rule | `ops/src/till/address.ts` (`tillBaseUrl`) |
 | UI | `src/Index.html`: `loadSettingsTab`, `renderSettingsTab`, `openSettingSheet`; the `settings` entry of `MORE_ITEMS` (`opsOnly`) |
 
 ## Tests
@@ -139,3 +144,6 @@ letting "default: No" stand for something the app does not do.
 - **Nov 2026 (card P4-09):** the Settings screen, `rpcGetSettings` and
   `rpcUpdateSetting`: the first screen and calls only the Operations app has
   ([ADR-0023](../adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)).
+- **Nov 2026 (card P5-02a):** a *Till* group (`till_enabled`, `till_api_url`,
+  `till_key_expires_on`) and a fourth credential, `TILL_API_KEY`, in *Kept by
+  Cloudflare* ([till link](till-link.md), [ADR-0024](../adr/0024-the-till-is-read-through-one-client.md)).

@@ -77,7 +77,7 @@ hand one out.
 | P4-13 | Audit log on a screen; a setting to pause the Monday run | T1 | P4-09 | security | todo (planned) |
 | P4-14 | Backups, and a restore that has been tried | T2 + owner | P2-10 | money | todo (planned) |
 | P5-01 | Stores and staff assignments | T2 | P4-05 | security | todo |
-| P5-02a | Till link: the client and a fake till (switched off) | T2 | | security | in progress |
+| P5-02a | Till link: the client and a fake till (switched off) | T2 | | security | done (nine questions for the till side, in the card) |
 | P5-02b | Till link: people and stores matched, key expiry | T2 | P5-02a, P4-11 | security | todo |
 | P5-03 | Vape close from the till snapshot | T2 | P5-02b, P4-05 | money | todo (goes live only after the switch has settled) |
 | P5-03b | Sales by channel: in store, online, delivery | T2 | P5-02a | | todo |
@@ -902,6 +902,31 @@ says what each waits for.
 dates; every list and every write filtered by the caller's stores.
 **Done when:** tests show a person assigned to store A can neither read nor
 write store B through any RPC in the contract.
+
+### P5-02a · the client and a fake till · done
+[ADR-0024](../adr/0024-the-till-is-read-through-one-client.md) and the
+[till link](../components/till-link.md) page. One client
+(`ops/src/till/`): it never throws, sends the key only to the till's two
+addresses and only in a header, never follows a redirect, scrubs the key
+from every message, waits when told to slow down (twice at most), and can
+only read. A fake till built from the contract serves every case the later
+cards need. Nothing calls the client: the setting `till_enabled` is off and
+a test fails if any other part of the app imports it. The key is a Worker
+secret (`TILL_API_KEY`); the Settings screen has a "Till" group. One of the
+seven deliberate breakages (retrying for ever) hangs the suite instead of
+failing a named test; it is caught, but slowly.
+Questions for the till side that it raised:
+1. A shift list takes one `day`, not a range: is a range planned?
+2. Which time zone is "not after today"? (Toronto is assumed.)
+3. What exactly does an `auto_closed` shift return? (Empty `z_number`,
+   `expected`, `counted` are assumed.)
+4. Can `closed_by` be empty on a closed shift?
+5. There is still no field for the "To check" case (asked Nov 23).
+6. Is `Retry-After` sent as seconds or as a date? (Both are handled.)
+7. Does a store that does not exist also answer `forbidden_store`?
+8. Is the daily-sales limit 92 days inclusive?
+9. The four driver-handover fields (asked Nov 23) are not in the contract.
+It also confirmed that the contract has no call about customer deliveries.
 
 ### P5-02 · Till link: staff sync and key expiry · T2 · security
 **Read:** `ops/contracts/till-api.v1.yaml`; `docs/plans/2026-11-till-api-agreed.md`.

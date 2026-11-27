@@ -34,3 +34,11 @@ id = "REPLACE_IN_P2-10"
 # checks it).
 [triggers]
 crons = ["0 13 * * 1", "0 14 * * 1"]
+
+# Secrets (never in this file or in git; set with `wrangler secret put NAME` or in the Cloudflare
+# dashboard, and listed under "Kept by Cloudflare" on the Settings screen):
+#   TILL_API_KEY   the Operations key for the till's API (the owner makes it in the Office, Setup,
+#                  AI access, "Store Operations key"; it lasts 90 days). The till link is switched
+#                  off (setting till_enabled is false) and nothing calls it yet (card P5-02a).
+#                  Type the day it expires into the setting till_key_expires_on when installing it.
+# The three older secrets (WHATSAPP_API_TOKEN, CLOVER_CSTORE_TOKEN, CLOVER_VAPE_TOKEN) are set the same way.

@@ -17,7 +17,8 @@
 //   whatsapp_template_shopping_list   the shopping-list message.
 //
 // test/config.test.ts compares this file with Setup.gs, so a key added there
-// fails a test until it is added here or listed as left out.
+// fails a test until it is added here or listed as left out. A key only the
+// Operations app has (the till link's four, at the end) is listed there as OPS_ONLY.
 
 export type ConfigKind = "setting" | "secret";
 export type ConfigRead = "text" | "number" | "boolean" | "list";
@@ -69,6 +70,12 @@ export const CONFIG_KEYS = {
   public_report_url: setting("text", ""),
   // Setup.gs uses Session.getScriptTimeZone(); the manifest (src/appsscript.json) sets this zone.
   timezone: setting("text", "America/Toronto"),
+  // Operations only: the Sheet's config tab never had these, so Setup.gs has no row for them
+  // (test/config.test.ts lists them as OPS_ONLY). The till link, switched off (card P5-02a, ADR-0024).
+  till_enabled: setting("boolean", "false"),
+  till_api_url: setting("text", ""),
+  till_key_expires_on: setting("text", ""),
+  till_api_key: credential,
 } as const satisfies Record<string, ConfigKeySpec>;
 
 export type ConfigKey = keyof typeof CONFIG_KEYS;

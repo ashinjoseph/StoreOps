@@ -2,5 +2,10 @@
 # Fake, local-only values: they match ops/.env.example and the Docker database.
 PIN_PEPPER=local-only-pepper-not-a-secret
 OPS_DB_APP_URL=postgres://ops_app:local-only-app@127.0.0.1:54329/ops
+# The till's API key is a Worker secret and is never put in a file in this repo. Leave it out
+# locally: the till link is switched off (setting till_enabled is false), and every test talks to
+# a fake till (src/till/fake.ts). The name, for the day a staging key is installed with
+# `wrangler secret put`:
+# TILL_API_KEY=
 # wrangler dev gives the Worker its HYPERDRIVE binding from this variable.
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://ops_app:local-only-app@127.0.0.1:54329/ops

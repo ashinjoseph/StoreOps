@@ -40,6 +40,16 @@ function setupDefaults(): Map<string, string> {
 const LEFT_OUT: Readonly<Record<string, string>> = {
   whatsapp_template_shopping_list: "shopping-list WhatsApp message; the shopping list is not migrated",
 };
+/**
+ * Keys that exist only in the Operations app: Setup.gs has no row for them because the Sheet never had
+ * the feature (the till link, cards P5-02a on). Each is registered here and nowhere in the old app.
+ */
+const OPS_ONLY: Readonly<Record<string, string>> = {
+  till_enabled: "the till link's switch (card P5-02a)",
+  till_api_url: "the till's address (card P5-02a)",
+  till_key_expires_on: "the day the till key expires (card P5-02a)",
+  till_api_key: "the till's key: a Worker secret (card P5-02a)",
+};
 /** Secrets whose name does not match the naming rule but whose value is a credential. Empty on purpose. */
 const SECRET_BY_DESCRIPTION: readonly string[] = [];
 const NAMING_RULE = /(_token|_key|_secret)$|password/;
@@ -63,6 +73,7 @@ describe("registry honesty against src/Setup.gs", () => {
 
   it("every registry key exists in Setup.gs with the same default", () => {
     for (const [key, spec] of Object.entries(CONFIG_KEYS)) {
+      if (key in OPS_ONLY) continue;
       expect(defaults.has(key), `${key} is not in Setup.gs`).toBe(true);
       if (key in DYNAMIC_DEFAULT) continue;
       expect(spec.default, `default of ${key}`).toBe(defaults.get(key));
@@ -80,6 +91,13 @@ describe("registry honesty against src/Setup.gs", () => {
     for (const key of Object.keys(DYNAMIC_DEFAULT)) expect(key in CONFIG_KEYS).toBe(true);
   });
 
+  it("the Operations-only keys are registered, and Setup.gs really does not have them", () => {
+    for (const key of Object.keys(OPS_ONLY)) {
+      expect(key in CONFIG_KEYS, `${key} is not registered`).toBe(true);
+      expect(defaults.has(key), `${key} is in Setup.gs: it is not Operations-only`).toBe(false);
+    }
+  });
+
   it("secret kind follows the naming rule, plus the explicit by-description list", () => {
     for (const [key, spec] of Object.entries(CONFIG_KEYS)) {
       if (spec.kind === "secret") {
@@ -92,7 +110,7 @@ describe("registry honesty against src/Setup.gs", () => {
     const secrets = Object.entries(CONFIG_KEYS)
       .filter(([, s]) => s.kind === "secret")
       .map(([n]) => n);
-    expect(secrets.sort()).toEqual(["clover_cstore_token", "clover_vape_token", "whatsapp_api_token"]);
+    expect(secrets.sort()).toEqual(["clover_cstore_token", "clover_vape_token", "till_api_key", "whatsapp_api_token"]);
   });
 
   it("secrets have a blank default", () => {

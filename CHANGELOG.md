@@ -1321,3 +1321,36 @@ manager adding a manager, the rate in the manager's list, re-rating a paid
 day, a blank rate stored as 0, the id lock dropped, the PIN in the audit row,
 the last admin deactivated).
 
+### The till client and a fake till, switched off (P5-02a)
+
+The vape till has agreed a read API with Operations (contract 1.1.0). This is
+the one place the Operations app will call it, built and tested but **called
+by nothing**: no RPC, no screen, no cron. Until an admin turns it on and
+installs a key, every call answers `not_configured` and makes no request.
+
+- `ops/src/till/client.ts`: `listStores`, `listStaff`, `listShifts`,
+  `dailySales`, `listProducts`, `listSuppliers`, `listOrders`, all GET. It never
+  throws (an answer is `{ ok, data }` or `{ ok: false, error: { kind, ... } }`);
+  sends the key only to the till's own addresses (`isTillUrl`), only in the
+  `Authorization` header, and scrubs it from every message even when the till
+  echoes it back; never follows a redirect; waits out a 429 (twice, 10 seconds
+  at most) with an injected `sleep`; times out after 8 seconds; checks its
+  inputs before any request and the answer's required keys and lists after.
+  Hand-written types in `till/types.ts`.
+- `ops/src/till/fake.ts`: a fake till built from the contract, with fictional
+  data (an `auto_closed` shift with nothing counted, the nil uuid, takings short
+  of the total, door cash, all three channels) and switches for every failure,
+  and a fake clock that never really waits. Its answers are validated against
+  the contract by the tests.
+- Settings `till_enabled` (off), `till_api_url` (refused unless it is the
+  till's own address) and `till_key_expires_on`, and the Worker secret
+  `TILL_API_KEY`, listed under *Kept by Cloudflare*.
+- [ADR-0024](docs/adr/0024-the-till-is-read-through-one-client.md) and the
+  [till link](docs/components/till-link.md) page.
+
+New: `ops/test/till-client.test.ts`, `ops/test/till-fake.test.ts` and new
+assertions in `ops/test/settings.test.ts` and `ops/test/config.test.ts`. The
+settings assertions were seen failing before the code; the client's were seen
+failing against deliberate mutations (any https host accepted, redirects
+followed, the key not scrubbed, 429 retried forever, a throw on a network error,
+a caller outside `ops/src/till`, a field the contract does not have).

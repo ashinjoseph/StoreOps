@@ -85,7 +85,7 @@ agent? Point it at **[AGENTS.md](AGENTS.md)** and **[llms.txt](llms.txt)**.
 | [Context](docs/context.md) | the business, goals, constraints, glossary |
 | [Architecture](docs/architecture/overview.md) | system context, layers, module map, the daily flow |
 | [Components](docs/components/README.md) | one page per feature, with screenshots |
-| [ADRs](docs/adr/README.md) | 19 decisions and the reasoning behind them |
+| [ADRs](docs/adr/README.md) | 24 decisions (21 accepted, 3 proposed) and the reasoning behind them |
 | [Testing](docs/guides/testing.md) | how the suites run the real code |
 | [Docs process](docs/guides/docs-process.md) | how the docs stay current, enforced in CI |
 | [Code map](docs/reference/code-map.md) | every module, RPC and its roles, generated from the code |
