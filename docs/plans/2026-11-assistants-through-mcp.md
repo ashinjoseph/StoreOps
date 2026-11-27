@@ -1,7 +1,7 @@
 # Assistants through MCP: receipts, emailed invoices and delivery planning
 
-Status: proposed (2026-11-27), for the owner to review. Nothing here is
-built. Asked for by the owner on Nov 27: for the first iteration, do not run
+Status: agreed in outline (2026-11-27): the owner answered the questions at
+the end the same day. Nothing here is built. Asked for by the owner on Nov 27: for the first iteration, do not run
 an AI model inside the app. Open the app to AI assistants (Claude, Meta's
 Muse) through an MCP server, and let the assistant do the reading: purchase
 receipts, invoices that arrive by email, and delivery planning.
@@ -247,34 +247,61 @@ and testing need no hosting; using it does (P2-10).
 | P5-06 | **The test:** 20 to 30 real receipts through each assistant; fields a person had to correct | P5-05, and the owner's receipts |
 | P5-09 | **Export per business** in QuickBooks's layout | P5-05, question 2 |
 | P5-14 | **Delivery planning tools** | The P5-07 spec, and the till side |
+| P5-15 | **Cost history and price-rise flags:** each line read from a receipt updates what that item costs from that supplier; a rise beyond a set percentage is flagged to a manager | P5-05 |
+| P5-16 | **The old purchase list as history:** brought in once, marked "no original on file", each row given a business only where it is certain | P5-12 |
 
 P5-10 to P5-12 and P5-05 can be built before the switch from the Sheet: they
 add new tables and screens and touch nothing the store uses today. Real use
 starts once the app is hosted.
 
-## Questions for the owner
+## Costs and price rises (the owner's idea, Nov 27)
 
-1. **Where receipts start.** Is the phone photo on a Receipts screen the main
-   way in, with the assistant for email and for reading? Or do you expect to
-   hand photos to the assistant in a chat? (The trial, P5-10, shows whether
-   the second is possible.)
-2. **QuickBooks.** Is it QuickBooks Online or Desktop, and does each
-   business have its own? Does the bookkeeper want these as bills or as
-   expenses?
-3. **One receipt, two businesses.** Does one shopping trip ever buy for both
-   on one receipt? If so it needs sharing out; if never, the app refuses it.
-4. **How much of a long receipt.** For a grocery or warehouse receipt with
-   40 lines, is the split by tax and by kind of purchase enough, or do you
-   want every line? Every line is slower to check and matters only if you
-   want product costs for the cstore.
-5. **What tells the businesses apart in practice.** "Store name or purchase
-   HST": is that the buyer's name or HST number printed on the invoice, a
-   separate membership or account at each supplier, or a separate card? The
-   app can use all of them; it needs to know which exist.
-6. **Customers' details and an assistant.** For delivery planning, may an
-   assistant see names, addresses and phone numbers, or only a postal code
-   and a time window?
-7. **The old list.** Should the 300 or so rows of the purchase workbook be
-   brought in as history, marked "no original on file"? And is the
-   bank-deposit tab something the app should hold too?
-8. **Which assistants.** Claude and Muse both, or start with one?
+The split by tax and by kind of purchase is enough for the books. On top of
+it the owner wants the receipts to keep each item's **cost up to date**, and
+to **flag a rise** so a manager can decide whether to raise the selling
+price.
+
+- When a receipt's lines are read, each line is tied to an item **as that
+  supplier names it** (the supplier's own code when the receipt prints one,
+  otherwise its description). The app does not hold the cstore's product
+  list, so "the same item" means "the same supplier's same line", and a
+  person can join two spellings into one item.
+- Confirming the receipt adds a row to that item's cost history: the cost of
+  one unit, the date, the receipt it came from. Nothing is overwritten; the
+  history is the record.
+- A cost that is more than a set percentage above the last one from the same
+  supplier is flagged (one setting, with a default to be agreed). A manager
+  sees the flags in one list: the item, the supplier, the old and new cost,
+  the rise, and the receipt. They mark each one "seen" or "price raised".
+  The app does not change a selling price: the cstore's prices live in its
+  till, and the vape's in the till's Office.
+- A line that cannot be read with confidence is left out of the cost
+  history, not guessed. The receipt is still complete for the books.
+- For vape wholesale invoices the lines were already required (P5-08), and
+  the item is the till's product code.
+
+## The owner's answers (Nov 27)
+
+1. **Where receipts start:** either way, as long as the receipt is kept and
+   its details taken from it. So: the Receipts screen in the app is always
+   there, and an assistant hands a file over wherever it is able to.
+2. **QuickBooks:** QuickBooks Online, a separate company for each business.
+   The export is made per business. Still to ask the bookkeeper: bills or
+   expenses.
+3. **One receipt, two businesses:** never. They are separate companies with
+   separate HST numbers. A receipt belongs to one business and the app has
+   no way to share one out.
+4. **How much of a receipt:** the split by tax and kind is enough, plus the
+   lines wherever they can be read, for the cost history above.
+5. **What tells the businesses apart:** a mix. Start, and learn. So the app
+   records, on every receipt, which sign decided the business (the name or
+   HST number printed, the supplier account, the card, the supplier) or
+   that a person chose it. When a person chooses, it offers to remember the
+   account or card for next time. After a month the record shows which
+   signs can be trusted.
+6. **Customers' details:** an assistant may see all of them for delivery
+   planning.
+7. **The old list:** brought in as history with the little it has (date,
+   supplier, amount, note), marked "no original on file" (P5-16).
+8. **Which assistant:** Muse first. Muse connects with a key, which is what
+   the plan uses; Claude is added after.

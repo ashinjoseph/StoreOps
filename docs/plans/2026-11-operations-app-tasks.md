@@ -86,11 +86,13 @@ hand one out.
 | P5-07 | Delivery runs: spec first, then build | T3 | P5-02a | | spec drafted, with the owner (eight questions; needs new calls from the till side) |
 | P5-08 | Send a vape delivery to the till, on a button | T2 | P5-05, P1-02 | money | todo |
 | P5-09 | Bookkeeping export of receipts, per business, in QuickBooks's layout | T2 | P5-05 | money | todo |
-| P5-10 | Trial: can an assistant hand over an original, and how does it connect | T2 + owner | | security | todo (proposed) |
-| P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | P5-10 | security | todo (proposed) |
-| P5-12 | The two businesses and the receipt inbox (originals kept) | T2 | P5-11 | money | todo (proposed) |
-| P5-13 | Emailed invoices through the assistant | T2 | P5-05 | security | todo (proposed) |
-| P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo (proposed) |
+| P5-10 | Trial with Muse: can it hand over an original, and how does it connect | T2 + owner | P2-10 | security | todo (needs a public address: the hosted setup) |
+| P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | | security | todo |
+| P5-12 | The two businesses and the receipt inbox (originals kept) | T2 | P5-11 | money | todo |
+| P5-13 | Emailed invoices through the assistant | T2 | P5-05 | security | todo |
+| P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
+| P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05 | money | todo |
+| P5-16 | The old purchase list brought in as history | T1 | P5-12 | money | todo |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
 | P6-02 | Store listings: decide | owner | P6-01 | | todo |
 
@@ -1023,8 +1025,14 @@ proposal beside the original document. It covers purchase receipts (the
 original kept for audit, the figures taken from it, one business per
 receipt, an export per business for QuickBooks), invoices that arrive by
 email (found by the assistant through its own mailbox connection; the app is
-given no access to email), and delivery planning. Not started: it waits for
-the owner's answers to the eight questions on that page. P5-05 keeps its
+given no access to email), and delivery planning. The owner answered its
+eight questions on Nov 27 (recorded on that page): Muse first, connecting
+with a key; QuickBooks Online with a company per business; a receipt never
+holds both businesses; lines are read where they can be, to keep a cost
+history and flag price rises (P5-15); the old purchase list comes in as
+history (P5-16); an assistant may see customers' details for delivery
+planning. The trial (P5-10) needs a public address, so it waits for the
+hosted setup; the door itself (P5-11) can be built and tested without it. P5-05 keeps its
 tables, its checks and its review screen; only where the draft comes from
 changes. P5-06 becomes a test of the assistants on real receipts.
 

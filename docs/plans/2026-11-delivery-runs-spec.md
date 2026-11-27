@@ -1,6 +1,7 @@
 # Delivery runs: first draft of the spec
 
-Status: draft (2026-11-27), for the owner to correct. Nothing here is built.
+Status: draft (2026-11-27); the owner answered three of the questions the
+same day (at the end). Nothing here is built.
 Card P5-07 in the [task cards](2026-11-operations-app-tasks.md). The owner's
 request (Nov 27): **see the deliveries, mark them delivered, and see the
 delivery plan.**
@@ -130,3 +131,18 @@ They go live only when the real calls exist.
 8. **A suggested plan from an AI assistant:** may it see customers' names
    and addresses, or only the postal code and the window? (The same
    question as in the assistants plan.)
+
+## The owner's answers so far (Nov 27)
+
+- **Who drives (1):** staff who sign in with a PIN, for now. Outside drivers
+  are a later step, so no separate sign-in is built yet.
+- **How a delivery is marked delivered today (2):** in the till's back
+  office app. So the first version of Operations **reads** deliveries and
+  holds the plan, and deliveries go on being marked delivered in the back
+  office. Marking one delivered from Operations is still wanted; it starts
+  when the till side offers the call (request 3 above).
+- **An assistant and customers' details (8):** it may see all of them.
+  Request 2 to the till side stays as written (details on a call of their
+  own), and the assistant's key is given that right.
+
+Questions 3 to 7 are still open.
