@@ -1354,3 +1354,31 @@ settings assertions were seen failing before the code; the client's were seen
 failing against deliberate mutations (any https host accepted, redirects
 followed, the key not scrubbed, 429 retried forever, a throw on a network error,
 a caller outside `ops/src/till`, a field the contract does not have).
+
+### Correct a closed till, in the Operations app (P4-12a)
+
+Without the Sheet an admin can no longer fix the `till_sessions` and `sales`
+tabs by hand when a cashier mistyped a figure at close. In the Operations app
+(never inside Apps Script) an admin sees **Correct this till** under each till
+of the selected day on the Sales screen.
+
+- The sheet shows what is recorded (blank figures in words, never $0.00), the
+  cash from that till already handed over, whether the day was reconciled and
+  which commission runs cover it; it asks for the close sheet's figures in the
+  row's card shape, previews the variance and total, and needs a reason.
+- The server works every derived figure out again with the close's own
+  arithmetic (`closeFigures`, now shared by `close` and the correction, with no
+  change to what a close stores): expected cash, variance and its status, cash
+  removed, the lotto figures, the total. A blank stays blank; the row keeps its
+  card shape or takes its till's shape for that day; cash already handed over
+  must stay covered (void the handover first).
+- Two new admin-only calls, `rpcGetTillCorrection` and `rpcCorrectTillSession`
+  (ADR-0023); one `till.correct` audit row with the whole session and sales row
+  before and after. Nothing else is written and no message is sent: the answer
+  says when the day's reconcile, a commission run or the next cstore close used
+  the old figures.
+
+New: `ops/test/till-corrections.test.ts` and the `ui-till-corrections` suite,
+seen failing before the code existed and against seven deliberate mutations
+(handed-over guard, blank as 0, both card shapes, variance status, the role
+gate, the session lock, a one-cent drift from the close).

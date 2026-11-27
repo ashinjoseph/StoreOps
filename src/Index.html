@@ -3009,6 +3009,246 @@
     };
   }
 
+  // ── Till corrections after the close (Operations app only, admin) ──
+  // The two till-correction calls exist only in the Operations app
+  // (ADR-0023), so nothing here is offered inside Apps Script. The server
+  // works every figure out again with the close's own arithmetic; the preview
+  // here mirrors the close sheet's and the saved figures are the server's.
+
+  // What a till row offers: "Correct this till", to an admin in the
+  // Operations app, on a closed (or validated) till only.
+  function tillRowOffers_(role, opsApp, status) {
+    const closed = status === 'closed' || status === 'validated';
+    return { correct: !!opsApp && role === 'admin' && closed };
+  }
+
+  // The control under a till row on the Sales screen. A sales row exists only
+  // once its till has closed, so the row counts as closed.
+  function tillRowControl_(r) {
+    if (!r || !r.sessionId || !tillRowOffers_(state.me && state.me.role, isOpsApp_(), 'closed').correct) return '';
+    return '<button type="button" class="history-toggle" data-correct-till="' + esc(r.sessionId) + '">Correct this till</button>';
+  }
+
+  // A figure, or what its blank means in words: never $0.00 for a blank.
+  function tillFigure_(v, blank) {
+    return v === null || v === undefined || v === '' ? blank : money(v);
+  }
+
+  // The figures the entered values make, with the close sheet's arithmetic
+  // (and its thresholds): expected cash, variance, cash removed, total.
+  function tillCorrectionPreview_(d, v) {
+    const n = x => (x === null || x === undefined || isNaN(x) ? 0 : x);
+    const lot = d.lotto;
+    const fed = lot && lot.previousCount != null && v.lotto != null ? Math.round((lot.previousCount - v.lotto) * 100) / 100 : 0;
+    const cashback = d.sales && d.sales.cashbackPaid != null ? d.sales.cashbackPaid : 0;
+    const expected = Math.round((n(v.openingFloat) + n(v.cash) + n(v.miscCash) - cashback + fed) * 100) / 100;
+    const total = Math.round((n(v.cash) + n(v.credit) + n(v.debit) + n(v.card) + n(v.miscCash) + n(v.miscCredit) + n(v.miscDebit) + n(v.miscCard)) * 100) / 100;
+    const floatLeft = d.session.cashLeftInTill != null ? d.session.cashLeftInTill : 0;
+    if (v.count === null || v.count === undefined || isNaN(v.count)) return { expected, total, variance: null, status: null, cashRemoved: null, fed };
+    const variance = Math.round((v.count - expected) * 100) / 100;
+    const abs = Math.abs(variance);
+    const status = abs <= 1 ? 'OK' : abs <= 30 ? 'minor' : 'investigate';
+    const cashRemoved = Math.round((v.count - floatLeft - n(v.topup)) * 100) / 100;
+    return { expected, total, variance, status, cashRemoved, fed };
+  }
+
+  function tillCorrectionHTML_(d) {
+    const s = d.session;
+    const r = d.sales;
+    const split = d.cardShape === 'split';
+    const lot = s.company === 'cstore' && d.lotto;
+    const varText = s.closingVariance === null ? 'not worked out' : signedMoney_(s.closingVariance) + (s.varianceStatus ? ' (' + esc(s.varianceStatus) + ')' : '');
+    let html = '<div id="tcNow" style="font-size:13px;color:#4a4e59;line-height:1.6">' +
+      '<div><strong>' + esc(s.staffName) + '</strong> · ' + esc(String(s.company).toUpperCase()) + ' till · ' + esc(s.date) + ' · ' + esc(s.status) + '</div>' +
+      '<div style="margin-top:6px">Recorded now:</div>' +
+      '<div>Opening float ' + tillFigure_(s.openingFloat, 'not counted') + ' · Cash counted ' + tillFigure_(s.closingCashCounted, 'not counted') + '</div>';
+    if (r) {
+      html += '<div>Cash sales ' + tillFigure_(r.cashSales, 'not entered') +
+        (split ? ' · Credit ' + tillFigure_(r.creditCardSales, 'not entered') + ' · Debit ' + tillFigure_(r.debitCardSales, 'not entered')
+               : ' · Card ' + tillFigure_(r.cardTotalSales, 'not entered')) + '</div>' +
+        '<div>Misc cash ' + tillFigure_(r.miscCashSales, 'not entered') +
+        (split ? ' · Misc credit ' + tillFigure_(r.miscCreditSales, 'not entered') + ' · Misc debit ' + tillFigure_(r.miscDebitSales, 'not entered')
+               : ' · Misc card ' + tillFigure_(r.miscCardSales, 'not entered')) + '</div>';
+    } else {
+      html += '<div>No sales were recorded for this till: saving writes them.</div>';
+    }
+    if (lot) html += '<div>Lotto reserve ' + tillFigure_(s.lottoReserveCounted, 'not counted') + (s.lottoTopupFromTill ? ' (' + money(s.lottoTopupFromTill) + ' moved in from the till)' : '') + '</div>';
+    html += '<div>Expected cash ' + tillFigure_(s.expectedCash, 'not worked out') + ' · Variance ' + varText + '</div>' +
+      '<div>Cash removed ' + tillFigure_(s.cashRemovedAtClose, 'not worked out') + ' · Total ' + (r ? money(r.total) : 'not entered') + '</div>' +
+      '<div>Cash from this till already handed over: <strong>' + money(d.handedOver) + '</strong></div>' +
+      '<div>' + (d.reconciled ? 'This day has been reconciled.' : 'This day has not been reconciled.') + '</div>' +
+      (d.commissionRunsTouched && d.commissionRunsTouched.length
+        ? '<div>Commission runs over this day: ' + d.commissionRunsTouched.map(x => 'week ending ' + esc(x.weekEnd || '?') + ' (' + esc(x.status) + ')').join(', ') + '</div>'
+        : '<div>No commission run covers this day.</div>') +
+      '</div>';
+    if (!d.canCorrect) {
+      return html + '<div id="tcBlocked" style="margin-top:14px;padding:12px;background:#fef3c7;border-radius:9px;font-size:12px;color:#92611a">' + esc(d.blockedBy) + '</div>';
+    }
+    const val = v => (v === null || v === undefined ? '' : esc(String(v)));
+    const field = (label, id, v) => '<div class="sheet-field"><label>' + label + '</label>' + moneyInput(id, val(v), ' placeholder="not entered"') + '</div>';
+    const lottoBase = lot && s.lottoReserveCounted != null ? Math.round((s.lottoReserveCounted - (s.lottoTopupFromTill || 0)) * 100) / 100 : null;
+    const lottoExpected = lot ? d.lotto.expected : 500;
+    html += '<div style="margin-top:14px">' +
+      field('Opening float ($)', 'tcFloat', s.openingFloat) +
+      field('Cash sales ($)', 'tcCash', r ? r.cashSales : null) +
+      (split
+        ? field('Credit card sales ($)', 'tcCredit', r ? r.creditCardSales : null) + field('Debit card sales ($)', 'tcDebit', r ? r.debitCardSales : null)
+        : field('Card sales ($)', 'tcCard', r ? r.cardTotalSales : null)) +
+      (lot
+        ? '<details class="misc-block" open><summary>Lotto reserve</summary>' +
+            '<div class="lotto-hint">' + (d.lotto.previousCount != null ? 'The close before this one left the reserve at ' + money(d.lotto.previousCount) + '.' : 'No earlier close recorded the reserve.') + '</div>' +
+            field('Reserve counted ($)', 'tcLotto', lottoBase) +
+            field('Moving from till into reserve ($)', 'tcLottoTopup', s.lottoTopupFromTill) +
+            '<div class="sheet-field"><label>Reason reserve isn\'t ' + money(lottoExpected) + '</label><input type="text" id="tcLottoNote" value="' + val(s.lottoReserveNote) + '"></div>' +
+          '</details>'
+        : '') +
+      '<details class="misc-block" open><summary>Misc sales</summary>' +
+        field('Misc cash ($)', 'tcMiscCash', r ? r.miscCashSales : null) +
+        (split
+          ? field('Misc credit ($)', 'tcMiscCredit', r ? r.miscCreditSales : null) + field('Misc debit ($)', 'tcMiscDebit', r ? r.miscDebitSales : null)
+          : field('Misc card ($)', 'tcMiscCard', r ? r.miscCardSales : null)) +
+        '<div class="sheet-field"><label>Misc notes</label><input type="text" id="tcMiscNotes" value="' + val(r ? r.miscNotes : null) + '"></div>' +
+      '</details>' +
+      '<div class="sheet-field"><label>Cash counted in till ($)</label>' + moneyInput('tcCount', val(s.closingCashCounted), ' placeholder="not counted"') + '</div>' +
+      '<div class="compute-summary" id="tcSummary"></div>' +
+      '<div class="sheet-field"><label>Notes</label><input type="text" id="tcNotes" value="' + val(s.notes) + '"></div>' +
+      '<div class="sheet-field"><label>Reason (required)</label><input type="text" id="tcReason" maxlength="300" placeholder="e.g. Count typed as 1,520.00; it was 1,250.00"></div>' +
+      '</div>';
+    return html;
+  }
+
+  // What the sheet's inputs hold: a number, or null for a blank (never 0).
+  function tillCorrectionValues_(d) {
+    const num = id => {
+      const el = $(id);
+      if (!el) return undefined;
+      const t = String(el.value || '').trim();
+      if (t === '') return null;
+      const v = parseFloat(t);
+      return isNaN(v) ? null : v;
+    };
+    return {
+      openingFloat: num('tcFloat'), cash: num('tcCash'), credit: num('tcCredit'), debit: num('tcDebit'), card: num('tcCard'),
+      miscCash: num('tcMiscCash'), miscCredit: num('tcMiscCredit'), miscDebit: num('tcMiscDebit'), miscCard: num('tcMiscCard'),
+      count: num('tcCount'), lotto: num('tcLotto'), topup: num('tcLottoTopup'),
+    };
+  }
+
+  // The input the server takes: every figure of the row's shape, blanks as null.
+  function tillCorrectionInput_(d, v, texts) {
+    const split = d.cardShape === 'split';
+    const input = {
+      sessionId: d.session.sessionId,
+      openingFloat: v.openingFloat, closingCashCounted: v.count, cashSales: v.cash, miscCashSales: v.miscCash,
+      miscNotes: texts.miscNotes, notes: texts.notes, reason: texts.reason,
+    };
+    if (split) {
+      input.creditCardSales = v.credit; input.debitCardSales = v.debit;
+      input.miscCreditSales = v.miscCredit; input.miscDebitSales = v.miscDebit;
+    } else {
+      input.cardTotalSales = v.card; input.miscCardSales = v.miscCard;
+    }
+    if (d.session.company === 'cstore' && d.lotto) {
+      // As the close sends it: the closing balance is the pot as counted plus what was moved in.
+      input.lottoReserveCounted = v.lotto === null ? null : Math.round((v.lotto + (v.topup || 0)) * 100) / 100;
+      input.lottoTopupFromTill = v.topup;
+      input.lottoReserveNote = texts.lottoNote;
+    }
+    return input;
+  }
+
+  // What the server says has changed and gone stale, in words.
+  function tillCorrectionResultHTML_(res) {
+    const t = (v, blank) => esc(tillFigure_(v, blank));
+    let html = '<div id="tcResult" style="font-size:14px;color:#1a1a1a;line-height:1.6">';
+    if (!res.changed || !res.changed.length) return html + 'Nothing changed: the figures were already these.</div>';
+    html += 'Variance ' + t(res.varianceBefore, 'not worked out') + ' → ' + t(res.varianceAfter, 'not worked out') + '. ' +
+      'Cash removed ' + t(res.cashRemovedBefore, 'not worked out') + ' → ' + t(res.cashRemovedAfter, 'not worked out') + '. ' +
+      'Day\'s total ' + t(res.totalBefore, 'not entered') + ' → ' + t(res.totalAfter, 'not entered') + '.';
+    const notes = [];
+    if (res.staleReconcile) notes.push('This day was reconciled on the old figures: run the reconcile for it again.');
+    (res.commissionRunsTouched || []).forEach(x => notes.push('Commission run ' + esc(x.weekEnd ? 'for the week ending ' + x.weekEnd : x.runId) + ' used the old sales figures and has not been recalculated.'));
+    if (res.nextLottoSession) notes.push('The next cstore close (' + esc(res.nextLottoSession.date) + ') worked out its expected cash from the old reserve count: check it too.');
+    notes.forEach(n => { html += '<div class="tc-stale" style="font-size:12px;color:#92611a;margin-top:8px">' + n + '</div>'; });
+    return html + '</div>';
+  }
+
+  async function openTillCorrection_(sessionId) {
+    openSheet({
+      title: 'Correct this till', subtitle: sessionId,
+      bodyHTML: '<div class="loading"><div class="spinner"></div>Loading…</div>',
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Close</button>',
+    });
+    let d;
+    try {
+      d = await call('rpcGetTillCorrection', state.token, sessionId);
+    } catch (e) {
+      handleRpcError(e, $('sheetBody'));
+      return;
+    }
+    const s = d.session;
+    const title = 'Correct ' + String(s.company).toUpperCase() + ' till: ' + s.staffName;
+    openSheet({
+      title, subtitle: s.date,
+      bodyHTML: tillCorrectionHTML_(d),
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Close</button>' +
+        (d.canCorrect ? '<button class="sheet-submit" id="tcSave">Save correction</button>' : ''),
+    });
+    if (!d.canCorrect) return;
+
+    const refresh = () => {
+      const p = tillCorrectionPreview_(d, tillCorrectionValues_(d));
+      $('tcSummary').innerHTML =
+        '<div class="compute-row"><span>Expected cash:</span> <strong>' + money(p.expected) + '</strong></div>' +
+        (Math.abs(p.fed) > 0.005 ? '<div class="compute-row"><span>Includes:</span> <strong>' + (p.fed > 0 ? money(p.fed) + ' drawn from reserve' : money(-p.fed) + ' added to reserve') + '</strong></div>' : '') +
+        '<div class="compute-row"><span>Variance:</span> <strong id="tcVariance" class="' + (p.status ? 'compute-variance-' + p.status : '') + '">' +
+          (p.variance === null ? 'not counted' : signedMoney_(p.variance) + ' (' + p.status + ')') + '</strong></div>' +
+        '<div class="compute-row"><span>Cash removed:</span> <strong>' + tillFigure_(p.cashRemoved, 'not counted') + '</strong></div>' +
+        '<div class="compute-row"><span>Total:</span> <strong id="tcTotal">' + money(p.total) + '</strong></div>';
+    };
+    ['tcFloat', 'tcCash', 'tcCredit', 'tcDebit', 'tcCard', 'tcMiscCash', 'tcMiscCredit', 'tcMiscDebit', 'tcMiscCard', 'tcCount', 'tcLotto', 'tcLottoTopup'].forEach(id => {
+      const el = $(id);
+      if (!el) return;
+      // Digits and one dot; a minus only on cstore cash sales (a lotto payout), as on the close sheet.
+      const neg = id === 'tcCash' && s.company === 'cstore';
+      el.addEventListener('input', () => {
+        let v = String(el.value).replace(neg ? /[^0-9.\-]/g : /[^0-9.]/g, '');
+        if (neg) v = (v.charAt(0) === '-' ? '-' : '') + v.replace(/-/g, '');
+        const first = v.indexOf('.');
+        if (first !== -1) v = v.slice(0, first + 1) + v.slice(first + 1).replace(/\./g, '');
+        if (v !== el.value) el.value = v;
+        refresh();
+      });
+    });
+    refresh();
+
+    const save = $('tcSave');
+    save.onclick = async () => {
+      const reason = $('tcReason').value.trim();
+      if (reason.length < 3) { toast('Give a reason (at least 3 characters)', 'error'); return; }
+      const v = tillCorrectionValues_(d);
+      if (v.count === null) { toast('Enter the cash counted', 'error'); return; }
+      const text = id => { const el = $(id); return el ? String(el.value || '').trim() : ''; };
+      const input = tillCorrectionInput_(d, v, { miscNotes: text('tcMiscNotes'), notes: text('tcNotes'), lottoNote: text('tcLottoNote'), reason });
+      save.disabled = true;
+      save.textContent = 'Saving…';
+      try {
+        const res = await call('rpcCorrectTillSession', state.token, input);
+        openSheet({
+          title: '✓ ' + String(s.company).toUpperCase() + ' till corrected', subtitle: s.staffName + ' · ' + s.date,
+          bodyHTML: tillCorrectionResultHTML_(res),
+          actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Done</button>',
+        });
+        toast(res.changed && res.changed.length ? '✓ Till corrected' : 'Nothing to change', 'success');
+        if (state.salesData) loadSalesTab(true);
+      } catch (e) {
+        handleRpcError(e);
+        save.disabled = false;
+        save.textContent = 'Save correction';
+      }
+    };
+  }
+
   // ============================================================
   //  ░░  TAB: MY PAY  ░░
   // ============================================================
@@ -6283,6 +6523,7 @@
                 ? ' · card ' + money(r.card)
                 : ' · cr ' + money(r.credit) + ' · db ' + money(r.debit)) +
               (r.misc ? ' · misc ' + money(r.misc) : '') + '</div>' +
+            tillRowControl_(r) +
           '</div>';
         });
       }
@@ -6317,6 +6558,9 @@
         state.salesExpandedDays[b.dataset.day] = true;
         renderSalesBody();
       };
+    });
+    $('salesResults').querySelectorAll('[data-correct-till]').forEach(b => {
+      b.onclick = () => { haptic(); openTillCorrection_(b.dataset.correctTill); };
     });
   }
 

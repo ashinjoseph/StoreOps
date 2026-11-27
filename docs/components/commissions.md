@@ -63,6 +63,12 @@ sequenceDiagram
 | `bonuses` | ✓ | ✓ |
 | `sales`, `staff` | ✓ | |
 
+A till correction in the Operations app
+([shifts and the close](shifts-and-close.md#corrections-after-the-close))
+changes the sales figures a run summed but never recalculates a run or its
+proposals: the correction names each run whose week contains the day, and the
+admin decides whether to re-run it.
+
 ## Rules it must not break
 
 - **Proposed, never paid automatically**

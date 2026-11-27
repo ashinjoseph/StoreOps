@@ -71,7 +71,7 @@ hand one out.
 | P4-10 | Schedule corrections after the fact | T3 | P4-08 | money | done (the owner confirmed its three rules, Nov 27) |
 | P4-11 | Staff screen: add, change, deactivate, PINs, raises | T3 | P4-08 | security, money | done (one thing for the owner, in the card) |
 | P4-11b | A day worked with no rate shows as "no rate set", not $0 | T2 | P4-11 | money | todo (changes what a ported call answers: the owner to agree) |
-| P4-12a | Correct a closed till | T3 | P4-08 | money | in progress |
+| P4-12a | Correct a closed till | T3 | P4-08 | money | done (three things for the owner, in the card) |
 | P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | todo |
 | P4-12c | Reconcile a past day again | T2 | P4-08 | money | todo |
 | P4-13 | Audit log on a screen; a setting to pause the Monday run | T1 | P4-09 | security | todo (planned) |
@@ -884,6 +884,26 @@ does. The day is then worth $0, is in no "owed" list, and My Pay shows
 does cover those days. So after a manager adds someone, an admin must set
 their rate that way. Showing such days as "no rate set" changes what two
 ported calls answer, so it is a card of its own.
+
+**P4-12a is done:** on the Sales screen, under each closed till of the day,
+an admin has "Correct this till". The sheet shows what is recorded, what has
+been handed over, whether the day was reconciled, and takes the same figures
+a close takes; a reason is required. The arithmetic is the close's own: it
+was moved into one function (`closeFigures`) that both use, and every
+existing test and comparison case still passes. Refused when it would leave
+less cash than was already handed over from that till (void the handover
+first). After saving it says what moved, and what is now out of date: the
+day's reconcile (P4-12c), a commission run that used the old sales, and for
+a changed lotto count the next cstore close. Checked in a browser as admin,
+manager and employee. Three things for the owner:
+1. The control is on **Sales**, not History: History lists payments, and
+   Sales is the only screen that lists every closed till.
+2. A figure the admin clears is stored as blank ("not entered"), where a
+   close stores 0 for a figure left empty. Sums treat both as 0.
+3. A correction keeps the float that was left in the drawer that day and
+   the lotto count of the close before it, even if the settings have
+   changed since. The variance limits are today's, because nothing records
+   the ones in force that day.
 
 P4-12 is split in three so each can be reviewed on its own: correcting a
 closed till (a), entering a shift that was never put in the app (b), and

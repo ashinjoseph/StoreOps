@@ -385,6 +385,143 @@ export interface CloseResult {
   reserveFedToTill: number;
 }
 
+/** What closeFigures is given: the till, what the drawer started and ends with, the pot's previous count, and the figures entered. */
+export interface CloseFiguresInput {
+  company: string;
+  /** The float counted at the open (the session's opening_float). */
+  openingFloat: number;
+  /** The float left in the drawer for the next shift (the close: getExpectedFloat). */
+  floatAmount: number;
+  /** The pot's expected balance (getLottoExpected). */
+  lottoExpected: number;
+  /** The pot's count at the previous close, or null when none was ever counted. */
+  prevReserveCounted: number | null;
+  physicalCount: unknown;
+  cashSales?: unknown;
+  creditCard?: unknown;
+  debitCard?: unknown;
+  cashback?: unknown;
+  hstCollected?: unknown;
+  bottleDeposit?: unknown;
+  roundOff?: unknown;
+  miscCash?: unknown;
+  miscCredit?: unknown;
+  miscDebit?: unknown;
+  miscNotes?: unknown;
+  cardTotal?: unknown;
+  miscCard?: unknown;
+  /** The lotto till's count as the caller reads it (the close reads a blank as lottoExpected first); null: not counted. Ignored on other tills. */
+  lottoCounted: number | null;
+  lottoTopupFromTill?: unknown;
+  lottoNote?: unknown;
+}
+
+/** Every figure a close stores, worked out from what was entered. */
+export interface CloseFigures {
+  lottoOn: boolean;
+  /** Unrounded; 0 on a till with no pot; null when not counted. */
+  lottoCounted: number | null;
+  lottoTopup: number;
+  lottoNote: string;
+  reserveFed: number;
+  /** The sales row's figures (without its ids), as sales.write takes them: the shape follows what was sent. */
+  sales: Omit<sales.SalesInput, "sessionId" | "staffId" | "company" | "date">;
+  /** Unrounded (the session stores roundMoney of it). */
+  expectedCash: number;
+  countStored: number;
+  floatStored: number;
+  variance: number;
+  cashRemoved: number;
+  varianceStatus: "OK" | "minor" | "investigate";
+}
+
+/**
+ * The close's arithmetic, with no database: turns the entered figures into every figure the close
+ * stores, refusing what the close refuses, in the close's order. `close` calls it; so does a till
+ * correction (modules/till-corrections.ts), so the two cannot drift.
+ *
+ *   reserveFed   = previous count − this count                 (cstore; 0 with no previous count)
+ *   expectedCash = openingFloat + cashSales + miscCash − cashback + reserveFed
+ *   variance     = roundMoney(physicalCount − expectedCash)
+ *   cashRemoved  = roundMoney(physicalCount − float − lottoTopup)
+ */
+export function closeFigures(config: Config, f: CloseFiguresInput): CloseFigures {
+  if (typeof f.physicalCount !== "number" || f.physicalCount < 0) throw new Error("physicalCount required (non-negative number)");
+  const physicalCount = f.physicalCount;
+  const company = f.company;
+
+  // ── Lotto reserve (cstore only) ──
+  const lottoOn = company === LOTTO_COMPANY;
+  const lottoCounted = lottoOn ? f.lottoCounted : 0;
+  const lottoTopup = lottoOn ? Math.max(0, Number(f.lottoTopupFromTill) || 0) : 0;
+  const lottoNote = lottoOn ? String(f.lottoNote || "").trim() : "";
+
+  if (lottoOn && lottoCounted !== null && Math.abs(lottoCounted - f.lottoExpected) > 0.01 && !lottoNote) {
+    throw new Error("Lotto reserve counted " + lottoCounted + ", expected " + f.lottoExpected + ". Please provide a reason.");
+  }
+
+  // What the pot fed the drawer: derived from the two counts (ADR-0008).
+  const reserveFed = f.prevReserveCounted !== null && lottoCounted !== null && lottoOn ? roundMoney(f.prevReserveCounted - lottoCounted) : 0;
+
+  // One card shape per row (ADR-0005).
+  const sentSplit = f.creditCard != null || f.debitCard != null || f.miscCredit != null || f.miscDebit != null;
+  const sentTotal = f.cardTotal != null || f.miscCard != null;
+  if (sentSplit && sentTotal) {
+    throw new Error("Close for " + company + " sent both a credit/debit split and a " + "single card total. Send one shape — check " + company + "_card_split.");
+  }
+
+  const salesInput: CloseFigures["sales"] = {
+    cashSales: Number(f.cashSales) || 0,
+    creditCardSales: Number(f.creditCard) || 0,
+    debitCardSales: Number(f.debitCard) || 0,
+    cashbackPaid: Number(f.cashback) || 0,
+    hstCollected: Number(f.hstCollected) || 0,
+    bottleDeposit: Number(f.bottleDeposit) || 0,
+    roundOff: Number(f.roundOff) || 0,
+    miscCashSales: Number(f.miscCash) || 0,
+    miscCreditSales: Number(f.miscCredit) || 0,
+    miscDebitSales: Number(f.miscDebit) || 0,
+    miscNotes: f.miscNotes || "",
+  };
+  if (sentTotal) {
+    salesInput.cardTotalSales = Number(f.cardTotal) || 0;
+    salesInput.miscCardSales = Number(f.miscCard) || 0;
+    salesInput.creditCardSales = 0;
+    salesInput.debitCardSales = 0;
+    salesInput.miscCreditSales = 0;
+    salesInput.miscDebitSales = 0;
+  }
+  const cashSales = salesInput.cashSales as number;
+  const miscCashSales = salesInput.miscCashSales as number;
+  const cashbackPaid = salesInput.cashbackPaid as number;
+
+  // A negative cash_sales is only meaningful where a lotto pot can explain it (ADR-0006).
+  if (cashSales < 0 && !lottoOn) {
+    throw new Error("Cash sales cannot be negative on " + company + " — there is no lotto reserve on this till to fund a payout.");
+  }
+
+  const expectedCash = f.openingFloat + cashSales + miscCashSales - cashbackPaid + reserveFed;
+
+  if (expectedCash < -0.005) {
+    throw new Error(
+      "Expected cash works out to " +
+        formatMoney(expectedCash) +
+        ", which no drawer can hold. Cash paid out exceeds what was in the " +
+        "till — check the lotto reserve count, since cash drawn from the pot " +
+        "is what covers the difference.",
+    );
+  }
+  // The old code stored NaN for an unreadable count; the schema cannot (ruling: refuse).
+  const countStored = stored("physicalCount", physicalCount);
+  const floatStored = stored("float", f.floatAmount);
+
+  const variance = roundMoney(physicalCount - expectedCash);
+  const cashRemoved = roundMoney(physicalCount - f.floatAmount - lottoTopup);
+  const varianceStatus = getVarianceStatus(config, variance);
+
+  return { lottoOn, lottoCounted, lottoTopup, lottoNote, reserveFed, sales: salesInput, expectedCash, countStored, floatStored, variance, cashRemoved, varianceStatus };
+}
+
 /** A plain Error (the old code caught these around Attendance.complete); a database fault is never one. */
 const isPlainError = (e: unknown): e is Error => e instanceof Error && !(e instanceof DbError) && Object.getPrototypeOf(e) === Error.prototype;
 
@@ -423,78 +560,40 @@ export async function close(db: Tx, input: CloseInput, deps: TillDeps): Promise<
   // ── Lotto reserve (cstore only) ──
   const lottoOn = session.company === LOTTO_COMPANY;
   const lottoExpected = getLottoExpected(deps.config);
-  const lottoCounted = lottoOn ? (input.lottoCounted == null ? lottoExpected : Number(input.lottoCounted) || 0) : 0;
-  const lottoTopup = lottoOn ? Math.max(0, Number(input.lottoTopupFromTill) || 0) : 0;
-  const lottoNote = lottoOn ? String(input.lottoNote || "").trim() : "";
-
-  if (lottoOn && Math.abs(lottoCounted - lottoExpected) > 0.01 && !lottoNote) {
-    throw new Error("Lotto reserve counted " + lottoCounted + ", expected " + lottoExpected + ". Please provide a reason.");
-  }
-
-  // What the pot fed the drawer: derived from the two counts (ADR-0008).
+  // The page sends no count when it did not ask: read as "still at the expected balance".
+  const lottoCountedIn = lottoOn ? (input.lottoCounted == null ? lottoExpected : Number(input.lottoCounted) || 0) : 0;
+  // What the pot held at the previous close: what this close's count is measured against (ADR-0008).
   const prevReserve = lottoOn ? await lastReserveCount(db) : null;
-  const reserveFed = prevReserve ? roundMoney(prevReserve.counted - lottoCounted) : 0;
 
-  // One card shape per row (ADR-0005).
-  const sentSplit = input.creditCard != null || input.debitCard != null || input.miscCredit != null || input.miscDebit != null;
-  const sentTotal = input.cardTotal != null || input.miscCard != null;
-  if (sentSplit && sentTotal) {
-    throw new Error("Close for " + session.company + " sent both a credit/debit split and a " + "single card total. Send one shape — check " + session.company + "_card_split.");
-  }
-
-  const salesInput: sales.SalesInput = {
-    sessionId: session.sessionId,
-    staffId: session.staffId,
+  // Every figure the close stores, from the figures entered (shared with till corrections).
+  const f = closeFigures(deps.config, {
     company: session.company,
-    date: session.date,
-    cashSales: Number(input.cashSales) || 0,
-    creditCardSales: Number(input.creditCard) || 0,
-    debitCardSales: Number(input.debitCard) || 0,
-    cashbackPaid: Number(input.cashback) || 0,
-    hstCollected: Number(input.hstCollected) || 0,
-    bottleDeposit: Number(input.bottleDeposit) || 0,
-    roundOff: Number(input.roundOff) || 0,
-    miscCashSales: Number(input.miscCash) || 0,
-    miscCreditSales: Number(input.miscCredit) || 0,
-    miscDebitSales: Number(input.miscDebit) || 0,
-    miscNotes: input.miscNotes || "",
-  };
-  if (sentTotal) {
-    salesInput.cardTotalSales = Number(input.cardTotal) || 0;
-    salesInput.miscCardSales = Number(input.miscCard) || 0;
-    salesInput.creditCardSales = 0;
-    salesInput.debitCardSales = 0;
-    salesInput.miscCreditSales = 0;
-    salesInput.miscDebitSales = 0;
-  }
-  const cashSales = salesInput.cashSales as number;
-  const miscCashSales = salesInput.miscCashSales as number;
-  const cashbackPaid = salesInput.cashbackPaid as number;
+    openingFloat: session.openingFloat,
+    floatAmount,
+    lottoExpected,
+    prevReserveCounted: prevReserve ? prevReserve.counted : null,
+    physicalCount,
+    cashSales: input.cashSales,
+    creditCard: input.creditCard,
+    debitCard: input.debitCard,
+    cashback: input.cashback,
+    hstCollected: input.hstCollected,
+    bottleDeposit: input.bottleDeposit,
+    roundOff: input.roundOff,
+    miscCash: input.miscCash,
+    miscCredit: input.miscCredit,
+    miscDebit: input.miscDebit,
+    miscNotes: input.miscNotes,
+    cardTotal: input.cardTotal,
+    miscCard: input.miscCard,
+    lottoCounted: lottoCountedIn,
+    lottoTopupFromTill: input.lottoTopupFromTill,
+    lottoNote: input.lottoNote,
+  });
+  const lottoCounted = f.lottoCounted as number;
+  const { lottoTopup, lottoNote, reserveFed, expectedCash, countStored, variance, cashRemoved, varianceStatus } = f;
 
-  // A negative cash_sales is only meaningful where a lotto pot can explain it (ADR-0006).
-  if (cashSales < 0 && !lottoOn) {
-    throw new Error("Cash sales cannot be negative on " + session.company + " — there is no lotto reserve on this till to fund a payout.");
-  }
-
-  const expectedCash = session.openingFloat + cashSales + miscCashSales - cashbackPaid + reserveFed;
-
-  if (expectedCash < -0.005) {
-    throw new Error(
-      "Expected cash works out to " +
-        formatMoney(expectedCash) +
-        ", which no drawer can hold. Cash paid out exceeds what was in the " +
-        "till — check the lotto reserve count, since cash drawn from the pot " +
-        "is what covers the difference.",
-    );
-  }
-  // The old code stored NaN for an unreadable count; the schema cannot (ruling: refuse).
-  const countStored = stored("physicalCount", physicalCount);
-
-  await sales.write(db, salesInput, actorId, now);
-
-  const variance = roundMoney(physicalCount - expectedCash);
-  const cashRemoved = roundMoney(physicalCount - floatAmount - lottoTopup);
-  const varianceStatus = getVarianceStatus(deps.config, variance);
+  await sales.write(db, { sessionId: session.sessionId, staffId: session.staffId, company: session.company, date: session.date, ...f.sales }, actorId, now);
 
   const sets = [
     "status = 'closed'",
@@ -506,7 +605,7 @@ export async function close(db: Tx, input: CloseInput, deps: TillDeps): Promise<
     "closing_variance = $7",
     "variance_status = $8",
   ];
-  const params: unknown[] = [session.sessionId, now, countStored, stored("float", floatAmount), cashRemoved, roundMoney(expectedCash), variance, varianceStatus];
+  const params: unknown[] = [session.sessionId, now, countStored, f.floatStored, cashRemoved, roundMoney(expectedCash), variance, varianceStatus];
   if (input.notes) {
     params.push(String(input.notes));
     sets.push(`notes = $${params.length}`);

@@ -48,7 +48,9 @@ function payload(build) {
 
 // ── The app's rendering ─────────────────────────────────────
 const appJs = H.clientScript('Index.html');
-const appLifted = ['esc', 'money', 'compactMoney', 'dayParts', 'renderSalesBody']
+// isOpsApp_ and the till-correction control (P4-12a) are lifted so the row renders as in
+// Apps Script (no window.STOREOPS_APP): the control is absent there.
+const appLifted = ['esc', 'money', 'compactMoney', 'dayParts', 'renderSalesBody', 'isOpsApp_', 'tillRowOffers_', 'tillRowControl_']
   .map(n => H.fnSource(appJs, n)).join('\n\n');
 
 function renderApp(d) {
@@ -56,7 +58,7 @@ function renderApp(d) {
   const ctx = vm.createContext({
     console: { log() {}, error() {} },
     state: { salesData: d, salesExpandedDays: {} },
-    $: () => out, haptic: () => {}, focusSalesChart_: () => {},
+    $: () => out, haptic: () => {}, focusSalesChart_: () => {}, window: {},
   });
   vm.runInContext(appLifted + '\nrenderSalesBody();', ctx);
   return out.innerHTML;

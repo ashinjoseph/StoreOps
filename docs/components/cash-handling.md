@@ -51,6 +51,13 @@ The guards run **before** anything is written:
 | `cash_handover_items` | ✓ | ✓ |
 | `staff`, `config` | ✓ | |
 
+A till correction in the Operations app
+([shifts and the close](shifts-and-close.md#corrections-after-the-close))
+changes `cash_removed_at_close`, so what the cashier holds moves with it; it
+never touches a handover, and it is refused when the corrected cash would be
+less than what has already been handed over from that till (void the handover
+first).
+
 ## Rules it must not break
 
 - **Oldest first**, the same walk payroll uses, so "which shift's cash is

@@ -9,6 +9,8 @@
     { "name": "rpcCreateStaff", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
     { "name": "rpcUpdateStaff", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcPreviewRateChange", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
-    { "name": "rpcSetStaffPin", "params": ["token", "input"], "roles": ["admin"], "needs_session": true }
+    { "name": "rpcSetStaffPin", "params": ["token", "input"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcGetTillCorrection", "params": ["token", "sessionId"], "roles": ["admin"], "needs_session": true },
+    { "name": "rpcCorrectTillSession", "params": ["token", "input"], "roles": ["admin"], "needs_session": true }
   ]
 }

@@ -67,6 +67,95 @@ stateDiagram-v2
 The variance bands come from `variance_ok_threshold` and
 `variance_minor_threshold` in config.
 
+## Corrections after the close
+
+Until the move off Sheets, when a cashier mistyped a figure at close (the cash
+counted, the cash sales, a card total with a slipped digit) an admin fixed the
+`till_sessions` and `sales` tabs by hand, often without recomputing what
+depends on them. The Operations app has no Sheet, so it has two calls of its own
+for this ([ADR-0023](../adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)):
+`rpcGetTillCorrection` shows a closed till, `rpcCorrectTillSession` sets its
+figures. Neither exists in the Apps Script app (its `TillSessions.edit` is
+called by no screen and recomputes only part of the close), and the page offers
+them only when `isOpsApp_()` is true.
+
+**Who:** an admin only. The contract (`ops/contracts/rpc-ops.json`) says so, the
+router enforces it, and the handler checks again. Managers, payroll admins and
+employees see the Sales screen exactly as before.
+
+**Where:** on the Sales screen, each till of the selected day shows **Correct
+this till** (the Sales day is the screen that lists every closed till to an
+admin; the History screen lists payments, not tills). The sheet shows who,
+which till and the day; what is recorded now (the entered figures, expected
+cash, the variance and its status, cash removed, the total); the cash from this
+till already handed over; whether the day has been reconciled and which
+commission runs cover it. Its inputs are the close sheet's, in the close
+sheet's words and order and in the row's card shape, prefilled. As the admin
+types it previews the variance and the total; after saving it shows the
+server's figures: *Variance $A → $B. Cash removed $C → $D. Day's total $E → $F.*
+A blank figure is shown in words (*not counted*, *not entered*), never as $0.00.
+
+A correction sets the session and its sales row to exactly what a close with
+those figures would have stored. The arithmetic is the close's own: `close`
+and the correction both call `closeFigures` in `ops/src/modules/till-sessions.ts`.
+The rules, in this order:
+
+1. The session exists and is closed (or validated). An open till is refused:
+   *This till is still open: close it instead.* The session row is locked, then
+   its sales row, then the cashier's staff row.
+2. A reason of 3 to 300 characters, no control characters.
+3. Not more than 370 days ago.
+4. Every figure is blank or a number, rounded to cents, and checked as the close
+   checks it, with the close's messages: the cash counted is required and 0 or
+   more; cash sales may be negative only on cstore (a lotto payout); expected
+   cash may not come out below zero; a reserve count away from the expected
+   balance needs its reason. The opening float is required, 0 or more. A blank
+   figure is stored **blank (NULL), never 0**; it counts as 0 where it is
+   summed. A blank reserve count means *not counted*: nothing is fed from the pot.
+5. One card shape (ADR-0005): credit and debit, or one card total, never both
+   (*Send one card shape.*). A row keeps its shape, or changes to the shape its
+   till reports on that business date: for cstore, credit and debit before
+   `cstore_epos_from` and one total from that day on; otherwise the till's
+   `<company>_card_split`. The other shape's columns are stored blank.
+6. Everything the close derives is derived again: expected cash, variance,
+   variance status, cash removed, the lotto figures and the total. What the
+   close took from settings is taken from that day where the session records
+   it: the float left in the drawer is the session's own, and the pot's previous
+   count is the count of the cstore close before this one. The variance
+   thresholds are today's settings. Who, when, the till, the day and the status
+   never change.
+7. Cash already handed over from this till (voided handovers excluded) may not
+   exceed the corrected cash removed: *Cannot correct: $X from this till has
+   already been handed over. Void the handover first.* A handover draws on
+   particular sessions (`cash_handover_items`), so the rule is per session; a
+   handover locks the cashier's staff row, which the correction locks too, so
+   the two cannot overlap.
+8. A session with no sales row gets the row a close would have written.
+9. One audit row, `till.correct`, with the whole session and sales row before
+   and after, and the reason.
+10. The reason is appended to the notes as `Corrected: <reason>`, capped at
+    2,000 characters, keeping the newest text.
+11. Nothing else is written: attendance, payments, bonuses, handovers,
+    commission runs and reconcile results are untouched, no message is sent,
+    and the sales row keeps its id and place. The answer says what is now
+    stale: a reconcile result for that till and day (*run the reconcile for it
+    again*), each commission run whose week contains the day when the sales
+    figures changed (*not recalculated*), and the next cstore close when the
+    reserve count changed (its expected cash was measured against the old count).
+12. A correction that changes nothing writes nothing.
+
+**Worked example — a cash count typed as 1,520.00 that was 1,250.00.** Dara
+closed the vape till on Saturday: float $100.00, cash sales $1,150.00, credit
+$300.00, debit $200.00, and typed the count as $1,520.00. The close stored
+expected cash $1,250.00, a variance of +$270.00 (*investigate*) and $1,420.00
+cash removed, so Cash Handling showed Dara holding $1,420.00. The admin opens
+the till from Sales, sets *Cash counted in till* to 1250.00, reason "Count
+typed as 1,520.00; it was 1,250.00". The sheet answers *Variance $270.00 →
+$0.00. Cash removed $1420.00 → $1150.00. Day's total $1650.00 → $1650.00.*; the
+variance status is *OK*, and Dara now holds $1,150.00: exactly $270.00 less. If
+Saturday had been reconciled, the sheet adds *This day was reconciled on the old
+figures: run the reconcile for it again.*
+
 ## Data
 
 | Tab | Reads | Writes |
@@ -90,6 +179,9 @@ The variance bands come from `variance_ok_threshold` and
 - **One shift per person per till per day.**
 - **The card shape comes from config at write time**, and each row records
   which shape it used, so history before and after a till change stays readable.
+- **A correction is a close done again, not a patch** (Operations app): the
+  close's own arithmetic, blank stays blank, and cash already handed over is
+  never left uncovered.
 
 ## Code map
 
@@ -98,6 +190,7 @@ The variance bands come from `variance_ok_threshold` and
 | Server | `src/TillSessions.gs`: `open_`, `close_`, `getLottoLog_` · `src/Sales.gs`: `write_` · `src/Attendance.gs`: `openOrPromote`, `complete` |
 | RPC | `src/WebApp.gs`: `rpcGetMyShiftState`, `rpcOpenShift`, `rpcCloseShift`, `rpcNotifyShiftOpen` |
 | UI | `src/Index.html`: `renderShiftTab`, `renderShiftCard`, `openShiftForm` |
+| Corrections (Operations app) | `ops/src/modules/till-corrections.ts` (`getCorrection`, `correct`, `shapeForDate`), the shared arithmetic `closeFigures` in `ops/src/modules/till-sessions.ts`, `ops/src/rpc/handlers/till-corrections.ts`; page: `tillRowOffers_`, `tillCorrectionHTML_`, `openTillCorrection_` |
 
 ## Tests
 
@@ -107,9 +200,14 @@ The variance bands come from `variance_ok_threshold` and
 | `sales-cards` | the two card shapes and one continuous total |
 | `ui-close-sheet` | the form as shipped: sign button, which inputs strip a minus, the live summary |
 | `wiring` | every close-sheet field reaches the server and the sales row |
+| `ops/test/till-corrections.test.ts` | corrections: a corrected till stores exactly what a close with the same figures stores (each till, each card shape, with and without a pot movement); the worked example through cash handling, the sales dashboard and the public report; admin only through the real router; every rule with an accepting and a refusing case; the audit row; nothing else moves; what goes stale; two corrections at once, and a correction racing a handover |
+| `ui-till-corrections` | "Correct this till" only for an admin in the Operations app, on a closed till; the Apps Script Sales screen unchanged; the close's inputs in the row's card shape; a blank shown in words |
 
 ## History
 
+- **P4-12a (Operations app):** an admin corrects a closed till's figures
+  (`rpcGetTillCorrection`, `rpcCorrectTillSession`), worked out again with the
+  close's own arithmetic.
 - **#12, #13 (Batch 13):** cstore moves to ePOS with one card figure. A lotto
   top-up was being counted twice; fixed.
 - **#10, #11 (Batch 13):** a lotto payout may exceed the day's takings; sign
