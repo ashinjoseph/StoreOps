@@ -6124,21 +6124,31 @@
     if (!el) return;
     rows = rows || [];
     state.reconRows = rows;
+    // Operations app only: a day that has been run more than once shows its newest result and says
+    // how many it replaced; the roles that can reconcile today can run a past day again. Inside
+    // Apps Script both are off and every row is listed as it always was.
+    const ops = isOpsApp_();
+    const offered = reconPastOffered_(state.me && state.me.role, ops);
+    const days = ops ? reconDays_(rows) : null;
+    const shown = ops ? rows.filter(r => days[r.businessDate].rows.indexOf(r) !== -1) : rows;
     const todayStr = isoDate(todayMidnight());
-    const todayRows = rows.filter(r => r.businessDate === todayStr);
-    const pastRows  = rows.filter(r => r.businessDate !== todayStr);
+    const todayRows = shown.filter(r => r.businessDate === todayStr);
+    const pastRows  = shown.filter(r => r.businessDate !== todayStr);
 
     let html = '<div class="recon-card">' +
       '<div class="recon-head">' +
         '<div class="recon-title">Daily reconciliation</div>' +
         '<button class="recon-btn" id="reconRunBtn">↻ Reconcile today</button>' +
       '</div>' +
-      '<div class="recon-tools"><button class="recon-btn recon-btn-quiet" id="reconWaBtn">💬 Check WhatsApp setup</button></div>';
+      '<div class="recon-tools"><button class="recon-btn recon-btn-quiet" id="reconWaBtn">💬 Check WhatsApp setup</button>' +
+        (offered ? '<button class="recon-btn recon-btn-quiet" id="reconPastBtn" style="margin-left:14px">Run again for a past day</button>' : '') +
+      '</div>';
 
     // Today — detailed (credit/debit/total)
     if (!todayRows.length) {
       html += '<div class="recon-empty">Not reconciled yet today.</div>';
     } else {
+      if (ops) html += reconDayNote_(days[todayStr], todayStr);
       todayRows.forEach(r => { html += reconGroupDetail_(r); });
     }
 
@@ -6152,10 +6162,14 @@
         html += '<div class="recon-table">' +
           '<div class="recon-trow head"><div>When</div><div>Store</div>' +
             '<div class="r">Cash</div><div class="r">Cards</div><div class="r">Status</div></div>';
+        const dayShown = {};
         pastRows.forEach(r => {
           const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
+          const firstOfDay = ops && !dayShown[r.businessDate];
+          dayShown[r.businessDate] = true;
           html += '<div class="recon-trow">' +
-            '<div>' + esc(r.businessDate) + '<br><small style="color:#9aa0ac">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></div>' +
+            '<div>' + esc(r.businessDate) + '<br><small style="color:#9aa0ac">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small>' +
+              (firstOfDay ? reconDayNote_(days[r.businessDate], r.businessDate) + (offered ? '<div><button class="recon-btn recon-btn-quiet" data-rerun="' + esc(r.businessDate) + '">Run again</button></div>' : '') : '') + '</div>' +
             '<div data-label="Store">' + esc(r.companies) + '</div>' +
             '<div class="r" data-label="Cash">' + pairVar_(r.cashCounted - r.cashVariance, r.cashCounted) + '</div>' +
             // No Clover figure means the cards were not checked — show the
@@ -6179,6 +6193,11 @@
       state.reconHistOpen = !state.reconHistOpen;
       renderReconPanel(state.reconRows || []);
     };
+    if (offered) {
+      const pastBtn = $('reconPastBtn');
+      if (pastBtn) pastBtn.onclick = () => { haptic(); openReconPast_(null); };
+      el.querySelectorAll('[data-rerun]').forEach(b => { b.onclick = () => { haptic(); openReconPast_(b.dataset.rerun); }; });
+    }
     $('reconWaBtn').onclick = async () => {
       haptic();
       const b = $('reconWaBtn'); b.disabled = true; b.textContent = 'Checking…';
@@ -6203,6 +6222,137 @@
                    (res.whatsappSummary || 'no reason reported'), 'warning');
         loadReconPanel(true);
       } catch (e) { toast(e.message, 'error'); b.disabled = false; b.textContent = '↻ Reconcile today'; }
+    };
+  }
+
+  // ── Run a past day again (Operations app only; card P4-12c) ──
+  // Who is offered the control: the roles that can open this screen, in the Operations app only.
+  function reconPastOffered_(role, opsApp) {
+    return !!opsApp && ['admin', 'manager', 'payroll_admin'].indexOf(role) !== -1;
+  }
+
+  // The rows as one list per business day: the day's CURRENT result and how many earlier results it
+  // replaced. A run is the rows written at one moment (validatedAt). A manual run covers the whole
+  // day, so the newest manual run (and any automatic run after it, for tills that closed later) is
+  // the day's result and every run before it is an earlier result; with no manual run, every run is
+  // current (each automatic run covers a different till). `ranOn` is the Toronto day the newest
+  // run was made: a later day than the business day means a past day was run again.
+  function reconDays_(rows) {
+    const byDate = {};
+    (rows || []).forEach(r => { (byDate[r.businessDate] = byDate[r.businessDate] || []).push(r); });
+    const out = {};
+    Object.keys(byDate).forEach(date => {
+      const day = byDate[date];
+      const runs = {};
+      day.forEach(r => {
+        const at = String(r.validatedAt || '');
+        runs[at] = runs[at] || { at: at, whole: false };
+        if (r.mode === 'manual') runs[at].whole = true;
+      });
+      const list = Object.keys(runs).map(k => runs[k]).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+      const whole = list.filter(x => x.whole)[0];
+      const cutoff = whole ? whole.at : null;
+      const newest = list[0] ? list[0].at : '';
+      const wall = newest ? torontoWall_(newest) : null;
+      out[date] = {
+        rows: day.filter(r => cutoff === null || String(r.validatedAt || '') >= cutoff),
+        earlier: list.filter(x => cutoff !== null && x.at < cutoff).length,
+        ranOn: wall ? wall.date : null,
+      };
+    });
+    return out;
+  }
+
+  // "re-run · 1 earlier result", "re-run on 2026-11-27 · 2 earlier results", "run on 2026-11-27", or nothing.
+  function reconDayNote_(info, date) {
+    if (!info) return '';
+    const later = !!info.ranOn && info.ranOn !== date;
+    const parts = [];
+    if (info.earlier > 0) parts.push(later ? 're-run on ' + info.ranOn : 're-run');
+    else if (later) parts.push('run on ' + info.ranOn);
+    if (info.earlier > 0) parts.push(info.earlier + (info.earlier === 1 ? ' earlier result' : ' earlier results'));
+    if (!parts.length) return '';
+    return '<div class="recon-rerun" style="font-size:11px;color:#92611a;margin-top:2px">' + esc(parts.join(' · ')) + '</div>';
+  }
+
+  // Toronto's yesterday, as YYYY-MM-DD.
+  function reconYesterday_() {
+    const t = torontoToday_().split('-').map(Number);
+    return new Date(Date.UTC(t[0], t[1] - 1, t[2] - 1)).toISOString().slice(0, 10);
+  }
+
+  function reconPastFormHTML_(date) {
+    return '<div id="rpNote" style="font-size:13px;color:#4a4e59;line-height:1.5;margin-bottom:10px">' +
+        'Every till of that day is reconciled again from the figures as they stand now (after a till correction, the corrected ones). ' +
+        '<strong>No WhatsApp message is sent</strong>, and the earlier results are kept: the new result is listed first for that day.</div>' +
+      '<div class="sheet-field"><label>Day</label><input type="date" id="rpDate" value="' + esc(date) + '"></div>' +
+      '<div class="sheet-field"><label>Reason (required)</label><input type="text" id="rpReason" maxlength="300" placeholder="e.g. Till 2 count was corrected on Monday"></div>';
+  }
+
+  // A reconcile answer's group as the row the list shows (companies come as a list there).
+  function reconRecordRow_(m) {
+    return {
+      companies: (m.companies || []).join(' + '), status: m.status, windowStart: m.windowStart, windowEnd: m.windowEnd,
+      cashierCard: m.cashierCard, cloverCard: m.cloverCard, cashierCredit: m.cashierCredit, cashierDebit: m.cashierDebit,
+      cloverCredit: m.cloverCredit, cloverDebit: m.cloverDebit, cashSales: m.cashSales, cashCounted: m.cashCounted, cashVariance: m.cashVariance,
+    };
+  }
+
+  // One till's result in the answer sheet. Where Clover measured the cards it is the list's own detail.
+  // Where it did not there is no measured total to compare with, so the cards are said in words: the
+  // list's detail would set the day's cash sales against a Clover figure that does not exist.
+  function reconPastGroup_(r) {
+    if (r.cloverCard != null) return reconGroupDetail_(r);
+    const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
+    const recorded = Math.round((r.cashCounted - r.cashVariance) * 100) / 100;
+    return '<div class="recon-group">' +
+      '<div class="recon-group-head"><span>' + esc(r.companies) +
+        ' <small style="color:#9aa0ac;font-weight:600">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></span>' +
+        '<span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
+      '<div class="recon-line"><span>Cash (recorded / counted)</span><span>' + money(recorded) + ' / ' + money(r.cashCounted) +
+        ' <small>(var ' + signedMoney_(r.cashVariance) + ')</small></span></div>' +
+      '<div class="recon-line"><span>Cards</span><span>' + money(r.cashierCard) + ' <small>' +
+        (r.status === 'clover_unavailable' ? 'Clover unavailable, not verified' : 'single total, not verified') + '</small></span></div>' +
+    '</div>';
+  }
+
+  function reconPastResultHTML_(res) {
+    let html = '<div id="rpResult" style="font-size:13px;color:#4a4e59;line-height:1.5;margin-bottom:6px">' +
+      esc(res.date) + ' reconciled again. No WhatsApp message was sent. ' +
+      (res.previous > 0 ? esc(String(res.previous)) + (res.previous === 1 ? ' earlier result row is' : ' earlier result rows are') + ' kept.' : 'There were no earlier results.') + '</div>';
+    (res.merchants || []).forEach(m => { html += reconPastGroup_(reconRecordRow_(m)); });
+    return html;
+  }
+
+  function openReconPast_(date) {
+    openSheet({
+      title: 'Run again for a past day', subtitle: 'Reconcile',
+      bodyHTML: reconPastFormHTML_(date || reconYesterday_()),
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="rpGo">Run again</button>',
+    });
+    const go = $('rpGo');
+    go.onclick = async () => {
+      const day = String($('rpDate').value || '').trim();
+      const reason = String($('rpReason').value || '').trim();
+      if (!day) { toast('Pick the day', 'error'); return; }
+      if (reason.length < 3) { toast('Give a reason (at least 3 characters)', 'error'); return; }
+      go.disabled = true;
+      go.textContent = 'Reconciling…';
+      try {
+        const res = (await call('rpcReconcilePastDay', state.token, { date: day, reason: reason })) || {};
+        openSheet({
+          title: '✓ Reconciled again', subtitle: day,
+          bodyHTML: reconPastResultHTML_(res),
+          actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Done</button>',
+        });
+        toast('✓ ' + day + ' reconciled again · no WhatsApp message sent', 'success');
+        state.reconHistOpen = true;
+        loadReconPanel(true);
+      } catch (e) {
+        handleRpcError(e);
+        go.disabled = false;
+        go.textContent = 'Run again';
+      }
     };
   }
 

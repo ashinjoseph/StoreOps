@@ -139,7 +139,7 @@ The rules, in this order:
     commission runs and reconcile results are untouched, no message is sent,
     and the sales row keeps its id and place. The answer says what is now
     stale: a reconcile result for that till and day (*run the reconcile for it
-    again*), each commission run whose week contains the day when the sales
+    again*: [Running a past day again](reconcile.md#running-a-past-day-again)), each commission run whose week contains the day when the sales
     figures changed (*not recalculated*), and the next cstore close when the
     reserve count changed (its expected cash was measured against the old count).
 12. A correction that changes nothing writes nothing.

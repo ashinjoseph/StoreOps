@@ -1416,3 +1416,33 @@ door with the SDK's own client against a real database) and the
 deliberate mutations of the door (open while off, a stored key, a telling
 401, a read key proposing, no rate limit, a browser let in, an unpinned tool,
 a role in `whoami`, a withdrawn key working).
+
+### Reconcile a past day again, in the Operations app (P4-12c)
+
+After an admin corrects a closed till, the day's reconcile was made on the old
+figures and "Reconcile today" could only reconcile today. In the Operations app
+(never inside Apps Script) the Reconcile screen now has **Run again for a past
+day**, and **Run again** beside each listed day.
+
+- It reconciles every till of that day again from the figures as they stand now,
+  with the reconcile's own arithmetic: `reconcileDay` was split so that
+  `buildRecords` (closed sessions to result rows, with Clover asked for each
+  group's window) and `writeRows` are shared, and today's run passes today. What
+  a run of today stores, audits and sends is unchanged (a golden recorded before
+  the split holds it).
+- Earlier results are kept: new rows are added, nothing is updated or deleted.
+  The new rows are `manual` and are marked by being validated on a later day than
+  their business day; the reason is in the audit row (`reconcile.past_day`, with
+  each till's cash and card verdict). **No WhatsApp message is sent.** Where Clover
+  cannot answer for that day the cards are recorded as not verified.
+- A day with several sets of results now shows the newest as the day's result and
+  says how many it replaced ("re-run on 2026-11-27 · 1 earlier result").
+- New call `rpcReconcilePastDay` (ADR-0023), for admin, manager and payroll admin. One
+  run of a day at a time (the per-day lock `reconcileDay` takes), and a till
+  correction in flight is waited for.
+
+New: `ops/test/reconcile-past.test.ts` and the `ui-reconcile-past` suite, seen
+failing before the code existed and against eight deliberate mutations (a
+message sent on a past day, unverified cards recorded as matching, earlier rows
+updated, today allowed, today's window asked of Clover, an open till allowed, the
+control shown inside Apps Script, one figure a cent off the real run).

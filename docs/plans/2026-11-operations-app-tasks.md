@@ -73,7 +73,8 @@ hand one out.
 | P4-11b | A day worked with no rate shows as "no rate set", not $0 | T2 | P4-11 | money | todo (changes what a ported call answers: the owner to agree) |
 | P4-12a | Correct a closed till | T3 | P4-08 | money | done (three things for the owner, in the card) |
 | P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | in progress |
-| P4-12c | Reconcile a past day again | T2 | P4-08 | money | in progress |
+| P4-12c | Reconcile a past day again | T2 | P4-08 | money | done (three things for the owner, in the card) |
+| P4-12d | The Reconcile screen shows unmeasured cards as "not verified", not as a difference | T1 | | money | todo (an existing fault, found by P4-12c) |
 | P4-13 | Audit log on a screen; a setting to pause the Monday run | T1 | P4-09 | security | todo (planned) |
 | P4-14 | Backups, and a restore that has been tried | T2 + owner | P2-10 | money | todo (planned) |
 | P5-01 | Stores and staff assignments | T2 | P4-05 | security | todo |
@@ -904,6 +905,30 @@ manager and employee. Three things for the owner:
    the lotto count of the close before it, even if the settings have
    changed since. The variance limits are today's, because nothing records
    the ones in force that day.
+
+**P4-12c is done:** on the Reconcile screen an admin, a manager or a payroll
+admin has "Run again for a past day" (and "Run again" beside each listed
+day), with a required reason. It reconciles every till of that day from the
+figures as they stand now, using the reconcile's own computation (moved into
+one function both use; every existing test and comparison case still
+passes). Earlier results are kept and the screen shows the newest as the
+day's result, with "re-run on <date> · N earlier results". No WhatsApp
+message is sent. Cards the processor cannot confirm are recorded as not
+verified, never as matching. Refused for today, for a day with a till still
+open, and for a day with no closed till. Three things for the owner:
+1. **Who may run it.** The current app lets any signed-in person run
+   today's reconcile, and the new app keeps that. The past-day re-run is
+   narrower on purpose: admin, manager and payroll admin only (decided in
+   review; the builder had copied "anyone").
+2. **How a re-run is told apart.** The results table has no notes column, so
+   a re-run is recognised by being made on a later day than the day it is
+   about; the reason is in the audit log, not on the rows. A column for the
+   reason would be cleaner and needs a migration: say if wanted.
+3. **An existing fault on the screen (P4-12d):** for a till whose cards are
+   not measured, today's panel shows the card total as a difference against
+   zero, in red. It should say "not verified".
+Also open: how far back the card processor answers for an old day is not
+known; when it refuses, the cards are recorded as not verified.
 
 P4-12 is split in three so each can be reviewed on its own: correcting a
 closed till (a), entering a shift that was never put in the app (b), and

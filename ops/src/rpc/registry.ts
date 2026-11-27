@@ -16,6 +16,7 @@ import { rpcCreateCommissionRule, rpcGetCommissionRules, rpcUpdateCommissionRule
 import { rpcGetCommissionRuns, rpcRunCommissionEngine } from "./handlers/commissions";
 import { rpcCheckWhatsApp } from "./handlers/notifier";
 import { rpcGetReconciliation, rpcReconcileDay } from "./handlers/reconcile";
+import { rpcReconcilePastDay } from "./handlers/reconcile-past";
 import { rpcGetSalesDashboard } from "./handlers/sales-dashboard";
 import { rpcGetSettings, rpcUpdateSetting } from "./handlers/settings";
 import { rpcCreateStaff, rpcGetStaffAdmin, rpcPreviewRateChange, rpcSetStaffPin, rpcUpdateStaff } from "./handlers/staff-admin";
@@ -69,6 +70,7 @@ export const handlers: RpcHandlers = {
   rpcGetMyShiftState,
   rpcReconcileDay,
   rpcGetReconciliation,
+  rpcReconcilePastDay,
   rpcGetSettings,
   rpcUpdateSetting,
   rpcGetStaffAdmin,

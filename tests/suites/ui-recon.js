@@ -14,7 +14,7 @@ for (const [label, js] of H.uiScripts()) {
 t.section('Against ' + label);
 const NEEDED = ['esc', 'money', 'todayMidnight', 'isoDate', 'fmtWin_',
                 'pairVar_', 'signedMoney_', 'reconGroupDetail_', 'reconRow_',
-                'renderReconPanel', 'renderWhatsAppCheck_'];
+                'renderReconPanel', 'renderWhatsAppCheck_', 'isOpsApp_', 'reconPastOffered_'];
 const lifted = NEEDED.map(n => H.fnSource(js, n)).join('\n\n');
 
 function render(rows) {
@@ -22,6 +22,7 @@ function render(rows) {
   const ctx = {
     console: { log() {}, error() {}, warn() {} },
     state: { reconHistOpen: true },
+    window: {},   // not the Operations app: the panel is the one it always was
     $: () => out,
     haptic: () => {}, toast: () => {}, call: async () => ({}), loadReconPanel: () => {},
     Date, Math, Number, String,

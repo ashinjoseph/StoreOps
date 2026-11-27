@@ -55,6 +55,7 @@ shared globals, which hid at least one ordering-dependent pass.
 | `ui-picker` | chips show a whole category, needs-detail rows listed but not addable |
 | `ui-products` | no cost is "no cost recorded", not a 100% margin; margin sort |
 | `ui-recon` | reconcile history shows "not verified", never a $0 measurement |
+| `ui-reconcile-past` | "Run again for a past day" only in the Operations app and only for the roles that open the Reconcile screen; the Apps Script screen renders the same HTML as before; a day with several sets of results shows the newest and says how many it replaced; the form says no message is sent and earlier results are kept; the built page carries the control |
 | `ui-schedule-corrections` | "Correct this day" only for an admin in the Operations app, today or earlier; Toronto instants across both clock changes; the Apps Script cell sheet unchanged |
 | `ui-staff-admin` | the Staff screen: `opsOnly`, offered to admin and manager only; a manager's sheet has no rate, role, email or notes; a blank rate is "no rate set", never $0.00; the PIN goes only to `call`, never to the read cache, a toast or storage; the raise preview and the after-save words |
 | `ui-till-corrections` | "Correct this till" only for an admin in the Operations app, on a closed till; the Apps Script Sales screen unchanged; the close's inputs in the row's card shape; a blank shown in words and sent as null |

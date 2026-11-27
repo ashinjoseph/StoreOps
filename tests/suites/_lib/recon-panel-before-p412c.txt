@@ -1,0 +1,86 @@
+function renderReconPanel(rows) {
+    const el = $('reconPanel');
+    if (!el) return;
+    rows = rows || [];
+    state.reconRows = rows;
+    const todayStr = isoDate(todayMidnight());
+    const todayRows = rows.filter(r => r.businessDate === todayStr);
+    const pastRows  = rows.filter(r => r.businessDate !== todayStr);
+
+    let html = '<div class="recon-card">' +
+      '<div class="recon-head">' +
+        '<div class="recon-title">Daily reconciliation</div>' +
+        '<button class="recon-btn" id="reconRunBtn">↻ Reconcile today</button>' +
+      '</div>' +
+      '<div class="recon-tools"><button class="recon-btn recon-btn-quiet" id="reconWaBtn">💬 Check WhatsApp setup</button></div>';
+
+    // Today — detailed (credit/debit/total)
+    if (!todayRows.length) {
+      html += '<div class="recon-empty">Not reconciled yet today.</div>';
+    } else {
+      todayRows.forEach(r => { html += reconGroupDetail_(r); });
+    }
+
+    // History — per-shift, newest first; collapsed behind a toggle so the
+    // panel stays short. Expand to reveal the full per-shift table.
+    if (pastRows.length) {
+      const open = !!state.reconHistOpen;
+      html += '<button class="recon-hist-toggle" id="reconHistToggle">' +
+        '<span class="day-caret">' + (open ? '▾' : '▸') + '</span> History (' + pastRows.length + ' shifts)</button>';
+      if (open) {
+        html += '<div class="recon-table">' +
+          '<div class="recon-trow head"><div>When</div><div>Store</div>' +
+            '<div class="r">Cash</div><div class="r">Cards</div><div class="r">Status</div></div>';
+        pastRows.forEach(r => {
+          const cls = r.status === 'OK' ? 'ok' : (r.status === 'investigate' ? 'bad' : 'warn');
+          html += '<div class="recon-trow">' +
+            '<div>' + esc(r.businessDate) + '<br><small style="color:#9aa0ac">' + esc(fmtWin_(r.windowStart, r.windowEnd)) + '</small></div>' +
+            '<div data-label="Store">' + esc(r.companies) + '</div>' +
+            '<div class="r" data-label="Cash">' + pairVar_(r.cashCounted - r.cashVariance, r.cashCounted) + '</div>' +
+            // No Clover figure means the cards were not checked — show the
+            // claim alone, as the detail view and the public report do.
+            '<div class="r" data-label="Cards">' + (r.cloverCard == null
+              ? '<span class="pv"><span class="pv-pair">' + money(r.cashierCard) + '</span>' +
+                '<span class="pv-var na">not verified</span></span>'
+              : pairVar_(r.cashierCard, r.cloverCard)) + '</div>' +
+            '<div class="r" data-label="Status"><span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>' +
+          '</div>';
+        });
+        html += '</div>';
+      }
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+    const histToggle = $('reconHistToggle');
+    if (histToggle) histToggle.onclick = () => {
+      haptic();
+      state.reconHistOpen = !state.reconHistOpen;
+      renderReconPanel(state.reconRows || []);
+    };
+    $('reconWaBtn').onclick = async () => {
+      haptic();
+      const b = $('reconWaBtn'); b.disabled = true; b.textContent = 'Checking…';
+      try {
+        const d = await call('rpcCheckWhatsApp', state.token);
+        openSheet({ title: 'WhatsApp setup', subtitle: d && d.ok ? 'Everything checks out' : 'Something needs fixing',
+                    bodyHTML: renderWhatsAppCheck_(d),
+                    actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Done</button>' });
+      } catch (e) { toast(e.message, 'error'); }
+      b.disabled = false; b.textContent = '💬 Check WhatsApp setup';
+    };
+    $('reconRunBtn').onclick = async () => {
+      haptic();
+      const b = $('reconRunBtn'); b.disabled = true; b.textContent = 'Reconciling…';
+      try {
+        const res = (await call('rpcReconcileDay', state.token, true)) || {};
+        if (res.empty) toast('Nothing to reconcile yet', 'warning');
+        else if (res.whatsapp && res.whatsapp.sent) toast('✓ Reconciled — WhatsApp sent', 'success');
+        // A send that fails says so. "✓ Reconciled" alone is indistinguishable
+        // from a message that went out, which is how a broken send ran for days.
+        else toast('✓ Reconciled · WhatsApp NOT sent — ' +
+                   (res.whatsappSummary || 'no reason reported'), 'warning');
+        loadReconPanel(true);
+      } catch (e) { toast(e.message, 'error'); b.disabled = false; b.textContent = '↻ Reconcile today'; }
+    };
+  }

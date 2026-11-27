@@ -274,13 +274,63 @@ export async function reconcileDay(db: Tx, deps: ReconcileDeps, actorId: string 
   const openCount = sessions.filter((s) => s.status === "open").length;
   if (mode !== "manual" && openCount > 0) return { ready: false, openCount };
 
-  let closed = sessions.filter((s) => s.status === "closed" || s.status === "validated");
+  let closed = closedSessions(sessions);
   // Auto: only the sessions not yet reconciled (this shift). Manual: all.
   if (mode !== "manual") {
     const done = await reconciledSessionIds(db, dateStr);
     closed = closed.filter((s) => !done.has(s.sessionId));
   }
   if (closed.length === 0) return { ready: true, empty: true };
+
+  const merchants = await buildRecords(db, deps, today, closed, now.getTime());
+
+  await writeRows(db, today, merchants, mode, actorId, now, deps.random);
+
+  const message = formatMessage(config, today, merchants);
+  let whatsapp: SendSummary = { sent: false, reason: "not_attempted" };
+  try {
+    whatsapp = await sendNotifications(db, deps, today, merchants);
+  } catch (e) {
+    rethrowDb(e);
+    whatsapp = { sent: false, reason: "exception", detail: e instanceof Error ? e.message : String(e) };
+  }
+
+  await audit.write(
+    db,
+    {
+      actorId: actorId || "SYSTEM",
+      action: "reconcile.day",
+      targetType: "validation_results",
+      targetId: dateStr,
+      details: "mode=" + mode + "; whatsapp=" + describeSend(whatsapp) + "; " + message.replace(/\n/g, " | "),
+    },
+    { now },
+  );
+
+  return { ready: true, mode, date: dateStr, merchants, whatsapp, whatsappSummary: describeSend(whatsapp) };
+}
+
+/**
+ * The closed sessions of a run: status 'closed' or 'validated' (exact case). Shared by every run
+ * of a day, today's and a past day's (reconcile-past.ts), so they cannot disagree on what is closed.
+ */
+export function closedSessions(sessions: readonly tillSessions.TillSessionRecord[]): tillSessions.TillSessionRecord[] {
+  return sessions.filter((s) => s.status === "closed" || s.status === "validated");
+}
+
+/**
+ * From one business day's closed sessions to the result rows, one per Clover merchant group: the
+ * figures, the Clover totals for each group's window (when enabled), the status. Reads, and asks
+ * Clover; writes nothing. `day` is the business day's Toronto midnight (today's run passes today,
+ * a past-day re-run passes that day); `fallbackEndMs` is the window's end for a group none of
+ * whose sessions has an end time (today's run: now; a past day: the end of that day).
+ * (Reconcile.gs lines 160-290, split out of reconcileDay in card P4-12c with no change of behaviour.)
+ */
+export async function buildRecords(db: Db, deps: ReconcileDeps, day: Date, closed: readonly tillSessions.TillSessionRecord[], fallbackEndMs: number): Promise<ReconRecord[]> {
+  const config = deps.config;
+  const now = deps.now;
+  const today = day;
+  const todayEnd = endOfDay(today);
 
   // Card per session from the sales rows (1:1 with sessions; a later row wins, as before).
   const salesById = new Map<string, sales.SalesRecord>();
@@ -377,7 +427,7 @@ export async function reconcileDay(db: Tx, deps: ReconcileDeps, actorId: string 
   for (const g of groups.values()) {
     // Fall back to the day if a session is missing a timestamp.
     const startMs = Number.isFinite(g.startMs) ? g.startMs : today.getTime();
-    const endMs = g.endMs > 0 ? g.endMs : now.getTime();
+    const endMs = g.endMs > 0 ? g.endMs : fallbackEndMs;
 
     const cashierCredit = roundMoney(g.cashierCredit);
     const cashierDebit = roundMoney(g.cashierDebit);
@@ -453,41 +503,20 @@ export async function reconcileDay(db: Tx, deps: ReconcileDeps, actorId: string 
       status,
     });
   }
-
-  await writeRows(db, today, merchants, mode, actorId, now, deps.random);
-
-  const message = formatMessage(config, today, merchants);
-  let whatsapp: SendSummary = { sent: false, reason: "not_attempted" };
-  try {
-    whatsapp = await sendNotifications(db, deps, today, merchants);
-  } catch (e) {
-    rethrowDb(e);
-    whatsapp = { sent: false, reason: "exception", detail: e instanceof Error ? e.message : String(e) };
-  }
-
-  await audit.write(
-    db,
-    {
-      actorId: actorId || "SYSTEM",
-      action: "reconcile.day",
-      targetType: "validation_results",
-      targetId: dateStr,
-      details: "mode=" + mode + "; whatsapp=" + describeSend(whatsapp) + "; " + message.replace(/\n/g, " | "),
-    },
-    { now },
-  );
-
-  return { ready: true, mode, date: dateStr, merchants, whatsapp, whatsappSummary: describeSend(whatsapp) };
+  return merchants;
 }
 
 /** Every group's row, in one statement. (writeRow_, lines 334-349) */
-async function writeRows(db: Tx, today: Date, merchants: readonly ReconRecord[], mode: Mode, actorId: string | null | undefined, now: Date, random?: () => number): Promise<void> {
-  if (merchants.length === 0) return;
+export async function writeRows(db: Tx, today: Date, merchants: readonly ReconRecord[], mode: Mode, actorId: string | null | undefined, now: Date, random?: () => number): Promise<string[]> {
+  if (merchants.length === 0) return [];
   const dateStr = formatDate(today);
   const params: unknown[] = [];
+  const ids: string[] = [];
   for (const rec of merchants) {
+    const id = newId("VR", { now, random, chars: 10 });
+    ids.push(id);
     params.push(
-      newId("VR", { now, random, chars: 10 }),
+      id,
       dateStr,
       rec.windowStart,
       rec.windowEnd,
@@ -513,6 +542,7 @@ async function writeRows(db: Tx, today: Date, merchants: readonly ReconRecord[],
   }
   const values = merchants.map((_, i) => "(" + Array.from({ length: INSERT_WIDTH }, (_x, k) => `$${i * INSERT_WIDTH + k + 1}`).join(", ") + ")").join(", ");
   await db.query(`insert into ops.validation_results (${INSERT_COLUMNS}) values ${values}`, params);
+  return ids;
 }
 
 // ── The WhatsApp report (lines 308-396) ────────────────────
