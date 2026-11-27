@@ -37,12 +37,32 @@ id = "REPLACE_IN_P2-10"
 binding = "RECEIPTS"
 bucket_name = "storeops-receipts"
 
+# The nightly copy of every table (card P4-06a, ADR-0028): dated files plus a manifest, written by
+# src/backup/nightly.ts, never deleted or overwritten by the app (src/backup/storage.ts has no delete). A
+# SEPARATE bucket from the receipts, so that one's permanent retention and this one's 90 days never meet.
+# The hosted setup (docs/components/backups.md, "What the hosted setup must do"):
+#   1. create the bucket:           npx wrangler r2 bucket create storeops-backups
+#   2. keep 90 days: add a lifecycle rule to it that deletes objects 90 days after they are written
+#      (dashboard: R2, storeops-backups, Settings, Object lifecycle rules; or
+#      npx wrangler r2 bucket lifecycle add storeops-backups keep-90-days --expire-days 90). The app cannot do this
+#      and does not try: a copy is only ever added.
+#   3. never make it public, and never share its API tokens with anything that does not need them.
+# `wrangler dev` emulates the bucket on disk under .wrangler/ with no account.
+[[r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "storeops-backups"
+
 # The weekly commission run (src/cron.ts): Mondays at 09:00 in Toronto. A cron has no time zone, and
 # Toronto's 09:00 is 13:00 UTC in summer time and 14:00 UTC in winter time, so both fire and the handler
 # runs only the one that is 09:00 there. Keep this list equal to CRON_SCHEDULES in src/cron.ts (a test
 # checks it).
+#
+# The nightly copy (src/backup/nightly.ts) runs at 03:00 in Toronto, every day. Same trick: 03:00 Toronto is
+# 07:00 UTC in summer time and 08:00 UTC in winter time, so both fire and the job runs only the one that is
+# 03:00 there (exactly one a day, on the clock-change nights too: 03:00 is never skipped or repeated).
+# Keep these two equal to BACKUP_SCHEDULES in src/backup/nightly.ts (a test checks it).
 [triggers]
-crons = ["0 13 * * 1", "0 14 * * 1"]
+crons = ["0 13 * * 1", "0 14 * * 1", "0 7 * * *", "0 8 * * *"]
 
 # Secrets (never in this file or in git; set with `wrangler secret put NAME` or in the Cloudflare
 # dashboard, and listed under "Kept by Cloudflare" on the Settings screen):

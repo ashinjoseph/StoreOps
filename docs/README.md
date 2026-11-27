@@ -58,10 +58,11 @@ flowchart LR
 | understand the business and the problem | [Context](context.md): the store, goals, constraints, glossary |
 | see how it's built | [Architecture overview](architecture/overview.md): system context, layers, module map, the daily flow |
 | see a feature, with screenshots | [Components](components/README.md): one page per feature |
-| know why something is the way it is | [Decisions (ADRs)](adr/README.md): 23 recorded decisions, plus 3 proposed |
+| know why something is the way it is | [Decisions (ADRs)](adr/README.md): 24 recorded decisions, plus 3 proposed |
 | see where it's going | [Migration plan](plans/2026-11-operations-app-migration.md): off Sheets to its own app, in small task cards (draft) |
 | set it up | [Setup guide](guides/setup.md) |
 | rehearse the move off Sheets | [Dry run](guides/cutover-dry-run.md): the real Sheet into a local database, with a report of every difference |
+| try a nightly copy of the app's records | [Restore a nightly copy](guides/restore-a-nightly-copy.md): download one, load it into an empty local database, and see every table match |
 | change it safely | [Testing](guides/testing.md) and [keeping the docs current](guides/docs-process.md) |
 | let an AI assistant in | [Connect an assistant](guides/connect-an-assistant.md): open the door, make a key, check it, withdraw it |
 | present it | [Showcase](showcase.md): a ten-minute tour for an interview or a management review |

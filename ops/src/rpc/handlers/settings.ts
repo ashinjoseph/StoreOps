@@ -3,6 +3,7 @@
 // before these run; the check is made here as well, in case the contract is ever wrong. Identity is
 // ctx.session, never an argument: an `actorId` or `role` in the page's input is ignored.
 import { requireRole } from "../../auth/roles";
+import { lastBackup } from "../../backup/status";
 import * as settings from "../../modules/settings";
 import type { RpcContext, RpcHandler } from "../types";
 
@@ -11,10 +12,13 @@ function admin(ctx: RpcContext): { staffId: string } {
   return ctx.session as { staffId: string };
 }
 
-/** Admin only: every setting with its default and how it is read, the unknown rows, the secrets (by name and set/not set only), and the till key's expiry warning. */
+/**
+ * Admin only: every setting with its default and how it is read, the unknown rows, the secrets (by name and set/not set only), the till key's
+ * expiry warning, and `lastBackup`: the line about the nightly copy (card P4-06a; src/backup/status.ts).
+ */
 export const rpcGetSettings: RpcHandler = async (ctx) => {
   admin(ctx);
-  return settings.list(ctx.db, ctx.env, ctx.now);
+  return { ...(await settings.list(ctx.db, ctx.env, ctx.now)), lastBackup: await lastBackup(ctx.db, ctx.now) };
 };
 
 /** Admin only: `{ key, value }`. A blank value goes back to the default. Answers `{ key, value, isDefault, changed }`. */

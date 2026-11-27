@@ -242,6 +242,24 @@ describe("rpcGetSettings", () => {
     expect(await withTransaction(db, (tx) => settings.list(tx, ENV))).not.toHaveProperty("tillKeyExpiry");
   });
 
+  it("answers one more field, lastBackup (card P4-06a): the nightly copy's line, built from the audit log; never run on a fresh database, a good run after one, and a failed run after that", async () => {
+    const first = (await rpc<Record<string, any>>(rpcGetSettings, []))["lastBackup"];
+    expect(first).toMatchObject({ state: "never", warn: true, lastGood: null, lastFailure: null });
+    expect(first.message).toContain("no copy yet");
+    await owner.query("insert into ops.audit_log (log_id, \"timestamp\", action, target_type, target_id, after) values ('LOG_B1', $1, 'backup.nightly', 'backup', 'nightly/2026-11-20', $2)", [NOW, JSON.stringify({ folder: "nightly/2026-11-20", tables: 24, rows: 2268 })]);
+    const good = (await rpc<Record<string, any>>(rpcGetSettings, []))["lastBackup"];
+    expect(good).toMatchObject({ state: "ok", warn: false, lastGood: { folder: "nightly/2026-11-20", tables: 24, rows: 2268 } });
+    expect(good.message).toBe("Last copy: 2026-11-20 09:00:00, 24 tables, 2268 rows");
+    await owner.query("insert into ops.audit_log (log_id, \"timestamp\", action, target_type, target_id, after) values ('LOG_B2', $1, 'backup.failed', 'backup', 'nightly', $2)", [LATER, JSON.stringify({ reason: "the bucket refused a write" })]);
+    const failed = (await rpc<Record<string, any>>(rpcGetSettings, [], { at: LATER }))["lastBackup"];
+    expect(failed).toMatchObject({ state: "failed", warn: true });
+    expect(failed.message).toContain("the bucket refused a write");
+    // 37 hours after the good copy, with no failure: a warning that a night was missed
+    await owner.query("delete from ops.audit_log where log_id = 'LOG_B2'");
+    const stale = (await rpc<Record<string, any>>(rpcGetSettings, [], { at: new Date(NOW.getTime() + 37 * 3_600_000) }))["lastBackup"];
+    expect(stale).toMatchObject({ state: "stale", warn: true });
+  });
+
   it("the commission day and hour say the weekly run's time is fixed elsewhere", async () => {
     const r = await rpc<Listed>(rpcGetSettings, []);
     for (const k of ["commission_run_day", "commission_run_hour"]) expect(r.settings.find((s) => s.key === k)?.description).toMatch(/P3-10b/);

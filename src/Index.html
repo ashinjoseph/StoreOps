@@ -5695,6 +5695,46 @@
   //  (a credential) is listed read-only: it is kept by Cloudflare.
   //  "Use the default" sends a blank; the setting is never deleted.
   // ============================================================
+  // The nightly copy (card P4-06a): one line at the top of Settings, from the server's own words, and
+  // an admin's "Make a copy now". A warning (never run, failed, or more than 36 hours old) is amber;
+  // a good copy is green. The result of pressing the button is shown in words under it, once.
+  let backupNote_ = null;
+  function backupLineHTML_(b, isAdmin) {
+    if (!b || !b.message) return '';
+    const warn = !!b.warn;
+    const look = warn
+      ? 'background:#fef3c7;color:#92400e;border:1px solid #f59e0b'
+      : 'background:#f0fdf4;color:#166534;border:1px solid #86efac';
+    let h = '<div data-backup-line="' + esc(b.state) + '"' + (warn ? ' data-backup-warning="1" role="alert"' : '') +
+      ' style="' + look + ';border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin:0 0 8px;overflow-wrap:anywhere">' +
+      (warn ? '⚠️ ' : '') + esc(b.message) + '</div>';
+    if (isAdmin) {
+      h += '<button type="button" data-backup-now="1" style="margin:0 0 8px;background:#1a2540;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer">Make a copy now</button>';
+      if (backupNote_) {
+        h += '<div data-backup-result="' + (backupNote_.ok ? 'ok' : 'failed') + '" style="font-size:12px;font-weight:600;margin:0 0 10px;overflow-wrap:anywhere;color:' +
+          (backupNote_.ok ? '#166534' : '#b91c1c') + '">' + esc(backupNote_.text) + '</div>';
+        backupNote_ = null;
+      }
+    }
+    return h + '<div style="margin:0 0 12px"></div>';
+  }
+
+  async function runBackupNow_(btn) {
+    const idle = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Making a copy…';
+    try {
+      const res = await call('rpcRunBackupNow', state.token);
+      backupNote_ = { ok: true, text: res.message };
+      toast('✓ ' + res.message, 'success');
+    } catch (e) {
+      if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+      backupNote_ = { ok: false, text: e.message };
+      toast(e.message, 'error');
+    }
+    loadSettingsTab(true);
+  }
+
   async function loadSettingsTab(force) {
     const view = $('view-settings');
     if (force || !cacheFresh('rpcGetSettings', [state.token], TTL_REF)) {
@@ -5724,6 +5764,7 @@
     let html = moreBack();
     html += '<div style="font-size:13px;font-weight:700;margin-bottom:4px">Settings</div>' +
       '<div style="font-size:11px;color:#6a6e79;margin-bottom:12px">Tap a setting to change it. A change is saved at once and recorded.</div>';
+    html += backupLineHTML_(data && data.lastBackup, !!(state.me && state.me.role === 'admin'));
 
     const groups = [];
     settings.forEach(s => {
@@ -5775,6 +5816,10 @@
     });
 
     view.innerHTML = html;
+
+    view.querySelectorAll('[data-backup-now]').forEach(btn => {
+      btn.onclick = () => { haptic(); runBackupNow_(btn); };
+    });
 
     view.querySelectorAll('[data-setting-key]').forEach(el => {
       el.onclick = () => {

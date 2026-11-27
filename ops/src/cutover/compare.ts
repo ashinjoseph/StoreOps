@@ -78,7 +78,7 @@ export const DATE_COLUMN: Readonly<Record<string, string | null>> = {
 };
 
 /** Numeric columns that hold a person's pay rate: compared, but never shown, never summed. */
-const RATE_COLUMNS = new Set(["staff.hourly_rate", "attendance.rate_at_attendance"]);
+export const RATE_COLUMNS = new Set(["staff.hourly_rate", "attendance.rate_at_attendance"]);
 const BLANK_IS_FALSE = new Set(["staff.active", "commission_rules.active"]);
 /** Columns the database has beyond the contract that this tool reads (by table). */
 export const DB_ONLY_READ: Readonly<Record<string, readonly string[]>> = { staff: ["pin_hash"], payments: ["voided_at"] };

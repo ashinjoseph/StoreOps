@@ -1632,3 +1632,56 @@ expired ticket answered differently, a read key starting an upload, the
 declared type trusted over the bytes, a set-aside original shown, another tool
 answering a file, a file name in the call record, tickets outside the daily
 cap, an `Origin` accepted on the upload route).
+
+### A nightly copy of every table, and a restore that has been tried (P4-06a)
+
+The Operations app's hosted database has no automatic backups, so the app now
+makes its own, and a tool proves one can be restored. The Sheet copy that the
+plan also wants (P4-06) is a later card; this one needs no Google credentials.
+
+- Every night at 03:00 Toronto time (the Worker is scheduled at 07:00 and
+  08:00 UTC and the job runs only the one that is 03:00 there, on the clock
+  change days too) the app writes every table to dated files in a new R2
+  bucket, `BACKUPS` (`storeops-backups`): newline-delimited JSON, money as
+  strings, instants in UTC, NULL as `null`, in parts of at most 5,000 rows or
+  about 2 MB, then `manifest.json` last (every file's table, part, rows, length
+  and SHA-256, the newest migration, per-table totals). A folder without a
+  manifest is an incomplete copy.
+- The whole copy is read in one read-only, repeatable-read transaction, so every
+  table is as of one instant, and it blocks nothing and writes one audit row.
+- Every table of the database is copied, found from the catalogue at run time,
+  except a short written list with a reason each: live sign-ins, failed sign-in
+  counts, one-time upload tickets, the record of assistant calls, the
+  migration tool's own bookkeeping. Hashes of PINs and of assistants' keys are
+  copied. Receipt originals are not (their own bucket); their records are.
+- The app can only add: no delete, no overwrite; a second copy the same day goes
+  to a new folder. Keeping 90 days is a lifecycle rule on the bucket, not code.
+- Settings (More, Settings) shows an admin one line: "Last copy: …, n tables,
+  rows" or a warning (never run, the last run failed, or the newest good copy is
+  more than 36 hours old), and "Make a copy now" (`rpcRunBackupNow`, admin only,
+  one at a time). One audit row per run: `backup.nightly` or `backup.failed`
+  (never a row's content). A failed copy never throws out of the scheduled
+  handler, so the Monday run is untouched.
+- `npm --prefix ops run restore:nightly -- <folder> [--dry-run]` loads a
+  downloaded copy into an empty, freshly migrated local database in one
+  transaction: it checks the manifest and every file's length and SHA-256 first,
+  refuses a database with rows or an older migration, sets the identity counters
+  to continue after the restored rows, reads every table back out and compares
+  row counts, money sums per month and a SHA-256 of each part, and ends with one
+  line. Nothing is kept unless every table matches.
+- `docs/components/backups.md`, `docs/guides/restore-a-nightly-copy.md` (for the
+  owner, with the Windows differences), ADR-0028, the overview's second bucket
+  and the nightly job.
+
+New: `ops/test/backup-*.test.ts` (the format as a table both ways; the round
+trip of the fictional fixture into a second database: every table equal value
+for value, the cutover reading equal, identity counters continuing, a PIN
+signing in; one consistent picture with a till close committed mid-copy; the
+table list; parts; the manifest; failures; the scheduled handler for every day
+of two years; who may press the button; the restore's refusals), and
+`tests/suites/ui-backups.js`. The code was written before the tests; each test
+was then proved by a deliberate mutation (the manifest first, a table per
+transaction, money as a float, a table left out silently, a restore into a
+database with rows, a file with a wrong SHA-256, identity counters not reset, a
+manager allowed to copy, a failed copy stopping the Monday job, a folder
+overwritten), every one seen failing.

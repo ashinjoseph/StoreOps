@@ -150,8 +150,9 @@ const warmOf = js => js.split('\n').map(warmOfLine).filter(Boolean);
     // Render it with what the server sends, hostile text included: nothing reaches the page unescaped,
     // a secret is listed by name and "set" only, and a default is shown as a default.
     const view = { innerHTML: '', querySelectorAll: () => [] };
-    const render = new Function('$', 'haptic', 'openSettingSheet',
-      [H.fnSource(js, 'esc'), H.fnSource(js, 'moreBack'), H.fnSource(js, 'settingShown_'), H.fnSource(js, 'renderSettingsTab')].join('\n') + '; return renderSettingsTab;')(() => view, () => {}, () => {});
+    // renderSettingsTab also draws the nightly copy's line (card P4-06a: backupLineHTML_, its note variable and the signed-in person).
+    const render = new Function('$', 'haptic', 'openSettingSheet', 'state',
+      'let backupNote_ = null;\n' + [H.fnSource(js, 'esc'), H.fnSource(js, 'moreBack'), H.fnSource(js, 'settingShown_'), H.fnSource(js, 'backupLineHTML_'), H.fnSource(js, 'renderSettingsTab')].join('\n') + '; return renderSettingsTab;')(() => view, () => {}, () => {}, { me: { role: 'admin' } });
     render({
       settings: [
         { key: 'vape_default_opening_float', value: null, default: '100', blankReads: '100', read: 'number', description: 'Vape <img src=x onerror=1> float', isDefault: true, group: 'Tills and cash' },

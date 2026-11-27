@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { connect, type Db } from "../src/db/client";
+import { BACKUP_SCHEDULES } from "../src/backup/nightly";
 import { CRON_SCHEDULES, RUN_HOUR, runWeeklyCommissions, type CronDeps } from "../src/cron";
 import worker from "../src/index";
 import { withTransaction } from "../src/db/tx";
@@ -88,7 +89,8 @@ describe("when it runs", () => {
     const m = /^\[triggers\]\s*\ncrons\s*=\s*\[([^\]]*)\]/m.exec(toml);
     expect(m).not.toBeNull();
     const listed = [...(m?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((x) => x[1]);
-    expect(listed).toEqual([...CRON_SCHEDULES]);
+    // The Monday ones first, then the nightly copy's two (src/backup/nightly.ts; card P4-06a).
+    expect(listed).toEqual([...CRON_SCHEDULES, ...BACKUP_SCHEDULES]);
     expect(CRON_SCHEDULES).toEqual(["0 13 * * 1", "0 14 * * 1"]);
     expect(RUN_HOUR).toBe(9);
   });

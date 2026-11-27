@@ -164,3 +164,4 @@ letting "default: No" stand for something the app does not do.
 - **Nov 2026 (card P4-13):** `commission_run_paused` in the *Commissions* group
   (also in `OPS_ONLY_KEYS`): switches the Monday commission run off and on
   ([commissions](commissions.md)). Every edit is in the [audit log](audit-log.md).
+- **Nov 2026 (card P4-06a):** one line at the top of the screen about the nightly copy, and "Make a copy now" for an admin (`rpcGetSettings` answers `lastBackup`; `rpcRunBackupNow`) ([backups](backups.md), [ADR-0028](../adr/0028-the-app-makes-its-own-nightly-copy.md)).

@@ -22,7 +22,10 @@
 import rpcContractJson from "../contracts/rpc.json";
 import rpcOpsJson from "../contracts/rpc-ops.json";
 import { runWeeklyCommissions } from "./cron";
+import { isBackupCron, runScheduledBackup } from "./backup/nightly";
+import { backupStorage, isBackupBucket } from "./backup/storage";
 import { connect } from "./db/client";
+import { connectionString, DbNotConfiguredError } from "./db/connection";
 import { handleMcp } from "./mcp/server";
 import { handlePublic, publicView } from "./public/pages";
 import { handleTicketUpload, handleUpload, handleView, UPLOAD_PATH, VIEW_CSP, VIEW_PREFIX, type ReceiptRouteDeps } from "./receipts/routes";
@@ -43,24 +46,12 @@ export interface Env {
   PIN_PEPPER?: string;
   /** Cloudflare R2: the bucket receipt originals are kept in (wrangler.toml [[r2_buckets]]). */
   RECEIPTS?: unknown;
+  /** Cloudflare R2: the bucket the nightly copy is written to (wrangler.toml [[r2_buckets]]; card P4-06a). */
+  BACKUPS?: unknown;
   [binding: string]: unknown;
 }
 
-/** No database is configured for this Worker. Never carries a connection string. */
-export class DbNotConfiguredError extends Error {
-  constructor() {
-    super("no database configured: bind HYPERDRIVE or set OPS_DB_APP_URL");
-    this.name = "DbNotConfiguredError";
-  }
-}
-
-export function connectionString(env: Env): string {
-  const hyperdrive = env.HYPERDRIVE;
-  if (hyperdrive !== undefined && typeof hyperdrive.connectionString === "string" && hyperdrive.connectionString !== "") return hyperdrive.connectionString;
-  const direct = env.OPS_DB_APP_URL;
-  if (typeof direct === "string" && direct !== "") return direct;
-  throw new DbNotConfiguredError();
-}
+export { connectionString, DbNotConfiguredError };
 
 /** How many times the contract was parsed and a router built (for tests: both stay put after the first call). */
 export const buildCounts = { contract: 0, router: 0 };
@@ -200,11 +191,27 @@ export default {
     return secure(await route(request, env), path, path.startsWith(VIEW_PREFIX) ? { csp: VIEW_CSP } : {});
   },
   /**
-   * The Monday commission cron (wrangler.toml [triggers]). It is scheduled for both UTC hours that can be
-   * 09:00 in Toronto; runWeeklyCommissions does nothing unless this one is. It throws when the run fails,
-   * so Cloudflare records the failure.
+   * The scheduled jobs (wrangler.toml [triggers]). Each is independent of the other.
+   *   The nightly copy's two crons (src/backup/nightly.ts): scheduled for both UTC hours that can be 03:00 in
+   *     Toronto; the job does nothing unless it is 03:00 there. A failed copy is audited and logged and is
+   *     never thrown, so it cannot touch the Monday run.
+   *   Every other firing is the Monday commission cron (src/cron.ts), exactly as before: both UTC hours that
+   *     can be 09:00 in Toronto; runWeeklyCommissions does nothing unless this one is. It throws when the run
+   *     fails, so Cloudflare records the failure.
    */
   async scheduled(controller: { scheduledTime: number; cron?: string }, env: Env, _ctx?: unknown): Promise<void> {
+    if (isBackupCron(controller.cron)) {
+      // The scheduled time plus the time that has passed since (performance.now only moves forward), so the audit row can say how long the copy took.
+      const t0 = performance.now();
+      await runScheduledBackup({
+        openDb: async () => connect(connectionString(env)),
+        storage: isBackupBucket(env.BACKUPS) ? backupStorage(env.BACKUPS) : null,
+        now: () => new Date(controller.scheduledTime + (performance.now() - t0)),
+        log: (entry) => console.error(entry),
+        actorId: "SYSTEM",
+      }).catch((err: unknown) => console.error({ event: "backup.cron.error", errorClass: err instanceof Error ? err.name : typeof err }));
+      return;
+    }
     await runWeeklyCommissions({
       openDb: async () => connect(connectionString(env)),
       now: () => new Date(controller.scheduledTime),

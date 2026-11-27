@@ -372,8 +372,8 @@ H.uiScripts().forEach(([label, js]) => {
 
   // ── Settings: the same warning, above the Till group ──────
   {
-    const lifted2 = ['esc', 'settingShown_', 'tillWarnHTML_', 'renderSettingsTab'].map(n => H.fnSource(js, n)).join('\n');
-    const w = { document: {}, Date, Math, Number, String, JSON, console, moreBack: () => '', haptic() {}, $: null };
+    const lifted2 = 'let backupNote_ = null;\n' + ['esc', 'settingShown_', 'tillWarnHTML_', 'backupLineHTML_', 'renderSettingsTab'].map(n => H.fnSource(js, n)).join('\n');
+    const w = { document: {}, Date, Math, Number, String, JSON, console, moreBack: () => '', haptic() {}, $: null, state: { me: { role: 'admin' } } };
     let html = '';
     w.$ = () => ({ get innerHTML() { return html; }, set innerHTML(h) { html = h; }, querySelectorAll: () => [] });
     vm.createContext(w);

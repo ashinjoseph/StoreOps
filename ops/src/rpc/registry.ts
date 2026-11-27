@@ -5,6 +5,7 @@ import { validateSession } from "../auth/sessions";
 import type { Session } from "../auth/types";
 import type { Tx } from "../db/tx";
 import { loadConfig } from "../lib/config";
+import { rpcRunBackupNow } from "./handlers/backup";
 import { rpcGetAuditLog } from "./handlers/audit-view";
 import { rpcGetCommissionRunPaused } from "./handlers/commission-pause";
 import { rpcCreateAssistantKey,rpcGetAssistantKeys, rpcRevokeAssistantKey } from "./handlers/assistants";
@@ -79,6 +80,7 @@ export const handlers: RpcHandlers = {
   rpcReconcilePastDay,
   rpcGetSettings,
   rpcUpdateSetting,
+  rpcRunBackupNow,
   rpcGetStaffAdmin,
   rpcCreateStaff,
   rpcUpdateStaff,

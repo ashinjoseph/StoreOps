@@ -219,6 +219,8 @@ flowchart LR
     end
     pg[("Postgres<br/>(Hyperdrive)")]
     r2[("R2 bucket RECEIPTS<br/>receipt originals")]
+    r2b[("R2 bucket BACKUPS<br/>the nightly copy, 90 days")]
+    cron["Cron 03:00 Toronto<br/>(07:00 and 08:00 UTC)"]
     page --> rpc
     page --> files
     asst --> mcp
@@ -232,6 +234,9 @@ flowchart LR
     ticket --> pg
     ticket --> r2
     pages --> pg
+    cron --> pg
+    cron --> r2b
+    rpc -. "Make a copy now" .-> r2b
 ```
 
 - **`/rpc/*`**: every screen's calls, checked against the contract
@@ -256,6 +261,20 @@ flowchart LR
   [assistants](../components/assistants.md)).
 - **The public pages**, as before: no session, the data inlined
   ([ADR-0003](../adr/0003-public-pages-inline-their-data.md)).
+
+Two scheduled jobs run beside them, each told by its cron expression and each
+independent of the other: the **Monday commission run** (09:00 Toronto, as
+before) and the **nightly copy** (03:00 Toronto, both UTC hours that can be
+03:00 there; the job does nothing unless it is). The copy reads every table in
+one read-only, repeatable-read transaction and writes dated files plus a
+manifest to a **second R2 bucket, `BACKUPS`**, apart from the receipts bucket so
+that the receipts' permanent retention and the copies' 90 days never meet; the
+app can only add to it, and a lifecycle rule on the bucket does the pruning. An
+admin can also make a copy at once (`rpcRunBackupNow`, "Make a copy now" on
+Settings). `npm run restore:nightly` loads a copy into an empty local database
+and checks every table
+([ADR-0028](../adr/0028-the-app-makes-its-own-nightly-copy.md);
+[backups](../components/backups.md)).
 
 ## Cross-cutting rules
 

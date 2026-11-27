@@ -64,7 +64,7 @@ hand one out.
 | P4-03 | Reconcile report: Sheet against database | T2 | P4-02 | money | done (not yet run on real data) |
 | P4-04 | Dry run on a copy of production | T3 + owner | P3-12, P4-03 | money | todo |
 | P4-05 | Cutover runbook, then the switch | T3 + owner | P4-04, P4-09, P4-10 | money | todo |
-| P4-06a | A nightly copy of every table to file storage, and a restore that has been tried | T2 | | money | in progress |
+| P4-06a | A nightly copy of every table to file storage, and a restore that has been tried | T2 | | money | done (the hosted setup has six things to do; questions for the owner, in the card) |
 | P4-06b | The same tables as a read-only Google Sheet, nightly | T2 | P2-10 | | todo (needs Google credentials and the hosted setup) |
 | P4-07 | Retire the Apps Script deploy | T1 | P4-05 + 30 days | | todo |
 | P4-08 | The new app's own RPCs and screens: where they are listed, how they are hidden in Apps Script | T1 | P3-12 | security | done |
@@ -781,6 +781,38 @@ plan has no automatic backups, so the R2 copy is the backup.
 **Done when:** the Sheet's totals match P4-03's database side, and a restore
 from last night's R2 files into an empty local Postgres gives the same
 totals.
+
+**P4-06a is done.** Every night at 03:00 Toronto time (and when an admin
+presses "Make a copy now" on Settings) the app writes every table to dated
+files in its own storage bucket: one consistent picture, read in a single
+read-only transaction; one line per row with every value exact (money as
+text, never rounded); a manifest written last, with each file's length and
+fingerprint and each table's row count and money totals. The app never
+deletes or overwrites a copy; keeping 90 days is a rule on the bucket.
+Left out, each for a written reason: live sign-ins, wrong-PIN counts,
+one-time upload tickets, the log of assistant calls. PIN hashes are
+included, so people can sign in after a restore. The Settings screen shows
+admins "Last copy: when, tables, rows", or a warning when the newest good
+copy is more than 36 hours old or the last run failed. A failed copy never
+stops the Monday commission run.
+The restore tool (`npm --prefix ops run restore:nightly -- <folder>`,
+[the guide](../guides/restore-a-nightly-copy.md)) loads a downloaded copy
+into an empty database on your own computer, checks every file first, and
+then compares every table with the copy; it keeps the result only if all of
+it matches. Tried: a copy of the test data restored to "every table matches:
+22 tables, 2269 rows", and a person signed in to the restored app.
+[ADR-0028](../adr/0028-the-app-makes-its-own-nightly-copy.md),
+[backups](../components/backups.md).
+**The copy does not hold** the receipt files (their records, yes: the files
+stay in their own locked bucket) nor any of the keys kept by Cloudflare. A
+full recovery needs those too, above all the same PIN secret: without it
+nobody's PIN works.
+**The hosted setup must:** create the bucket; add the 90-day rule; keep it
+private; check that the database connection can hold one read transaction
+for the length of a copy; check the scheduled job's time limits; and run one
+copy and restore it before the switch.
+For the owner: is 03:00 the right hour; is 36 hours the right warning; and
+is the readable Google Sheet copy (P4-06b) still wanted as a second one?
 
 ### P4-07 · Retire the Apps Script deploy · T1
 Thirty days after the switch. Remove the two deploy workflows; mark `src/`

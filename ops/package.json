@@ -20,6 +20,7 @@
     "export:sheet": "node --experimental-strip-types tools/export-sheet.ts",
     "import:sheet": "node --import ./tools/ts-resolve.mjs --experimental-strip-types tools/import.ts",
     "reconcile:import": "node --import ./tools/ts-resolve.mjs --experimental-strip-types tools/reconcile-import.ts",
+    "restore:nightly": "node --env-file-if-exists=.env --import ./tools/ts-resolve.mjs --experimental-strip-types tools/restore-nightly.ts",
     "db:up": "docker compose --env-file .env -f db/compose.yml up -d --wait",
     "db:down": "docker compose --env-file .env -f db/compose.yml down",
     "db:reset": "docker compose --env-file .env -f db/compose.yml down -v && npm run db:up && npm run db:migrate && npm run db:seed",
