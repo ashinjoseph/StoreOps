@@ -729,6 +729,15 @@ that holds money loaded whole except the rows below.
   are removed from the Sheet first. Accepting by count alone would also
   accept a different 11, so the runbook compares that day's `rejects.csv`
   with this list (tab and row) before the count is given.
+  **Result (Nov 27): the import committed and the check found no
+  unexplained difference.** All but 15 rows loaded (the 11 test rows left
+  out, and 4 settings rows left out on purpose). Every month's sums match
+  to the cent in every table; the whole audit log loaded; every person's
+  PIN was hashed. The local rehearsal part of this card is done. Still to
+  do: the day of use beside the live app, and the hosted rehearsal.
+  The monthly sums also showed two oddities in the Sheet's own data (the
+  same on both sides, so not import differences). They were passed to the
+  owner in conversation; no figures are recorded here.
 - Also seen: 5 formula cells in `till_sessions` (someone typed formulas
   there; the export keeps their shown values); 2 tills open at download
   time, holding 0 in their closing figures; 1 audit id re-keyed.

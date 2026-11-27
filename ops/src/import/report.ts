@@ -26,7 +26,7 @@ const plainName = (s: string): string => (/^[A-Za-z0-9_ .-]{1,60}$/.test(s) ? s 
 const NOTES = [
   "A blank cell is NULL, never 0 or an empty string (ADR-0004); a zero stays 0.",
   "Voided payments do not exist in the Sheet (the old app deleted a payment when it was undone): payments.voided_at, voided_by and void_reason load as NULL.",
-  "Tabs were inserted top to bottom, so the seq columns (audit_log, payments, sales, cash_handovers, commission_runs) number the rows in the Sheet's own order. A dry run, or a run that did not commit, still uses up sequence numbers: the real numbers may start above 1. Only their order matters.",
+  "Tabs were inserted top to bottom, so the seq columns (audit_log, payments, sales, cash_handovers, commission_runs, validation_results) number the rows in the Sheet's own order. A dry run, or a run that did not commit, still uses up sequence numbers: the real numbers may start above 1. Only their order matters.",
   "Every business date is the Toronto day of the cell (a handover's handed_on and a commission run's week_end keep only that day).",
   "Nothing was deleted, truncated or updated by this tool: it only inserts, into tables that were empty.",
 ];
