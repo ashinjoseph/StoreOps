@@ -28,6 +28,8 @@ const t = H.suite('Reconcile a past day again — Operations app, the roles that
 // renderReconPanel exactly as it was before this card (commit 196f6f4), frozen: inside Apps Script
 // the screen must still produce what this produced.
 const ORIGINAL_RENDER = fs.readFileSync(path.join(__dirname, '_lib', 'recon-panel-before-p412c.txt'), 'utf8');
+// reconGroupDetail_ exactly as it was before card P4-12d (commit ac249bb), frozen the same way.
+const ORIGINAL_DETAIL = fs.readFileSync(path.join(__dirname, '_lib', 'recon-group-detail-before-p412d.txt'), 'utf8');
 
 const NEEDED = ['esc', 'money', 'signedMoney_', 'todayMidnight', 'isoDate', 'fmtWin_', 'pairVar_', 'reconGroupDetail_', 'reconRow_',
   'renderReconPanel', 'renderWhatsAppCheck_', 'isOpsApp_', 'reconPastOffered_', 'reconDays_', 'reconDayNote_', 'torontoWall_', 'torontoToday_',
@@ -91,6 +93,15 @@ H.uiScripts().forEach(([label, js]) => {
     return w.panel.innerHTML;
   }
 
+  // The frozen panel with the frozen detail function too (the panel calls it by name).
+  function originalRenderWithOldDetail(rows, role) {
+    const w = world({ ops: false, role });
+    vm.runInContext(ORIGINAL_DETAIL, w);
+    vm.runInContext(ORIGINAL_RENDER.replace('function renderReconPanel(', 'function originalRenderReconPanel('), w);
+    vm.runInContext('originalRenderReconPanel', w)(rows);
+    return w.panel.innerHTML;
+  }
+
   const TODAY = vm.runInContext('isoDate(todayMidnight())', world({}));
   const PAST = '2026-11-20';
   const RERUN_AT = '2026-11-27T20:00:00.000Z';   // 15:00 Toronto on the 27th
@@ -126,6 +137,29 @@ H.uiScripts().forEach(([label, js]) => {
       const now = html(world({ ops: false, role }), SETS[name]);
       t.ok('Apps Script, ' + (role || 'no role') + ', ' + name + ': the same HTML as before this card', before === now && before.length > 100);
     }));
+    // The data sets above hold no unmeasured till on today's panel, so for them the comparison is unchanged and
+    // still byte-identical (nothing was weakened). P4-12d changed ONE thing on purpose: today's "Total sales" line of a till whose cards were not measured
+    // (it used to set the cashier's card total against "cash sales + nothing" and print it as a red difference).
+    // Those data sets are kept apart from SETS above; here the frozen renderer AND frozen detail function's output, with
+    // exactly that line rewritten, must equal what the page now renders, so nothing else on the screen moved.
+    const TODAY_UNMEASURED = {
+      'today, one card total (cstore)': [row({ businessDate: TODAY, companies: 'cstore', cloverCard: null, cardVariance: null, cashierCredit: null, cashierDebit: null, cashierCard: 1240, cashSales: 600 })],
+      'today, split cards, Clover unreachable, with a measured till': [row({ businessDate: TODAY, status: 'clover_unavailable', cloverCard: null, cloverCredit: null, cloverDebit: null }), row({ businessDate: TODAY, companies: 'cstore' }), row()],
+    };
+    const TOTAL_LINE = /<div class="recon-line"><span>Total sales<\/span><span>(\$[\d.]+) \/ \$[\d.]+ <small class="recon-diff">\([+-]\$[\d.]+\)<\/small><\/span><\/div>/g;
+    Object.keys(TODAY_UNMEASURED).forEach(name => {
+      const rows = TODAY_UNMEASURED[name];
+      const before = originalRenderWithOldDetail(rows, 'admin');
+      const now = html(world({ ops: false, role: 'admin' }), rows);
+      const unmeasuredBefore = rows.filter(r => r.cloverCard == null && r.businessDate === TODAY).length;
+      const rewritten = before.replace(TOTAL_LINE, (m, reported) => '<div class="recon-line"><span>Total sales</span><span>' + reported + ' <small>reported, not verified</small></span></div>');
+      t.ok('Apps Script, ' + name + ': differs from the frozen screen (the fault is gone)', before !== now);
+      // The clover_unavailable till already read "reported"; only the words after it change.
+      const expected = rewritten.split('<small>reported</small>').join('<small>reported, not verified</small>');
+      t.ok('Apps Script, ' + name + ': the ONLY differences are the Total sales lines of the unmeasured tills (' + unmeasuredBefore + ')', expected === now);
+      const gone = (before.match(/class="recon-diff">\([+-]\$/g) || []).length - (now.match(/class="recon-diff">\([+-]\$/g) || []).length;
+      t.ok('Apps Script, ' + name + ': exactly one red difference per unmeasured till is gone', gone === rows.filter(r => r.cloverCard == null && r.businessDate === TODAY && r.status !== 'clover_unavailable').length);
+    });
     const apps = html(world({ ops: false, role: 'admin' }), SETS['a past day with two sets of results (a re-run)']);
     t.ok('both sets are still listed, with no control and no note', trows(apps) === 2 && !/reconPastBtn|data-rerun|earlier result|Run again/.test(apps));
     const w = world({ ops: false, role: 'admin' });

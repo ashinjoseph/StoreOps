@@ -7745,7 +7745,7 @@
     // till with no Clover by design reports status OK, so a status test would
     // fall through and render "Credit $0.00 / $1,240.00" in red — the same
     // wrong number, just relocated.
-    const cardsVerified = r.cloverCard != null;
+    const cardsVerified = r.cloverCard != null && r.cloverCard !== '';
     const cloverUnavailable = !cardsVerified && r.status === 'clover_unavailable';
     const cardSplit = r.cashierCredit != null || r.cashierDebit != null;
     const recorded = Math.round((r.cashCounted - r.cashVariance) * 100) / 100;   // till-recorded cash
@@ -7757,8 +7757,9 @@
         '<span class="recon-badge ' + cls + '">' + esc(r.status) + '</span></div>';
 
     // Total sales — reported vs expected (cash side cancels, so Δ = card Δ)
-    if (cloverUnavailable) {
-      h += '<div class="recon-line"><span>Total sales</span><span>' + money(reported) + ' <small>reported</small></span></div>';
+    // No measured card figure (blank is not zero): the total is the cashier's own, said in words.
+    if (!cardsVerified) {
+      h += '<div class="recon-line"><span>Total sales</span><span>' + money(reported) + ' <small>reported, not verified</small></span></div>';
     } else {
       const expected = Math.round(((r.cashSales || 0) + r.cloverCard) * 100) / 100;
       const tdiff = Math.round((reported - expected) * 100) / 100;

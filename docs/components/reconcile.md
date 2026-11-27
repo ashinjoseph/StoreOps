@@ -18,7 +18,11 @@ for cards:
   compares credit, debit and total.
 - **A till with no Clover** (cstore on ePOS) shows its card total with **not
   verified**. It doesn't show $0.00 measured, and it doesn't show a red
-  shortfall the size of the day's card takings.
+  shortfall the size of the day's card takings. The same holds for **today's
+  panel**: its *Total sales* line reads "$3743.68 reported, not verified", with
+  no "/ expected" and no difference, red or green, for any till whose card
+  total was not measured (no Clover, Clover off or not configured, or Clover
+  unreachable). A measured zero is still a number and still compared.
 
 **Reconcile today** reruns the check by hand, even if tills are still open.
 
@@ -152,12 +156,19 @@ with an open till.
 |---|---|
 | `reconcile` | not-configured vs outage, no fictional variance, a real shortfall still surfaces, blank round-trips as null through the sheet and the public report; with Clover off the automatic reconcile still sends the close message and raises no outage |
 | `ui-recon` | the history cell: "not verified" for a till with no Clover, red only for a real difference, a measured zero is a match |
+| `ui-recon-unverified` | today's panel: for each unmeasured case (one card total, split with Clover off, unreachable, blank as `null`/`undefined`/`''`) the total reads "reported, not verified", no difference, no red, the cashier's figure kept; measured tills (matching, not matching, zero) unchanged |
 | `parity` | the app and the public page agree on every figure and sign |
 | `ops/test/reconcile-past.test.ts` | a past day reconciled again stores what the real run on that day stored (processor on and off, one till and two); after a till correction the new rows carry the corrected verdict and the old rows are untouched; each rule and message; the processor's window (clock-change days too) and its failures recorded as not verified; no message and no notifier call; nothing else moves; the audit row; who may call through the real router; two re-runs at once; a correction in flight; `rpcReconcileDay` unchanged (a golden from before the split) |
 | `ui-reconcile-past` | the control only in the Operations app and only for the screen's roles; the Apps Script screen the same HTML as before; a day with several sets shows the newest and says how many it replaced; the form and its answer; the built page carries it |
 
 ## History
 
+- **Nov 2026 (P4-12d):** today's panel showed an unmeasured till's *Total sales* as
+  a red difference against zero ("$3743.68 / $1397.84 (+$2345.84)": the cash
+  sales plus nothing as the expected figure). It now reads "reported, not
+  verified", as the cards line and the history table already did. The page is
+  shared by the Operations app and Apps Script, so both are fixed. No server
+  change.
 - **Nov 2026 (P4-12c):** Operations app: **Run again for a past day**
   (`rpcReconcilePastDay`) reconciles every till of a past day again from the
   current figures, keeps the earlier results, asks Clover for that day's window

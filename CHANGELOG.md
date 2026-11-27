@@ -1557,3 +1557,18 @@ mutations (matching on an equal name by itself, accepting the nil uuid, throwing
 when the till is down, one till login for two people, warning at 15 days, creating
 a person from a till person, a third caller of the client, a pay rate in the
 answer, a manager allowed to match).
+
+### Reconcile: unmeasured cards read as "not verified", not as a difference (P4-12d)
+
+- On the Reconcile screen's panel for today, a till whose card takings were not
+  measured against the card processor (the cstore till's single card total, the
+  processor off or not configured, or unreachable) showed *Total sales* as a red
+  difference against zero, for example "$3743.68 / $1397.84 (+$2345.84)". It now
+  reads "$3743.68 reported, not verified", with no difference. Measured tills,
+  including a measured zero, are unchanged, and so is the history table (it
+  already said "not verified"). The page is shared, so the live app and the
+  Operations app are both fixed; the server sent the right figures all along.
+
+New: `ui-recon-unverified`, seen failing against the old page (46 assertions);
+`ui-reconcile-past` now also freezes the old detail function and shows the
+Apps Script screen differs from it only in those lines.

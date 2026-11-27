@@ -74,7 +74,7 @@ hand one out.
 | P4-12a | Correct a closed till | T3 | P4-08 | money | done (three things for the owner, in the card) |
 | P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | done (notes in the card) |
 | P4-12c | Reconcile a past day again | T2 | P4-08 | money | done (three things for the owner, in the card) |
-| P4-12d | The Reconcile screen shows unmeasured cards as "not verified", not as a difference | T1 | | money | in progress |
+| P4-12d | The Reconcile screen shows unmeasured cards as "not verified", not as a difference | T1 | | money | done (also fixes the live app's page once it is deployed) |
 | P4-13 | Audit log on a screen; a setting to pause the Monday run | T2 | P4-09 | security | done (notes in the card) |
 | P4-14 | Backups, and a restore that has been tried | T2 + owner | P2-10 | money | todo (planned) |
 | P5-01 | Stores and staff assignments | T2 | P4-05 | security | todo |
@@ -930,6 +930,17 @@ open, and for a day with no closed till. Three things for the owner:
    zero, in red. It should say "not verified".
 Also open: how far back the card processor answers for an old day is not
 known; when it refuses, the cards are recorded as not verified.
+
+**P4-12d is done:** the fault was one line of today's panel on the Reconcile
+screen. For a till whose cards were not measured (the cstore's single card
+total, or the card processor off or not configured), "Total sales" compared
+the day's total with cash alone and drew the whole card total as a red
+difference. It now reads "Total sales $X reported, not verified". A measured
+zero is still compared. The history table and the server were already
+right. The page is shared with the current app, so the same fix reaches the
+live app when this branch is merged to `main`; until then the live Reconcile
+screen still shows the red figure for the cstore till. The new tests were
+seen failing on the old page first.
 
 **P4-12b is done:** on the Sales screen, for a day before today, an admin
 has "Enter a shift that was not put in": who, which till, start and end,
