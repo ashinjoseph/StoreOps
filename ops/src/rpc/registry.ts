@@ -6,6 +6,7 @@ import type { Session } from "../auth/types";
 import type { Tx } from "../db/tx";
 import { loadConfig } from "../lib/config";
 import { rpcAdjustAttendanceHours, rpcCancelScheduledShift, rpcEditAttendanceTimes, rpcGetWeekSchedule, rpcScheduleShift } from "./handlers/attendance";
+import { rpcCorrectAttendance, rpcGetAttendanceDay } from "./handlers/attendance-corrections";
 import { rpcGetMe, rpcLogin, rpcLogout } from "./handlers/auth";
 import { rpcApproveBonus, rpcCancelBonus, rpcCreateBonus, rpcGetProposedBonuses } from "./handlers/bonuses";
 import { rpcGetBootstrap, rpcGetMyShiftState } from "./handlers/bootstrap";
@@ -33,6 +34,8 @@ export const handlers: RpcHandlers = {
   rpcCancelScheduledShift,
   rpcAdjustAttendanceHours,
   rpcEditAttendanceTimes,
+  rpcGetAttendanceDay,
+  rpcCorrectAttendance,
   rpcCheckWhatsApp,
   rpcGetProposedBonuses,
   rpcApproveBonus,

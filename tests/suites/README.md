@@ -54,6 +54,7 @@ shared globals, which hid at least one ordering-dependent pass.
 | `ui-picker` | chips show a whole category, needs-detail rows listed but not addable |
 | `ui-products` | no cost is "no cost recorded", not a 100% margin; margin sort |
 | `ui-recon` | reconcile history shows "not verified", never a $0 measurement |
+| `ui-schedule-corrections` | "Correct this day" only for an admin in the Operations app, today or earlier; Toronto instants across both clock changes; the Apps Script cell sheet unchanged |
 | `wiring` | every close-sheet field, from the browser's payload to the ledger |
 
 One suite from the lost set is **not** rebuilt: `realdata`, which read the live

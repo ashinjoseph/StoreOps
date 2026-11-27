@@ -68,7 +68,7 @@ hand one out.
 | P4-07 | Retire the Apps Script deploy | T1 | P4-05 + 30 days | | todo |
 | P4-08 | The new app's own RPCs and screens: where they are listed, how they are hidden in Apps Script | T1 | P3-12 | security | done |
 | P4-09 | Settings screen: an admin edits the settings | T2 | P4-08 | security | done (four things for the owner, in the card) |
-| P4-10 | Schedule corrections after the fact | T3 | P4-08 | money | in progress |
+| P4-10 | Schedule corrections after the fact | T3 | P4-08 | money | done (three questions for the owner, in the card) |
 | P4-11 | Staff screen: add, change, deactivate, PINs | T2 | P4-08 | security | todo (planned; waiting for the owner's go-ahead) |
 | P4-12 | Correct a closed till, enter a missed shift, reconcile a past day | T3 | P4-08 | money | todo (planned) |
 | P4-13 | Audit log on a screen; a setting to pause the Monday run | T1 | P4-09 | security | todo (planned) |
@@ -812,6 +812,21 @@ needs come first, both for the admin role only, both before the switch
   The owner's two cases: someone left early and another stayed (two
   corrections, one per person); someone did not show and a stand-in worked
   (cancel one day, add the other).
+  **Done.** `rpcGetAttendanceDay` and `rpcCorrectAttendance`, admin only,
+  from the Schedule screen: tap a day, then "Correct this day" or "Add a
+  day worked". The sheet shows what is recorded, the tills opened that day
+  and what the change does to the pay owed, before saving. A correction
+  and a payment for the same person wait for each other, so a day cannot
+  be paid at its old hours while it is being corrected. Both of the owner's
+  cases were replayed in a browser on the merged build. What it does not
+  do: move a till session filed under the wrong person (P4-12), or record a
+  scheduled shift that runs past midnight (leave the schedule blank; the
+  actual times do cross midnight). Three questions for the owner:
+  1. A day whose stored rate is 0 (the app writes 0 for "no rate yet" when
+     a shift is scheduled) takes the person's current rate when corrected
+     to worked. A stored rate above 0 is kept. Right?
+  2. A day corrected to "did not work" keeps the rate it had. Right?
+  3. Notes on a day are capped at 2,000 characters, newest kept. Enough?
 
 ### P4-11 to P4-14 · the rest of what the Sheet used to do
 Planned Nov 27 in [After the Sheet](2026-11-after-the-sheet.md), part 1: the

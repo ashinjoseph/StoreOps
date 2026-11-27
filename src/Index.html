@@ -2711,6 +2711,13 @@
         '<div style="font-size:11px;color:#6a6e79">Times like 09:00, 17:30. 24-hour format.</div>';
     }
 
+    // Corrections after the fact: an admin, in the Operations app only (ADR-0023).
+    const offers = scheduleCellOffers_(state.me.role, isOpsApp_(), cell ? cell.status : null, date, torontoToday_());
+    if (offers.correct || offers.addWorked) {
+      bodyHTML += '<button type="button" class="btn-primary" id="correctDayBtn" style="width:100%;margin-top:14px;padding:10px;font-size:13px;background:#6a3fb5">' +
+        (offers.correct ? 'Correct this day' : 'Add a day worked') + '</button>';
+    }
+
     let actionsHTML;
     if (isPastWork) {
       actionsHTML = '<button class="sheet-cancel" onclick="closeSheet()">Close</button>';
@@ -2730,6 +2737,9 @@
       subtitle: esc(dateLabel),
       bodyHTML, actionsHTML,
     });
+
+    const correctBtn = $('correctDayBtn');
+    if (correctBtn) correctBtn.onclick = () => { haptic(); openDayCorrection_(staffId, date); };
 
     const saveBtn = $('saveSchedBtn');
     if (saveBtn) saveBtn.onclick = async () => {
@@ -2783,6 +2793,218 @@
         } catch (e) { toast(e.message, 'error'); b.disabled = false; }
       };
     });
+  }
+
+  // ── Schedule corrections after the fact (Operations app only, admin) ──
+  // rpcGetAttendanceDay / rpcCorrectAttendance exist only in the Operations app
+  // (ADR-0023), so nothing here is offered inside Apps Script.
+
+  // What a tapped cell offers besides the schedule controls. Admin in the
+  // Operations app only; today or a past day (Toronto) only.
+  function scheduleCellOffers_(role, opsApp, status, date, today) {
+    const none = { correct: false, addWorked: false };
+    if (!opsApp || role !== 'admin') return none;
+    if (!date || !today || date > today) return none;
+    return status ? { correct: true, addWorked: false } : { correct: false, addWorked: true };
+  }
+
+  // Toronto's wall clock for an instant: { date: 'YYYY-MM-DD', time: 'HH:MM', offsetMin }.
+  function torontoWall_(when) {
+    const d = when instanceof Date ? when : new Date(when);
+    if (isNaN(d)) return null;
+    const p = {};
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Toronto', hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).formatToParts(d).forEach(x => { p[x.type] = x.value; });
+    const asUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
+    return {
+      date: p.year + '-' + p.month + '-' + p.day,
+      time: p.hour + ':' + p.minute,
+      offsetMin: Math.round((asUtc - Math.floor(d.getTime() / 1000) * 1000) / 60000),
+    };
+  }
+  function torontoToday_() { return torontoWall_(new Date()).date; }
+
+  // The ISO instant at which Toronto's clock reads `hhmm` on `dateStr`, with
+  // Toronto's offset for that moment (never the browser's own zone):
+  // torontoInstant_('2026-07-01', '09:00') → '2026-07-01T09:00:00-04:00'.
+  // A repeated hour (November) takes the first; a skipped one (March) is read
+  // with the offset from before the jump, as the server reads wall times.
+  function torontoInstant_(dateStr, hhmm) {
+    const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr || '');
+    const tm = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm || '');
+    if (!dm || !tm) return null;
+    const wall = Date.UTC(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), Number(tm[1]), Number(tm[2]));
+    const offAt = ms => torontoWall_(new Date(ms)).offsetMin;
+    const before = offAt(wall - 86400000);
+    const after = offAt(wall + 86400000);
+    let off = null;
+    [before, after].forEach(o => {
+      const t = wall - o * 60000;
+      if (offAt(t) === o && (off === null || t < wall - off * 60000)) off = o;
+    });
+    if (off === null) off = before;
+    const a = Math.abs(off);
+    const p2 = n => (n < 10 ? '0' : '') + n;
+    return dateStr + 'T' + hhmm + ':00' + (off < 0 ? '-' : '+') + p2(Math.floor(a / 60)) + ':' + p2(a % 60);
+  }
+
+  // A datetime-local value ('YYYY-MM-DDTHH:MM', Toronto) for an ISO instant.
+  function torontoLocalValue_(iso) {
+    const w = iso ? torontoWall_(iso) : null;
+    return w ? w.date + 'T' + w.time : '';
+  }
+  // The ISO instant for a datetime-local value read as Toronto time.
+  function instantFromLocal_(v) {
+    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v || '') ? torontoInstant_(v.slice(0, 10), v.slice(11, 16)) : null;
+  }
+
+  // The actual times the sheet starts from: the record, else the day's tills,
+  // else the scheduled times on that date.
+  function correctionPrefill_(d) {
+    const r = d.record;
+    if (r && r.actualStart && r.actualEnd) return { start: torontoLocalValue_(r.actualStart), end: torontoLocalValue_(r.actualEnd) };
+    const starts = (d.tillSessions || []).map(s => s.startTime).filter(Boolean).sort();
+    const ends = (d.tillSessions || []).map(s => s.endTime).filter(Boolean).sort();
+    if (starts.length && ends.length) return { start: torontoLocalValue_(starts[0]), end: torontoLocalValue_(ends[ends.length - 1]) };
+    if (r && r.scheduledStart && r.scheduledEnd) return { start: d.date + 'T' + r.scheduledStart, end: d.date + 'T' + r.scheduledEnd };
+    return { start: '', end: '' };
+  }
+
+  // What one day is worth, in words: a blank is never shown as $0.00.
+  function owedText_(v, rec) {
+    if (v !== null && v !== undefined) return money(v);
+    if (!rec) return 'nothing (no day recorded)';
+    if (rec.status === 'cancelled') return 'nothing (did not work)';
+    return 'nothing (no hours or no rate recorded)';
+  }
+
+  function dayCorrectionHTML_(d) {
+    const r = d.record;
+    const fmtT = iso => { const w = iso ? torontoWall_(iso) : null; return w ? (w.date === d.date ? w.time : w.date + ' ' + w.time) : '—'; };
+    let html = '<div style="font-size:13px;color:#4a4e59;line-height:1.6">';
+    if (r) {
+      html += '<div>Recorded now: <strong>' + esc(r.status.replace('_', ' ')) + '</strong></div>' +
+        '<div>Scheduled: ' + (r.scheduledStart ? esc(r.scheduledStart) + '–' + esc(r.scheduledEnd) : 'not scheduled') + '</div>' +
+        '<div>Actual: ' + esc(fmtT(r.actualStart)) + ' → ' + esc(fmtT(r.actualEnd)) + '</div>' +
+        '<div>Hours: ' + (r.hoursWorked === null ? 'none recorded' : esc(Number(r.hoursWorked).toFixed(2)) + 'h') +
+        ' · Rate: ' + (r.rateAtAttendance ? money(r.rateAtAttendance) + '/h' : 'none recorded') + '</div>';
+    } else {
+      html += '<div>Nothing recorded for this day.</div>';
+    }
+    html += '<div>Current rate: ' + (d.currentRate === null ? 'no rate recorded' : money(d.currentRate) + '/h') + '</div>';
+    html += '<div>Paid against this day: <strong>' + money(d.paid) + '</strong></div>';
+    if (d.tillSessions && d.tillSessions.length) {
+      html += '<div style="margin-top:6px">Tills that day:</div>';
+      d.tillSessions.forEach(s => {
+        html += '<div>• ' + esc(s.company) + ': ' + esc(fmtT(s.startTime)) + ' → ' + esc(s.endTime ? fmtT(s.endTime) : 'still open') + '</div>';
+      });
+    } else {
+      html += '<div>No till was opened that day.</div>';
+    }
+    html += '</div>';
+    if (!d.canCorrect) {
+      return html + '<div id="corrBlocked" style="margin-top:14px;padding:12px;background:#fef3c7;border-radius:9px;font-size:12px;color:#92611a">' + esc(d.blockedBy) + '</div>';
+    }
+    const pre = correctionPrefill_(d);
+    const status = r && r.status === 'cancelled' ? 'cancelled' : 'worked';
+    html +=
+      '<div class="sheet-field" style="margin-top:14px"><label>What happened</label>' +
+        '<select id="corrStatus">' +
+          '<option value="worked"' + (status === 'worked' ? ' selected' : '') + '>Worked</option>' +
+          '<option value="cancelled"' + (status === 'cancelled' ? ' selected' : '') + '>Did not work (cancelled)</option>' +
+        '</select></div>' +
+      '<div class="sheet-row">' +
+        '<div class="sheet-field"><label>Scheduled from</label><input type="time" id="corrSchedStart" value="' + esc(r && r.scheduledStart ? r.scheduledStart : '') + '"></div>' +
+        '<div class="sheet-field"><label>Scheduled to</label><input type="time" id="corrSchedEnd" value="' + esc(r && r.scheduledEnd ? r.scheduledEnd : '') + '"></div>' +
+      '</div>' +
+      '<div id="corrActual">' +
+        '<div class="sheet-field"><label>Actual start (Toronto time)</label><input type="datetime-local" id="corrStart" value="' + esc(pre.start) + '"></div>' +
+        '<div class="sheet-field"><label>Actual end (Toronto time)</label><input type="datetime-local" id="corrEnd" value="' + esc(pre.end) + '"></div>' +
+        '<div id="corrHours" style="font-size:12px;color:#4a4e59;margin-bottom:12px"></div>' +
+      '</div>' +
+      '<div class="sheet-field"><label>Reason (required)</label><input type="text" id="corrReason" maxlength="300" placeholder="e.g. Left at 14:00, Eli covered"></div>';
+    return html;
+  }
+
+  // The hours the entered times make, and what they are worth at the day's rate.
+  function correctionHoursText_(d, startVal, endVal) {
+    const a = instantFromLocal_(startVal);
+    const b = instantFromLocal_(endVal);
+    if (!a || !b) return 'Enter the actual start and end.';
+    const hours = Math.round((Date.parse(b) - Date.parse(a)) / 36000) / 100;
+    if (!(hours > 0)) return 'The end must be after the start.';
+    const r = d.record;
+    const rate = r && r.rateAtAttendance ? r.rateAtAttendance : d.currentRate;
+    return 'These times make <strong>' + hours.toFixed(2) + 'h</strong>' +
+      (rate ? ' × ' + money(rate) + '/h = ' + money(Math.round(hours * rate * 100) / 100) : ' (no rate recorded)') + '.';
+  }
+
+  async function openDayCorrection_(staffId, date) {
+    openSheet({
+      title: 'Correct this day', subtitle: date,
+      bodyHTML: '<div class="loading"><div class="spinner"></div>Loading…</div>',
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Close</button>',
+    });
+    let d;
+    try {
+      d = await call('rpcGetAttendanceDay', state.token, staffId, date);
+    } catch (e) {
+      handleRpcError(e, $('sheetBody'));
+      return;
+    }
+    const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    openSheet({
+      title: (d.record ? 'Correct ' : 'Add a day worked: ') + d.name,
+      subtitle: dateLabel + (d.active ? '' : ' · no longer active'),
+      bodyHTML: dayCorrectionHTML_(d),
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Close</button>' +
+        (d.canCorrect ? '<button class="sheet-submit" id="corrSave">Save correction</button>' : ''),
+    });
+    if (!d.canCorrect) return;
+
+    const refresh = () => {
+      const worked = $('corrStatus').value === 'worked';
+      $('corrActual').style.display = worked ? '' : 'none';
+      $('corrHours').innerHTML = worked ? correctionHoursText_(d, $('corrStart').value, $('corrEnd').value) : '';
+    };
+    ['corrStatus', 'corrStart', 'corrEnd'].forEach(id => { $(id).onchange = refresh; $(id).oninput = refresh; });
+    refresh();
+
+    const save = $('corrSave');
+    save.onclick = async () => {
+      const reason = $('corrReason').value.trim();
+      if (reason.length < 3) { toast('Give a reason (at least 3 characters)', 'error'); return; }
+      const status = $('corrStatus').value;
+      const input = {
+        staffId: d.staffId, date: d.date, status,
+        scheduledStart: $('corrSchedStart').value, scheduledEnd: $('corrSchedEnd').value,
+        actualStart: status === 'worked' ? instantFromLocal_($('corrStart').value) : null,
+        actualEnd: status === 'worked' ? instantFromLocal_($('corrEnd').value) : null,
+        reason,
+      };
+      save.disabled = true;
+      save.textContent = 'Saving…';
+      try {
+        const res = await call('rpcCorrectAttendance', state.token, input);
+        openSheet({
+          title: '✓ ' + d.name + ' corrected', subtitle: dateLabel,
+          bodyHTML: '<div id="corrResult" style="font-size:14px;color:#1a1a1a;line-height:1.6">' +
+            'This changes what ' + esc(d.name) + ' is owed for the day from <strong>' + esc(owedText_(res.owedBefore, d.record)) +
+            '</strong> to <strong>' + esc(owedText_(res.owedAfter, res.record)) + '</strong>.' +
+            '<div style="font-size:12px;color:#6a6e79;margin-top:8px">Now: ' + esc(res.record.status) +
+            (res.record.hoursWorked === null ? '' : ', ' + esc(Number(res.record.hoursWorked).toFixed(2)) + 'h') + '.</div></div>',
+          actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Done</button>',
+        });
+        toast('✓ Day corrected', 'success');
+        loadScheduleTab();
+      } catch (e) {
+        handleRpcError(e);
+        save.disabled = false;
+        save.textContent = 'Save correction';
+      }
+    };
   }
 
   // ============================================================

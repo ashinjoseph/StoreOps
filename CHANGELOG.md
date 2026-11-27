@@ -5,22 +5,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/), versions `vX.Y.Z`.
 
 ## [Unreleased] — v1.0.0
 
-### Settings screen in the Operations app (card P4-09)
-
-After the move off Sheets there is no `config` tab to edit. An admin now has
-**More → Settings** (Operations app only, hidden in Apps Script): every setting
-under a heading, its default, a sheet to change it, and "Use the default".
-`rpcGetSettings` and `rpcUpdateSetting` are the first calls only the Operations
-app has (listed in `ops/contracts/rpc-ops.json`, admin only). A value is refused
-where its reader would misread it (a zero read as the default, an address the
-Clover or WhatsApp token would not be sent to, a number that is not a number); a
-blank stores NULL; the three credentials are listed as set or not set and never
-shown or stored here. Every change is audited, with phone numbers masked to their
-last four digits. See [settings](docs/components/settings.md).
-
-New assertions in `ops/test/settings.test.ts` and `ops-ui-build`; each was seen
-failing first, and against a deliberate mutation of the fix.
-
 ### Foundation (Batch 1)
 - Project scaffolding (clasp + git ready)
 - `Util.gs` — date, ID, money, shift-time parsing helpers
@@ -1268,3 +1252,42 @@ token from a switched-off setting.
 New assertions in `reconcile`, `notifier`, `rpc-guards` and `ui-recon`. All
 were confirmed failing against the previous code or a deliberate mutation of
 the fix.
+
+### Settings screen in the Operations app (card P4-09)
+
+After the move off Sheets there is no `config` tab to edit. An admin now has
+**More → Settings** (Operations app only, hidden in Apps Script): every setting
+under a heading, its default, a sheet to change it, and "Use the default".
+`rpcGetSettings` and `rpcUpdateSetting` are the first calls only the Operations
+app has (listed in `ops/contracts/rpc-ops.json`, admin only). A value is refused
+where its reader would misread it (a zero read as the default, an address the
+Clover or WhatsApp token would not be sent to, a number that is not a number); a
+blank stores NULL; the three credentials are listed as set or not set and never
+shown or stored here. Every change is audited, with phone numbers masked to their
+last four digits. See [settings](docs/components/settings.md).
+
+New assertions in `ops/test/settings.test.ts` and `ops-ui-build`; each was seen
+failing first, and against a deliberate mutation of the fix.
+
+### Correct a day after the fact, in the Operations app (P4-10)
+
+Without the Sheet an admin can no longer fix the `attendance` tab by hand when
+the schedule did not match what happened. In the Operations app (never inside
+Apps Script) an admin who taps a Schedule cell for today or a past day now sees
+**Correct this day**, or **Add a day worked** on an empty cell.
+
+- The sheet shows what is recorded, the till sessions that day, what has been
+  paid, and refuses (with the reason, and no Save) a day with money paid
+  against it or a till still open.
+- The admin says what happened (worked, or did not work), the scheduled and
+  actual times in Toronto time whatever the device's zone, and a reason; after
+  saving it shows what the person is owed for that day, before and after.
+- Two new admin-only calls, `rpcGetAttendanceDay` and `rpcCorrectAttendance`
+  (ADR-0023), each correction one `attendance.correct` audit row with the whole
+  record before and after. Till sessions, sales, payments and bonuses are never
+  touched; a blank rate is stored as blank, never 0.
+
+New: `ops/test/attendance-corrections.test.ts` and the `ui-schedule-corrections`
+suite, both confirmed failing before the code existed and against deliberate
+mutations (paid-day guard, blank rate, the staff-row lock, the role gate, the
+Toronto offset).
