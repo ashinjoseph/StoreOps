@@ -16,8 +16,9 @@ const t = H.suite('Sales tab — tiles and chart');
 
 for (const [label, js] of H.uiScripts()) {
 t.section('Against ' + label);
+// missedShiftControl_ (P4-12b) answers '' here: no session role, so no control.
 const NEEDED = ['esc', 'money', 'compactMoney', 'dayParts',
-                'chartScrollTarget_', 'renderSalesBody'];
+                'chartScrollTarget_', 'renderSalesBody', 'missedShiftOffers_', 'missedShiftControl_'];
 const lifted = NEEDED.map(n => H.fnSource(js, n)).join('\n\n');
 
 function render(data) {

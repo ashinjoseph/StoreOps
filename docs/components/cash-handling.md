@@ -42,6 +42,8 @@ The guards run **before** anything is written:
 - with no `cash_manager_staff_id` configured, there's nobody to hand to, and
   the error says which config key to set.
 
+A shift an admin enters after the fact (Operations app, [entering a shift after the fact](shifts-and-close.md#entering-a-shift-after-the-fact)) counts like any close: its cash removed is held by the cashier until a handover settles it.
+
 ## Data
 
 | Tab | Reads | Writes |

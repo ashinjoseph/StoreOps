@@ -1446,3 +1446,21 @@ failing before the code existed and against eight deliberate mutations (a
 message sent on a past day, unverified cards recorded as matching, earlier rows
 updated, today allowed, today's window asked of Clover, an open till allowed, the
 control shown inside Apps Script, one figure a cent off the real run).
+
+### Enter a shift that was never put in, in the Operations app (P4-12b)
+
+- An admin can enter, from the Sales screen, a shift someone worked on a past
+  day without opening or closing the till in the app: **Enter a shift that was
+  not put in** asks who, which till, when (Toronto time) and the till's close
+  figures in that day's card shape, previews the variance, cash removed, the
+  total and what happens to the day's hours, and writes the till session, its
+  sales row and the day's attendance as an open and a close would have.
+- Two new admin-only calls, `rpcPreviewMissedShift` (writes nothing) and
+  `rpcEnterMissedShift` (ADR-0023); one `till.enter_missed` audit row. No
+  overlap with another shift on that till; the same person on the other till is
+  allowed and reported; a day already worked keeps its hours; today is opened
+  and closed the normal way. Nothing is sent anywhere: the answer says when the
+  day's reconcile, a commission run or the next cstore close is out of date.
+
+New: `ops/test/missed-shifts.test.ts` and the `ui-missed-shifts` suite, seen
+failing before the code existed and against eight deliberate mutations.

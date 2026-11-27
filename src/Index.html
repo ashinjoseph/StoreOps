@@ -3251,6 +3251,290 @@
     };
   }
 
+  // ── Entering a shift that was never put in (Operations app only, admin) ──
+  // The two missed-shift calls exist only in the Operations app (ADR-0023),
+  // so nothing here is offered inside Apps Script. The server runs every rule
+  // and works every figure out with the close's own arithmetic; this sheet
+  // shows the server's preview as the figures are typed, and saves nothing
+  // the server has not worked out.
+
+  // What the Sales day offers: "Enter a shift that was not put in", to an
+  // admin in the Operations app, for a day before today (or no day chosen).
+  function missedShiftOffers_(role, opsApp, day, today) {
+    return { enter: !!opsApp && role === 'admin' && !!today && (!day || day < today) };
+  }
+
+  function missedShiftControl_(day) {
+    const role = state.me && state.me.role;
+    if (role !== 'admin' || !isOpsApp_()) return '';
+    if (!missedShiftOffers_(role, true, day, torontoToday_()).enter) return '';
+    return '<button type="button" class="history-toggle" data-enter-shift="' + esc(day || '') + '">Enter a shift that was not put in</button>';
+  }
+
+  // The card shape the sheet draws first: the till's setting now, as the
+  // close sheet reads it. The server decides the shape for the day and
+  // refuses the other; when it names the other one (cstore before its ePOS
+  // date), the sheet redraws in that shape.
+  function missedShiftShape_(company, cardSplit) {
+    return cardSplit && cardSplit[company] === false ? 'single' : 'split';
+  }
+  function missedShiftShapeFrom_(message) {
+    const m = /till reports (credit and debit|one card total): send/.exec(message || '');
+    return m ? (m[1] === 'credit and debit' ? 'split' : 'single') : null;
+  }
+
+  // The close sheet's inputs, in its words and order, in that day's shape
+  // (the opening float first, as a correction asks it).
+  function missedShiftFiguresHTML_(company, shape, lottoExpected) {
+    const split = shape === 'split';
+    const field = (label, id, v) => '<div class="sheet-field"><label>' + label + '</label>' +
+      moneyInput(id, v === null || v === undefined ? '' : esc(String(v)), ' placeholder="not entered"') + '</div>';
+    return field('Opening float ($)', 'msFloat') +
+      field('Cash sales ($)', 'msCash') +
+      (split
+        ? field('Credit card sales ($)', 'msCredit') + field('Debit card sales ($)', 'msDebit')
+        : field('Card sales ($)', 'msCard')) +
+      (company === 'cstore'
+        ? '<details class="misc-block" open><summary>Lotto reserve</summary>' +
+            '<div class="lotto-hint" id="msLottoHint">The reserve before this shift is the count at the cstore close before it.</div>' +
+            field('Reserve counted ($)', 'msLotto') +
+            field('Moving from till into reserve ($)', 'msLottoTopup') +
+            '<div class="sheet-field"><label>Reason reserve isn\'t ' + money(lottoExpected) + '</label><input type="text" id="msLottoNote"></div>' +
+          '</details>'
+        : '') +
+      '<details class="misc-block" open><summary>Misc sales</summary>' +
+        field('Misc cash ($)', 'msMiscCash') +
+        (split
+          ? field('Misc credit ($)', 'msMiscCredit') + field('Misc debit ($)', 'msMiscDebit')
+          : field('Misc card ($)', 'msMiscCard')) +
+        '<div class="sheet-field"><label>Misc notes</label><input type="text" id="msMiscNotes"></div>' +
+      '</details>' +
+      '<div class="sheet-field"><label>Cash counted in till ($)</label>' + moneyInput('msCount', '', ' placeholder="not counted"') + '</div>';
+  }
+
+  // Who, which till, when; the figures (drawn per till and shape); the
+  // server's preview; notes and the reason.
+  function missedShiftHTML_(people, day) {
+    const opts = (people || []).map(p => '<option value="' + esc(p.staffId) + '">' + esc(p.name) + (p.active === false ? ' (inactive)' : '') + '</option>').join('');
+    return '<div class="sheet-field"><label>Who worked it</label><select id="msStaff"><option value="">Choose…</option>' + opts + '</select></div>' +
+      '<div class="sheet-field"><label>Which till</label><select id="msCompany"><option value="cstore">CSTORE</option><option value="vape">VAPE</option></select></div>' +
+      '<div class="sheet-field"><label>Business day</label><input type="date" id="msDate" value="' + esc(day) + '"></div>' +
+      '<div class="sheet-field"><label>Start (Toronto time)</label><input type="datetime-local" id="msStart"></div>' +
+      '<div class="sheet-field"><label>End (Toronto time)</label><input type="datetime-local" id="msEnd"></div>' +
+      '<div id="msFigures"></div>' +
+      '<div class="compute-summary" id="msSummary">Fill in who, the till, the times and the figures to see what entering it does.</div>' +
+      '<div class="sheet-field"><label>Notes</label><input type="text" id="msNotes"></div>' +
+      '<div class="sheet-field"><label>Reason (required)</label><input type="text" id="msReason" maxlength="300" placeholder="e.g. Worked it; the tablet was down"></div>';
+  }
+
+  // What the figure inputs hold: a number, or null for a blank (never 0).
+  function missedShiftValues_() {
+    const num = id => {
+      const el = $(id);
+      if (!el) return undefined;
+      const t = String(el.value || '').trim();
+      if (t === '') return null;
+      const v = parseFloat(t);
+      return isNaN(v) ? null : v;
+    };
+    return {
+      openingFloat: num('msFloat'), cash: num('msCash'), credit: num('msCredit'), debit: num('msDebit'), card: num('msCard'),
+      miscCash: num('msMiscCash'), miscCredit: num('msMiscCredit'), miscDebit: num('msMiscDebit'), miscCard: num('msMiscCard'),
+      count: num('msCount'), lotto: num('msLotto'), topup: num('msLottoTopup'),
+    };
+  }
+
+  // The input the server takes: who, when, every figure of that shape (blanks as null).
+  function missedShiftInput_(who, shape, v, texts) {
+    const input = {
+      staffId: who.staffId, company: who.company, date: who.date, startTime: who.startTime, endTime: who.endTime,
+      openingFloat: v.openingFloat, closingCashCounted: v.count, cashSales: v.cash, miscCashSales: v.miscCash,
+      miscNotes: texts.miscNotes, notes: texts.notes, reason: texts.reason,
+    };
+    if (shape === 'split') {
+      input.creditCardSales = v.credit; input.debitCardSales = v.debit;
+      input.miscCreditSales = v.miscCredit; input.miscDebitSales = v.miscDebit;
+    } else {
+      input.cardTotalSales = v.card; input.miscCardSales = v.miscCard;
+    }
+    if (who.company === 'cstore') {
+      // As the close sends it: the closing balance is the pot as counted plus what was moved in.
+      input.lottoReserveCounted = v.lotto === null || v.lotto === undefined ? null : Math.round((v.lotto + (v.topup || 0)) * 100) / 100;
+      input.lottoTopupFromTill = v.topup;
+      input.lottoReserveNote = texts.lottoNote;
+    }
+    return input;
+  }
+
+  // HH:MM on Toronto's clock for an ISO instant.
+  function missedClock_(iso) {
+    const w = iso ? torontoWall_(iso) : null;
+    return w ? w.time : '?';
+  }
+
+  // What happens to the person's day, in words.
+  function missedShiftHoursText_(p) {
+    const a = p.attendance || {};
+    if (p.attendanceChange === 'left') return esc(p.hoursLeft ? p.hoursLeft.message : 'The day\'s hours were left as they were.');
+    const owed = a.owed === null || a.owed === undefined ? 'no pay rate recorded, so nothing is owed for it yet' : money(a.owed) + ' owed';
+    return (p.attendanceChange === 'created' ? 'The day is added as worked: ' : 'The scheduled day becomes worked: ') +
+      esc(String(a.hoursWorked)) + ' hours (' + owed + ').';
+  }
+
+  // The server's preview: the variance with its status, cash removed, the total, the day's hours.
+  function missedShiftSummaryHTML_(p) {
+    const s = p.session || {};
+    let html = '<div class="compute-row"><span>Expected cash:</span> <strong>' + tillFigure_(s.expectedCash, 'not worked out') + '</strong></div>' +
+      '<div class="compute-row"><span>Variance:</span> <strong id="msVariance" class="compute-variance-' + esc(p.varianceStatus) + '">' + signedMoney_(p.variance) + ' (' + esc(p.varianceStatus) + ')</strong></div>' +
+      '<div class="compute-row"><span>Cash removed:</span> <strong id="msCashRemoved">' + money(p.cashRemoved) + '</strong></div>' +
+      '<div class="compute-row"><span>Total:</span> <strong id="msTotal">' + money(p.total) + '</strong></div>' +
+      '<div class="ms-note" id="msHours" style="font-size:12px;margin-top:6px">' + missedShiftHoursText_(p) + '</div>';
+    if (p.lotto) html += '<div class="ms-note" style="font-size:12px;margin-top:6px">' + (p.lotto.previousCount !== null && p.lotto.previousCount !== undefined
+      ? 'The cstore close before this shift left the reserve at ' + money(p.lotto.previousCount) + '.' : 'No earlier cstore close recorded the reserve.') + '</div>';
+    if (p.notAuthorised) html += '<div class="ms-warn" style="font-size:12px;margin-top:6px;color:#92611a">' + esc(s.staffName) + ' is not authorised for the ' + esc(s.company) + ' till now. Are you sure?</div>';
+    (p.otherTill || []).forEach(o => {
+      html += '<div class="ms-note" style="font-size:12px;margin-top:6px">' + esc(s.staffName) + ' was also on the ' + esc(o.company) + ' till from ' + esc(missedClock_(o.startTime)) +
+        (o.endTime ? ' to ' + esc(missedClock_(o.endTime)) : ' (still open)') + ': one person may run both tills.</div>';
+    });
+    if (p.floatNote) html += '<div class="ms-note" style="font-size:12px;margin-top:6px;color:#4a4e59">' + esc(p.floatNote) + '</div>';
+    return html;
+  }
+
+  // What was created and what is now out of date, in the wording a correction uses.
+  function missedShiftResultHTML_(res) {
+    const s = res.session || {};
+    let html = '<div id="msResult" style="font-size:14px;color:#1a1a1a;line-height:1.6">' +
+      'Entered the ' + esc(String(s.company).toUpperCase()) + ' till for ' + esc(s.staffName) + ' on ' + esc(s.date) + ', ' +
+      esc(missedClock_(s.startTime)) + ' to ' + esc(missedClock_(s.endTime)) + '. ' +
+      'Variance ' + signedMoney_(res.variance) + ' (' + esc(res.varianceStatus) + '). Cash removed ' + money(res.cashRemoved) + '. Total ' + money(res.total) + '.' +
+      '<div style="font-size:13px;margin-top:8px">' + missedShiftHoursText_(res) + '</div>';
+    const notes = [];
+    if (res.staleReconcile) notes.push('This day was reconciled on the old figures: run the reconcile for it again.');
+    (res.commissionRunsTouched || []).forEach(x => notes.push('Commission run ' + esc(x.weekEnd ? 'for the week ending ' + x.weekEnd : x.runId) + ' used the old sales figures and has not been recalculated.'));
+    if (res.nextLottoSession) notes.push('The next cstore close (' + esc(res.nextLottoSession.date) + ') worked out its expected cash from the old reserve count: check it too.');
+    notes.forEach(n => { html += '<div class="tc-stale" style="font-size:12px;color:#92611a;margin-top:8px">' + n + '</div>'; });
+    return html + '</div>';
+  }
+
+  // The day before `today` ('YYYY-MM-DD').
+  function missedShiftDayBefore_(today) {
+    const t = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1, Number(today.slice(8, 10)) - 1));
+    return t.toISOString().slice(0, 10);
+  }
+
+  async function openMissedShift_(day) {
+    openSheet({
+      title: 'Enter a shift that was not put in', subtitle: day || '',
+      bodyHTML: '<div class="loading"><div class="spinner"></div>Loading…</div>',
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Close</button>',
+    });
+    let people;
+    try {
+      people = await cachedCall('rpcGetStaffDirectory', [state.token], TTL_REF);
+    } catch (e) {
+      handleRpcError(e, $('sheetBody'));
+      return;
+    }
+    const first = day || missedShiftDayBefore_(torontoToday_());
+    openSheet({
+      title: 'Enter a shift that was not put in', subtitle: 'Opened and closed after the fact',
+      bodyHTML: missedShiftHTML_(people, first),
+      actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Close</button><button class="sheet-submit" id="msSave">Save shift</button>',
+    });
+
+    const FIGURES = ['msFloat', 'msCash', 'msCredit', 'msDebit', 'msCard', 'msMiscCash', 'msMiscCredit', 'msMiscDebit', 'msMiscCard', 'msCount', 'msLotto', 'msLottoTopup'];
+    let drawn = '';
+    let shape = 'split';
+    const told = {};
+    let timer = null;
+    let asked = 0;
+    const text = id => { const el = $(id); return el ? String(el.value || '').trim() : ''; };
+    const who = () => ({
+      staffId: $('msStaff').value, company: $('msCompany').value, date: $('msDate').value,
+      startTime: instantFromLocal_($('msStart').value), endTime: instantFromLocal_($('msEnd').value),
+    });
+    const build = () => missedShiftInput_(who(), shape, missedShiftValues_(),
+      { miscNotes: text('msMiscNotes'), notes: text('msNotes'), lottoNote: text('msLottoNote'), reason: text('msReason') });
+
+    const run = async () => {
+      const n = ++asked;
+      try {
+        const p = await call('rpcPreviewMissedShift', state.token, build());
+        if (n !== asked) return;
+        $('msSummary').innerHTML = missedShiftSummaryHTML_(p);
+      } catch (e) {
+        if (n !== asked) return;
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        const named = missedShiftShapeFrom_(e.message);
+        if (named && named !== shape) {
+          told[$('msCompany').value + '|' + $('msDate').value] = named;
+          draw();
+          ask();
+          return;
+        }
+        $('msSummary').innerHTML = '<div class="ms-refusal" id="msRefusal" style="font-size:12px;color:#92611a">' + esc(e.message) + '</div>';
+      }
+    };
+    const ask = () => { clearTimeout(timer); timer = setTimeout(run, 400); };
+
+    // The figures follow the till and the day's card shape; typed figures are kept where the field stays.
+    const draw = () => {
+      const company = $('msCompany').value;
+      shape = told[company + '|' + $('msDate').value] || missedShiftShape_(company, state.cardSplit);
+      if (drawn === company + '|' + shape) return;
+      const keep = {};
+      FIGURES.concat(['msMiscNotes', 'msLottoNote']).forEach(id => { const el = $(id); if (el) keep[id] = el.value; });
+      const lottoExpected = state.lotto ? Number(state.lotto.expected) || 500 : 500;
+      $('msFigures').innerHTML = missedShiftFiguresHTML_(company, shape, lottoExpected);
+      Object.keys(keep).forEach(id => { const el = $(id); if (el) el.value = keep[id]; });
+      drawn = company + '|' + shape;
+      FIGURES.forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        // Digits and one dot; a minus only on cstore cash sales (a lotto payout), as on the close sheet.
+        const neg = id === 'msCash' && company === 'cstore';
+        el.addEventListener('input', () => {
+          let v = String(el.value).replace(neg ? /[^0-9.\-]/g : /[^0-9.]/g, '');
+          if (neg) v = (v.charAt(0) === '-' ? '-' : '') + v.replace(/-/g, '');
+          const dot = v.indexOf('.');
+          if (dot !== -1) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, '');
+          if (v !== el.value) el.value = v;
+          ask();
+        });
+      });
+      ['msMiscNotes', 'msLottoNote'].forEach(id => { const el = $(id); if (el) el.addEventListener('input', ask); });
+    };
+    ['msStaff', 'msCompany', 'msDate', 'msStart', 'msEnd'].forEach(id => $(id).addEventListener('change', () => { draw(); ask(); }));
+    ['msNotes', 'msReason'].forEach(id => $(id).addEventListener('input', ask));
+    draw();
+
+    const save = $('msSave');
+    save.onclick = async () => {
+      const reason = text('msReason');
+      if (reason.length < 3) { toast('Give a reason (at least 3 characters)', 'error'); return; }
+      if (!$('msStaff').value) { toast('Choose who worked it', 'error'); return; }
+      const input = build();
+      save.disabled = true;
+      save.textContent = 'Saving…';
+      try {
+        const res = await call('rpcEnterMissedShift', state.token, input);
+        clearTimeout(timer);
+        asked++;
+        openSheet({
+          title: '✓ ' + String(res.session.company).toUpperCase() + ' shift entered', subtitle: res.session.staffName + ' · ' + res.session.date,
+          bodyHTML: missedShiftResultHTML_(res),
+          actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Done</button>',
+        });
+        toast('✓ Shift entered', 'success');
+        if (state.salesData) loadSalesTab(true);
+      } catch (e) {
+        handleRpcError(e);
+        save.disabled = false;
+        save.textContent = 'Save shift';
+      }
+    };
+  }
+
   // ============================================================
   //  ░░  TAB: MY PAY  ░░
   // ============================================================
@@ -6842,7 +7126,7 @@
     //    per-day totals appear; this is the drill-down they open.
     html += '<div class="day-acc">';
     if (!daily.length) {
-      html += '<div class="recon-empty">No sales in this range.</div>';
+      html += '<div class="recon-empty">No sales in this range.</div>' + missedShiftControl_('');
     } else {
       const selStr = Object.keys(expanded).filter(k => expanded[k]).pop()
         || daily[daily.length - 1].dateStr;
@@ -6878,6 +7162,7 @@
           '</div>';
         });
       }
+      html += missedShiftControl_(sel.dateStr);
       html += '</div></div>' +
         '<div class="day-note" style="margin-top:6px">Tap a bar to see that day.</div>';
     }
@@ -6912,6 +7197,9 @@
     });
     $('salesResults').querySelectorAll('[data-correct-till]').forEach(b => {
       b.onclick = () => { haptic(); openTillCorrection_(b.dataset.correctTill); };
+    });
+    $('salesResults').querySelectorAll('[data-enter-shift]').forEach(b => {
+      b.onclick = () => { haptic(); openMissedShift_(b.dataset.enterShift); };
     });
   }
 

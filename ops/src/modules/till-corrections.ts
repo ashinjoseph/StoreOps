@@ -154,7 +154,7 @@ export interface TillCorrectionResult {
   nextLottoSession: { sessionId: string; date: string } | null;
 }
 
-interface SessionRow {
+export interface SessionRow {
   session_id: string;
   attendance_id: string;
   staff_id: string;
@@ -179,7 +179,7 @@ interface SessionRow {
   store_id: string;
 }
 
-interface SalesRow {
+export interface SalesRow {
   sales_id: string;
   session_id: string;
   staff_id: string;
@@ -250,7 +250,7 @@ async function isReconciled(db: Db, s: SessionRow): Promise<boolean> {
 }
 
 /** The commission runs whose week contains the day, in the order they were made, each with what became of its proposals. */
-async function runsCovering(db: Db, day: string): Promise<RunTouched[]> {
+export async function runsCovering(db: Db, day: string): Promise<RunTouched[]> {
   const rows = await db.query<{ run_id: string; week_end: string | null; statuses: string[] | null }>(
     `select r.run_id, r.week_end,
             (select array_agg(distinct b.status) from ops.bonuses b where b.source_run_id = r.run_id) as statuses
@@ -341,7 +341,7 @@ function blockedReason(s: SessionRow, now: Date): string | null {
   return null;
 }
 
-function sessionView(s: SessionRow, name: string): SessionView {
+export function sessionView(s: SessionRow, name: string): SessionView {
   const v: SessionView = {
     sessionId: s.session_id,
     company: s.company,
@@ -381,7 +381,7 @@ function salesTotal(r: SalesRow): number {
   });
 }
 
-function salesView(r: SalesRow | null): SalesView | null {
+export function salesView(r: SalesRow | null): SalesView | null {
   if (!r) return null;
   return {
     salesId: r.sales_id,
@@ -414,7 +414,7 @@ function whole<T extends object>(r: T | null): Record<string, unknown> | null {
 
 const isBlank = (v: unknown): boolean => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
 
-function checkReason(value: unknown): string {
+export function checkReason(value: unknown): string {
   const text = typeof value === "string" ? value.trim() : "";
   if (text.length < REASON_MIN || text.length > REASON_MAX) throw new Error(`A reason is required: ${REASON_MIN} to ${REASON_MAX} characters.`);
   // eslint-disable-next-line no-control-regex
@@ -423,7 +423,7 @@ function checkReason(value: unknown): string {
 }
 
 /** An entered money figure: blank is null; otherwise a finite number the table can hold, rounded to cents. */
-function money(value: unknown, label: string): number | null {
+export function money(value: unknown, label: string): number | null {
   if (isBlank(value)) return null;
   if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${label} must be a number, or blank.`);
   if (Math.abs(value) >= MONEY_LIMIT) throw new Error(`${label} is too large.`);
@@ -431,7 +431,7 @@ function money(value: unknown, label: string): number | null {
 }
 
 /** Entered text: blank is null; no NUL (the database cannot hold one). */
-function text(value: unknown, label: string): string | null {
+export function text(value: unknown, label: string): string | null {
   if (isBlank(value)) return null;
   if (typeof value !== "string") throw new Error(`${label} must be text.`);
   if (value.includes("\u0000")) throw new Error(`${label} cannot contain a null character.`);
@@ -440,7 +440,7 @@ function text(value: unknown, label: string): string | null {
 
 const has = (input: TillCorrectionInput, key: keyof TillCorrectionInput): boolean => Object.prototype.hasOwnProperty.call(input, key) && input[key] !== undefined;
 
-const SHAPE_WORDS: Record<CardShape, string> = { split: "credit and debit", single: "one card total" };
+export const SHAPE_WORDS: Record<CardShape, string> = { split: "credit and debit", single: "one card total" };
 
 // ── The two calls ──────────────────────────────────────────
 

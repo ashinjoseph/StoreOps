@@ -105,6 +105,8 @@ patch). The rules, checked in this order:
     hours may then differ from the tills' span: that is the point (a till
     opened late, a person who worked without one).
 
+A shift that was never put in the app is entered from the Sales screen ([entering a shift after the fact](shifts-and-close.md#entering-a-shift-after-the-fact)): it creates or completes the person's day as a close would, and never changes the hours of a day already worked.
+
 **Worked example 1 — someone left early and the other person stayed.** Cleo
 (cstore, $20/h) and Eli (vape, $18/h) both closed at 17:00 on Monday. Cleo in
 fact left at 14:00 and Eli stayed until 19:00. The admin opens Cleo's Monday,

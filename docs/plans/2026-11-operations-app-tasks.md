@@ -72,7 +72,7 @@ hand one out.
 | P4-11 | Staff screen: add, change, deactivate, PINs, raises | T3 | P4-08 | security, money | done (one thing for the owner, in the card) |
 | P4-11b | A day worked with no rate shows as "no rate set", not $0 | T2 | P4-11 | money | todo (changes what a ported call answers: the owner to agree) |
 | P4-12a | Correct a closed till | T3 | P4-08 | money | done (three things for the owner, in the card) |
-| P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | in progress |
+| P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | done (notes in the card) |
 | P4-12c | Reconcile a past day again | T2 | P4-08 | money | done (three things for the owner, in the card) |
 | P4-12d | The Reconcile screen shows unmeasured cards as "not verified", not as a difference | T1 | | money | todo (an existing fault, found by P4-12c) |
 | P4-13 | Audit log on a screen; a setting to pause the Monday run | T1 | P4-09 | security | todo (planned) |
@@ -929,6 +929,26 @@ open, and for a day with no closed till. Three things for the owner:
    zero, in red. It should say "not verified".
 Also open: how far back the card processor answers for an old day is not
 known; when it refuses, the cards are recorded as not verified.
+
+**P4-12b is done:** on the Sales screen, for a day before today, an admin
+has "Enter a shift that was not put in": who, which till, start and end,
+then the figures a close takes, and a reason. The app shows the variance,
+cash removed, total and what happens to the day's hours before saving. It
+creates the closed till session, its sales row and the day's attendance
+together, with the close's own arithmetic; a test shows a shift entered this
+way equals one opened and closed the real way in every column. Refused: for
+today (use the Shift screen), when it overlaps another shift on that till,
+and when the person already has a shift on that till that day (correct that
+one instead). A day already recorded as worked keeps its hours, and the
+sheet says so. Notes:
+1. A person with no pay rate gets the day with no rate (blank, owed
+   nothing yet), not a rate of 0.
+2. A shift entered late is listed last among its day's tills on the Sales
+   screen and the public report, whatever its times; totals are right.
+3. The sheet learns the till's card layout for an old day from the server's
+   refusal message. It works, and is worth replacing with a plain field.
+4. The float left in the drawer is today's setting; nothing records the one
+   in force that day.
 
 P4-12 is split in three so each can be reviewed on its own: correcting a
 closed till (a), entering a shift that was never put in the app (b), and

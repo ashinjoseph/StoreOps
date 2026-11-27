@@ -48,9 +48,9 @@ function payload(build) {
 
 // ── The app's rendering ─────────────────────────────────────
 const appJs = H.clientScript('Index.html');
-// isOpsApp_ and the till-correction control (P4-12a) are lifted so the row renders as in
+// isOpsApp_, the till-correction control (P4-12a) and the missed-shift control (P4-12b) are lifted so the row renders as in
 // Apps Script (no window.STOREOPS_APP): the control is absent there.
-const appLifted = ['esc', 'money', 'compactMoney', 'dayParts', 'renderSalesBody', 'isOpsApp_', 'tillRowOffers_', 'tillRowControl_']
+const appLifted = ['esc', 'money', 'compactMoney', 'dayParts', 'renderSalesBody', 'isOpsApp_', 'tillRowOffers_', 'tillRowControl_', 'missedShiftOffers_', 'missedShiftControl_']
   .map(n => H.fnSource(appJs, n)).join('\n\n');
 
 function renderApp(d) {

@@ -20,7 +20,7 @@ const t = H.suite('Till corrections — Operations app, admin only, the close\'s
 
 const NEEDED = ['esc', 'money', 'signedMoney_', 'moneyInput', 'compactMoney', 'dayParts', 'isOpsApp_', 'tillRowOffers_', 'tillRowControl_',
   'tillFigure_', 'tillCorrectionPreview_', 'tillCorrectionHTML_', 'tillCorrectionValues_', 'tillCorrectionInput_', 'tillCorrectionResultHTML_',
-  'openTillCorrection_', 'renderSalesBody'];
+  'openTillCorrection_', 'renderSalesBody', 'missedShiftOffers_', 'missedShiftControl_', 'torontoWall_', 'torontoToday_'];
 
 const pending = [];
 H.uiScripts().forEach(([label, js]) => {
@@ -106,8 +106,10 @@ H.uiScripts().forEach(([label, js]) => {
     });
     t.ok('inside Apps Script, and for every role but admin, the Sales day renders exactly the same, with no correction control', same && script.indexOf('Correct this till') === -1);
     const admin = render('admin', true);
-    t.eq('in the Operations app an admin\'s Sales day is that same screen plus one button per till, nothing else',
-      [admin.results.innerHTML.replace(BTN, '') === script, (admin.results.innerHTML.match(BTN) || []).length], [true, 2]);
+    // P4-12b adds one more control to an admin's Sales day (ui-missed-shifts holds it down).
+    const MISSED = /<button type="button" class="history-toggle" data-enter-shift="[^"]*">Enter a shift that was not put in<\/button>/g;
+    t.eq('in the Operations app an admin\'s Sales day is that same screen plus one button per till (and the missed-shift control), nothing else',
+      [admin.results.innerHTML.replace(BTN, '').replace(MISSED, '') === script, (admin.results.innerHTML.match(BTN) || []).length, (admin.results.innerHTML.match(MISSED) || []).length], [true, 2, 1]);
     t.ok('the till id in the control is escaped', admin.results.innerHTML.indexOf('data-correct-till="VAP-20260912-S_004"') !== -1 && admin.results.innerHTML.indexOf('Dara <Vance>') === -1);
 
     // The click paths: a bar still opens its day; the new button opens the sheet for that till.

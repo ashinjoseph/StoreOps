@@ -156,6 +156,103 @@ variance status is *OK*, and Dara now holds $1,150.00: exactly $270.00 less. If
 Saturday had been reconciled, the sheet adds *This day was reconciled on the old
 figures: run the reconcile for it again.*
 
+## Entering a shift after the fact
+
+Someone worked a shift and the till was never opened or closed in the app (the
+tablet was down, the shift was covered at short notice). Until the move off
+Sheets an admin typed the `till_sessions` and `sales` rows into the Sheet by
+hand (the first import of real data found such rows, and sales rows with no
+session). The Operations app has no Sheet, so it has two calls of its own
+([ADR-0023](../adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)):
+`rpcPreviewMissedShift` runs every rule and all the arithmetic and writes
+nothing; `rpcEnterMissedShift` writes the shift. Neither exists in the Apps
+Script app.
+
+**Who:** an admin only (the contract, the router and the handler each check).
+Managers, payroll admins and employees see the Sales screen exactly as before.
+
+**Where:** on the Sales screen, the selected day shows **Enter a shift that was
+not put in** under its tills when the day is before today, and a range with no
+sales at all shows it under *No sales in this range* (the sheet then starts on
+yesterday; its day can be changed). The sheet asks who (everyone, inactive
+people marked), which till, the business day, the start and end in Toronto time,
+then the till's close figures in the close sheet's words and order and in that
+day's card shape, the notes and a reason. As the admin types, it asks the server
+for a preview and shows the variance and its status, cash removed, the total and
+what happens to the person's day, or the server's refusal word for word.
+
+An entry writes what an open followed by a close would have left: the session
+(closed), its sales row and the day's attendance, together. Every derived figure
+comes from `closeFigures`, as for a close and a correction. The rules, in order:
+
+1. The person exists (active or not). Their staff row is locked first, as a
+   payment, a schedule correction and a handover lock it.
+2. The till is cstore or vape. The person need not be authorised for it now
+   (authorisations change); the answer says when they are not, and the sheet
+   asks *Are you sure?*
+3. The day is real and **before today in Toronto** (*Open and close today's till
+   on the Shift screen.*), not in the future, not more than 370 days back.
+4. Start and end are instants with their zone; the end after the start, at most
+   24 hours, not in the future; the start on that business day in Toronto or
+   within 6 hours of it (the schedule correction's rule: 23:30 to 07:30 stays on
+   its day). Hours are the time that passed, so on a clock-change day a 00:00 to
+   12:00 shift counts 11 or 13 hours.
+5. A reason of 3 to 300 characters, no control characters.
+6. **No overlap on the till:** another session of that till (open or closed, any
+   person) that overlaps is refused: *The vape till already has a shift from
+   09:00 to 17:00 that day (Dara Vance).* Touching ends are fine; two shifts on
+   one till that do not overlap are normal. One person still has one shift per
+   till per day (the session id is the open's, `VAP-<date>-<staff>`). The entry
+   takes the advisory lock an open of that till takes, so the two are
+   serialised and the second sees the first.
+7. The same person on the other till at the same time is allowed (one person
+   may run both tills) and reported.
+8. The figures are read and checked as a correction reads them, and refused
+   with the close's messages; the card shape is the one that till reports on
+   that date (cstore: credit and debit before `cstore_epos_from`, one total from
+   it). The opening float is required. A blank figure is stored **blank, never
+   0**; a blank reserve count is *not counted*.
+9. The session is closed, with the given times and day; the float left in the
+   drawer is **today's setting** (the answer says so: nothing records the one
+   in force that day); the notes end *Entered after the fact: (the reason)*. On
+   cstore the pot's previous count is the count of the cstore close just before
+   this shift's end, and the answer names the next cstore close after it, whose
+   expected cash was measured without this one.
+10. The sales row is the one a close writes (written directly, not through
+    `sales.write`, which would add an audit row of its own).
+11. The day's attendance: none, so it is created *worked*: hours = the span, the
+    person's current rate (a blank rate stays blank, never 0); *scheduled* or
+    *cancelled* becomes *worked* with these times, the scheduled times kept and a
+    rate above 0 kept; already *worked*: **the hours are not changed**, the
+    session is attached, and the answer says *The day's hours were left at N:
+    correct the day on the Schedule screen if they should change* with the span
+    both shifts would make; *in progress* is refused: *Close (name)'s till
+    first.* A day with money paid against it is never changed.
+12. One audit row, `till.enter_missed`, with the whole session, sales row and day
+    as stored, and the reason. Nothing is sent anywhere: no WhatsApp message, no
+    Clover call, no reconcile.
+13. The answer says what went stale, as a correction does: a reconcile result
+    for that day and till, each commission run whose week contains the day, the
+    next cstore close.
+
+A row written today for a past day is written after every close before it:
+`sales.seq` puts it last among that day's rows on the Sales screen. Totals do
+not depend on the order; the lotto log and the reserve chain go by when a shift
+closed, not by `seq`.
+
+**Worked example — a vape shift nobody opened.** On Saturday the tablet was
+down. Dara (vape, $17.50/h, nothing scheduled) worked 09:00 to 17:00: float
+$100.00, cash sales $1,150.00, credit $300.00, debit $200.00, $1,250.00 counted.
+The admin opens Saturday on the Sales screen, **Enter a shift that was not put
+in**, picks Dara, VAPE, 09:00 and 17:00, types the figures and the reason
+"Worked it; the tablet was down". The preview reads *Variance +$0.00 (OK) · Cash
+removed $1150.00 · Total $1650.00 · The day is added as worked: 8 hours ($140.00
+owed).* After saving, Saturday's total on the Sales screen is $1,650.00 higher,
+Cash Handling shows Dara holding $1,150.00 more, and Payroll owes Dara $140.00
+more. Had Cleo, already *worked* 09:00 to 17:00 on cstore, also run the vape
+till 17:00 to 21:00, the same entry would leave Cleo's 8 hours as they were and
+say the shifts span 12 hours.
+
 ## Data
 
 | Tab | Reads | Writes |
@@ -191,6 +288,7 @@ figures: run the reconcile for it again.*
 | RPC | `src/WebApp.gs`: `rpcGetMyShiftState`, `rpcOpenShift`, `rpcCloseShift`, `rpcNotifyShiftOpen` |
 | UI | `src/Index.html`: `renderShiftTab`, `renderShiftCard`, `openShiftForm` |
 | Corrections (Operations app) | `ops/src/modules/till-corrections.ts` (`getCorrection`, `correct`, `shapeForDate`), the shared arithmetic `closeFigures` in `ops/src/modules/till-sessions.ts`, `ops/src/rpc/handlers/till-corrections.ts`; page: `tillRowOffers_`, `tillCorrectionHTML_`, `openTillCorrection_` |
+| Missed shifts (Operations app) | `ops/src/modules/missed-shifts.ts` (`preview`, `enter`), `ops/src/rpc/handlers/missed-shifts.ts`; page: `missedShiftOffers_`, `missedShiftControl_`, `missedShiftFiguresHTML_`, `openMissedShift_` |
 
 ## Tests
 
@@ -202,9 +300,15 @@ figures: run the reconcile for it again.*
 | `wiring` | every close-sheet field reaches the server and the sales row |
 | `ops/test/till-corrections.test.ts` | corrections: a corrected till stores exactly what a close with the same figures stores (each till, each card shape, with and without a pot movement); the worked example through cash handling, the sales dashboard and the public report; admin only through the real router; every rule with an accepting and a refusing case; the audit row; nothing else moves; what goes stale; two corrections at once, and a correction racing a handover |
 | `ui-till-corrections` | "Correct this till" only for an admin in the Operations app, on a closed till; the Apps Script Sales screen unchanged; the close's inputs in the row's card shape; a blank shown in words |
+| `ops/test/missed-shifts.test.ts` | missed shifts: an entered shift stores exactly what the real open and close store (each till, each card shape, with and without a pot movement); the Sales dashboard, the public report, cash held and pay owed follow it; admin only through the real router; every rule accepting and refusing; the four attendance cases; the lotto chain; the preview writes nothing and answers what the entry does; the audit row; nothing else moves; two entries at once, an entry racing an open, an entry racing a payment |
+| `ui-missed-shifts` | "Enter a shift that was not put in" only for an admin in the Operations app, on a day before today; the Apps Script Sales screen unchanged; the close's inputs per till and card shape; the server's preview and refusals; a blank in words |
 
 ## History
 
+- **P4-12b (Operations app):** an admin enters a shift that was never opened
+  or closed in the app (`rpcPreviewMissedShift`, `rpcEnterMissedShift`): the
+  session, its sales row and the day's attendance, as an open and a close would
+  have left them.
 - **P4-12a (Operations app):** an admin corrects a closed till's figures
   (`rpcGetTillCorrection`, `rpcCorrectTillSession`), worked out again with the
   close's own arithmetic.

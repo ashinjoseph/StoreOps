@@ -203,7 +203,7 @@ async function readSessions(db: Db, id: string, staffId: string, date: string): 
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** "YYYY-MM-DD" that is a real calendar day, or null. (lib/dates parseDate rolls 02-30 over to March: not here.) */
-function realDay(value: unknown): string | null {
+export function realDay(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const m = DAY.exec(value);
   if (!m) return null;
@@ -214,7 +214,7 @@ function realDay(value: unknown): string | null {
 }
 
 /** Whole calendar days from `a` to `b` (both "YYYY-MM-DD"). */
-function daysBetween(a: string, b: string): number {
+export function daysBetween(a: string, b: string): number {
   const ms = (s: string) => Date.UTC(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
   return Math.round((ms(b) - ms(a)) / 86_400_000);
 }

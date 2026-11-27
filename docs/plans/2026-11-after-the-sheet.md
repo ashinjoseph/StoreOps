@@ -49,7 +49,7 @@ and two sales rows with no session.
 | 2 | Change a setting | Typed into the `config` tab | P4-09 (done) |
 | 3 | Correct a day's schedule after the fact | Typed into the `attendance` tab | P4-10 (done) |
 | 4 | Correct a closed till: a mistyped count, cash or card figure, or note | Typed into `till_sessions` and `sales`. The code has an `edit` function no screen calls, and it covers only the float, the count and the note | P4-12a (done) |
-| 5 | Enter a shift that was never put in the app, for a past day | Rows typed by hand | P4-12b |
+| 5 | Enter a shift that was never put in the app, for a past day | Rows typed by hand | P4-12b (done) |
 | 6 | Run the reconcile again for a past day, after a correction | Not possible: only "today" | P4-12c (done) |
 
 **Should be in place at the switch.** The store runs without them, but
