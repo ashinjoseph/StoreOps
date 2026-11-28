@@ -54,6 +54,7 @@
     { "name": "rpcJoinItems", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
     { "name": "rpcObserveEarlierReceipts", "params": ["token"], "roles": ["admin"], "needs_session": true },
     { "name": "rpcGetReceiptEmails", "params": ["token", "input"], "roles": ["admin", "manager", "payroll_admin"], "needs_session": true },
-    { "name": "rpcAddReceiptCanadianAmount", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true }
+    { "name": "rpcAddReceiptCanadianAmount", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true },
+    { "name": "rpcSettleReceiptEmail", "params": ["token", "input"], "roles": ["admin", "manager"], "needs_session": true }
   ]
 }

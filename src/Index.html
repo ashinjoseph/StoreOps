@@ -7187,40 +7187,109 @@
   }
 
   // One email an assistant has dealt with: when, who sent it, its subject, what came of it, how many receipts, who recorded it.
-  const RECEIPT_EMAIL_WORDS = { filed: 'Filed', nothing_to_file: 'Nothing to file', could_not_read: 'Could not be read' };
-  function receiptEmailRowHTML_(e) {
-    const bad = e.outcome === 'could_not_read';
+  // What happens next (cards P5-19, P5-18): could not be read once, the assistant looks again; twice, it waits for a person, who
+  // marks it dealt with (and says what they did) or lets the assistant try once more. An answer from before those cards has no
+  // `next`: an email that could not be read then simply waits for a person.
+  const RECEIPT_EMAIL_WORDS = { filed: 'Filed', nothing_to_file: 'Nothing to file', could_not_read: 'Could not be read', already_on_file: 'Already on file' };
+  // Admin and manager settle an email that could not be read; the server checks the role again.
+  function receiptEmailCanSettle_() { return !!(state.me && (state.me.role === 'admin' || state.me.role === 'manager')); }
+  function receiptEmailStepHTML_(e) {
+    if (e.personDone) {
+      return '<div class="payroll-rate" data-email-step="dealt">Dealt with by ' + esc(e.personDone.name) + ' · ' + esc(receiptWhen_(e.personDone.at)) + ': ' + esc(e.personDone.note) + '</div>';
+    }
+    if (e.outcome !== 'could_not_read') return '';
+    if (e.next === 'try_again') return '<div class="payroll-rate" data-email-step="try_again" style="color:#b45309;font-weight:700">Could not be read once: the assistant looks at it once more on its next run.</div>';
+    return (e.next === 'wait_for_person' ? '<div class="payroll-rate" data-email-step="wait" style="color:#b91c1c;font-weight:700">Could not be read twice: waiting for you.</div>' : '') +
+      '<div class="payroll-rate" style="color:#b91c1c;font-weight:700">A person should look at this one.</div>';
+  }
+  function receiptEmailRowHTML_(e, canSettle) {
+    const open = e.outcome === 'could_not_read' && !e.personDone;
+    const bad = open && e.next !== 'try_again';
     const n = Number(e.originals) || 0;
-    const outcome = (RECEIPT_EMAIL_WORDS[e.outcome] || 'Unknown') + ': ' + n + ' receipt' + (n === 1 ? '' : 's') + ' from it';
+    const outcome = e.outcome === 'already_on_file'
+      ? 'Already on file: the same file came in another email, so nothing changed'
+      : (RECEIPT_EMAIL_WORDS[e.outcome] || 'Unknown') + ': ' + n + ' receipt' + (n === 1 ? '' : 's') + ' from it';
     const by = e.recordedBy || {};
+    const buttons = canSettle && open
+      ? '<div style="display:flex;gap:6px;margin-top:6px"><button class="payroll-btn payroll-btn-secondary" data-email-settle="done:' + esc(e.id) + '">Dealt with</button>' +
+        (e.next === 'wait_for_person' ? '<button class="payroll-btn payroll-btn-secondary" data-email-settle="retry:' + esc(e.id) + '">Let the assistant try once more</button>' : '') + '</div>'
+      : '';
     return '<div class="payroll-card card-pad" data-email-id="' + esc(e.id) + '" style="margin-bottom:8px' + (bad ? ';border:1px solid #fca5a5;background:#fef2f2' : '') + '">' +
       '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(e.subject || 'no subject') + '</div>' +
       '<div class="payroll-rate">' + esc(receiptWhen_(e.date)) + ' · from ' + esc(e.from) + '</div>' +
       '<div class="payroll-rate" data-email-outcome="' + esc(e.outcome) + '"' + (bad ? ' style="color:#b91c1c;font-weight:700"' : '') + '>' + esc(outcome) + '</div>' +
-      (bad ? '<div class="payroll-rate" style="color:#b91c1c;font-weight:700">A person should look at this one.</div>' : '') +
+      receiptEmailStepHTML_(e) +
       (e.note ? '<div class="payroll-rate">' + esc(e.note) + '</div>' : '') +
       '<div class="payroll-rate">Recorded by ' + esc(by.name || '') + '\'s assistant (' + esc(by.keyLabel || '') + ') · ' + esc(receiptWhen_(e.recordedAt)) + '</div>' +
+      buttons +
     '</div>';
+  }
+
+  // A person settles an email that could not be read (card P5-19): "retry" is sent at once; "done" asks what was done.
+  async function settleReceiptEmail_(action, id) {
+    const e = (receiptState_.emails || {})[id] || { id: id };
+    if (action === 'done') return openReceiptEmailDoneSheet_(e);
+    try {
+      await call('rpcSettleReceiptEmail', state.token, { id: id, action: 'retry' });
+      toast('✓ The assistant looks at it once more on its next run', 'success');
+      loadReceiptsTab(true);
+    } catch (err) {
+      handleRpcError(err);
+    }
+  }
+
+  function openReceiptEmailDoneSheet_(e) {
+    const bodyHTML =
+      '<div style="font-size:12px;color:#4a4e59;margin-bottom:10px">The assistant could not read this email. Say what you did about it (for example, fetched the invoice from the supplier\'s site and added it by hand). ' +
+        'It is then finished: no assistant looks at it again.</div>' +
+      '<div style="font-size:12px;font-weight:600;margin-bottom:8px;overflow-wrap:anywhere">' + esc(e.subject || 'no subject') + (e.from ? ' · from ' + esc(e.from) : '') + '</div>' +
+      '<div class="sheet-field"><label>What was done (required)</label><input type="text" id="emDoneNote" maxlength="300" autocomplete="off"></div>' +
+      '<div id="emDoneErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    const actionsHTML = '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="emDoneSave">Mark as dealt with</button>';
+    openSheet({ title: 'Dealt with', subtitle: 'An email that could not be read', bodyHTML, actionsHTML });
+    $('emDoneSave').onclick = async () => {
+      haptic();
+      const btn = $('emDoneSave');
+      btn.disabled = true;
+      $('emDoneErr').textContent = '';
+      try {
+        await call('rpcSettleReceiptEmail', state.token, { id: e.id, action: 'done', note: $('emDoneNote').value });
+        closeSheet();
+        toast('✓ Marked as dealt with', 'success');
+        loadReceiptsTab(true);
+      } catch (err) {
+        if (err.message && err.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(err); return; }
+        $('emDoneErr').textContent = err.message;
+        btn.disabled = false;
+      }
+    };
   }
 
   function receiptEmailMoreHTML_(next) {
     return next ? '<button class="payroll-btn payroll-btn-secondary" data-emails-more="' + esc(next) + '" style="width:100%">Show older emails</button>' : '';
   }
 
-  function receiptEmailsHTML_(data) {
+  function receiptEmailsHTML_(data, canSettle) {
     const c = (data && data.counts) || {};
-    const total = (Number(c.filed) || 0) + (Number(c.nothing_to_file) || 0) + (Number(c.could_not_read) || 0);
+    const total = (Number(c.filed) || 0) + (Number(c.nothing_to_file) || 0) + (Number(c.could_not_read) || 0) + (Number(c.already_on_file) || 0);
     const items = (data && data.items) || [];
+    receiptState_.emails = {};
+    items.forEach(e => { receiptState_.emails[e.id] = e; });
     let html = '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Emails checked (' + esc(total) + ')</div>' +
       '<div style="font-size:11px;color:#6a6e79;margin-bottom:6px">Every email the assistant has dealt with, whatever came of it, so it is not looked at twice. ' +
-      esc(c.filed || 0) + ' filed, ' + esc(c.nothing_to_file || 0) + ' with nothing to file, ' + esc(c.could_not_read || 0) + ' that could not be read.</div>';
+      esc(c.filed || 0) + ' filed, ' + esc(c.nothing_to_file || 0) + ' with nothing to file, ' + esc(c.could_not_read || 0) + ' that could not be read' +
+      (Number(c.already_on_file) ? ', ' + esc(c.already_on_file) + ' already on file' : '') +
+      (Number(c.waiting_for_person) ? ' (' + esc(c.waiting_for_person) + ' waiting for you)' : '') + '.</div>';
     if (!items.length) return html + '<div style="font-size:12px;color:#6a6e79">No email has been checked yet.</div>';
-    html += '<div id="rcptEmails">' + items.map(receiptEmailRowHTML_).join('') + '</div>';
+    html += '<div id="rcptEmails">' + items.map(e => receiptEmailRowHTML_(e, canSettle)).join('') + '</div>';
     html += '<div id="rcptEmailsMore">' + receiptEmailMoreHTML_(data.next) + '</div>';
     return html;
   }
 
-  function wireReceiptEmails_(view) {
+  function wireReceiptEmails_(view, canSettle) {
+    view.querySelectorAll('[data-email-settle]').forEach(el => {
+      el.onclick = () => { haptic(); const v = el.dataset.emailSettle; const at = v.indexOf(':'); return settleReceiptEmail_(v.slice(0, at), v.slice(at + 1)); };
+    });
     view.querySelectorAll('[data-emails-more]').forEach(el => {
       el.onclick = async () => {
         haptic();
@@ -7229,11 +7298,16 @@
         try {
           const page = await call('rpcGetReceiptEmails', state.token, { before: before });
           const list = $('rcptEmails');
-          if (list) list.innerHTML += ((page && page.items) || []).map(receiptEmailRowHTML_).join('');
+          const got = (page && page.items) || [];
+          got.forEach(e => { receiptState_.emails = receiptState_.emails || {}; receiptState_.emails[e.id] = e; });
+          if (list) {
+            list.innerHTML += got.map(e => receiptEmailRowHTML_(e, canSettle)).join('');
+            wireReceiptEmails_(list, canSettle);
+          }
           const more = $('rcptEmailsMore');
           if (more) {
             more.innerHTML = receiptEmailMoreHTML_(page && page.next);
-            wireReceiptEmails_(more);
+            wireReceiptEmails_(more, canSettle);
           }
         } catch (e) {
           el.disabled = false;
@@ -7290,7 +7364,7 @@
       html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Set aside (' + esc(counts.set_aside || 0) + ')</div>';
       if (!asideItems.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing set aside.</div>';
       asideItems.forEach(it => { html += receiptRowHTML_(it); });
-      if (emails) html += receiptEmailsHTML_(emails);
+      if (emails) html += receiptEmailsHTML_(emails, receiptEmailCanSettle_());
       html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Old purchase list</div>' +
         '<div style="font-size:11px;color:#6a6e79;margin-bottom:6px">Purchases from the old spreadsheet. No original is on file for any of these, and they are not part of the books below.</div>' +
         '<button class="payroll-btn payroll-btn-secondary" data-old-list="toggle" style="width:100%">Old purchase list</button>' +
@@ -7302,7 +7376,7 @@
     }
     view.innerHTML = html;
     wireReceiptAdd_();
-    wireReceiptEmails_(view);
+    wireReceiptEmails_(view, receiptEmailCanSettle_());
     const all = items.concat((aside && aside.items) || [], (drafted && drafted.items) || []);
     const canEdit = !!(data && data.scope === 'all' && data.canSetAside);
     view.querySelectorAll('[data-receipt-id]').forEach(el => {

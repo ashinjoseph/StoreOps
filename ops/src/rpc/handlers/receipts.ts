@@ -39,6 +39,16 @@ export const rpcGetReceiptEmails: RpcHandler = async (ctx, input) => {
   return emails.list(ctx.db, { before: o["before"], limit: o["limit"] });
 };
 
+const SETTLE_EMAIL_ROLES = ["admin", "manager"] as const;
+
+/** Admin or manager: `{ id, action: "done" | "retry", note }`, a person settling an email that could not be read (card P5-19). */
+export const rpcSettleReceiptEmail: RpcHandler = async (ctx, input) => {
+  const s = caller(ctx, SETTLE_EMAIL_ROLES);
+  const o = fields(input);
+  const r = await emails.settle(ctx.db, { id: o["id"], action: o["action"], note: o["note"] }, s.staffId, ctx.now);
+  if (!r.ok) throw new Error(r.error);
+  return r.email;
+};
 /** Admin or manager: `{ id, aside, reason }`. */
 export const rpcSetReceiptAside: RpcHandler = async (ctx, input) => {
   const s = caller(ctx, originals.SET_ASIDE_ROLES);

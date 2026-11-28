@@ -336,7 +336,8 @@ const receiptsFromEmail: ToolDef = {
   title: "Has this email been dealt with",
   description:
     "For each email message id (1 to 50), the whole picture, from any assistant: recorded (null when nobody has finished with the email with receipt_email_done; else its outcome, filed, nothing_to_file or could_not_read, how many originals came from it, its note, when it was first seen and last recorded), on_file, the originals already on file from it (each one's id, added_at, status: waiting, drafted, confirmed or set_aside, and which attachment it was: name and position, or print: true for a print of the email's own text), and the upload addresses still open for it (each one's id, expires_at and attachment or print). " +
-    "Use it before handing anything over in a mailbox scan: an email recorded as filed or nothing_to_file is finished and is skipped; one recorded as could_not_read, or not recorded, is looked at again, and only the attachments not yet on file are handed over. " +
+    "recorded also says tries (how many times it was recorded as could_not_read) and next, what to do with it: done (finished: skip it), try_again (it could not be read once: look at it once more), or wait_for_person (it could not be read twice, or a person is dealing with it: skip it, and do not record it). " +
+    "Use it before handing anything over in a mailbox scan: an email whose next is done or wait_for_person is skipped; one whose next is try_again, or that is not recorded, is looked at, and only the attachments not yet on file are handed over. " +
     MESSAGE_ID_WORDS +
     "Ids are compared in that one form: surrounding white space, direction marks and one pair of angle brackets are ignored; case and everything else count. " +
     DATA_SENTENCE,
@@ -363,6 +364,9 @@ const receiptsFromEmail: ToolDef = {
               note: textOrNull(r.recorded.note, 300),
               first_seen_at: r.recorded.firstSeenAt,
               recorded_at: r.recorded.recordedAt,
+              tries: r.recorded.tries,
+              next: r.recorded.next,
+              ...(r.recorded.sameAs === null ? {} : { same_as: r.recorded.sameAs }),
             },
       on_file: r.originals.length > 0,
       originals: r.originals.map((o) => ({ id: o.id, added_at: o.added_at, status: o.status, attachment: attachment(o.attachment), print: o.print })),
@@ -381,7 +385,8 @@ const receiptEmailDone: ToolDef = {
   title: "Record that an email has been dealt with",
   description:
     "Record that this assistant has finished with one email, whatever came of it, so that the next scan skips it and a person can see it in the app (Receipts, Emails checked). Input: message_id, from and date as the email gives them, subject (optional), outcome, and note (optional, a few words). " +
-    "outcome: filed (one or more receipt originals were handed over from it: refused when none from that message id is on file), nothing_to_file (it was looked at and is not an invoice or a receipt: refused when originals from it are on file), or could_not_read (an attachment could not be fetched or opened: a person should look at it). " +
+    "outcome: filed (one or more receipt originals were handed over from it: refused when none from that message id is on file), nothing_to_file (it was looked at and is not an invoice or a receipt: refused when originals from it are on file), already_on_file (its file came back as already on file from another email, the PUT answering duplicate: nothing changes; refused unless that happened, and when originals from it are on file), or could_not_read (an attachment could not be fetched or opened). " +
+    "An email recorded as could_not_read is looked at once more by the next scan; recorded so a second time, it waits for a person, and every record of it is refused until a person lets an assistant try once more. An email a person has dealt with cannot be recorded. " +
     "Recording the same email again updates its outcome, the count and the note and keeps the time it was first seen; every change is audited. Nothing is ever removed. Nothing about the email is read from the email by this app: the app has no access to mail. " +
     MESSAGE_ID_WORDS +
     DATA_SENTENCE,
@@ -424,9 +429,13 @@ const receiptEmailDone: ToolDef = {
       first_seen_at: e.firstSeenAt,
       recorded_at: e.recordedAt,
       created: made.created,
+      tries: e.tries,
+      next: e.next,
+      ...(e.sameAs === null ? {} : { same_as: e.sameAs }),
     };
     const count = e.originals === 0 ? "" : `, ${e.originals} original${e.originals === 1 ? "" : "s"} on file from it`;
-    return { summary: `Email ${made.created ? "recorded" : "recorded again"} as ${e.outcome.replace(/_/g, " ")}${count}.`, data };
+    const then = e.next === "try_again" ? " The next scan looks at it once more." : e.next === "wait_for_person" ? " It could not be read twice: it now waits for a person; skip it from now on." : "";
+    return { summary: `Email ${made.created ? "recorded" : "recorded again"} as ${e.outcome.replace(/_/g, " ")}${count}.${then}`, data };
   },
 };
 

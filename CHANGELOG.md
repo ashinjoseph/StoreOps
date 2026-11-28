@@ -1995,3 +1995,25 @@ deliberate mutations, each restored byte for byte.
 `ui-missed-shifts.js` were changed first and seen failing on the previous
 page.
 
+### An email that could not be read is tried once more, then waits for you; the same file twice changes nothing (cards P5-19, P5-18; the owner, Nov 28)
+
+- **Tried once more, then a person.** An email the assistant could not read
+  is looked at once more on its next run. If it fails again it waits for
+  you: no assistant may record it again, and on **Receipts → Emails
+  checked** it is in red, *Could not be read twice: waiting for you*, with
+  **Dealt with** (say what you did; it is then finished) and **Let the
+  assistant try once more** (admin and manager; both audited).
+  `receipts_from_email` tells the assistant what to do with each email
+  (`next`: done, try_again or wait_for_person).
+- **The same file in a second email** is recorded as *Already on file*,
+  naming the receipt it is the same as, instead of *nothing to file*.
+  Nothing changes.
+- The instructions to paste into the assistant
+  ([Scan the mailbox for invoices](docs/guides/email-invoice-scan.md)) follow
+  both rules.
+- Migration 0019; one new RPC (`rpcSettleReceiptEmail`).
+
+New tests in `ops/test/receipt-emails.test.ts` (nine) and
+`tests/suites/ui-receipts.js`, written first and seen failing on the previous
+code.
+

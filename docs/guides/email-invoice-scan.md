@@ -115,11 +115,14 @@ invoice.
 Do not remember what you did before. Find out what is already handled by
 asking the app: call receipts_from_email with the Message-ID of each candidate
 (up to 50 in one call). For each one:
-  - recorded as filed or nothing_to_file: it is finished. Skip it.
-  - recorded as could_not_read: while it is still inside the days you look
-    back, look at it once more. Hand over only the
-    attachments not already in its originals (compare each attachment's
-    position), then record the email again.
+  - recorded, and its next is done: it is finished. Skip it.
+  - recorded, and its next is wait_for_person: it could not be read twice,
+    and a person is dealing with it. Skip it. Do not record it.
+  - recorded, and its next is try_again: it could not be read once. Look at
+    it once more (this one time). Hand over only the attachments not
+    already in its originals (compare each attachment's position), then
+    record the email again. If it still cannot be read, record
+    could_not_read again: the app then hands it to a person.
   - not recorded: deal with it as below. If some of its attachments are
     already in originals (a run stopped half way), hand over only the others.
   - open_tickets not empty: another run is working on it. Skip it.
@@ -193,12 +196,17 @@ from, date, subject and:
   - outcome filed, when every file you meant to hand over was handed over (or
     was already on file). The app counts the originals itself.
   - outcome nothing_to_file with a short note, when it was not an invoice or a
-    receipt. Also use this, with the note "same invoice as <message id>", for
-    an email whose only attachment came back as already on file from another
-    email. (filed would be refused: nothing is on file under this email.)
+    receipt.
+  - outcome already_on_file, when the only file you handed over came back as
+    already on file (the PUT answered duplicate): the same file came in
+    another email, and nothing changes. (filed would be refused: nothing new
+    is on file under this email.) An updated invoice from a supplier (some
+    items out of stock, a new total) is a different file: hand it over and
+    record filed. A person sees in the review that it replaces the first.
   - outcome could_not_read with a short note saying what failed, when an
     attachment could not be fetched, opened or printed, or when anything made
-    you unsure that you had the whole invoice. A person will look at it.
+    you unsure that you had the whole invoice. The next run looks at it once
+    more; if it fails again, it waits for a person.
 Do this for every candidate email, including the ones with nothing to file.
 Record the same email again if you learn more: it updates, and nothing is lost.
 
@@ -246,7 +254,9 @@ The instructions deal with these without asking you:
 | An invoice **forwarded** by a person | The forwarding email is the one that counts: its own Message-ID, with the attachment or the text. The sender shown is the person who forwarded it. |
 | An invoice that is **a link to a supplier's portal**, nothing attached | Does not follow the link. Records it as *could not be read* with *invoice is behind a link*: you fetch it and add it as a photo or file under Receipts. |
 | A **password-protected PDF** | Hands it over as it is (the app keeps it as received), and records *could not be read*, *password protected*: you open it with the password. |
-| The **same invoice sent twice** with different message ids | The second upload is the same file, so the app says it is already on file and keeps one original; the second email is recorded as *nothing to file*, *same invoice as …*. If the supplier re-made the PDF, the bytes differ and you will see two similar receipts: the review's duplicate check flags the second. |
+| The **same invoice sent twice** with different message ids | The second upload is the same file, so the app says it is already on file and keeps one original; the second email is recorded as *already on file*, and nothing changes. |
+| An **updated invoice** (the wholesaler accepted the order, then found items out of stock and sent a new invoice with the same number) | A different file: it is handed over and filed. In the review it is recognised by its supplier and invoice number as a revision of the first, and confirming it replaces the first on the books. |
+| An email that **could not be read** | The next run looks at it once more. If it fails again it waits for you: on Receipts → Emails checked it is in red, *Could not be read twice: waiting for you*, with **Dealt with** (say what you did) and **Let the assistant try once more**. |
 | An invoice that is **an image inside the email** | Treated as an attachment when it can be fetched as an image file, otherwise printed. |
 | A **thread with replies** | Every message is looked at on its own. A reply that only quotes the invoice is *nothing to file*. |
 | An attachment that is a **spreadsheet, a zip or a web page** | Never opened. *Could not be read*, so you look. |

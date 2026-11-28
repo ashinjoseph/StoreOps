@@ -70,7 +70,7 @@ export const LATER_OPS_TABLES: readonly string[] = [
   "item_costs",
   "receipt_observations",
   "price_flags",
-  // card P5-13, the emails an assistant has dealt with (0017_receipt_emails.sql)
+  // card P5-13, the emails an assistant has dealt with (0017_receipt_emails.sql; tries, a person settling it and already_on_file: 0019)
   "receipt_emails",
 ];
 

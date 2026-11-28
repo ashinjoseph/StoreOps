@@ -68,7 +68,7 @@ H.uiScripts().forEach(([label, js]) => {
 
   // Hostile text is still escaped in the touched cards that can be drawn on their own.
   const HOST = '<img src=x onerror=alert(1)>';
-  const names = ['esc', 'money', 'receiptWhen_', 'receiptEmailRowHTML_', 'businessSignText_', 'businessCardHTML_', 'legacyCents_', 'legacySupplierHTML_', 'legacySortedWords_', 'legacySpellingHTML_', 'legacyRowHTML_'];
+  const names = ['esc', 'money', 'receiptWhen_', 'receiptEmailStepHTML_', 'receiptEmailRowHTML_', 'businessSignText_', 'businessCardHTML_', 'legacyCents_', 'legacySupplierHTML_', 'legacySortedWords_', 'legacySpellingHTML_', 'legacyRowHTML_'];
   const consts = ['RECEIPT_EMAIL_WORDS', 'BUSINESS_SIGN_KINDS', 'LEGACY_VIEWS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
   const fns = new Function(consts + '\n' + names.map(n => H.fnSource(js, n)).join('\n') + '; return { receiptEmailRowHTML_, businessCardHTML_, legacySpellingHTML_, legacyRowHTML_ };')();
   const outs = [

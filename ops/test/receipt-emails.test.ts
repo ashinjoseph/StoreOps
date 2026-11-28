@@ -359,7 +359,7 @@ describe("a whole scan over five emails", () => {
       [messageKey(FIVE[2]!.id), "filed", 1],
       [messageKey(FIVE[3]!.id), "nothing_to_file", 0],
     ]);
-    expect(list.result.counts).toEqual({ filed: 3, nothing_to_file: 1, could_not_read: 1 });
+    expect(list.result.counts).toEqual({ filed: 3, nothing_to_file: 1, could_not_read: 1, already_on_file: 0, waiting_for_person: 0 });
     expect(list.result.next).toBeNull();
     expect(list.result.items[1]).toMatchObject({ from: FROM, date: "2026-11-26T14:14:00.000Z", subject: "Invoice 1001 for November", note: null, recordedBy: { name: "Cleo Marsh", keyLabel: "Cleo's Muse" } });
     // The inbox list's rows for emailed originals carry the attachment fields.
@@ -475,9 +475,9 @@ describe("receipt_email_done", () => {
       ["receipt_email.record", "S_003", "receipt_emails", row.email_id],
       ["receipt_email.update", "S_002", "receipt_emails", row.email_id],
     ]);
-    expect(JSON.parse(logged[0].after)).toEqual({ id: row.email_id, assistantKeyId: keyId, outcome: "could_not_read", originals: 0 });
-    expect(JSON.parse(logged[1].before)).toEqual({ outcome: "could_not_read", originals: 0, assistantKeyId: keyId });
-    expect(JSON.parse(logged[1].after)).toEqual({ outcome: "filed", originals: 1, assistantKeyId: second.keyId });
+    expect(JSON.parse(logged[0].after)).toEqual({ id: row.email_id, assistantKeyId: keyId, outcome: "could_not_read", originals: 0, tries: 1 });
+    expect(JSON.parse(logged[1].before)).toEqual({ outcome: "could_not_read", originals: 0, assistantKeyId: keyId, tries: 1 });
+    expect(JSON.parse(logged[1].after)).toEqual({ outcome: "filed", originals: 1, assistantKeyId: second.keyId, tries: 1 });
     // No email text in the audit rows.
     for (const x of logged) expect(JSON.stringify(x)).not.toMatch(/Invoice again|Fictional Corner|again-3|second try|first try/);
     await client.close();
@@ -856,7 +856,7 @@ describe("the Emails checked list over RPC", () => {
       const r = await rpc("rpcGetReceiptEmails", [tokens[id], {}]);
       expect(r.ok, id).toBe(true);
       expect(r.result.items).toHaveLength(1);
-      expect(Object.keys(r.result.items[0]).sort()).toEqual(["date", "firstSeenAt", "from", "id", "messageId", "note", "originals", "outcome", "recordedAt", "recordedBy", "subject"]);
+      expect(Object.keys(r.result.items[0]).sort()).toEqual(["date", "firstSeenAt", "from", "id", "messageId", "next", "note", "originals", "outcome", "personDone", "recordedAt", "recordedBy", "sameAs", "subject", "tries"]);
       // No key, no hash, no storage path.
       expect(JSON.stringify(r.result)).not.toMatch(/key_hash|ops_|storage|originals\//);
     }
@@ -886,7 +886,7 @@ describe("the Emails checked list over RPC", () => {
       const r = await rpc("rpcGetReceiptEmails", [tokens["S_001"], { limit: 5, ...(before === undefined ? {} : { before }) }]);
       expect(r.ok).toBe(true);
       expect(r.result.items.length).toBeLessThanOrEqual(5);
-      expect(r.result.counts).toEqual({ filed: 0, nothing_to_file: 9, could_not_read: 3 });
+      expect(r.result.counts).toEqual({ filed: 0, nothing_to_file: 9, could_not_read: 3, already_on_file: 0, waiting_for_person: 0 });
       seen.push(...r.result.items.map((i: any) => i.messageId));
       if (r.result.next === null) break;
       before = r.result.next;
@@ -902,6 +902,189 @@ describe("the Emails checked list over RPC", () => {
     const junk = await rpc("rpcGetReceiptEmails", [tokens["S_001"], { before: "'; drop table x; --", limit: "5" }]);
     expect(junk.ok).toBe(true);
     expect(junk.result.items).toHaveLength(12);
+    await client.close();
+  });
+});
+
+// ── Tried once more, then a person (card P5-19; the owner, Nov 28: "retry once and then wait for user") ──
+
+/** Record an email as could_not_read `n` times. */
+async function cannotRead(client: Client, id: string, n: number): Promise<void> {
+  for (let i = 0; i < n; i++) {
+    w.clock.now = new Date(w.clock.now.getTime() + 1000);
+    const r = await done(client, { ...mail(id), outcome: "could_not_read", note: `try ${i + 1}: the attachment would not download` });
+    if (!r.ok) throw new Error(`could_not_read refused: ${r.text}`);
+  }
+}
+
+describe("an email that could not be read is tried once more, then waits for a person (card P5-19)", () => {
+  it("the first could_not_read says try_again; the second says wait_for_person; after that every record is refused with words and nothing changes", async () => {
+    const client = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
+    const id = "<stuck-1@mail.example.org>";
+    await cannotRead(client, id, 1);
+    let [r] = await fromEmail(client, [id]);
+    expect(r.recorded).toMatchObject({ outcome: "could_not_read", tries: 1, next: "try_again" });
+    await cannotRead(client, id, 1);
+    [r] = await fromEmail(client, [id]);
+    expect(r.recorded).toMatchObject({ outcome: "could_not_read", tries: 2, next: "wait_for_person" });
+    const before = await emailRows();
+    const auditsBefore = (await audits()).length;
+    for (const outcome of ["could_not_read", "nothing_to_file", "filed", "already_on_file"]) {
+      const x = await done(client, { ...mail(id), outcome });
+      expect(x.ok, outcome).toBe(false);
+      expect(x.text).toMatch(/could not be read twice: a person is looking at it\. Skip it/);
+    }
+    expect(await emailRows()).toEqual(before);
+    expect((await audits()).length).toBe(auditsBefore);
+    await client.close();
+  });
+
+  it("a second look that works: filed after one could_not_read is recorded, tries stays 1, and the email is done", async () => {
+    const client = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
+    const id = "<second-look@mail.example.org>";
+    await cannotRead(client, id, 1);
+    expect((await hand(client, mail(id, { attachment: { name: "inv.pdf", position: 1 } }), FILES.pdf())).status).toBe(201);
+    expect((await done(client, { ...mail(id), outcome: "filed" })).ok).toBe(true);
+    const [r] = await fromEmail(client, [id]);
+    expect(r.recorded).toMatchObject({ outcome: "filed", originals: 1, tries: 1, next: "done" });
+    await client.close();
+  });
+
+  it("every outcome's next step, as a table", async () => {
+    const client = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
+    expect((await hand(client, mail("<n-filed@x.example.org>", { attachment: { name: "a.pdf", position: 1 } }), FILES.pdf())).status).toBe(201);
+    await done(client, { ...mail("<n-filed@x.example.org>"), outcome: "filed" });
+    await done(client, { ...mail("<n-none@x.example.org>"), outcome: "nothing_to_file" });
+    const rows = await fromEmail(client, ["<n-filed@x.example.org>", "<n-none@x.example.org>", "<n-never@x.example.org>"]);
+    expect(rows.map((x) => (x.recorded === null ? null : [x.recorded.outcome, x.recorded.tries, x.recorded.next]))).toEqual([["filed", 0, "done"], ["nothing_to_file", 0, "done"], null]);
+    await client.close();
+  });
+
+  it("a person settles it: Dealt with (a note is required) or Let the assistant try once more; admin and manager only; each audited", async () => {
+    const client = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
+    const id = "<settle-1@mail.example.org>";
+    await cannotRead(client, id, 2);
+    const emailId = (await emailRows())[0].email_id;
+    // Who may.
+    for (const who of ["S_004", "S_003"]) {
+      const x = await rpc("rpcSettleReceiptEmail", [tokens[who], { id: emailId, action: "retry" }]);
+      expect(x.ok, who).toBe(false);
+      expect(x.error?.message).toMatch(/FORBIDDEN/);
+    }
+    expect((await rpc("rpcSettleReceiptEmail", ["", { id: emailId, action: "retry" }])).error?.message).toBe("NOT_LOGGED_IN");
+    const entry = JSON.parse(readFileSync(new URL("../contracts/rpc-ops.json", import.meta.url), "utf8")).rpcs.find((e: any) => e.name === "rpcSettleReceiptEmail");
+    expect(entry).toEqual({ name: "rpcSettleReceiptEmail", params: ["token", "input"], roles: ["admin", "manager"], needs_session: true });
+    // Let it try once more (manager): back to one try; the assistant may record it again.
+    const retried = await rpc("rpcSettleReceiptEmail", [tokens["S_002"], { id: emailId, action: "retry" }]);
+    expect(retried.ok).toBe(true);
+    expect(retried.result).toMatchObject({ outcome: "could_not_read", tries: 1, next: "try_again", personDone: null });
+    // Only a waiting one can be let go again.
+    const twice = await rpc("rpcSettleReceiptEmail", [tokens["S_002"], { id: emailId, action: "retry" }]);
+    expect(twice.ok).toBe(false);
+    expect(twice.error?.message).toMatch(/only an email that is waiting for a person/);
+    await cannotRead(client, id, 1);
+    expect((await fromEmail(client, [id]))[0].recorded).toMatchObject({ tries: 2, next: "wait_for_person" });
+    // Dealt with (admin): a note is required.
+    for (const note of [undefined, "", "   "]) {
+      const x = await rpc("rpcSettleReceiptEmail", [tokens["S_001"], { id: emailId, action: "done", note }]);
+      expect(x.ok).toBe(false);
+      expect(x.error?.message).toMatch(/Say what was done/);
+    }
+    w.clock.now = new Date(w.clock.now.getTime() + 1000);
+    const dealt = await rpc("rpcSettleReceiptEmail", [tokens["S_001"], { id: emailId, action: "done", note: "Fetched it from the supplier's site and added it by hand" }]);
+    expect(dealt.ok).toBe(true);
+    expect(dealt.result).toMatchObject({ outcome: "could_not_read", next: "done", personDone: { name: "Ada Quill", note: "Fetched it from the supplier's site and added it by hand" } });
+    // The assistant skips it from now on, and may not record it.
+    expect((await fromEmail(client, [id]))[0].recorded.next).toBe("done");
+    const after = await done(client, { ...mail(id), outcome: "could_not_read" });
+    expect(after.ok).toBe(false);
+    expect(after.text).toMatch(/a person has dealt with this email\. Skip it/i);
+    // Neither action twice, nor on an email that was filed.
+    expect((await rpc("rpcSettleReceiptEmail", [tokens["S_001"], { id: emailId, action: "done", note: "again" }])).error?.message).toMatch(/already dealt with/);
+    await done(client, { ...mail("<fine@mail.example.org>"), outcome: "nothing_to_file" });
+    const fine = (await emailRows()).find((e: any) => e.message_id === "fine@mail.example.org");
+    expect((await rpc("rpcSettleReceiptEmail", [tokens["S_001"], { id: fine.email_id, action: "done", note: "x" }])).error?.message).toMatch(/only an email that could not be read/);
+    expect((await rpc("rpcSettleReceiptEmail", [tokens["S_001"], { id: "re" + "0".repeat(24), action: "done", note: "x" }])).error?.message).toMatch(/No such email/);
+    expect((await rpc("rpcSettleReceiptEmail", [tokens["S_001"], { id: emailId, action: "forget" }])).error?.message).toMatch(/done or retry/);
+    // The audit rows: who, what, and no email text.
+    const rows = (await audits()).filter((a) => a.action === "receipt_email.retry_allowed" || a.action === "receipt_email.person_done");
+    expect(rows.map((a) => [a.actor_id, a.action])).toEqual([["S_002", "receipt_email.retry_allowed"], ["S_001", "receipt_email.person_done"]]);
+    expect(JSON.stringify(rows)).not.toMatch(/mail\.example\.org|Fictional Corner Supply/);
+    await client.close();
+  });
+
+  it("the list: the ones waiting for a person and the ones to try again are on top until a person deals with them; counts say how many wait", async () => {
+    const client = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
+    const at = (d: string) => ({ from: FROM, date: `2026-10-${d}T12:00:00-04:00` });
+    await done(client, { message_id: "<l-ok@x.example.org>", ...at("20"), outcome: "nothing_to_file" });
+    await done(client, { message_id: "<l-once@x.example.org>", ...at("10"), outcome: "could_not_read" });
+    for (let i = 0; i < 2; i++) await done(client, { message_id: "<l-wait@x.example.org>", ...at("05"), outcome: "could_not_read" });
+    for (let i = 0; i < 2; i++) await done(client, { message_id: "<l-dealt@x.example.org>", ...at("25"), outcome: "could_not_read" });
+    const dealtId = (await emailRows()).find((e: any) => e.message_id === "l-dealt@x.example.org").email_id;
+    expect((await rpc("rpcSettleReceiptEmail", [tokens["S_002"], { id: dealtId, action: "done", note: "added by hand" }])).ok).toBe(true);
+    const r = await rpc("rpcGetReceiptEmails", [tokens["S_001"], {}]);
+    expect(r.result.items.map((i: any) => i.messageId.replace("@x.example.org", ""))).toEqual(["l-once", "l-wait", "l-dealt", "l-ok"]);
+    expect(r.result.counts).toEqual({ filed: 0, nothing_to_file: 1, could_not_read: 3, already_on_file: 0, waiting_for_person: 1 });
+    await client.close();
+  });
+
+  it("the database: tries never below 0; a person's settling is all three columns or none, and only on could_not_read; the app role may set them and still never delete", async () => {
+    const client = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
+    await cannotRead(client, "<db-1@mail.example.org>", 1);
+    const id = (await emailRows())[0].email_id;
+    await expect(w.owner.query("update ops.receipt_emails set tries = -1 where email_id = $1", [id])).rejects.toThrow(/check/);
+    await expect(w.owner.query("update ops.receipt_emails set person_done_by = 'S_001' where email_id = $1", [id])).rejects.toThrow(/receipt_emails_person_done/);
+    await expect(w.owner.query("update ops.receipt_emails set person_done_by = 'S_001', person_done_at = now(), person_note = 'x', outcome = 'nothing_to_file', originals = 0 where email_id = $1", [id])).rejects.toThrow(/receipt_emails_person_done/);
+    await w.db.query("update ops.receipt_emails set person_done_by = 'S_001', person_done_at = now(), person_note = 'x', tries = 3 where email_id = $1", [id]);
+    await expect(w.db.query("delete from ops.receipt_emails where email_id = $1", [id])).rejects.toThrow(/permission denied/);
+    await expect(w.db.query("update ops.receipt_emails set first_seen_at = now() where email_id = $1", [id])).rejects.toThrow(/permission denied/);
+    await client.close();
+  });
+});
+
+// ── The same file from another email: already on file (card P5-18; the owner, Nov 28: "if no changes then nothing to change") ──
+
+describe("the same file from another email is recorded as already on file (card P5-18)", () => {
+  it("already_on_file is accepted when this email's file came back as already on file, and names the receipt it is the same as", async () => {
+    const client = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
+    const bytes = FILES.pdf("one invoice, sent twice");
+    const first = await hand(client, mail("<a-orig@mail.example.org>", { attachment: { name: "inv.pdf", position: 1 } }), bytes);
+    await done(client, { ...mail("<a-orig@mail.example.org>"), outcome: "filed" });
+    const again = await hand(client, mail("<a-again@mail.example.org>", { attachment: { name: "inv.pdf", position: 1 } }), bytes);
+    expect(again.body.result.duplicate).toBe(true);
+    const refused = await done(client, { ...mail("<a-again@mail.example.org>"), outcome: "filed" });
+    expect(refused.ok).toBe(false);
+    expect(refused.text).toMatch(/record already_on_file/);
+    const ok = await done(client, { ...mail("<a-again@mail.example.org>"), outcome: "already_on_file" });
+    expect(ok.ok).toBe(true);
+    expect(ok.data).toMatchObject({ outcome: "already_on_file", originals: 0, same_as: first.id });
+    const [r] = await fromEmail(client, ["<a-again@mail.example.org>"]);
+    expect(r.recorded).toMatchObject({ outcome: "already_on_file", next: "done", same_as: first.id });
+    expect(await originalRows()).toHaveLength(1);
+    const list = await rpc("rpcGetReceiptEmails", [tokens["S_002"], {}]);
+    expect(list.result.items.find((i: any) => i.messageId === "a-again@mail.example.org")).toMatchObject({ outcome: "already_on_file", sameAs: first.id, originals: 0 });
+    expect(list.result.counts.already_on_file).toBe(1);
+    await client.close();
+  });
+
+  it("already_on_file is refused when nothing from this email came back as already on file, and when an original from it is on file", async () => {
+    const client = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
+    const none = await done(client, { ...mail("<a-none@mail.example.org>"), outcome: "already_on_file" });
+    expect(none.ok).toBe(false);
+    expect(none.text).toMatch(/Nothing handed over from that message id came back as already on file/);
+    expect((await hand(client, mail("<a-new@mail.example.org>", { attachment: { name: "n.pdf", position: 1 } }), FILES.pdf())).status).toBe(201);
+    const some = await done(client, { ...mail("<a-new@mail.example.org>"), outcome: "already_on_file" });
+    expect(some.ok).toBe(false);
+    expect(some.text).toMatch(/Record filed/);
+    expect(await emailRows()).toHaveLength(0);
+    await client.close();
+  });
+
+  it("the database: same_as is set exactly for already_on_file, which has no originals of its own", async () => {
+    const client = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
+    await done(client, { ...mail("<a-db@mail.example.org>"), outcome: "nothing_to_file" });
+    const id = (await emailRows())[0].email_id;
+    await expect(w.owner.query("update ops.receipt_emails set outcome = 'already_on_file' where email_id = $1", [id])).rejects.toThrow(/receipt_emails_same_as/);
     await client.close();
   });
 });

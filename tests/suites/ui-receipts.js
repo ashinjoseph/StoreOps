@@ -104,13 +104,13 @@ const SCREEN = ['receiptSizeText_', 'receiptBusinessLabel_', 'receiptWhen_', 're
   'receiptMonthYear_', 'receiptArchiveWords_', 'receiptArchiveTileHTML_', 'receiptArchiveWire_', 'receiptReviewArchived_', 'loadReceiptReviewOriginal_',
   'openReceiptReview_', 'showReceiptReviewOriginal_', 'drawReceiptReview_', 'closeReceiptReview_', 'wireReceiptReview_', 'wireReceiptReviewRows_', 'saveReceiptReview_', 'openReceiptConfirmSheet_',
   'loadReceiptBooks_', 'receiptBooksHTML_', 'wireReceiptBooks_', 'receiptChangesHTML_', 'openReceiptOnBooks_', 'openReceiptVoidSheet_',
-  'receiptEmailLines_', 'receiptPrintNotice_', 'receiptEmailRowHTML_', 'receiptEmailMoreHTML_', 'receiptEmailsHTML_', 'wireReceiptEmails_',
+  'receiptEmailLines_', 'receiptPrintNotice_', 'receiptEmailRowHTML_', 'receiptEmailMoreHTML_', 'receiptEmailsHTML_', 'wireReceiptEmails_', 'receiptEmailCanSettle_', 'receiptEmailStepHTML_', 'openReceiptEmailDoneSheet_', 'settleReceiptEmail_',
   'receiptForeign_', 'receiptAmount_', 'receiptFactsHTML_', 'wireReceiptFacts_', 'receiptChargeFieldsHTML_', 'receiptFactsInput_', 'receiptBooksMark_', 'openReceiptCadSheet_',
   'loadBusinessesTab', 'businessSignText_', 'businessCardHTML_', 'renderBusinessesTab', 'openBusinessEditSheet_', 'openBusinessSignSheet_',
   'legacyCents_', 'legacySupplierHTML_', 'legacySortedWords_', 'legacySpellingHTML_', 'legacyRowHTML_', 'legacyHTML_', 'legacyLoad_', 'legacyToggle_', 'legacyWire_', 'openLegacySpellingSheet_'];
 const CALLS = ['rpcGetReceiptInbox', 'rpcSetReceiptAside', 'rpcSetReceiptBusiness', 'rpcGetBusinesses', 'rpcUpdateBusiness', 'rpcAddBusinessSign', 'rpcRemoveBusinessSign', 'rpcGetReceiptDraft', 'rpcEnterReceiptDraft',
   'rpcGetReceiptReview', 'rpcSaveReceiptCorrection', 'rpcConfirmReceipt', 'rpcVoidReceipt', 'rpcGetReceiptSuppliers', 'rpcCreateReceiptSupplier', 'rpcGetReceiptBooks',
-  'rpcGetLegacyPurchases', 'rpcGetLegacySpellings', 'rpcSetLegacyBusiness', 'rpcLinkLegacySupplier', 'rpcGetReceiptEmails', 'rpcAddReceiptCanadianAmount'];
+  'rpcGetLegacyPurchases', 'rpcGetLegacySpellings', 'rpcSetLegacyBusiness', 'rpcLinkLegacySupplier', 'rpcGetReceiptEmails', 'rpcAddReceiptCanadianAmount', 'rpcSettleReceiptEmail'];
 
 const item = (o) => Object.assign({ id: 'ro' + 'a'.repeat(24), addedAt: '2026-11-27T15:00:00.000Z', addedBy: 'Cleo Marsh', mine: false, business: null, source: 'photo', contentType: 'image/jpeg', size: 2516582, fileName: 'IMG_0042.JPG', note: 'Fictional Grocer', status: 'waiting', setAside: null }, o);
 const ALL = { scope: 'all', status: 'waiting', items: [item({}), item({ id: 'ro' + 'b'.repeat(24), contentType: 'application/pdf', fileName: 'invoice.pdf', addedBy: 'Eli <b>Stone</b>', business: 'vape' })], counts: { waiting: 2, set_aside: 1 }, next: null, canSetAside: true, maxMb: 10 };
@@ -370,6 +370,80 @@ H.uiScripts().forEach(([label, js]) => {
       await r.fns.openReceiptSheet_(attachment, true);
       t.ok(label + ': originals: the large view of an attachment says which', r.sheets[r.sheets.length - 1].bodyHTML.indexOf('Attachment 2 of the email: packing &lt;i&gt;slip&lt;/i&gt;.png') !== -1);
       t.eq(label + ': originals: the helpers are pure: nothing for an original with no email, nothing for a missing one', [r.fns.receiptEmailLines_(item({})), r.fns.receiptEmailLines_(null), r.fns.receiptPrintNotice_(attachment), r.fns.receiptPrintNotice_(null)], ['', '', '', '']);
+    }
+  })());
+
+  // ── An email that could not be read: tried once more, then waits for a person; already on file (cards P5-19, P5-18) ──
+  pending.push((async () => {
+    const mk = (o) => Object.assign({ id: 're' + '5'.repeat(24), messageId: 'm5@mail.example.org', from: 'Fictional Supply <billing@example.org>', date: '2026-11-26T14:14:00.000Z', subject: 'Invoice 2001', outcome: 'could_not_read', originals: 0,
+      note: 'the attachment would not download', firstSeenAt: '2026-11-27T13:00:00.000Z', recordedAt: '2026-11-27T13:00:00.000Z', recordedBy: { name: 'Priya Nair', keyLabel: 'Muse' }, tries: 1, next: 'try_again', personDone: null, sameAs: null }, o);
+    const ONCE = mk({});
+    const WAIT = mk({ id: 're' + '6'.repeat(24), subject: 'Invoice 2002', tries: 2, next: 'wait_for_person' });
+    const DEALT = mk({ id: 're' + '7'.repeat(24), subject: 'Invoice 2003', tries: 2, next: 'done', personDone: { name: 'Daniel <b>Okafor</b>', at: '2026-11-28T15:00:00.000Z', note: 'added it by hand <img src=x onerror=alert(1)>' } });
+    const SAME = mk({ id: 're' + '8'.repeat(24), subject: 'Invoice 2004 (again)', outcome: 'already_on_file', tries: 0, next: 'done', note: null, sameAs: 'ro' + '1'.repeat(24) });
+    const PAGE = { items: [ONCE, WAIT, DEALT, SAME], counts: { filed: 0, nothing_to_file: 0, could_not_read: 3, already_on_file: 1, waiting_for_person: 1 }, next: null };
+    const answers = (more) => Object.assign({ rpcGetReceiptInbox: (tok, input) => (input.status === 'set_aside' ? ASIDE : ALL), rpcGetReceiptEmails: PAGE }, more || {});
+    const rowOf = (h, id) => { const at = h.indexOf('data-email-id="' + id + '"'); const end = h.indexOf('data-email-id=', at + 20); return h.slice(at, end === -1 ? undefined : end); };
+    for (const role of ['admin', 'manager', 'payroll_admin']) {
+      const r = world({ role, answers: answers() });
+      await r.fns.loadReceiptsTab();
+      const h = r.els['view-receipts'].innerHTML;
+      const may = role !== 'payroll_admin';
+      t.ok(label + ': settle: ' + role + ': tried once says the assistant looks once more, is not in red, and offers no "try once more"', /Could not be read once: the assistant looks at it once more on its next run\./.test(rowOf(h, ONCE.id)) && rowOf(h, ONCE.id).indexOf('retry:') === -1 && rowOf(h, ONCE.id).indexOf('#fef2f2') === -1);
+      t.ok(label + ': settle: ' + role + ': tried twice waits for a person, in red', /Could not be read twice: waiting for you\./.test(rowOf(h, WAIT.id)) && /color:#b91c1c/.test(rowOf(h, WAIT.id)));
+      t.eq(label + ': settle: ' + role + ': "Dealt with" on both unsettled ones and "Let the assistant try once more" on the waiting one, for admin and manager only',
+        [/data-email-settle="done:/.test(rowOf(h, ONCE.id)), /data-email-settle="done:/.test(rowOf(h, WAIT.id)), /data-email-settle="retry:/.test(rowOf(h, WAIT.id)), /data-email-settle="retry:/.test(rowOf(h, ONCE.id))],
+        may ? [true, true, true, false] : [false, false, false, false]);
+      t.ok(label + ': settle: ' + role + ': one a person settled says who, when and what, escaped, with no button and not in red',
+        rowOf(h, DEALT.id).indexOf('Dealt with by Daniel &lt;b&gt;Okafor&lt;/b&gt;') !== -1 && rowOf(h, DEALT.id).indexOf('added it by hand &lt;img src=x onerror=alert(1)&gt;') !== -1 && rowOf(h, DEALT.id).indexOf('<img src=x') === -1 &&
+        rowOf(h, DEALT.id).indexOf('data-email-settle') === -1 && rowOf(h, DEALT.id).indexOf('A person should look at this one.') === -1 && rowOf(h, DEALT.id).indexOf('#fef2f2') === -1);
+      t.ok(label + ': settle: ' + role + ': already on file says so, with no receipt count of its own', /Already on file: the same file came in another email/.test(rowOf(h, SAME.id)) && rowOf(h, SAME.id).indexOf('#fef2f2') === -1);
+      t.ok(label + ': settle: ' + role + ': the counts line says how many wait for a person and how many were already on file', /1 already on file/.test(h) && /1 waiting for you/.test(h));
+    }
+    // Dealt with: a sheet asks what was done; the page sends it as typed and reloads.
+    {
+      const r = world({ role: 'manager', answers: answers({ rpcSettleReceiptEmail: Object.assign({}, WAIT, { next: 'done' }) }) });
+      await r.fns.loadReceiptsTab();
+      const btn = r.els['view-receipts'].querySelectorAll('[data-email-settle]').find(b => b.dataset.emailSettle === 'done:' + WAIT.id);
+      await btn.onclick();
+      const sh = r.sheets[r.sheets.length - 1];
+      t.ok(label + ': settle: "Dealt with" opens a sheet that asks what was done', sh.title === 'Dealt with' && /id="emDoneNote"/.test(sh.bodyHTML) && /id="emDoneSave"/.test(sh.actionsHTML) && sh.bodyHTML.indexOf('Invoice 2002') !== -1);
+      r.els.emDoneNote.value = '  Fetched it from the supplier\'s site  ';
+      const before = r.calls.length;
+      await r.els.emDoneSave.onclick();
+      t.eq(label + ': settle: it sends the email, "done" and the note as typed', r.calls.slice(before).find(c => c[0] === 'rpcSettleReceiptEmail')[1], [TOKEN, { id: WAIT.id, action: 'done', note: '  Fetched it from the supplier\'s site  ' }]);
+      t.ok(label + ': settle: then it closes, says so and reloads the list', r.closed > 0 && r.toasts.some(x => /Marked as dealt with/.test(x)) && r.calls.slice(before).filter(c => c[0] === 'rpcGetReceiptInbox').length > 0);
+    }
+    // A refusal stays on the sheet, in words, and Save can be pressed again.
+    {
+      const r = world({ role: 'admin', answers: answers() });
+      await r.fns.loadReceiptsTab();
+      r.answers.rpcSettleReceiptEmail = undefined;
+      const btn = r.els['view-receipts'].querySelectorAll('[data-email-settle]').find(b => b.dataset.emailSettle === 'done:' + ONCE.id);
+      await btn.onclick();
+      const realCall = r.calls.push.bind(r.calls);
+      r.calls.push = (c) => { realCall(c); if (c[0] === 'rpcSettleReceiptEmail') throw new Error('Say what was done about it.'); return r.calls.length; };
+      r.els.emDoneNote.value = '';
+      await r.els.emDoneSave.onclick();
+      t.ok(label + ': settle: a refusal is shown on the sheet in words and Save works again', r.els.emDoneErr.textContent === 'Say what was done about it.' && r.els.emDoneSave.disabled === false && r.closed === 0);
+    }
+    // Let the assistant try once more: one press, sent at once, then the list reloads.
+    {
+      const r = world({ role: 'admin', answers: answers({ rpcSettleReceiptEmail: Object.assign({}, WAIT, { tries: 1, next: 'try_again' }) }) });
+      await r.fns.loadReceiptsTab();
+      const btn = r.els['view-receipts'].querySelectorAll('[data-email-settle]').find(b => b.dataset.emailSettle === 'retry:' + WAIT.id);
+      const before = r.calls.length;
+      await btn.onclick();
+      t.eq(label + ': settle: "Let the assistant try once more" sends the email and "retry"', r.calls.slice(before).find(c => c[0] === 'rpcSettleReceiptEmail')[1], [TOKEN, { id: WAIT.id, action: 'retry' }]);
+      t.ok(label + ': settle: and says what happens next', r.toasts.some(x => /looks at it once more on its next run/.test(x)));
+    }
+    // An email list from before these cards (no tries, no next) still draws as it did.
+    {
+      const old = { id: 're' + '9'.repeat(24), messageId: 'o@x', from: 'A', date: '2026-11-26T14:14:00.000Z', subject: 'Old', outcome: 'could_not_read', originals: 0, note: null, firstSeenAt: '2026-11-27T13:00:00.000Z', recordedAt: '2026-11-27T13:00:00.000Z', recordedBy: { name: 'P', keyLabel: 'M' } };
+      const r = world({ role: 'admin', answers: answers({ rpcGetReceiptEmails: { items: [old], counts: { filed: 0, nothing_to_file: 0, could_not_read: 1 }, next: null } }) });
+      await r.fns.loadReceiptsTab();
+      const h = r.els['view-receipts'].innerHTML;
+      t.ok(label + ': settle: an answer with no next step still says a person should look, and offers Dealt with', h.indexOf('A person should look at this one.') !== -1 && /data-email-settle="done:/.test(h));
     }
   })());
 
@@ -1481,7 +1555,7 @@ pending.push(...H.uiScripts().map(([label, js]) => ({ label, js })).map(async ({
     ['function receiptArchiveTileHTML_(', 'function receiptArchiveWire_(', 'function receiptReviewArchived_(', 'data-archived-thumb', 'Open the original', 'This file is in the archive. Opening it costs a little; open it when you need to check the figures.'].every(x => built.indexOf(x) !== -1));
   const src = fs.readFileSync(path.join(H.SRC, 'Index.html'), 'utf8');
   t.ok('the Apps Script page never shows them: the Receipts screen is opsOnly, and they are drawn only inside it',
-    /\{ tab: 'receipts'[^\n]*opsOnly: true/.test(src) && /receiptEmailsHTML_\(emails\)/.test(H.fnSource(src, 'renderReceiptsTab')) && (src.match(/receiptEmailsHTML_\(/g) || []).length === 2);
+    /\{ tab: 'receipts'[^\n]*opsOnly: true/.test(src) && /receiptEmailsHTML_\(emails, receiptEmailCanSettle_\(\)\)/.test(H.fnSource(src, 'renderReceiptsTab')) && (src.match(/receiptEmailsHTML_\(/g) || []).length === 2);
   t.ok('the old list is reachable only from the Receipts screen, which is opsOnly: the Apps Script page never shows it', (src.match(/legacyToggle_\(\)/g) || []).length === 2 && /legacyToggle_\(\)/.test(H.fnSource(src, 'renderReceiptsTab')));
   t.ok('the Apps Script page is unchanged in what it shows: its Receipts screen is still opsOnly, and the archive tile is drawn only by functions of that screen',
     /\{ tab: 'receipts'[^\n]*opsOnly: true/.test(src) && ['receiptArchiveTileHTML_(', 'receiptArchiveWire_('].every(n => {

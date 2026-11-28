@@ -56,10 +56,16 @@ history and never among the receipts, has its own section,
   first (by the email's date) and a page at a time (*Show older emails*): the
   date, who sent it, its subject, what came of it in words (*Filed*, *Nothing
   to file*, *Could not be read*), how many receipts came from it, a note, and
-  which assistant recorded it. The ones that **could not be read** are on top,
-  in red, saying *A person should look at this one.* A person looks at the
-  mailbox itself: the app has no way to open it. An employee does not see the
-  group.
+  which assistant recorded it. The ones that **could not be read** are on top.
+  **Tried once, then a person** (card P5-19; the owner, Nov 28): one that
+  could not be read once says *the assistant looks at it once more on its
+  next run*; twice, it is in red, *Could not be read twice: waiting for
+  you*, and no assistant may record it again. Admin and manager then press
+  **Dealt with** (and say what they did: the email is finished) or **Let
+  the assistant try once more**; both are audited. A person looks at the
+  mailbox itself: the app has no way to open it. An email whose file came in
+  another email too reads *Already on file*: nothing changes (card P5-18). An
+  employee does not see the group.
 
 **More → Businesses**, for admin, manager and payroll admin (read only for the
 last two). Each business: its display name (the settings
@@ -1334,3 +1340,10 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
   upload and view routes, the Receipts and Businesses screens, and more in the
   assistant's `businesses` tool
   ([ADR-0026](../adr/0026-receipt-originals-are-kept-as-received.md)).
+- **Nov 2026 (cards P5-19 and P5-18, the owner's answers of Nov 28):** an email
+  that could not be read is looked at once more by the next scan and then
+  waits for a person, who marks it *Dealt with* (with a note) or lets the
+  assistant try once more (`rpcSettleReceiptEmail`; `tries`, `next`); an
+  email whose file was already on file from another email is recorded as
+  *already on file* (`same_as`), and nothing changes. Migration 0019.
+

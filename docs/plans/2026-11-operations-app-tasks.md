@@ -100,7 +100,7 @@ hand one out.
 | P5-12c | Older receipt files move to cheaper storage; the app says which are archived | T1 | P5-12a | money | done (the storage rule itself is set at the hosted setup) |
 | P5-17 | The receipt screens on a phone: cards with no inner margin clip their text; the original turns into a broken image after "Save corrections" | T1 | P5-05c | - | done |
 | P5-18 | A revised invoice replaces the one it revises; the same invoice sent twice changes nothing | T3 | P5-13, P5-05c | money | in progress |
-| P5-19 | An email that could not be read is tried once more, then waits for a person | T2 | P5-13 | - | in progress |
+| P5-19 | An email that could not be read is tried once more, then waits for a person | T2 | P5-13 | - | done |
 | P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | done (where "an item" breaks on real receipts, for the owner, in the card) |
 | P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | done (the owner runs the import; things to check in the real file, in the card) |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
@@ -1685,6 +1685,17 @@ the audit log once per file per day. No migration.
   supplier's HST does not arise). The retention lock is **seven years**.
   The files need not be stored in Canada. Still open: is "minus the size of
   the total" right for every credit note?
+
+**P5-19 · tried once more, then a person · done.** `tries` counts how often
+an email was recorded as could not be read; one rule (`nextStep`) answers
+what happens next: *try_again* after one, *wait_for_person* after two, when
+every assistant record of it is refused. Admin and manager settle it on
+Emails checked: **Dealt with** (a note of what they did; finished) or **Let
+the assistant try once more** (`rpcSettleReceiptEmail`, audited). The first
+half of P5-18 came with it: an email whose file was already on file from
+another email is recorded as *already on file* (`same_as`), and nothing
+changes. Migration 0019. Built in the session (the session's model is no
+longer Fable, so by the house rule no sub-agent was used).
 
 ## Phase 6 — App
 
