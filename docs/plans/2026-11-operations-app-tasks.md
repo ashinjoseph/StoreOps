@@ -71,7 +71,7 @@ hand one out.
 | P4-09 | Settings screen: an admin edits the settings | T2 | P4-08 | security | done (four things for the owner, in the card) |
 | P4-10 | Schedule corrections after the fact | T3 | P4-08 | money | done (the owner confirmed its three rules, Nov 27) |
 | P4-11 | Staff screen: add, change, deactivate, PINs, raises | T3 | P4-08 | security, money | done (one thing for the owner, in the card) |
-| P4-11b | A day worked with no rate shows as "no rate set", not $0 | T2 | P4-11 | money | todo (changes what a ported call answers: the owner to agree) |
+| P4-11b | A day worked with no rate shows as "no rate set", not $0 | T3 | P4-11 | money | in progress (the owner agreed, Nov 28) |
 | P4-12a | Correct a closed till | T3 | P4-08 | money | done (three things for the owner, in the card) |
 | P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | done (notes in the card) |
 | P4-12c | Reconcile a past day again | T2 | P4-08 | money | done (three things for the owner, in the card) |
@@ -94,8 +94,10 @@ hand one out.
 | P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | | security | done (switched off; questions for the trial and the owner, in the card) |
 | P5-12a | The two businesses and the receipt inbox (originals kept) | T3 | | money, security | done (to try on a real phone; notes in the card) |
 | P5-12b | The assistant's tools for the inbox: hand over an original, see one, list those waiting | T3 | P5-12a, P5-11 | security | done (questions for the trial and the owner, in the card) |
-| P5-13 | Emailed invoices through the assistant | T2 | P5-05b | security | todo (the owner to decide how an invoice with no attachment is kept) |
+| P5-13 | Emailed invoices through the assistant | T2 | P5-05b | security | in progress (an email with no attachment is kept as a PDF print of it: the owner, Nov 28) |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
+| P5-05c | Receipts of every kind in one form: credit notes, statements, other currencies, tax inside the price, typed extra charges | T3 | P5-05b | money | in progress |
+| P5-12c | Older receipt files move to cheaper storage; the app says which are archived | T1 | P5-12a | money | todo |
 | P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | done (where "an item" breaks on real receipts, for the owner, in the card) |
 | P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | done (the owner runs the import; things to check in the real file, in the card) |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
@@ -1478,6 +1480,26 @@ matter):
 4. A promotional price followed by the normal one: flagged as a rise.
 5. The same item twice on one receipt at two prices: the second can be
    flagged against the first.
+
+### The owner's answers (Nov 28)
+1. **A person with no pay rate:** yes, show their worked days as "no rate
+   set" (P4-11b). This is a deliberate difference from the current app.
+2. **An emailed invoice with no attachment:** start with a PDF print of the
+   email (P5-13).
+3. **Kinds of receipt:** all of them turn up, in a mix, so there is to be no
+   fixed path per kind. Read as: one form, with optional fields that cover
+   every kind (what sort of document it is, its currency, tax inside the
+   price, extra charges each with its own label), and checks that adapt to
+   what is filled in and flag rather than refuse (P5-05c).
+4. **Keeping receipt files:** recent ones in ordinary storage, older ones
+   moved to cheaper archive storage, the way a bank shows old statements
+   (P5-12c, and a rule on the storage itself: see
+   [the hosted setup checklist](../guides/hosted-setup-checklist.md)). The
+   owner said five years. The CRA's guide says six years from the end of the
+   tax year a record belongs to, which can be nearly seven years after the
+   purchase: the lock is set for seven unless the bookkeeper says otherwise.
+5. **The Reconcile screen fix and the live app:** it waits. Building goes
+   on on this branch and is merged to `main` when it is stable.
 
 ## Phase 6 — App
 

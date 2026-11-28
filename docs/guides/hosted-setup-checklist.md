@@ -46,7 +46,7 @@ To confirm in the rehearsal:
 |---|---|---|
 | The app | `storeops-ops` | Deployed by a workflow, never by hand from a laptop |
 | Database connection (Hyperdrive) | binding `HYPERDRIVE` | Made with the **app** role's password. Its id replaces the placeholder in `ops/wrangler.toml` |
-| Receipt files | bucket `storeops-receipts` | Private. **Put a retention lock on it.** The app cannot be denied the right to erase from its own storage, so the lock is the real guard. How long: tax records are generally kept six years; confirm with the bookkeeper |
+| Receipt files | bucket `storeops-receipts` | Private. **Put a retention lock on it** for seven years: the app cannot be denied the right to erase from its own storage, so the lock is the real guard. (The CRA's guide says six years from the end of the tax year a record belongs to, which can be nearly seven years after the purchase; confirm with the bookkeeper.) **Add a rule that moves a file to the cheaper "infrequent access" storage after 30 days** (the owner's choice, Nov 28: recent receipts at hand, older ones archived). An archived file still opens at once; opening it costs a little, and it cannot be moved back by a rule. Ask the bookkeeper whether the files must be stored in Canada: the bucket's location is chosen when it is created |
 | Nightly copies | bucket `storeops-backups` | Private. **Add a rule that removes copies after 90 days**: the app never deletes one, so without the rule they pile up |
 | Schedules | four, already in `ops/wrangler.toml` | Two for the Monday commission run, two for the nightly copy at 03:00 Toronto. Two each so the hour is right in winter and summer |
 
