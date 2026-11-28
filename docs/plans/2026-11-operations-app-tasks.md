@@ -97,8 +97,8 @@ hand one out.
 | P5-13 | Emailed invoices through the assistant | T2 | P5-05b | security | done (the scan itself is tried with Muse at the hosted rehearsal, P5-10) |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
 | P5-05c | Receipts of every kind in one form: credit notes, statements, other currencies, tax inside the price, typed extra charges | T3 | P5-05b | money | done |
-| P5-12c | Older receipt files move to cheaper storage; the app says which are archived | T1 | P5-12a | money | todo |
-| P5-17 | The receipt screens on a phone: cards with no inner margin clip their text; the original turns into a broken image after "Save corrections" | T1 | P5-05c | - | todo |
+| P5-12c | Older receipt files move to cheaper storage; the app says which are archived | T1 | P5-12a | money | in progress |
+| P5-17 | The receipt screens on a phone: cards with no inner margin clip their text; the original turns into a broken image after "Save corrections" | T1 | P5-05c | - | in progress |
 | P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | done (where "an item" breaks on real receipts, for the owner, in the card) |
 | P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | done (the owner runs the import; things to check in the real file, in the card) |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
