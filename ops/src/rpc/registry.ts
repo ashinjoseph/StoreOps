@@ -20,6 +20,7 @@ import { rpcGetCommissionRuns, rpcRunCommissionEngine } from "./handlers/commiss
 import { rpcCheckWhatsApp } from "./handlers/notifier";
 import {
   rpcAddBusinessSign,
+  rpcAddReceiptCanadianAmount,
   rpcConfirmReceipt,
   rpcCreateReceiptSupplier,
   rpcEnterReceiptDraft,
@@ -142,6 +143,7 @@ export const handlers: RpcHandlers = {
   rpcCreateReceiptSupplier,
   rpcUpdateReceiptSupplier,
   rpcGetReceiptBooks,
+  rpcAddReceiptCanadianAmount,
   rpcGetLegacyPurchases,
   rpcGetLegacySpellings,
   rpcLinkLegacySupplier,

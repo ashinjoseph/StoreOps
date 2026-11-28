@@ -128,6 +128,8 @@ export interface DraftHeadline {
   business: Business | null;
   needsAttention: boolean;
   failed: number;
+  /** Card P5-05c: the currency printed, when it is not Canadian dollars (the total is then in it, and shown with its code). */
+  currency?: string;
 }
 
 interface Row {
@@ -340,13 +342,15 @@ export async function inbox(db: Db, viewer: Viewer, input: InboxInput, now: Date
 async function headlines(db: Db, ids: readonly string[]): Promise<Map<string, DraftHeadline>> {
   const out = new Map<string, DraftHeadline>();
   if (ids.length === 0) return out;
-  const rows = await db.query<{ original_id: string; purchase_id: string; supplier_name: string | null; receipt_date: string | null; total: string; business: Business | null; needs_attention: boolean; failed: number }>(
-    `select original_id, purchase_id, supplier_name, receipt_date, total::text as total, business, needs_attention,
+  const rows = await db.query<{ original_id: string; purchase_id: string; supplier_name: string | null; receipt_date: string | null; total: string; business: Business | null; needs_attention: boolean; failed: number; currency: string | null }>(
+    `select original_id, purchase_id, supplier_name, receipt_date, total::text as total, business, needs_attention, currency,
             (select count(*)::int from jsonb_array_elements(checks) c where c->>'passed' = 'false') as failed
        from ops.purchase_receipts where original_id = any($1::text[]) and status = 'draft'`,
     [ids],
   );
-  for (const r of rows) out.set(r.original_id, { id: r.purchase_id, supplier: r.supplier_name, date: r.receipt_date, total: r.total, business: r.business, needsAttention: r.needs_attention, failed: r.failed });
+  for (const r of rows) {
+    out.set(r.original_id, { id: r.purchase_id, supplier: r.supplier_name, date: r.receipt_date, total: r.total, business: r.business, needsAttention: r.needs_attention, failed: r.failed, ...(r.currency !== null && r.currency !== "CAD" ? { currency: r.currency } : {}) });
+  }
   return out;
 }
 

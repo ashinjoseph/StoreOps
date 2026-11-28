@@ -84,6 +84,24 @@ line that gives a unit cost *exactly*:
 | no unit price; a line total and a quantity, both above zero | total ÷ quantity, in integers (`total_cents × 100000 / quantity_thousandths` in ten-thousandths of a dollar), rounded half up to four decimals: *worked out* |
 | anything else: no unit price and no total or no quantity; a quantity or total of zero or less (a return, a free item, a discount); a printed price of zero or less; a line with neither a code nor a description to identify it; a cost the column cannot hold | **no observation**: counted as *lines with no cost*, never stored as 0 and never guessed |
 
+**What is not observed at all** (card P5-05c,
+[receipts](receipts.md#every-kind-of-document-in-one-form-card-p5-05c),
+[ADR-0032](../adr/0032-one-receipt-form-for-every-kind.md)): a guard at the top of
+observing leaves out every line of three kinds of document, because they give no
+cost in Canadian dollars:
+
+| The receipt | Why | The summary says |
+|---|---|---|
+| a currency other than CAD printed (whether or not the Canadian amount paid is known) | costs are kept in Canadian dollars; a foreign unit price would raise false flags | *Nothing was added to the cost history (3 lines left out): the amounts are not in Canadian dollars, and the cost history is kept in Canadian dollars. No price rise flagged.* |
+| a statement | the invoices on it are observed themselves | *… it is a statement: the invoices on it are observed themselves …* |
+| a credit note | a return is not a cost | *… it is a credit note: a return is not a cost …* |
+
+The receipt is still recorded as observed (`receipt_observations` with no line
+observed, so the catch-up does not come back to it), audited `costs.observe` with
+`notObserved` and the reason, and the confirm's `costs` answer carries
+`skipped: { reason: foreign_currency | statement | credit_note, lines }`. No flag
+is raised or withdrawn. A void of such a receipt un-counts nothing.
+
 Costs are as printed, before tax; the observation also keeps the quantity, the
 line total, whether the line was taxed, the receipt, line and date. Worked-out
 costs are **not** rounded to cents: 10.00 for 3 is $3.3333, 0.01 for 8 is $0.0013
@@ -217,9 +235,13 @@ has no cost row, so without it the catch-up could not tell it had been done).
 | `tests/suites/ui-costs.js` | the drawer entry `opsOnly` for admin, manager and payroll admin; a flag as one sentence; a worked-out cost says so; a cost that is not there never `$0.00`; a unit cost keeps its decimals; the screen cannot be asked for without a business; hostile text escaped; admin and manager act and payroll admin reads; the catch-up for an admin only; the confirm and void sheets repeat the summary; the built page contains the screen and Apps Script hides it |
 | `ops/test/db-migrate.test.ts`, `ops/test/cutover-compare.test.ts`, `ops/test/backup-copy.test.ts` | the four tables present, skipped by the cutover tools, copied by the nightly copy |
 | `ops/test/receipt-review.test.ts`, `receipt-drafts.test.ts`, `mcp-receipts.test.ts` | their set-up removes the cost tables before the receipts they reference; the audit list of a confirm and a void now holds `costs.observe` and `costs.unobserve` |
+| `ops/test/receipt-kinds.test.ts` | card P5-05c: confirming a foreign-currency invoice, a statement and a credit note observes nothing and raises no flag (a would-be rise on the same item), each with its reason in the summary; a plain receipt beside them observed as before; the catch-up not coming back to them; their void un-counting nothing |
 
 ## History
 
+- **Nov 2026 (card P5-05c):** a foreign-currency document's, a statement's and a
+  credit note's lines are not observed; the cost summary says so and why
+  ([ADR-0032](../adr/0032-one-receipt-form-for-every-kind.md)).
 - **Nov 2026 (card P5-15):** cost history from receipt lines and price-rise
   flags for a manager: items as a supplier's own lines, a cost observed when a
   receipt is confirmed (printed or worked out, never guessed), the history in

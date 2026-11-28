@@ -20,7 +20,11 @@
 //     supplier. Nothing learnt is removed by a void: the void lists it.
 //   - What was changed: the confirmed reading compared field by field with the FIRST reading of the
 //     original (compareReadings, pure), stored on the receipt.
-//   - The books: one business at a time, never both; totals in exact decimals by the database.
+//   - The books: one business at a time, never both; totals in exact decimals by the database, by the one rule
+//     of what counts (drafts.countsOnBooks, and its SQL twin BOOKS_JOIN_SQL here; card P5-05c), and what is
+//     left out is named with its count.
+//   - Card P5-05c: the Canadian amount paid may be ADDED, once, to a confirmed receipt in another currency
+//     (addCanadianAmount): the only thing about a confirmed receipt that can ever be added.
 // Identity and role come from the caller (the session); time is the caller's `now`; SQL takes values as
 // parameters only; nothing is removed; every write is audited (figures, never the original's bytes).
 // Locks: every reading, confirm and void takes the drafts' advisory lock, then the original's row (or the
@@ -97,7 +101,11 @@ export const COMPARED_FIELDS = [
   "amounts.hst",
   "amounts.other",
   "amounts.total",
+  "amounts.total_cad",
   "kind",
+  "document_kind",
+  "currency",
+  "tax_included",
   "buyer.name",
   "buyer.hst_number",
   "buyer.account_number",
@@ -105,7 +113,8 @@ export const COMPARED_FIELDS = [
   "business",
   "supplier",
 ] as const;
-const MONEY_FIELDS: readonly string[] = ["amounts.subtotal", "amounts.hst", "amounts.total"];
+const MONEY_FIELDS: readonly string[] = ["amounts.subtotal", "amounts.hst", "amounts.total", "amounts.total_cad"];
+const CHARGE_TAXED = (t: boolean | null | undefined): string => (t === true ? " taxed" : t === false ? " not taxed" : "");
 
 export interface Changes {
   /** The reading compared with: the first reading of the original. */
@@ -141,11 +150,22 @@ function valueOf(d: drafts.DraftView, field: (typeof COMPARED_FIELDS)[number]): 
     case "amounts.hst":
       return moneyOut(d.amounts.hst);
     case "amounts.other":
-      return d.amounts.other.length === 0 ? null : d.amounts.other.map((o) => `${o.label} ${moneyOut(o.amount)}`).join("; ");
+      // Card P5-05c: a charge's kind and tax mark are part of it ("Deposit 0.10 (deposit, taxed)"); one with neither reads as before.
+      return d.amounts.other.length === 0
+        ? null
+        : d.amounts.other.map((o) => `${o.label} ${moneyOut(o.amount)}${(o.kind ?? null) === null && (o.taxed ?? null) === null ? "" : ` (${[o.kind ?? "kind not said", CHARGE_TAXED(o.taxed).trim() || "tax not marked"].join(", ")})`}`).join("; ");
     case "amounts.total":
       return moneyOut(d.amounts.total);
+    case "amounts.total_cad":
+      return moneyOut(d.amounts.totalCad ?? null);
     case "kind":
       return d.kind;
+    case "document_kind":
+      return d.document?.kind ?? null;
+    case "currency":
+      return d.document?.currency ?? null;
+    case "tax_included":
+      return d.document?.taxIncluded === true ? "yes" : d.document?.taxIncluded === false ? "no" : null;
     case "buyer.name":
       return d.buyer.name;
     case "buyer.hst_number":
@@ -420,6 +440,36 @@ export interface ConfirmState {
   reasonNeeded: boolean;
   /** A duplicate of a receipt on the books: only an admin may confirm it. */
   adminOnly: boolean;
+  /** Card P5-05c: how it will count on the books once confirmed (drafts.countsOnBooks), in words. */
+  counts: CountsView;
+}
+
+/** A BooksCount as answered: amounts as exact text, and the words. */
+export interface CountsView {
+  group: drafts.BooksGroup;
+  counts: boolean;
+  total: string | null;
+  subtotal: string | null;
+  hst: string | null;
+  words: string;
+}
+
+const centsOrNull = (v: string | null | undefined): number | null => (v === null || v === undefined ? null : drafts.parseMoney(v));
+const textCents = (c: number | null): string | null => (c === null ? null : drafts.centsText(c));
+
+/** How a reading counts on the books, as answered; `asConfirmed` asks how it WILL count once confirmed. */
+export function countsView(d: drafts.DraftView, businessName: string, asConfirmed: boolean): CountsView {
+  const total = drafts.parseMoney(d.amounts.total) as number;
+  const c = drafts.countsOnBooks({
+    status: asConfirmed ? "confirmed" : d.status,
+    documentKind: d.document.kind,
+    currency: d.document.currency,
+    subtotal: centsOrNull(d.amounts.subtotal),
+    hst: centsOrNull(d.amounts.hst),
+    total,
+    totalCad: centsOrNull(d.amounts.totalCad),
+  });
+  return { group: c.group, counts: c.counts, total: textCents(c.total), subtotal: textCents(c.subtotal), hst: textCents(c.hst), words: drafts.countsWords(c, { currency: d.document.currency, total }, businessName) };
 }
 
 interface Prepared {
@@ -450,7 +500,8 @@ async function prepare(db: Db, d: drafts.DraftView, actor: Actor, config: Config
   const failed = checked.checks.filter((c) => c.passed === false);
   const adminOnly = failed.some((c) => c.check === "duplicate") && checked.duplicates.some((m) => m.sameInvoice && m.status === "confirmed");
   if (adminOnly && actor.role !== "admin") why.push(DUPLICATE_WHY);
-  const state: ConfirmState = { allowed: missing.length === 0 && why.length === 0, why, missing, checks: checked.checks, failed, reasonNeeded: failed.length > 0, adminOnly };
+  const counts = countsView(d, d.business.key === null ? "the business not chosen yet" : displayName(config, d.business.key), true);
+  const state: ConfirmState = { allowed: missing.length === 0 && why.length === 0, why, missing, checks: checked.checks, failed, reasonNeeded: failed.length > 0, adminOnly, counts };
   return { state, checked, offers: await signOffers(db, d, d.business.key), spelling: await spellingOffer(db, d), supplier };
 }
 
@@ -565,6 +616,8 @@ export interface ReceiptDetail extends drafts.DraftView {
   learnt: { signs: Array<{ kind: string; value: string; supplier: string | null; business: Business; removed: boolean }>; spellings: string[] };
   /** The draft a void made from it, when voided. */
   redo: string | null;
+  /** Card P5-05c: what it adds to the books (nothing when voided), in words. */
+  counts: CountsView;
 }
 
 async function learntFrom(db: Db, receiptId: string): Promise<ReceiptDetail["learnt"]> {
@@ -616,6 +669,7 @@ export async function receiptDetail(db: Db, purchaseId: string, config: Config):
     readings: all.filter((x) => ids.includes(x.id)),
     learnt: await learntFrom(db, purchaseId),
     redo: r.redo,
+    counts: countsView(view, view.business.key === null ? "the business not chosen yet" : displayName(config, view.business.key), false),
   };
 }
 
@@ -702,6 +756,7 @@ export async function confirm(tx: Tx, input: ConfirmInput, actor: Actor, config:
         hst: draft.amounts.hst,
         otherTotal: draft.amounts.otherTotal,
         total: draft.amounts.total,
+        ...drafts.factsOf({ documentKind: draft.document.kind, currency: draft.document.currency, taxIncluded: draft.document.taxIncluded, totalCad: centsOrNull(draft.amounts.totalCad) }),
         lines: draft.lines.length,
         decidedBy: draft.business.decidedBy,
         reason,
@@ -758,7 +813,31 @@ export async function voidReceipt(tx: Tx, input: { receiptId?: unknown; reason?:
   };
 }
 
-// ── The books (decision 11) ───────────────────────────────
+// ── The books (decision 11; card P5-05c: what counts) ─────
+
+/**
+ * The one rule of what counts on the books (drafts.countsOnBooks, whose table it follows line for line), as
+ * SQL over `ops.purchase_receipts p`: two lateral joins giving `g.grp` (the group) and `b.total`,
+ * `b.subtotal`, `b.hst` (numeric: what the row adds to each sum, NULL for nothing). The books' list and
+ * totals use it, so the sums are Postgres's exact numeric; a test proves it equal to the pure function over
+ * a generated set of every kind, sign, currency and status.
+ */
+export const BOOKS_JOIN_SQL = `
+  cross join lateral (select case
+      when p.status = 'voided' then 'voided'
+      when p.status <> 'confirmed' then 'not_on_books'
+      when p.document_kind is not distinct from 'statement' then 'statement'
+      when p.currency is not null and p.currency <> 'CAD' and p.total_cad is null then 'waiting'
+      when p.currency is not null and p.currency <> 'CAD' then 'foreign'
+      when p.document_kind is not distinct from 'credit_note' then 'credit_note'
+      else 'counted' end as grp) g
+  cross join lateral (select
+      case g.grp when 'counted' then p.total
+                 when 'credit_note' then -abs(p.total)
+                 when 'foreign' then case when p.document_kind is not distinct from 'credit_note' then -abs(p.total_cad) else p.total_cad end
+      end as total,
+      case g.grp when 'counted' then p.subtotal when 'credit_note' then -abs(p.subtotal) end as subtotal,
+      case g.grp when 'counted' then p.hst when 'credit_note' then -abs(p.hst) end as hst) b`;
 
 export interface BooksRow {
   id: string;
@@ -781,6 +860,12 @@ export interface BooksRow {
   failedAtConfirm: number;
   fieldsChanged: number;
   voided: { by: string; at: string; reason: string } | null;
+  /** Card P5-05c: the four facts as stored, and what the row adds to the books (the one rule). */
+  documentKind: drafts.DocumentKind | null;
+  currency: string | null;
+  taxIncluded: boolean | null;
+  totalCad: string | null;
+  counts: { group: drafts.BooksGroup; total: string | null; subtotal: string | null; hst: string | null };
 }
 
 export interface Books {
@@ -788,8 +873,27 @@ export interface Books {
   businessName: string;
   items: BooksRow[];
   next: string | null;
-  /** For the whole filter, every page: confirmed receipts only (voided ones are counted apart). Exact decimals. */
-  totals: { count: number; subtotal: string; hst: string; total: string; voided: number; noSubtotal: number; noHst: number };
+  /**
+   * For the whole filter, every page, by the one rule (exact decimals). `count` is the receipts that count
+   * (as printed, credit notes as minus, another currency by its Canadian amount); `shown` every row of the
+   * filter; count + voided + statements + waiting = shown. `notes` names, with its count, everything that
+   * is left out or counted otherwise: nothing is left out silently.
+   */
+  totals: {
+    count: number;
+    subtotal: string;
+    hst: string;
+    total: string;
+    voided: number;
+    noSubtotal: number;
+    noHst: number;
+    creditNotes: number;
+    byCanadianAmount: number;
+    waiting: number;
+    statements: number;
+    shown: number;
+    notes: Array<{ about: "voided" | "statement" | "waiting" | "credit_note" | "foreign" | "no_subtotal" | "no_hst"; count: number; words: string }>;
+  };
   canVoid: boolean;
 }
 
@@ -799,6 +903,22 @@ const dayOrNull = (v: unknown, what: string): string | null => {
   if (d === null) throw new Error(`${what} must be a day written YYYY-MM-DD.`);
   return d;
 };
+
+const n = (k: number, one: string, many: string): string => `${k} ${k === 1 ? one : many}`;
+
+/** What the totals line says was left out, or counted otherwise, each with its count (only those there are). */
+export function totalsNotes(t: { voided: number; statements: number; waiting: number; creditNotes: number; byCanadianAmount: number; noSubtotal: number; noHst: number }): Books["totals"]["notes"] {
+  const notes: Books["totals"]["notes"] = [];
+  if (t.creditNotes > 0) notes.push({ about: "credit_note", count: t.creditNotes, words: `${n(t.creditNotes, "credit note", "credit notes")} counted as minus` });
+  if (t.byCanadianAmount > 0)
+    notes.push({ about: "foreign", count: t.byCanadianAmount, words: `${n(t.byCanadianAmount, "receipt", "receipts")} in another currency counted by the Canadian amount paid: ${t.byCanadianAmount === 1 ? "its" : "their"} subtotal and HST are not known in Canadian dollars and are left out of those two sums` });
+  if (t.waiting > 0) notes.push({ about: "waiting", count: t.waiting, words: `${n(t.waiting, "receipt", "receipts")} in another currency waiting for the Canadian amount paid: not counted until it is added` });
+  if (t.statements > 0) notes.push({ about: "statement", count: t.statements, words: `${n(t.statements, "statement", "statements")} kept on file and not counted (the invoices on a statement are counted themselves)` });
+  if (t.voided > 0) notes.push({ about: "voided", count: t.voided, words: `${t.voided} voided, shown and not counted` });
+  if (t.noSubtotal > 0) notes.push({ about: "no_subtotal", count: t.noSubtotal, words: `${t.noSubtotal} with no subtotal on the receipt` });
+  if (t.noHst > 0) notes.push({ about: "no_hst", count: t.noHst, words: `${t.noHst} with no HST on the receipt` });
+  return notes;
+}
 
 /** One business's books, newest on the books first, a page at a time, with the totals of the filter; or, with `receiptId`, one receipt. */
 export async function books(db: Db, input: Record<string, unknown>, actor: Actor, config: Config): Promise<Books | { receipt: ReceiptDetail }> {
@@ -849,12 +969,23 @@ export async function books(db: Db, input: Record<string, unknown>, actor: Actor
     voided_by: string | null;
     voided_at: Date | null;
     void_reason: string | null;
+    document_kind: drafts.DocumentKind | null;
+    currency: string | null;
+    tax_included: boolean | null;
+    total_cad: string | null;
+    grp: drafts.BooksGroup;
+    books_total: string | null;
+    books_subtotal: string | null;
+    books_hst: string | null;
   }>(
     `select p.purchase_id, p.original_id, p.status, p.receipt_date, p.invoice_number, s.display_name, p.supplier_id, s.active, p.supplier_name, p.kind,
             p.subtotal::text as subtotal, p.hst::text as hst, p.total::text as total,
             c.name as confirmed_name, p.confirmed_by, p.confirmed_at, p.confirm_reason, coalesce(cardinality(p.confirm_failed), 0) as failed,
-            coalesce((p.review_changes->>'count')::int, 0) as changed, v.name as voided_name, p.voided_by, p.voided_at, p.void_reason
+            coalesce((p.review_changes->>'count')::int, 0) as changed, v.name as voided_name, p.voided_by, p.voided_at, p.void_reason,
+            p.document_kind, p.currency, p.tax_included, p.total_cad::text as total_cad,
+            g.grp, b.total::numeric(14, 2)::text as books_total, b.subtotal::numeric(14, 2)::text as books_subtotal, b.hst::numeric(14, 2)::text as books_hst
        from ops.purchase_receipts p
+       ${BOOKS_JOIN_SQL}
        left join ops.suppliers s on s.supplier_id = p.supplier_id
        left join ops.staff c on c.staff_id = p.confirmed_by
        left join ops.staff v on v.staff_id = p.voided_by
@@ -864,18 +995,39 @@ export async function books(db: Db, input: Record<string, unknown>, actor: Actor
       limit $7`,
     [business, from, to, supplierId, kind, before, limit + 1],
   );
-  const t = await db.one<{ count: number; subtotal: string; hst: string; total: string; voided: number; no_subtotal: number; no_hst: number }>(
-    `select count(*) filter (where p.status = 'confirmed')::int as count,
-            coalesce(sum(p.subtotal) filter (where p.status = 'confirmed'), 0)::numeric(14, 2)::text as subtotal,
-            coalesce(sum(p.hst) filter (where p.status = 'confirmed'), 0)::numeric(14, 2)::text as hst,
-            coalesce(sum(p.total) filter (where p.status = 'confirmed'), 0)::numeric(14, 2)::text as total,
-            count(*) filter (where p.status = 'voided')::int as voided,
-            count(*) filter (where p.status = 'confirmed' and p.subtotal is null)::int as no_subtotal,
-            count(*) filter (where p.status = 'confirmed' and p.hst is null)::int as no_hst
-       from ops.purchase_receipts p where ${filter}`,
+  const t = await db.one<{
+    count: number;
+    subtotal: string;
+    hst: string;
+    total: string;
+    voided: number;
+    no_subtotal: number;
+    no_hst: number;
+    credit_notes: number;
+    by_canadian_amount: number;
+    waiting: number;
+    statements: number;
+    shown: number;
+  }>(
+    `select count(*) filter (where g.grp in ('counted', 'credit_note', 'foreign'))::int as count,
+            coalesce(sum(b.subtotal), 0)::numeric(14, 2)::text as subtotal,
+            coalesce(sum(b.hst), 0)::numeric(14, 2)::text as hst,
+            coalesce(sum(b.total), 0)::numeric(14, 2)::text as total,
+            count(*) filter (where g.grp = 'voided')::int as voided,
+            count(*) filter (where g.grp in ('counted', 'credit_note') and p.subtotal is null)::int as no_subtotal,
+            count(*) filter (where g.grp in ('counted', 'credit_note') and p.hst is null)::int as no_hst,
+            count(*) filter (where g.grp = 'credit_note' or (g.grp = 'foreign' and p.document_kind is not distinct from 'credit_note'))::int as credit_notes,
+            count(*) filter (where g.grp = 'foreign')::int as by_canadian_amount,
+            count(*) filter (where g.grp = 'waiting')::int as waiting,
+            count(*) filter (where g.grp = 'statement')::int as statements,
+            count(*)::int as shown
+       from ops.purchase_receipts p
+       ${BOOKS_JOIN_SQL}
+      where ${filter}`,
     [business, from, to, supplierId, kind],
   );
   const page = rows.slice(0, limit);
+  const counts = { voided: t.voided, statements: t.statements, waiting: t.waiting, creditNotes: t.credit_notes, byCanadianAmount: t.by_canadian_amount, noSubtotal: t.no_subtotal, noHst: t.no_hst };
   return {
     business,
     businessName: displayName(config, business),
@@ -900,9 +1052,70 @@ export async function books(db: Db, input: Record<string, unknown>, actor: Actor
       failedAtConfirm: r.failed,
       fieldsChanged: r.changed,
       voided: r.voided_at === null ? null : { by: (r.voided_name ?? r.voided_by ?? "").trim(), at: r.voided_at.toISOString(), reason: r.void_reason ?? "" },
+      documentKind: r.document_kind,
+      currency: r.currency,
+      taxIncluded: r.tax_included,
+      totalCad: r.total_cad,
+      counts: { group: r.grp, total: r.books_total, subtotal: r.books_subtotal, hst: r.books_hst },
     })),
     next: rows.length > limit ? (page[page.length - 1]?.purchase_id ?? null) : null,
-    totals: { count: t.count, subtotal: t.subtotal, hst: t.hst, total: t.total, voided: t.voided, noSubtotal: t.no_subtotal, noHst: t.no_hst },
+    totals: {
+      count: t.count,
+      subtotal: t.subtotal,
+      hst: t.hst,
+      total: t.total,
+      voided: t.voided,
+      noSubtotal: t.no_subtotal,
+      noHst: t.no_hst,
+      creditNotes: t.credit_notes,
+      byCanadianAmount: t.by_canadian_amount,
+      waiting: t.waiting,
+      statements: t.statements,
+      shown: t.shown,
+      notes: totalsNotes(counts),
+    },
     canVoid: REVIEW_ROLES.includes(actor.role),
   };
+}
+
+// ── Adding the Canadian amount paid, once (card P5-05c, decision 5) ──
+
+const notAdded = not("added");
+
+/**
+ * Add the Canadian amount actually paid to a CONFIRMED receipt in another currency that has none (admin or
+ * manager): the one thing about a confirmed receipt that can ever be added, once, with who and when. It
+ * then counts on the books by that amount. A wrong amount is fixed the usual way: void and redo. The
+ * database's trigger allows exactly this change and refuses any other, and a second one.
+ */
+export async function addCanadianAmount(tx: Tx, input: { receiptId?: unknown; totalCad?: unknown }, actor: Actor, config: Config, now: Date): Promise<{ receipt: ReceiptDetail; message: string }> {
+  if (!REVIEW_ROLES.includes(actor.role)) throw new Error("Only an admin or a manager can add the Canadian amount paid to a receipt.");
+  const id = typeof input.receiptId === "string" && PURCHASE_ID.test(input.receiptId) ? input.receiptId : null;
+  const raw = input.totalCad;
+  const cents = raw === undefined || raw === null || raw === "" ? null : drafts.parseMoney(raw);
+  if (cents === null) throw notAdded("Type the Canadian amount paid as it left the account, such as 137.02 (at most two decimals, no thousands separators or currency sign).");
+  await drafts.takeReadingsLock(tx);
+  const row =
+    id === null
+      ? null
+      : await tx.maybeOne<{ status: string; business: Business | null; currency: string | null; total: string; total_cad: string | null; total_cad_by: string | null; name: string | null; total_cad_at: Date | null }>(
+          "select p.status, p.business, p.currency, p.total::text as total, p.total_cad::text as total_cad, p.total_cad_by, st.name, p.total_cad_at from ops.purchase_receipts p left join ops.staff st on st.staff_id = p.total_cad_by where p.purchase_id = $1 for update of p",
+          [id],
+        );
+  if (id === null || row === null) throw notAdded("No such receipt.");
+  if (row.status === "voided") throw notAdded("That receipt is voided: it is not counted, and nothing can be added to it.");
+  if (row.status !== "confirmed") throw notAdded("Only a receipt on the books can have its Canadian amount added: on a draft, type it in the review.");
+  if (!drafts.isForeign(row.currency)) throw notAdded("That receipt is in Canadian dollars: there is no Canadian amount paid to add.");
+  if (row.total_cad !== null) {
+    const by = (row.name ?? row.total_cad_by ?? "someone").trim();
+    throw notAdded(`The Canadian amount paid (${drafts.moneyText(drafts.parseMoney(row.total_cad) as number)}) was already added by ${by}. It can be added once: if it is wrong, void the receipt and do it again.`);
+  }
+  await tx.query("update ops.purchase_receipts set total_cad = $2::numeric, total_cad_by = $3, total_cad_at = $4 where purchase_id = $1", [id, drafts.centsText(cents), actor.staffId, now]);
+  await audit.write(
+    tx,
+    { actorId: actor.staffId, action: "receipt.add_canadian_amount", targetType: "purchase_receipts", targetId: id, before: { totalCad: null }, after: { totalCad: drafts.centsText(cents), currency: row.currency, total: row.total, business: row.business } },
+    { now },
+  );
+  const receipt = await receiptDetail(tx, id, config);
+  return { receipt, message: `Added. ${receipt.counts.words}` };
 }

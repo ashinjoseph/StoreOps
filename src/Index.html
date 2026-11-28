@@ -7494,12 +7494,71 @@
 
   // A row's line in "Read, waiting for review".
   function receiptDraftHeadHTML_(h) {
-    const parts = [h.supplier ? esc(h.supplier) : 'supplier not on the receipt', h.date ? esc(h.date) : 'no date', esc(money(h.total)), esc(receiptBusinessLabel_(h.business))];
+    const parts = [h.supplier ? esc(h.supplier) : 'supplier not on the receipt', h.date ? esc(h.date) : 'no date', esc(receiptAmount_(h.total, h.currency)), esc(receiptBusinessLabel_(h.business))];
     const attention = h.needsAttention ? ' · <b style="color:#b45309">needs attention (' + esc(h.failed) + ' check' + (h.failed === 1 ? '' : 's') + ' failed)</b>' : '';
     return '<div class="payroll-rate">Read: ' + parts.join(' · ') + attention + '</div>';
   }
 
   const RECEIPT_KINDS = { stock: 'stock for resale', supplies: 'supplies', equipment: 'equipment', licences_fees: 'licences and fees', other: 'other' };
+  // Card P5-05c: what the document is, and what an extra charge is. Neither changes which fields are shown.
+  const RECEIPT_DOC_KINDS = { receipt: 'Receipt', invoice: 'Invoice', credit_note: 'Credit note (a refund, return or credit)', statement: 'Statement (a summary of invoices)', other: 'Other' };
+  const RECEIPT_CHARGE_KINDS = { deposit: 'Deposit', eco_fee: 'Eco fee', tobacco_tax: 'Tobacco tax', duty: 'Duty', delivery: 'Delivery', tip: 'Tip', discount: 'Discount (a negative amount)', other: 'Other' };
+
+  // A currency other than Canadian dollars was printed (blank and CAD are Canadian dollars).
+  function receiptForeign_(cur) {
+    return !!cur && cur !== 'CAD';
+  }
+
+  // An amount as the server answers it: with money() in Canadian dollars; in another currency the exact text
+  // and the printed code beside it ("100.00 USD"), never a dollar sign.
+  function receiptAmount_(v, cur) {
+    return receiptForeign_(cur) ? String(v) + ' ' + cur : money(v);
+  }
+
+  // The four facts about the document: the same four controls on every document, whatever it is. The
+  // Canadian amount paid is offered only when another currency is given (it means nothing otherwise).
+  function receiptFactsHTML_(doc, totalCad) {
+    const d = doc || {};
+    const opt = (v, label, sel) => '<option value="' + esc(v) + '"' + (sel ? ' selected' : '') + '>' + esc(label) + '</option>';
+    const ti = d.taxIncluded === true ? 'yes' : d.taxIncluded === false ? 'no' : '';
+    return '<div style="font-size:12px;font-weight:700;margin:8px 0 4px">About the document <span style="font-weight:400;color:#6a6e79">(leave what it does not say)</span></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:0 6px">' +
+        '<div class="sheet-field" style="flex:1 1 150px"><label>What it is</label><select id="rdDocKind">' + opt('', 'Not said', !d.kind) + Object.keys(RECEIPT_DOC_KINDS).map(k => opt(k, RECEIPT_DOC_KINDS[k], d.kind === k)).join('') + '</select></div>' +
+        '<div class="sheet-field" style="flex:1 1 80px"><label>Currency printed</label><input type="text" id="rdCurrency" maxlength="3" autocomplete="off" autocapitalize="characters" placeholder="CAD" value="' + esc(d.currency || '') + '"></div>' +
+        '<div class="sheet-field" style="flex:1 1 150px"><label>Tax inside the price</label><select id="rdTaxIncluded">' + opt('', 'Not said', ti === '') + opt('yes', 'Yes: prices include HST, none printed', ti === 'yes') + opt('no', 'No', ti === 'no') + '</select></div>' +
+      '</div>' +
+      '<div class="sheet-field" id="rdTotalCadBox" style="display:' + (receiptForeign_(d.currency) ? 'block' : 'none') + '"><label>Canadian amount paid (from the card or bank statement)</label><input type="text" inputmode="decimal" id="rdTotalCad" autocomplete="off" placeholder="blank until known" value="' + esc(totalCad == null ? '' : totalCad) + '"></div>';
+  }
+
+  function wireReceiptFacts_() {
+    const cur = $('rdCurrency');
+    if (cur) cur.oninput = () => {
+      const c = String(cur.value || '').trim().toUpperCase();
+      $('rdTotalCadBox').style.display = receiptForeign_(c) ? 'block' : 'none';
+    };
+  }
+
+  // An extra charge's kind and tax mark, under its label and amount.
+  function receiptChargeFieldsHTML_(kindId, taxedId, o) {
+    const c = o || {};
+    const opt = (v, label, sel) => '<option value="' + esc(v) + '"' + (sel ? ' selected' : '') + '>' + esc(label) + '</option>';
+    const tx = c.taxed === true || c.taxed === 'yes' ? 'yes' : c.taxed === false || c.taxed === 'no' ? 'no' : '';
+    return '<div style="display:flex;gap:6px">' +
+      '<div class="sheet-field" style="flex:1"><label>What it is</label><select id="' + kindId + '">' + opt('', 'Not said', !c.kind) + Object.keys(RECEIPT_CHARGE_KINDS).map(k => opt(k, RECEIPT_CHARGE_KINDS[k], c.kind === k)).join('') + '</select></div>' +
+      '<div class="sheet-field" style="flex:1"><label>Taxed itself</label><select id="' + taxedId + '">' + opt('', 'Not marked', tx === '') + opt('yes', 'Yes', tx === 'yes') + opt('no', 'No', tx === 'no') + '</select></div></div>';
+  }
+
+  // The facts as the sheet sends them: what is blank is left out.
+  function receiptFactsInput_(out) {
+    const v = k => { const el = $(k); return el ? String(el.value == null ? '' : el.value).trim() : ''; };
+    if (v('rdDocKind')) out.document_kind = v('rdDocKind');
+    const cur = v('rdCurrency').toUpperCase();
+    if (cur) out.currency = cur;
+    if (v('rdTaxIncluded') === 'yes') out.tax_included = true;
+    if (v('rdTaxIncluded') === 'no') out.tax_included = false;
+    if (receiptForeign_(cur) && v('rdTotalCad')) { out.amounts = out.amounts || {}; out.amounts.total_cad = v('rdTotalCad'); }
+    return out;
+  }
 
   function receiptDraftPaid_(p) {
     if (!p) return '';
@@ -7519,7 +7578,10 @@
     const blank = '<i style="color:#9a9ea9">not on the receipt</i>';
     const row = (label, v) => '<div style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #f0f1f5"><div style="flex:0 0 42%;color:#6a6e79">' + esc(label) + '</div><div style="flex:1;min-width:0;overflow-wrap:anywhere;color:#1f2330">' + v + '</div></div>';
     const text = v => (v === null || v === undefined || v === '' ? blank : esc(v));
-    const amount = v => (v === null || v === undefined ? blank : esc(money(v)));
+    const doc = d.document || {};
+    const cur = doc.currency;
+    const amount = v => (v === null || v === undefined ? blank : esc(receiptAmount_(v, cur)));
+    const notSaid = '<i style="color:#9a9ea9">not said</i>';
     const a = d.amounts || {};
     const b = d.business || {};
     const s = d.supplier || {};
@@ -7536,8 +7598,13 @@
     html += row('How paid', d.paid ? esc(receiptDraftPaid_(d.paid)) : blank);
     html += row('Subtotal', amount(a.subtotal));
     html += row('HST', amount(a.hst));
-    html += row('Other charges', (a.other || []).length ? (a.other || []).map(o => esc(o.label) + ' ' + esc(money(o.amount))).join('<br>') : blank);
-    html += row('Total', '<b>' + esc(money(a.total)) + '</b>');
+    const chargeMarks = o => [o.kind ? RECEIPT_CHARGE_KINDS[o.kind] || o.kind : '', o.taxed === true ? 'taxed' : o.taxed === false ? 'not taxed' : ''].filter(Boolean).join(', ');
+    html += row('Other charges', (a.other || []).length ? (a.other || []).map(o => esc(o.label) + ' ' + esc(receiptAmount_(o.amount, cur)) + (chargeMarks(o) ? ' <span style="color:#6a6e79">(' + esc(chargeMarks(o)) + ')</span>' : '')).join('<br>') : blank);
+    html += row('Total', '<b>' + esc(receiptAmount_(a.total, cur)) + '</b>');
+    html += row('What it is', doc.kind ? esc(RECEIPT_DOC_KINDS[doc.kind] || doc.kind) : notSaid);
+    html += row('Currency', cur ? esc(cur) : '<i style="color:#9a9ea9">none printed (Canadian dollars)</i>');
+    html += row('Tax inside the price', doc.taxIncluded === true ? 'yes: prices include HST' : doc.taxIncluded === false ? 'no' : notSaid);
+    html += row('Canadian amount paid', receiptForeign_(cur) ? (a.totalCad !== null && a.totalCad !== undefined ? esc(money(a.totalCad)) + (d.totalCadAdded ? ' <span style="color:#6a6e79">(added by ' + esc(d.totalCadAdded.by) + ', ' + esc(receiptWhen_(d.totalCadAdded.at)) + ')</span>' : '') : '<i style="color:#b45309">not known yet</i>') : '<i style="color:#9a9ea9">not needed (Canadian dollars)</i>');
     html += row('Kind of purchase', d.kind ? esc(RECEIPT_KINDS[d.kind] || d.kind) : blank);
     html += row('Business', (b.key ? '<b>' + esc(b.key) + '</b>, ' : '') + esc(b.why) + (b.personSaid ? '<br><span style="color:#6a6e79">a person said ' + esc(b.personSaid) + ' when it was added' + (b.agreesWithPerson === false ? ': they disagree' : '') + '</span>' : ''));
     html += row('Buyer as printed', [buyer.name ? 'name ' + esc(buyer.name) : '', buyer.hstNumber ? 'HST number ' + esc(buyer.hstNumber) : '', buyer.accountNumber ? 'account ' + esc(buyer.accountNumber) : '', buyer.cardLast4 ? 'card ending ' + esc(buyer.cardLast4) : ''].filter(Boolean).join('<br>') || blank);
@@ -7549,7 +7616,7 @@
       d.lines.forEach(l => {
         const taxed = l.taxed === true ? 'taxed' : l.taxed === false ? 'not taxed' : 'tax not marked';
         html += '<div style="padding:3px 0;border-bottom:1px solid #f0f1f5;color:#1f2330">' + esc(l.line) + '. ' + esc(l.description) + (l.code ? ' <span style="color:#6a6e79">(' + esc(l.code) + ')</span>' : '') +
-          '<div style="color:#6a6e79">' + (l.quantity !== null && l.quantity !== undefined ? esc(l.quantity) + ' × ' : '') + (l.unitPrice !== null && l.unitPrice !== undefined ? esc(receiptUnitPrice_(l.unitPrice)) : 'no unit price') + ' · ' + (l.total !== null && l.total !== undefined ? esc(money(l.total)) : 'no line total') + ' · ' + esc(taxed) + '</div></div>';
+          '<div style="color:#6a6e79">' + (l.quantity !== null && l.quantity !== undefined ? esc(l.quantity) + ' × ' : '') + (l.unitPrice !== null && l.unitPrice !== undefined ? esc(receiptForeign_(cur) ? String(l.unitPrice) + ' ' + cur : receiptUnitPrice_(l.unitPrice)) : 'no unit price') + ' · ' + (l.total !== null && l.total !== undefined ? esc(receiptAmount_(l.total, cur)) : 'no line total') + ' · ' + esc(taxed) + '</div></div>';
       });
     }
     const where = d.whereRead || {};
@@ -7579,7 +7646,17 @@
     put(amounts, 'total', v('rdTotal'));
     const otherLabel = v('rdOtherLabel');
     const otherAmount = v('rdOtherAmount');
-    if (otherLabel || otherAmount) { const o = {}; put(o, 'label', otherLabel); put(o, 'amount', otherAmount); amounts.other = [o]; }
+    const otherKind = v('rdOtherKind');
+    const otherTaxed = v('rdOtherTaxed');
+    if (otherLabel || otherAmount || otherKind || otherTaxed) {
+      const o = {};
+      put(o, 'label', otherLabel);
+      put(o, 'amount', otherAmount);
+      put(o, 'kind', otherKind);
+      if (otherTaxed === 'yes') o.taxed = true;
+      if (otherTaxed === 'no') o.taxed = false;
+      amounts.other = [o];
+    }
     out.amounts = amounts;
     put(out, 'kind', v('rdKind'));
     const buyer = {};
@@ -7603,7 +7680,7 @@
     }
     if (lines.length) out.lines = lines;
     put(out, 'note', v('rdNote'));
-    return out;
+    return receiptFactsInput_(out);
   }
 
   function receiptDraftLineHTML_(i, l) {
@@ -7630,8 +7707,10 @@
       '<div class="sheet-field"><label>How it was paid</label><select id="rdPaidHow"><option value="">Not on the receipt</option><option value="cash">Cash</option><option value="card">Card</option><option value="account">On account</option><option value="other">Other</option></select></div>' +
       field('Card ending (four digits)', 'rdCard', ' maxlength="4" inputmode="numeric"') +
       field('Subtotal', 'rdSubtotal', money2) + field('HST', 'rdHst', money2) +
-      field('Other charge: what it is', 'rdOtherLabel', ' maxlength="80" placeholder="bottle deposit"') + field('Other charge: amount', 'rdOtherAmount', money2) +
+      field('Other charge: as printed', 'rdOtherLabel', ' maxlength="80" placeholder="bottle deposit"') + field('Other charge: amount', 'rdOtherAmount', money2) +
+      receiptChargeFieldsHTML_('rdOtherKind', 'rdOtherTaxed', null) +
       field('Total (required)', 'rdTotal', money2) +
+      receiptFactsHTML_(null, null) +
       '<div class="sheet-field"><label>Kind of purchase</label><select id="rdKind"><option value="">Not chosen</option><option value="stock">Stock for resale</option><option value="supplies">Supplies</option><option value="equipment">Equipment</option><option value="licences_fees">Licences and fees</option><option value="other">Other</option></select></div>' +
       '<div style="font-size:12px;font-weight:700;margin:8px 0 4px">What it prints about the buyer</div>' +
       field('Name (sold to, bill to)', 'rdBuyerName', ' maxlength="120"') + field('Buyer\'s HST number', 'rdBuyerHst', ' maxlength="40"') +
@@ -7642,6 +7721,7 @@
       '<div id="rdErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
     const actionsHTML = '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="rdSave">Keep the draft</button>';
     openSheet({ title: 'Enter the figures by hand', subtitle: it.fileName || 'Receipt original', bodyHTML, actionsHTML });
+    wireReceiptFacts_();
     $('rdAddLine').onclick = () => {
       haptic();
       // Keep what was typed in the lines already there, then draw one more.
@@ -7705,10 +7785,11 @@
   }
 
   function receiptReviewOtherHTML_(other) {
-    return other.map((o, i) => '<div style="display:flex;gap:6px;align-items:flex-end">' +
+    return other.map((o, i) => '<div style="border:1px solid #e5e7eb;border-radius:6px;padding:6px 6px 0;margin-bottom:6px"><div style="display:flex;gap:6px;align-items:flex-end">' +
       '<div class="sheet-field" style="flex:2"><label>Other charge ' + (i + 1) + '</label><input type="text" id="rvOtherLabel' + i + '" maxlength="80" autocomplete="off" value="' + esc(o.label || '') + '"></div>' +
       '<div class="sheet-field" style="flex:1"><label>Amount</label><input type="text" inputmode="decimal" id="rvOtherAmount' + i + '" autocomplete="off" value="' + esc(o.amount == null ? '' : o.amount) + '"></div>' +
-      '<button class="payroll-btn payroll-btn-secondary" id="rvOtherDel' + i + '" style="margin-bottom:12px">✕</button></div>').join('');
+      '<button class="payroll-btn payroll-btn-secondary" id="rvOtherDel' + i + '" style="margin-bottom:12px">✕</button></div>' +
+      receiptChargeFieldsHTML_('rvOtherKind' + i, 'rvOtherTaxed' + i, o) + '</div>').join('');
   }
 
   // What was typed in the review: the by-hand fields (blank left out, never 0 or ""), the other charges,
@@ -7722,6 +7803,9 @@
       const o = {};
       if (v('rvOtherLabel' + i)) o.label = v('rvOtherLabel' + i);
       if (v('rvOtherAmount' + i)) o.amount = v('rvOtherAmount' + i);
+      if (v('rvOtherKind' + i)) o.kind = v('rvOtherKind' + i);
+      if (v('rvOtherTaxed' + i) === 'yes') o.taxed = true;
+      if (v('rvOtherTaxed' + i) === 'no') o.taxed = false;
       if (Object.keys(o).length) other.push(o);
     }
     if (other.length) out.amounts.other = other;
@@ -7740,7 +7824,7 @@
   function receiptReviewKeep_(st) {
     const g = k => { const el = $(k); return el ? String(el.value == null ? '' : el.value) : ''; };
     st.lines = st.lines.map((l, i) => ({ description: g('rdLineDesc' + i), code: g('rdLineCode' + i), quantity: g('rdLineQty' + i), unit_price: g('rdLinePrice' + i), total: g('rdLineTotal' + i), taxed: g('rdLineTaxed' + i) }));
-    st.other = st.other.map((o, i) => ({ label: g('rvOtherLabel' + i), amount: g('rvOtherAmount' + i) }));
+    st.other = st.other.map((o, i) => ({ label: g('rvOtherLabel' + i), amount: g('rvOtherAmount' + i), kind: g('rvOtherKind' + i), taxed: g('rvOtherTaxed' + i) }));
   }
 
   function receiptReviewHTML_(st) {
@@ -7775,6 +7859,7 @@
     html += field('Subtotal', 'rdSubtotal', a.subtotal, money2) + field('HST', 'rdHst', a.hst, money2);
     html += '<div id="rvOther">' + receiptReviewOtherHTML_(st.other) + '</div><button class="payroll-btn payroll-btn-secondary" id="rvOtherAdd" style="margin-bottom:10px">+ Add an other charge</button>';
     html += field('Total (required)', 'rdTotal', a.total, money2);
+    html += receiptFactsHTML_(d.document, a.totalCad);
     html += '<div class="sheet-field"><label>Kind of purchase</label><select id="rdKind">' + opt('', 'Not chosen', !d.kind) + Object.keys(RECEIPT_KINDS).map(k => opt(k, RECEIPT_KINDS[k], d.kind === k)).join('') + '</select></div>';
     html += '<div style="font-size:12px;font-weight:700;margin:8px 0 4px">What it prints about the buyer</div>';
     html += field('Name (sold to, bill to)', 'rdBuyerName', buyer.name, ' maxlength="120"') + field('Buyer\'s HST number', 'rdBuyerHst', buyer.hstNumber, ' maxlength="40"');
@@ -7835,7 +7920,7 @@
   function drawReceiptReview_(st) {
     const rv = st.rv;
     st.lines = (rv.draft.lines || []).map(receiptLineValues_);
-    st.other = ((rv.draft.amounts || {}).other || []).map(o => ({ label: o.label, amount: o.amount }));
+    st.other = ((rv.draft.amounts || {}).other || []).map(o => ({ label: o.label, amount: o.amount, kind: o.kind || '', taxed: o.taxed === true ? 'yes' : o.taxed === false ? 'no' : '' }));
     const bodyHTML =
       '<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">' +
         '<div style="flex:1 1 320px;min-width:0;position:sticky;top:0;z-index:2;background:#fff;padding-bottom:6px">' +
@@ -7867,6 +7952,7 @@
     $('backdrop').onclick = close;
     $('rvClose').onclick = () => { haptic(); close(); };
     $('rvAside').onclick = () => { haptic(); close(); openReceiptAsideSheet_(st.it); };
+    wireReceiptFacts_();
     $('rvBig').onclick = () => {
       haptic();
       st.large = !st.large;
@@ -7954,7 +8040,8 @@
     let html = d.business.key
       ? '<div style="font-size:20px;font-weight:800;color:#1a2540;margin-bottom:8px">This goes on the books of ' + esc(name) + '</div>'
       : '<div style="font-size:18px;font-weight:800;color:#b91c1c;margin-bottom:8px">No business chosen yet</div>';
-    html += '<div class="payroll-rate" style="font-size:13px;margin-bottom:10px">' + esc((d.supplier || {}).listedName || (d.supplier || {}).name || 'no supplier') + ' · ' + esc(d.date || 'no date') + ' · <b>' + esc(money(d.amounts.total)) + '</b></div>';
+    html += '<div class="payroll-rate" style="font-size:13px;margin-bottom:10px">' + esc((d.supplier || {}).listedName || (d.supplier || {}).name || 'no supplier') + ' · ' + esc(d.date || 'no date') + ' · <b>' + esc(receiptAmount_(d.amounts.total, (d.document || {}).currency)) + '</b></div>';
+    if (c.counts && c.counts.words) html += '<div id="rvCounts" style="background:#eef2ff;border-radius:6px;padding:8px;margin-bottom:10px;font-size:13px;font-weight:600;color:#1a2540">' + esc(c.counts.words) + '</div>';
     if ((c.missing || []).length) html += '<div style="color:#b91c1c;font-size:12px;font-weight:600;margin-bottom:8px">Settle first: ' + esc(c.missing.join(', ')) + '.</div>';
     (c.why || []).forEach(w => { html += '<div style="color:#b91c1c;font-size:12px;font-weight:600;margin-bottom:8px">' + esc(w) + '</div>'; });
     if (offers.offers.length || offers.warnings.length || offers.known.length) {
@@ -8053,20 +8140,35 @@
       '<div class="sheet-field" style="flex:1 1 110px;margin:0"><label>To</label><input type="text" id="rbTo" placeholder="YYYY-MM-DD" value="' + esc(f.to || '') + '"></div>' +
       '<div class="sheet-field" style="flex:1 1 130px;margin:0"><label>Kind</label><select id="rbKind">' + opt('', 'Every kind') + Object.keys(RECEIPT_KINDS).map(k => opt(k, RECEIPT_KINDS[k])).join('') + '</select></div>' +
       '<button class="payroll-btn payroll-btn-secondary" id="rbApply">Show</button></div>';
-    html += '<div class="payroll-card" style="margin-bottom:8px;font-size:12px"><b>' + esc(t.count) + ' receipt' + (t.count === 1 ? '' : 's') + '</b> · subtotal ' + esc(money(t.subtotal)) + ' · HST ' + esc(money(t.hst)) + ' · total <b>' + esc(money(t.total)) + '</b>' +
-      (t.voided ? '<div class="payroll-rate">' + esc(t.voided) + ' voided, shown and not counted</div>' : '') +
-      (t.noSubtotal || t.noHst ? '<div class="payroll-rate">' + [t.noSubtotal ? esc(t.noSubtotal) + ' with no subtotal on the receipt' : '', t.noHst ? esc(t.noHst) + ' with no HST on the receipt' : ''].filter(Boolean).join(' · ') + '</div>' : '') + '</div>';
+    // What was left out, or counted otherwise, each with its count, in the server's words (card P5-05c).
+    const notes = Array.isArray(t.notes)
+      ? t.notes.map(x => '<div class="payroll-rate" data-books-note="' + esc(x.about) + '">' + esc(x.words) + '</div>').join('')
+      : (t.voided ? '<div class="payroll-rate">' + esc(t.voided) + ' voided, shown and not counted</div>' : '') +
+        (t.noSubtotal || t.noHst ? '<div class="payroll-rate">' + [t.noSubtotal ? esc(t.noSubtotal) + ' with no subtotal on the receipt' : '', t.noHst ? esc(t.noHst) + ' with no HST on the receipt' : ''].filter(Boolean).join(' · ') + '</div>' : '');
+    html += '<div class="payroll-card" style="margin-bottom:8px;font-size:12px"><b>' + esc(t.count) + ' receipt' + (t.count === 1 ? '' : 's') + '</b> · subtotal ' + esc(money(t.subtotal)) + ' · HST ' + esc(money(t.hst)) + ' · total <b>' + esc(money(t.total)) + '</b>' + notes + '</div>';
     if (!items.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing on the books for this choice.</div>';
     items.forEach(x => {
       const v = x.status === 'voided';
       html += '<div class="payroll-card" data-books-id="' + esc(x.id) + '" style="margin-bottom:6px;cursor:pointer' + (v ? ';opacity:.6' : '') + '">' +
         '<div style="display:flex;gap:8px;font-size:13px"><div style="flex:1;min-width:0;overflow-wrap:anywhere' + (v ? ';text-decoration:line-through' : '') + '"><b>' + esc(x.supplier || x.supplierPrinted || 'supplier') + '</b> · ' + esc(x.date || '') + (x.invoiceNumber ? ' · ' + esc(x.invoiceNumber) : '') + '</div>' +
-        '<div style="font-weight:700' + (v ? ';text-decoration:line-through' : '') + '">' + esc(money(x.total)) + '</div></div>' +
+        '<div style="font-weight:700;text-align:right' + (v ? ';text-decoration:line-through' : '') + '">' + esc(receiptAmount_(x.total, x.currency)) + '</div></div>' +
+        receiptBooksMark_(x) +
         '<div class="payroll-rate">' + esc(RECEIPT_KINDS[x.kind] || x.kind || '') + ' · confirmed by ' + esc(x.confirmedBy) + (x.fieldsChanged ? ' · ' + esc(x.fieldsChanged) + ' changed at review' : '') + (x.reason ? ' · checks failed, confirmed with a reason' : '') + '</div>' +
         (v ? '<div class="payroll-rate" style="color:#b91c1c">VOIDED by ' + esc(x.voided.by) + ': ' + esc(x.voided.reason) + '</div>' : '') + '</div>';
     });
     if (r.next) html += '<button class="payroll-btn payroll-btn-secondary" id="rbMore" style="width:100%">More</button>';
     return html;
+  }
+
+  // A row's mark: how it counts when it is not simply its total (card P5-05c), from the server's rule.
+  function receiptBooksMark_(x) {
+    const c = x.counts || {};
+    const mark = (color, words) => '<div class="payroll-rate" data-books-mark="' + esc(c.group) + '" style="color:' + color + ';font-weight:600">' + words + '</div>';
+    if (c.group === 'credit_note') return mark('#15803d', 'Credit note: counts as ' + esc(money(c.total)));
+    if (c.group === 'statement') return mark('#6a6e79', 'Statement: kept on file, not counted');
+    if (c.group === 'waiting') return mark('#b45309', 'In ' + esc(x.currency) + ': waiting for its Canadian amount, not counted yet');
+    if (c.group === 'foreign') return mark('#1d4ed8', 'In ' + esc(x.currency) + ': counts as the Canadian amount paid, ' + esc(money(c.total)) + (x.documentKind === 'credit_note' ? ' (a credit note)' : ''));
+    return '';
   }
 
   function wireReceiptBooks_(r) {
@@ -8285,7 +8387,7 @@
 
   function receiptChangesHTML_(ch) {
     if (!ch) return '';
-    const words = { 'supplier.name': 'Supplier as printed', 'supplier.hst_number': 'Supplier\'s HST number', invoice_number: 'Invoice number', date: 'Date', 'paid.how': 'How paid', 'paid.card_last4': 'Card ending', 'amounts.subtotal': 'Subtotal', 'amounts.hst': 'HST', 'amounts.other': 'Other charges', 'amounts.total': 'Total', kind: 'Kind', 'buyer.name': 'Buyer\'s name', 'buyer.hst_number': 'Buyer\'s HST number', 'buyer.account_number': 'Account number', 'buyer.card_last4': 'Buyer\'s card', business: 'Business', supplier: 'Supplier on the list' };
+    const words = { 'supplier.name': 'Supplier as printed', 'supplier.hst_number': 'Supplier\'s HST number', invoice_number: 'Invoice number', date: 'Date', 'paid.how': 'How paid', 'paid.card_last4': 'Card ending', 'amounts.subtotal': 'Subtotal', 'amounts.hst': 'HST', 'amounts.other': 'Other charges', 'amounts.total': 'Total', kind: 'Kind', 'buyer.name': 'Buyer\'s name', 'buyer.hst_number': 'Buyer\'s HST number', 'buyer.account_number': 'Account number', 'buyer.card_last4': 'Buyer\'s card', business: 'Business', supplier: 'Supplier on the list', 'amounts.total_cad': 'Canadian amount paid', document_kind: 'What it is', currency: 'Currency', tax_included: 'Tax inside the price' };
     const show = v => (v === null || v === undefined ? '<i>blank</i>' : esc(v));
     let html = '<div style="font-size:12px;font-weight:700;color:#1f2330;margin:10px 0 4px">What was changed at review (' + esc(ch.count) + ', compared with the first reading)</div>';
     if (!ch.count) return html + '<div style="font-size:12px;color:#6a6e79">Nothing: confirmed as first read.</div>';
@@ -8310,6 +8412,7 @@
     if (rc.confirmed) head += '<div style="background:#dcfce7;border-radius:6px;padding:8px;margin-bottom:6px;color:#166534;font-size:12px">On the books of <b>' + esc(rc.businessName) + '</b>: confirmed by ' + esc(rc.confirmed.by) + ', ' + esc(receiptWhen_(rc.confirmed.at)) +
       (rc.confirmed.reason ? '<br>Checks failed (' + esc((rc.confirmed.failed || []).join(', ')) + '); the reason given: ' + esc(rc.confirmed.reason) : '') + '</div>';
     if (v) head += '<div style="background:#fee2e2;border-radius:6px;padding:8px;margin-bottom:6px;color:#991b1b;font-size:12px"><b>VOIDED</b> by ' + esc(rc.voided.by) + ', ' + esc(receiptWhen_(rc.voided.at)) + ': ' + esc(rc.voided.reason) + '. It is not counted in the totals.</div>';
+    else if (rc.counts && rc.counts.words) head += '<div id="rbCounts" style="background:#eef2ff;border-radius:6px;padding:8px;margin-bottom:6px;color:#1a2540;font-size:12px;font-weight:600">' + esc(rc.counts.words) + '</div>';
     const readings = (rc.readings || []).map(x => esc(x.readBy.kind === 'assistant' ? x.readBy.name + '\'s assistant (' + (x.readBy.keyLabel || '') + ')' : x.readBy.name) + ', ' + esc(receiptWhen_(x.readAt))).join('<br>');
     const bodyHTML =
       '<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">' +
@@ -8318,14 +8421,18 @@
           '<div style="font-size:12px;font-weight:700;color:#1f2330;margin:10px 0 4px">Readings, oldest first</div><div style="font-size:12px">' + readings + '</div></div>' +
       '</div>';
     const canVoid = receiptState_.booksCanVoid && rc.status === 'confirmed';
-    openSheet({ title: (v ? 'Voided: ' : 'On the books: ') + ((rc.supplier || {}).listedName || (rc.supplier || {}).name || 'receipt'), subtitle: (rc.date || '') + ' · ' + money(rc.amounts.total), bodyHTML,
-      actionsHTML: '<button class="sheet-cancel" id="rbClose">Close</button>' + (canVoid ? '<button class="sheet-submit" id="rbVoid">Void…</button>' : '') });
+    // Admin and manager (the same roles as Void, as the server says): the one thing a confirmed receipt can be given.
+    const canAddCad = canVoid && rc.counts && rc.counts.group === 'waiting';
+    openSheet({ title: (v ? 'Voided: ' : 'On the books: ') + ((rc.supplier || {}).listedName || (rc.supplier || {}).name || 'receipt'), subtitle: (rc.date || '') + ' · ' + receiptAmount_(rc.amounts.total, (rc.document || {}).currency), bodyHTML,
+      actionsHTML: '<button class="sheet-cancel" id="rbClose">Close</button>' + (canAddCad ? '<button class="sheet-cancel" id="rbAddCad">Add the Canadian amount paid</button>' : '') + (canVoid ? '<button class="sheet-submit" id="rbVoid">Void…</button>' : '') });
     let url = null;
     const close = () => { revokeReceiptUrl_(url); url = null; $('sheetClose').onclick = closeSheet; closeSheet(); };
     $('sheetClose').onclick = close;
     $('rbClose').onclick = () => { haptic(); close(); };
     const vb = $('rbVoid');
     if (vb) vb.onclick = () => { haptic(); close(); openReceiptVoidSheet_(rc); };
+    const ab = $('rbAddCad');
+    if (ab) ab.onclick = () => { haptic(); close(); openReceiptCadSheet_(rc); };
     if (!rc.originalId) return;
     try {
       const o = await fetchReceiptOriginal_(rc.originalId);
@@ -8338,11 +8445,38 @@
     } catch (e) { const box = $('rbOrig'); if (box) box.textContent = e.message; }
   }
 
+  // Add the Canadian amount paid to a confirmed receipt in another currency: once (card P5-05c).
+  function openReceiptCadSheet_(rc) {
+    const cur = (rc.document || {}).currency;
+    const bodyHTML =
+      '<div style="font-size:13px;color:#1f2330;margin-bottom:8px">' + esc((rc.supplier || {}).listedName || (rc.supplier || {}).name || '') + ' · ' + esc(rc.date || '') + ' · <b>' + esc(receiptAmount_(rc.amounts.total, cur)) + '</b>, on the books of ' + esc(rc.businessName) + '.</div>' +
+      '<div style="font-size:12px;color:#4a4e59;margin-bottom:10px">What left the account in Canadian dollars, from the card or bank statement. It can be added once: a wrong amount is fixed by voiding the receipt and doing it again.</div>' +
+      '<div class="sheet-field"><label>Canadian amount paid</label><input type="text" inputmode="decimal" id="rbCad" autocomplete="off" placeholder="as on the statement, e.g. 137.02"></div>' +
+      '<div id="rbCadErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px"></div>';
+    openSheet({ title: 'Add the Canadian amount paid', subtitle: 'In ' + (cur || ''), bodyHTML, actionsHTML: '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button><button class="sheet-submit" id="rbCadGo">Add</button>' });
+    $('rbCadGo').onclick = async () => {
+      haptic();
+      const btn = $('rbCadGo');
+      btn.disabled = true;
+      $('rbCadErr').textContent = '';
+      try {
+        const r = await call('rpcAddReceiptCanadianAmount', state.token, { receiptId: rc.id, totalCad: String($('rbCad').value || '').trim() });
+        toast('✓ Added', 'success');
+        openSheet({ title: 'Canadian amount added', subtitle: '', bodyHTML: '<div style="font-size:13px;margin-bottom:8px">' + esc(r.message) + '</div>', actionsHTML: '<button class="sheet-submit" onclick="closeSheet()">Close</button>' });
+        if (receiptState_.booksBusiness) loadReceiptBooks_(receiptState_.booksBusiness, {});
+      } catch (e) {
+        if (e.message && e.message.indexOf('NOT_LOGGED_IN') !== -1) { handleRpcError(e); return; }
+        $('rbCadErr').textContent = e.message;
+        btn.disabled = false;
+      }
+    };
+  }
+
   function openReceiptVoidSheet_(rc) {
     const learnt = rc.learnt || { signs: [], spellings: [] };
     const listed = learnt.signs.map(s => esc(BUSINESS_SIGN_KINDS[s.kind] || s.kind) + ' ' + esc(s.value) + ' (' + esc(s.business) + ')').concat(learnt.spellings.map(n => 'the spelling "' + esc(n) + '"'));
     const bodyHTML =
-      '<div style="font-size:13px;color:#1f2330;margin-bottom:8px">' + esc((rc.supplier || {}).listedName || (rc.supplier || {}).name || '') + ' · ' + esc(rc.date || '') + ' · <b>' + esc(money(rc.amounts.total)) + '</b>, on the books of ' + esc(rc.businessName) + '.</div>' +
+      '<div style="font-size:13px;color:#1f2330;margin-bottom:8px">' + esc((rc.supplier || {}).listedName || (rc.supplier || {}).name || '') + ' · ' + esc(rc.date || '') + ' · <b>' + esc(receiptAmount_(rc.amounts.total, (rc.document || {}).currency)) + '</b>, on the books of ' + esc(rc.businessName) + '.</div>' +
       '<div style="font-size:12px;color:#4a4e59;margin-bottom:10px">It stays on file, marked voided, out of the totals. Its original goes back to "Read, waiting for review" with a copy of these figures, to correct and confirm again.</div>' +
       (listed.length ? '<div style="font-size:12px;color:#b45309;margin-bottom:10px">Learnt from this receipt, and NOT removed by voiding it: ' + listed.join('; ') + '. Remove them by hand on the Businesses screen if they were wrong.</div>' : '') +
       '<div class="sheet-field"><label>Why it is voided (3 to 300 characters)</label><input type="text" id="rbVoidReason" maxlength="300" autocomplete="off"></div>' +

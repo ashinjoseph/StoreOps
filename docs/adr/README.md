@@ -44,6 +44,7 @@ requests and the code. Their dates are when the decision took effect.
 | [0029](0029-a-confirmed-receipt-is-final-and-a-mistake-is-voided.md) | A confirmed receipt is final; a mistake is voided and done again | Accepted | 2026-11 |
 | [0030](0030-an-item-is-a-suppliers-own-line.md) | An item is a supplier's own line; a cost is kept only when known exactly; a rise is a flag for a person | Accepted | 2026-11 |
 | [0031](0031-a-day-with-no-rate-is-not-a-day-at-zero.md) | A day worked with no pay rate is "no rate set", not a day at $0 | Accepted | 2026-11 |
+| [0032](0032-one-receipt-form-for-every-kind.md) | One receipt form for every kind of document: optional facts and checks that adapt; one rule of what counts | Accepted | 2026-11 |
 
 ## When to write one
 

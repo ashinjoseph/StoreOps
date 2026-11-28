@@ -96,8 +96,9 @@ hand one out.
 | P5-12b | The assistant's tools for the inbox: hand over an original, see one, list those waiting | T3 | P5-12a, P5-11 | security | done (questions for the trial and the owner, in the card) |
 | P5-13 | Emailed invoices through the assistant | T2 | P5-05b | security | done (the scan itself is tried with Muse at the hosted rehearsal, P5-10) |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
-| P5-05c | Receipts of every kind in one form: credit notes, statements, other currencies, tax inside the price, typed extra charges | T3 | P5-05b | money | in progress |
+| P5-05c | Receipts of every kind in one form: credit notes, statements, other currencies, tax inside the price, typed extra charges | T3 | P5-05b | money | done |
 | P5-12c | Older receipt files move to cheaper storage; the app says which are archived | T1 | P5-12a | money | todo |
+| P5-17 | The receipt screens on a phone: cards with no inner margin clip their text; the original turns into a broken image after "Save corrections" | T1 | P5-05c | - | todo |
 | P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | done (where "an item" breaks on real receipts, for the owner, in the card) |
 | P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | done (the owner runs the import; things to check in the real file, in the card) |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
@@ -1565,6 +1566,60 @@ what it filed).
    replies (each message alone); a spreadsheet or a zip (never opened);
    text written to steer the assistant (not followed, *could not be read*,
    named in the summary).
+
+**P5-05c · receipts of every kind in one form · done.** No path per kind.
+The one form, the one tool and the one set of checks gained four optional
+facts about the document (what it is: receipt, invoice, credit note,
+statement, other; its currency; tax inside the price; the Canadian amount
+actually paid) and a kind and a tax mark on each extra charge (deposit, eco
+fee, tobacco tax, duty, delivery, tip, discount, other). The checks adapt
+and still only flag. **What counts on the books is one rule**, the same in
+the app and in the database (a test proves them equal row by row):
+
+| The receipt | Counts as |
+|---|---|
+| A receipt or invoice in Canadian dollars | its total, as printed |
+| A credit note | minus the size of its total, whichever sign is printed |
+| A statement | nothing: kept on file |
+| Another currency, Canadian amount paid typed in | that Canadian amount (subtotal and HST left out of those sums, and counted) |
+| Another currency, no Canadian amount yet | nothing: it waits, and the list says so |
+| Voided | nothing |
+
+The totals line names everything left out, each with its count. The
+Canadian amount may be added to a confirmed receipt **once** (admin or
+manager); it is the only thing that can ever be added to a confirmed
+receipt, and the database refuses anything else. The cost history does not
+take lines from a document in another currency, a statement or a credit
+note. Migration 0018.
+[ADR-0032](../adr/0032-one-receipt-form-for-every-kind.md);
+[receipts](../components/receipts.md).
+**Still not held honestly** (for the owner and the bookkeeper to say which
+matter):
+1. A US invoice with Canadian duty or brokerage on it: read in the printed
+   currency; nothing flags the mix.
+2. A partial credit against a named invoice: counted as minus on its own,
+   with no link to that invoice.
+3. HST at another province's rate, or GST only: checked against the one
+   rate in Settings; which tax it was is not recorded.
+4. A document that is both an invoice and a statement: one kind per
+   original.
+5. Canadian HST charged by a foreign supplier: left out of the Canadian
+   sums, so it is not there to claim.
+6. A tax-included receipt: the HST paid is not recorded (the check only
+   says "at most about $X").
+7. An invoice that prints its own Canadian equivalent: a person still types
+   the bank's figure.
+**For the bookkeeper:** is "minus the size of the total" right for every
+credit note? Should a foreign supplier's Canadian HST be claimable?
+**For the owner:** do your suppliers' statements ever carry a new charge
+that appears on no invoice?
+**For the export card (P5-09):** send the counted amount with its sign;
+never a statement, a voided receipt or one still waiting; a foreign one
+goes as its Canadian amount with no subtotal or HST.
+Seen in the browser run and not from this card (card P5-17): on a phone,
+the cards of the receipt screens have no inner margin and clip the first
+letter of each row; and after "Save corrections" on a review opened from
+"Enter the figures by hand", the original shows as a broken image.
 
 ## Phase 6 — App
 

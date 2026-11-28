@@ -425,18 +425,20 @@ describe("blank is not zero", () => {
     const id = await original();
     const r = await propose({ original_id: id, amounts: { total: "9.99" } }, await ASSISTANT());
     const row = (await w.owner.query<any>("select *, total::text as total_text from ops.purchase_receipts"))[0];
-    for (const col of ["business", "buyer_name", "buyer_hst_number", "buyer_account_number", "buyer_card_last4", "suggested_business", "supplier_id", "supplier_name", "supplier_name_key", "supplier_hst_number", "invoice_number", "invoice_key", "receipt_date", "receipt_date_text", "paid_how", "paid_card_last4", "subtotal", "hst", "other_total", "other_charges", "kind", "where_read", "reader_note", "supersedes", "superseded_by", "superseded_at", "confirmed_by", "confirmed_at", "voided_by", "voided_at", "void_reason", "business_person_said"]) {
+    for (const col of ["business", "buyer_name", "buyer_hst_number", "buyer_account_number", "buyer_card_last4", "suggested_business", "supplier_id", "supplier_name", "supplier_name_key", "supplier_hst_number", "invoice_number", "invoice_key", "receipt_date", "receipt_date_text", "paid_how", "paid_card_last4", "subtotal", "hst", "other_total", "other_charges", "kind", "document_kind", "currency", "tax_included", "total_cad", "total_cad_by", "total_cad_at", "where_read", "reader_note", "supersedes", "superseded_by", "superseded_at", "confirmed_by", "confirmed_at", "voided_by", "voided_at", "void_reason", "business_person_said"]) {
       expect(row[col], col).toBeNull();
     }
     expect(row.total_text).toBe("9.99");
     expect(await count("purchase_receipt_lines")).toBe(0);
     const d = r.draft;
     expect([d.invoiceNumber, d.date, d.dateAsRead, d.paid, d.kind, d.note, d.whereRead, d.suggestedBusiness, d.supplier.name, d.supplier.hstNumber]).toEqual([null, null, null, null, null, null, null, null, null, null]);
-    expect(d.amounts).toEqual({ subtotal: null, hst: null, otherTotal: null, other: [], total: "9.99" });
+    expect(d.amounts).toEqual({ subtotal: null, hst: null, otherTotal: null, other: [], total: "9.99", totalCad: null });
     expect(d.buyer).toEqual({ name: null, hstNumber: null, accountNumber: null, cardLast4: null });
     expect(d.lines).toEqual([]);
+    expect(d.document).toEqual({ kind: null, currency: null, taxIncluded: null });
+    expect(d.totalCadAdded).toBeNull();
     const got = await rpc("rpcGetReceiptDraft", [tokens["S_001"], { id }]);
-    expect(got.result.draft.amounts).toEqual({ subtotal: null, hst: null, otherTotal: null, other: [], total: "9.99" });
+    expect(got.result.draft.amounts).toEqual({ subtotal: null, hst: null, otherTotal: null, other: [], total: "9.99", totalCad: null });
   });
 
   it("an explicit null is blank too; an HST of 0 is stored as 0.00 and checked as a number", async () => {
@@ -794,7 +796,7 @@ describe("receipt_propose through the SDK client", () => {
     expect(text.split("\n")[0]).toMatch(/^Draft pr[0-9a-f]{24} kept for receipt original ro[0-9a-f]{24}: business vape \(decided by the name "Fictional Vapes Inc\."\); all checks passed\. Nothing counts until a person confirms it\.$/);
     const data = jsonOf(result) as any;
     expect(Object.keys(data).sort()).toEqual(["business", "checks", "draft", "needs_attention", "replaced"]);
-    expect(Object.keys(data.draft).sort()).toEqual(["amounts", "buyer", "date", "date_as_read", "id", "invoice_number", "kind", "lines", "note", "original_id", "paid", "read_at", "read_by", "status", "suggested_business", "supersedes", "supplier", "where_read"]);
+    expect(Object.keys(data.draft).sort()).toEqual(["amounts", "buyer", "currency", "date", "date_as_read", "document_kind", "id", "invoice_number", "kind", "lines", "note", "original_id", "paid", "read_at", "read_by", "status", "suggested_business", "supersedes", "supplier", "tax_included", "where_read"]);
     expect(data.draft).toMatchObject({
       original_id: id,
       status: "draft",

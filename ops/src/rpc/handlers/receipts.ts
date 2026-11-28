@@ -144,6 +144,13 @@ export const rpcUpdateReceiptSupplier: RpcHandler = async (ctx, input) => {
   return review.updateSupplier(ctx.db, { id: o["id"], displayName: o["displayName"], hstNumber: o["hstNumber"], notes: o["notes"], active: o["active"] }, actor(s), ctx.now);
 };
 
+/** Admin or manager: `{ receiptId, totalCad }`. The Canadian amount paid, added once to a confirmed receipt in another currency (card P5-05c). */
+export const rpcAddReceiptCanadianAmount: RpcHandler = async (ctx, input) => {
+  const s = caller(ctx, review.REVIEW_ROLES);
+  const o = fields(input);
+  return review.addCanadianAmount(ctx.db, { receiptId: o["receiptId"], totalCad: o["totalCad"] }, actor(s), await ctx.config(), ctx.now);
+};
+
 /** Admin, manager, payroll admin: `{ business, from, to, supplierId, kind, before, limit }`, one business at a time; or `{ receiptId }` for one receipt. */
 export const rpcGetReceiptBooks: RpcHandler = async (ctx, input) => {
   const s = caller(ctx, review.READ_ROLES);

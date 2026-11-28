@@ -10,7 +10,7 @@
 
 ## What it does
 
-Built so far (cards P5-12a, P5-12b, P5-05a, P5-05b and P5-16), in the Operations app only (inside
+Built so far (cards P5-12a, P5-12b, P5-05a, P5-05b, P5-15, P5-16 and P5-05c), in the Operations app only (inside
 Apps Script neither entry exists). The old spreadsheet's purchase list, kept as
 history and never among the receipts, has its own section,
 [The old purchase list](#the-old-purchase-list-card-p5-16).
@@ -200,6 +200,26 @@ receipt, which a void does not remove. An employee's own original says *It has
 been read.* or *It is on the books.*
 
 **Costs** (card P5-15; [costs](costs.md), [ADR-0030](../adr/0030-an-item-is-a-suppliers-own-line.md)). Confirming a receipt now also writes the cost of each line that gives one exactly (a printed unit price, or line total ÷ quantity, marked *worked out*) onto the history of that supplier's own line, in the business's books, and may flag a rise for a manager; a void stops those costs counting and works the flags out again. The confirm and void answers carry a short `costs` summary that the result sheets repeat. Nothing about the receipt changes, and a failure to observe fails the confirm or the void as a whole.
+
+**Every kind of document** (card P5-05c;
+[ADR-0032](../adr/0032-one-receipt-form-for-every-kind.md),
+[below](#every-kind-of-document-in-one-form-card-p5-05c)). The by-hand sheet
+and the review have, near the totals, four small controls about the document:
+*What it is* (receipt, invoice, credit note, statement, other, or not said),
+*Currency printed*, *Tax inside the price* (yes, no, not said) and, only when a
+currency other than CAD is typed, *Canadian amount paid*. Each other charge has
+*What it is* (deposit, eco fee, tobacco tax, duty, delivery, tip, discount,
+other) and *Taxed itself*. The form is the same for every kind. The checks say,
+in sentences, what does not fit (a credit note printed positive, a negative
+total, a statement, another currency, tax inside the price with an HST also
+given). The confirm sheet says how it will count (*Counts as -$45.20 on the
+books of …: a credit note.*, *Kept on file, not counted: a statement.*, *Waits
+for its Canadian amount …*). *On the books* marks a credit note, a statement,
+another currency and *waiting*, and the totals line lists what was left out,
+with counts. On a confirmed receipt in another currency with no Canadian amount,
+an admin or a manager can **Add the Canadian amount paid**, once. An amount in
+another currency is shown as printed with its code (*100.00 USD*), never with
+`$`.
 
 **Not built yet** (later cards): no QuickBooks export; no
 import of the old purchase list; no emailed invoices beyond P5-12b; no screen
@@ -647,9 +667,11 @@ and a void), stored in `review_changes` with `compared_with`:
 changed }, count }`. The fields compared, in order: `supplier.name`,
 `supplier.hst_number`, `invoice_number`, `date` (as written), `paid.how`,
 `paid.card_last4`, `amounts.subtotal`, `amounts.hst`, `amounts.other` (the
-charges as *label amount; …*), `amounts.total`, `kind`, `buyer.name`,
-`buyer.hst_number`, `buyer.account_number`, `buyer.card_last4`, `business`,
-`supplier` (the supplier on the list, by id). Money is compared as a number
+charges as *label amount; …*, and since card P5-05c a charge's kind and tax mark
+when said: *Deposit 0.10 (deposit, taxed)*), `amounts.total`,
+`amounts.total_cad`, `kind`, `document_kind`, `currency`, `tax_included`
+(*yes*, *no*), `buyer.name`, `buyer.hst_number`, `buyer.account_number`,
+`buyer.card_last4`, `business`, `supplier` (the supplier on the list, by id). Money is compared as a number
 (`12.5` and `12.50` are equal) and shown as stored (`"12.50"`); text exactly as
 stored (cleaned); a blank is `null`: blank to a value is a change, a value to
 blank is a change, a value to the same value is not. Lines are compared by
@@ -668,10 +690,11 @@ and kind. Confirmed and voided receipts, newest on the books first
 (`confirmed_at`, then id), 20 a page (up to 50) with a keyset cursor
 (`before`): a receipt confirmed between two pages is newer than the cursor, so
 no row is missed or repeated. The totals are for the whole filter, every page,
-summed by Postgres over `numeric` (exact): the count, subtotal, HST and total
-of the confirmed ones, the number voided (not in the sums), and how many have
-no subtotal or no HST on the receipt (a blank counts as nothing in a sum and is
-counted apart). With `{ receiptId }` it answers one receipt read only: the
+summed by Postgres over `numeric` (exact), by the one rule of what counts (card
+P5-05c, [below](#every-kind-of-document-in-one-form-card-p5-05c)): the count,
+subtotal, HST and total of the ones that count, the number voided (not in the
+sums), and how many have no subtotal or no HST on the receipt (a blank counts as
+nothing in a sum and is counted apart), with every exclusion named in `notes`. With `{ receiptId }` it answers one receipt read only: the
 draft view plus who confirmed it, the reason and failed checks, who voided it
 and why, what was changed, its readings (the chain of readings that led to it)
 and what was learnt from it.
@@ -707,19 +730,158 @@ code.
   already shows a row with no original (no original to open). The confirm
   record requires a supplier, a date and a kind, which the old list must supply.
 
-### What the model cannot hold yet
+### Every kind of document in one form (card P5-05c)
 
-Questions for the owner and the bookkeeper. Each is what happens **today**:
+[ADR-0032](../adr/0032-one-receipt-form-for-every-kind.md). The owner gets "a
+mix of everything" and asked for no fixed path per kind. So there is **one
+form, one tool and one set of checks**: a reader (an assistant or a person)
+fills in what the document shows, the app flags what does not fit, and a person
+decides. Nothing about the kind hides or reveals a field, with one exception:
+the *Canadian amount paid* box is offered only when a currency other than CAD
+is given (it has no meaning otherwise; it is built on every sheet and shown or
+not).
 
-| Receipt | Today |
+**The four facts about the document** (`ops.purchase_receipts`, migration
+`0018_receipt_kinds.sql`; each blank, `NULL`, when the document does not say;
+each set by a reader and correctable at review; four small controls near the
+totals, under *About the document*):
+
+| Fact | Input | Column | Values |
+|---|---|---|---|
+| What it is | `document_kind` | `document_kind` | `receipt`, `invoice`, `credit_note` (a refund, return or credit from a supplier), `statement` (a summary of several invoices or of an account), `other` |
+| Currency | `currency` | `currency` | three letters as printed, made upper case (`usd` is `USD`); blank: none printed, taken as Canadian dollars. Four letters, digits or anything else: refused, *currency must be the three-letter code printed on the document, such as CAD or USD; leave it out when none is printed (it is then taken as Canadian dollars). Nothing was kept.* |
+| Tax inside the price | `tax_included` | `tax_included` | `true` when the document says prices include HST and prints no HST amount; `false`; blank |
+| Canadian amount paid | `amounts.total_cad` | `total_cad` (`numeric(12,2)`) | for a document in another currency: what left the account in dollars, from the card or bank statement, typed by the reviewer; blank until known. Given with no currency or CAD: refused (*amounts.total_cad is the Canadian amount paid for a document in another currency…*). May be added later to a confirmed receipt, once (below) |
+
+**Extra charges** keep their JSON column. Each part, beside its label as
+printed and its amount, may have a **kind** (`deposit`, `eco_fee`,
+`tobacco_tax`, `duty`, `delivery`, `tip`, `discount`, `other`; blank allowed)
+and a **tax mark** (`taxed`: true, false, or not marked). A discount is a
+negative amount, as printed. A part with neither is stored exactly as before
+this card (`{ label, amount }`), and an old part reads as *kind not said, tax
+not marked*. A made-up kind is refused (the tool: bad input; the page: *must be
+one of …*).
+
+**Amounts are stored as printed.** Nothing here changes a sign, converts a
+currency or splits a tax out of a price.
+
+**The checks, adapted.** They still only flag. Three new checks are present
+only when they have something to say (a plain receipt's checks are the same
+seven, in the same order, with the same words, as before this card); they run
+after `hst_plausible` and before `date`.
+
+| Check | Rule, exactly | Example |
+|---|---|---|
+| `parts_add_up` | unchanged: subtotal + HST + other charges = total, to the cent, each with its own sign (a discount of -3.00 subtracts) | *Subtotal $40.00 + HST $3.82 + other charges $11.90 = $55.72, the total.* |
+| `hst_plausible`, another currency | when the currency is not blank and not CAD: **not checked** (passed `null`) | *Not checked: the amounts are in USD, and the HST rate (13%) is for Canadian dollars.* |
+| `hst_plausible`, tax inside the price | when `tax_included` is true: with no HST amount, **passes** and says the HST inside the total IF every line is taxed, total × rate ÷ (100 + rate) in integer cents rounded half up; with an HST amount also given (even 0.00), **fails** | *Prices include HST and no HST is printed: the HST inside the total ($45.20) is at most about $5.20, if every line is taxed (13%).*; *The document says prices include HST, but an HST of $5.20 is also given: one of the two is a misreading.* |
+| `hst_plausible`, lines marked | as before, with the base = the taxed lines **+ the extra charges marked taxed** (an untaxed or unmarked charge is not in the base); within $0.02 | lines 30.00 taxed and 10.00 not, a taxed deposit 2.40 and a taxed discount -3.00: *HST $3.82 is 13% of the taxed lines and charges ($30.00 - $0.60 = $29.40) = $3.82, within $0.02.*; $3.85 fails |
+| `hst_plausible`, not marked | as before, with the base = subtotal **+ the charges marked taxed**: $0.00 ≤ HST ≤ rate × base + $0.02. When the base is below zero (a credit printed negative): on the other side of zero, rate × base − $0.02 ≤ HST ≤ $0.00 | subtotal 50.00 + a taxed 10.00: HST 7.82 passes, 7.83 fails; subtotal -40.00: HST -5.20 and -5.22 pass, -5.23 and 0.01 fail. With no taxed charge and a positive subtotal, the words are those of card P5-05a |
+| `credit_note` | present for a credit note, or for a negative total on anything but a statement. A credit note with a total above zero **fails**; at zero or below **passes**; any other kind (or none said) with a total below zero **fails**. A total of zero fits both | *A credit note usually has a negative total, but this one is printed as $45.20. It is kept as printed and counts as -$45.20 on the books: is that right?*; *A negative total (-$45.20) usually means a credit note, but it does not say what it is. It counts as -$45.20 on the books: is that right?* In another currency the amount is written *45.20 USD* and it counts as *minus its Canadian amount paid* |
+| `statement` | present for a statement: always **fails** | *A statement is a summary: the invoices on it should be on the books themselves, so this is kept on file and not counted.* |
+| `currency` | present for a currency other than CAD: **fails** while the Canadian amount paid is blank, **passes** once it is given | *The amounts are in USD: it will count on the books only when the Canadian amount paid is filled in.*; *The amounts are in USD; it counts on the books as the Canadian amount paid, $137.02.* |
+
+`lines_add_up`, `date`, `duplicate`, `supplier_hst_number` and `business` are
+unchanged. A draft with every new check failing is kept, marked *needs
+attention*; confirming it needs the usual reason.
+
+**What counts on the books**, decided by one pure function,
+`countsOnBooks` in `ops/src/receipts/drafts.ts`, used by the totals, the list,
+the confirm sheet and the read-only view (and by the export, later). Its twin in
+SQL, `BOOKS_JOIN_SQL` in `review.ts`, is what the database sums with; a test
+proves the two equal row by row and summed, over a generated set of every kind,
+sign, currency and status.
+
+| The receipt | Counts as (total) | Subtotal and HST | Marked on *On the books* |
+|---|---|---|---|
+| a `receipt`, `invoice`, `other` or kind not said, in CAD (blank or `CAD`) | its total, as printed | as printed (a blank one adds nothing and is counted apart) | nothing |
+| a `credit_note` in CAD | **minus** the size of its total, whatever sign is printed | minus the size of each (a blank one adds nothing) | *Credit note: counts as -$45.20* |
+| a `statement`, in any currency | **nothing**: kept on file | nothing | *Statement: kept on file, not counted* |
+| another currency, with the Canadian amount paid | the Canadian amount paid (a credit note: minus its size) | **not known in Canadian dollars**: left out of both sums, counted | *In USD: counts as the Canadian amount paid, $137.02*; the row's own total reads *100.00 USD* |
+| another currency, no Canadian amount yet | **nothing**: it waits | nothing | *In USD: waiting for its Canadian amount, not counted yet* |
+| voided | nothing | nothing | struck through, *VOIDED* |
+
+The totals line (`rpcGetReceiptBooks`' `totals`) is the counted ones' count
+and sums (exact numeric), and `notes`, which names, with its count, each thing
+left out or counted otherwise: *1 credit note counted as minus*, *1 receipt in
+another currency counted by the Canadian amount paid: its subtotal and HST are
+not known in Canadian dollars and are left out of those two sums*, *1 receipt
+in another currency waiting for the Canadian amount paid: not counted until it
+is added*, *1 statement kept on file and not counted (the invoices on a
+statement are counted themselves)*, *1 voided, shown and not counted*, *1 with
+no subtotal on the receipt*, *1 with no HST on the receipt*. Nothing is left out
+silently: `count + voided + statements + waiting = shown`, every row of the
+filter.
+
+**The confirm sheet says how it will count**, in the server's words (the
+review's `confirm.counts.words`): *Counts as $11.40 on the books of Fictional
+Corner Mart.*, *Counts as -$45.20 on the books of …: a credit note.*, *Kept on
+file, not counted: a statement.*, *Waits for its Canadian amount: the amounts
+are in USD, and it counts on the books of … only once the Canadian amount paid
+is added.*, *Counts as $137.02 on the books of …: the Canadian amount paid for
+100.00 USD.* A foreign amount is always shown as printed with its code
+(*100.00 USD*), never with a `$`; dollars are always through `money()`.
+
+**Confirming** is unchanged: a statement can be confirmed (it is then on file,
+its flag acknowledged by the usual reason); a document in another currency can be
+confirmed without the Canadian amount (its flag acknowledged; it waits).
+
+**Adding the Canadian amount paid later** (`rpcAddReceiptCanadianAmount`,
+`{ receiptId, totalCad }`, admin or manager; `addCanadianAmount` in
+`review.ts`). On a receipt on the books in another currency with no Canadian
+amount, *Add the Canadian amount paid* opens a box. In one transaction: the
+drafts' lock, the receipt's row lock; refused (*… Nothing was added.*) when the
+amount is not money, the receipt does not exist, is voided, is not on the books
+(*on a draft, type it in the review*), is in Canadian dollars, or already has
+one (*The Canadian amount paid ($137.02) was already added by Bram Hale. It can
+be added once: if it is wrong, void the receipt and do it again.*). Then the
+three columns `total_cad`, `total_cad_by`, `total_cad_at` (the session's
+person, the request's `now`), audited `receipt.add_canadian_amount` (before
+`{ totalCad: null }`, after the amount, the currency, the printed total and the
+business). It is the only thing about a confirmed receipt that can ever be
+added. A wrong amount is fixed the usual way: void and redo (the redo keeps the
+amount, to correct).
+
+**The trigger, exactly** (`ops.purchase_receipts_final`, replaced by 0018): on
+a confirmed or voided row, an update is allowed only (a) as 0014's void, or (b)
+when the old row is `confirmed`, its currency is not blank and not CAD, its
+`total_cad`, `total_cad_by` and `total_cad_at` are all blank, the new row has
+all three, and **nothing else** differs (the whole row compared as JSON, less
+those three). Every other update of a confirmed or voided row is refused, by any
+role, the owner included: a second change, clearing it, a CAD receipt, a voided
+one, a change of any other column with it. On a row not on the books (a draft, a
+superseded reading) the three columns never change either. The app role's
+grant adds update of those three columns only.
+
+**Cost history** ([costs](costs.md)): a foreign document's, a statement's and a
+credit note's lines are not observed; the confirm's cost summary says so and why.
+
+**For an assistant** ([assistants](assistants.md)): `receipt_propose` takes the
+four facts and each charge's kind and tax mark; its description tells the
+reader to report them as printed and to work nothing out (no conversion, no
+splitting a tax-included price, no sign changed); its answer has them and the
+new checks' words.
+
+### What the model still does not hold
+
+Card P5-05c holds a credit note (either sign), tax included in the price, a
+deposit or fee that is itself taxed, tobacco tax and duty (each a charge with
+its kind), a tip, a discount, a document in another currency and a statement.
+What is **still** not held honestly, and what happens to it today (questions for
+the owner and the bookkeeper):
+
+| Document | What happens today |
 |---|---|
-| A credit note or a return (negative total) | accepted (`-3.10` is money); the parts and lines checks work; the HST check fails on a negative HST (*less than nothing*), so it is flagged. Nothing marks it as a credit |
-| Tax included in the price, with no HST line | HST left blank: *not checked*; parts add up if the subtotal is the total. The HST paid is then not recorded, so it cannot be claimed |
-| A deposit or environmental fee that is itself taxed | goes in other charges, which the HST check does not see: with marked lines the HST is short of rate × taxed lines by the fee's tax and may be flagged |
-| Tobacco with its own tax | its tax has no field: as an other charge the parts add up; it cannot be told apart from a deposit |
-| A foreign-currency invoice | no currency field: the amounts are stored as if dollars, the HST check runs on them; the note is the only place to say so |
-| A statement covering several invoices | one draft per original: one invoice number, one date; the duplicate check does not see the invoices inside it |
-| A tip on a meal | an other charge; parts add up; nothing marks it as a tip |
+| A document in two currencies (a US invoice with Canadian duty or brokerage on it) | one currency per document: the amounts are read in the printed one; the Canadian amount paid is the whole of what left the account. Nothing flags the mix |
+| A partial credit against a named invoice | counted as minus, on its own; nothing links it to the invoice it credits. If the credit note prints the invoice's number as its own, the duplicate check flags it (a reason confirms it) |
+| HST at another rate (15% from an Atlantic supplier) or GST only (5%) | the check uses the setting `hst_rate_percent`: with marked lines a 5% GST is flagged as short, without them it passes as "at most". Which tax it was is not recorded |
+| A document that is both an invoice and a statement (a statement with a new charge on it) | one kind per document: called a statement, the new charge on it is not counted at all (one original has one reading); called an invoice, an earlier balance printed on it may be counted twice. The person must choose; only *statement* is flagged |
+| A statement's invoices | the duplicate check does not look inside a statement: each invoice must come in as its own document |
+| Canadian GST/HST charged by a foreign supplier (a registered non-resident) | its subtotal and HST are left out of the Canadian sums: the tax paid is not counted, so it cannot be claimed from these books |
+| A tax-included receipt | the HST paid is not recorded (the check says only the most it could be); the bookkeeper must decide what, if anything, to claim |
+| An invoice that prints its own Canadian equivalent | the reader must not convert, and the printed equivalent is not what left the account: the person types the bank's figure |
+| A price adjustment on a credit note (a supplier lowering a cost) | not observed: the cost history does not see it |
+| A receipt printed before a tip was added on the card slip | two documents: the receipt's total has no tip; the slip is not a receipt here |
 
 ### The old purchase list (card P5-16)
 
@@ -812,7 +974,7 @@ two tables, four RPCs, `ops/tools/import-purchases.ts`.
 | `ops.assistant_calls` | | ✓ (a PUT to the ticket route) |
 | `ops.businesses` | ✓ | ✓ (legal name, HST number, notes only; the two rows are seeded) |
 | `ops.business_signs` | ✓ | ✓ (add, also learnt from a confirmed receipt with `learnt_from_receipt`; mark removed only) |
-| `ops.purchase_receipts` | ✓ | ✓ (add; status, the superseded link, the confirm record and the void columns only; a confirmed or voided row only to void it, by a trigger) |
+| `ops.purchase_receipts` | ✓ | ✓ (add; status, the superseded link, the confirm record and the void columns only; a confirmed or voided row only to void it, or, since 0017, to add the Canadian amount paid once, by a trigger) |
 | `ops.purchase_receipt_lines` | ✓ | ✓ (add only) |
 | `ops.suppliers`, `ops.supplier_names` | ✓ | ✓ (add a supplier, rename it, its HST number and notes, mark it inactive; add a spelling, typed or learnt; never removed) |
 | `ops.legacy_purchase_files`, `ops.legacy_purchases` | ✓ | ✓ (add by the owner's tool; the business, the supplier link and the superseded mark only; never removed; never among the receipts) |
@@ -826,7 +988,9 @@ and the supplier list from `ops/migrations/0013_receipt_drafts.sql`, the review'
 columns, the status `confirmed` and the trigger from
 `ops/migrations/0014_receipt_review.sql` (no new table), the emails an assistant has dealt with, the attachment and print columns and `ops.message_key` from `ops/migrations/0017_receipt_emails.sql` (card P5-13), the old purchase list
 from `ops/migrations/0015_legacy_purchases.sql` (two tables, and `old_list` as a
-way a spelling is learnt); all are the
+way a spelling is learnt), the four facts, who added the Canadian amount and the
+trigger's one addition from `ops/migrations/0018_receipt_kinds.sql` (no new
+table); all are the
 Operations app's own (no Sheet tab feeds them) and are not loaded or compared
 by the cutover tools (`LATER_OPS_TABLES` in `ops/src/cutover/compare.ts`).
 `ops.suppliers` has the name of the Sheet's deprecated `suppliers` tab: it is
@@ -869,10 +1033,19 @@ settings, so the screen shows the setting's name until one is typed.
   `receipt_draft.restored` (put back); and for the review (card P5-05b)
   `receipt_draft.correct`, `receipt_draft.redo`, `receipt.confirm`,
   `receipt.void`, `supplier.create`, `supplier.update`, `supplier_name.add`,
-  and `business_sign.add` (with `learntFrom` and `receiptId`) for a learnt sign.
+  and `business_sign.add` (with `learntFrom` and `receiptId`) for a learnt sign;
+  and (card P5-05c) `receipt.add_canadian_amount`, and the four facts in the
+  draft and confirm rows when they are said.
 - **A confirmed receipt is final** (ADR-0029): no figure, business or supplier
   of any reading ever changes; a confirmed one can only be voided, once, with
   a reason, and stays on file; one original has at most one confirmed receipt.
+  The one thing that can be added to it is the Canadian amount paid of a
+  document in another currency, once (ADR-0032).
+- **One rule of what counts** (ADR-0032): `countsOnBooks` and its SQL twin; a
+  credit note counts as minus whatever sign is printed, a statement and a
+  foreign document without its Canadian amount count as nothing, and the totals
+  line names each with its count. Amounts are stored as printed: no sign is
+  changed, no currency converted, no tax split out of a price.
 - **The two businesses' books are never mixed**: the books list cannot be asked
   for without one business, and every sum is of one business's confirmed
   receipts only.
@@ -898,8 +1071,8 @@ settings, so the screen shows the setting's name until one is typed.
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | employee | ✓ | own, last 7 days (*It has been read.*, *It is on the books.*) | | | | | | | | |
 | payroll admin | ✓ | ✓ | | ✓ | | ✓ (read only) | | | | ✓ (read) |
-| manager | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | ✓ (a duplicate of a confirmed receipt: no) | (greyed) | ✓ |
-| admin | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| manager | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | ✓ (a duplicate of a confirmed receipt: no); add the Canadian amount paid | (greyed) | ✓ |
+| admin | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓; add the Canadian amount paid | ✓ | ✓ |
 | an assistant key | | waiting and read originals (tools; not confirmed ones) | | ✓ (tool) | | its own (`my_proposals`, with `fields_changed` when confirmed) | `propose` right: `receipt_propose` | never | never | |
 
 ## Questions for a real phone test
@@ -933,9 +1106,10 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 | Storage | `ops/src/receipts/storage.ts`: `ReceiptStorage`, `bucketStorage`, `memoryBucket`, `isBucket`; the binding in `ops/wrangler.toml` (`[[r2_buckets]]`, `RECEIPTS`) |
 | Businesses | `ops/src/receipts/businesses.ts`: `list`, `update`, `addSign`, `removeSign`, `normalise`, `signKey`, `checkHst` |
 | Review (card P5-05b) | `ops/src/receipts/review.ts`: `getReview`, `saveCorrection`, `confirm`, `voidReceipt`, `books`, `receiptDetail`, `listSuppliers`, `createSupplier`, `updateSupplier`, `signOffers`, `spellingOffer`, the pure `compareReadings` and `COMPARED_FIELDS`; in `drafts.ts` the one writing path `writeReading` (modes `propose`, `correct`, `redo`), `runChecks`, `checkChosenBusiness`, `inputOf`, `supplierById`, `whoRead`, `takeReadingsLock`, `ON_THE_BOOKS`; in `businesses.ts` `addSign`'s `learntFrom` |
+| Every kind (card P5-05c) | `ops/src/receipts/drafts.ts`: `DOCUMENT_KINDS`, `CHARGE_KINDS`, `isForeign`, `hstInside`, the checks `checkCreditNote`, `checkStatement`, `checkCurrency` and the adapted `checkHstPlausible`, the one rule `countsOnBooks` and `countsWords`, `factsOf`; `ops/src/receipts/review.ts`: `BOOKS_JOIN_SQL`, `countsView`, `totalsNotes`, `addCanadianAmount`; `ops/src/receipts/costs.ts`: the guard at the top of `observeReceipt`; the RPC `rpcAddReceiptCanadianAmount`; `ops/migrations/0018_receipt_kinds.sql`; `src/Index.html`: `receiptForeign_`, `receiptAmount_`, `receiptFactsHTML_`, `wireReceiptFacts_`, `receiptFactsInput_`, `receiptChargeFieldsHTML_`, `receiptBooksMark_`, `openReceiptCadSheet_` |
 | Drafts (card P5-05a) | `ops/src/receipts/drafts.ts`: `propose`, `getDraft`, `proposals`, `takenOut`, `restore`; the pure parts `readFields`, `decideBusiness`, `checkLinesAddUp`, `checkPartsAddUp`, `checkHstPlausible`, `checkDate`, `checkDuplicates`, `checkSupplierHst`, `checkBusiness`, `parseMoney`, `parseQuantity`, `centsText`, `moneyText`, `expectedHst`, `hstRateMilli`; the shared input `draftInputSchema`, `parsePageInput`; `matchSupplier`, `liveSigns`, `isRefusal` |
-| RPCs | `ops/src/rpc/handlers/receipts.ts`: `rpcGetReceiptInbox`, `rpcSetReceiptAside`, `rpcSetReceiptBusiness`, `rpcGetBusinesses`, `rpcUpdateBusiness`, `rpcAddBusinessSign`, `rpcRemoveBusinessSign`, `rpcGetReceiptDraft`, `rpcEnterReceiptDraft` (card P5-05a); `rpcGetReceiptReview`, `rpcSaveReceiptCorrection`, `rpcConfirmReceipt`, `rpcVoidReceipt`, `rpcGetReceiptSuppliers`, `rpcCreateReceiptSupplier`, `rpcUpdateReceiptSupplier`, `rpcGetReceiptBooks` (card P5-05b); listed in `ops/contracts/rpc-ops.json` |
-| Tables | `ops/migrations/0010_receipt_inbox.sql`; `ops/migrations/0012_receipt_upload_tickets.sql` (the tickets); `ops/migrations/0013_receipt_drafts.sql` (drafts, lines, suppliers and their spellings; `drafted`); `ops/migrations/0014_receipt_review.sql` (`confirmed`, the confirm record, what the signs said, `redo_of`, learnt-from links, the supplier's display key, the trigger `purchase_receipts_final`) |
+| RPCs | `ops/src/rpc/handlers/receipts.ts`: `rpcGetReceiptInbox`, `rpcSetReceiptAside`, `rpcSetReceiptBusiness`, `rpcGetBusinesses`, `rpcUpdateBusiness`, `rpcAddBusinessSign`, `rpcRemoveBusinessSign`, `rpcGetReceiptDraft`, `rpcEnterReceiptDraft` (card P5-05a); `rpcGetReceiptReview`, `rpcSaveReceiptCorrection`, `rpcConfirmReceipt`, `rpcVoidReceipt`, `rpcGetReceiptSuppliers`, `rpcCreateReceiptSupplier`, `rpcUpdateReceiptSupplier`, `rpcGetReceiptBooks` (card P5-05b); `rpcAddReceiptCanadianAmount` (card P5-05c); listed in `ops/contracts/rpc-ops.json` |
+| Tables | `ops/migrations/0010_receipt_inbox.sql`; `ops/migrations/0012_receipt_upload_tickets.sql` (the tickets); `ops/migrations/0013_receipt_drafts.sql` (drafts, lines, suppliers and their spellings; `drafted`); `ops/migrations/0014_receipt_review.sql` (`confirmed`, the confirm record, what the signs said, `redo_of`, learnt-from links, the supplier's display key, the trigger `purchase_receipts_final`); `ops/migrations/0018_receipt_kinds.sql` (the four facts, `total_cad_by`, `total_cad_at`, the trigger's one addition) |
 | The old purchase list (card P5-16) | `ops/src/receipts/legacy.ts`: the pure `judgeRow`, `readRows`, `findColumns`, `centsText`, `cleanFileName`; `loadFile` (one insert, `--replace-file` carry-over), `getPurchases`, `getSpellings`, `setBusiness`, `linkSupplier`; `addSpelling` is `review.ts`'s own, exported; the tool `ops/tools/import-purchases.ts` (`npm --prefix ops run import:purchases`); the workbook reader's `headerRow` option and `tableOf` in `ops/src/export/xlsx.ts`; the RPCs `rpcGetLegacyPurchases`, `rpcGetLegacySpellings`, `rpcSetLegacyBusiness`, `rpcLinkLegacySupplier` in `ops/src/rpc/handlers/receipts.ts`; `src/Index.html`: `legacyToggle_`, `legacyLoad_`, `legacyHTML_`, `openLegacySpellingSheet_` |
 | Setting | `receipt_max_mb` and `hst_rate_percent` in `ops/src/lib/config-keys.ts` (`OPS_ONLY_KEYS`) and `ops/src/modules/settings.ts` (group *Other*) |
 | The assistant's view | the `businesses`, `receipts_to_read`, `receipt_original`, `receipt_upload_start`, `receipts_from_email` and `receipt_propose` tools in `ops/src/mcp/tools.ts` ([assistants](assistants.md)) |
@@ -950,13 +1124,25 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 | `ops/test/mcp-receipts.test.ts` | card P5-12b: an assistant's originals by ticket through the Worker's `fetch` and the tools through the SDK client: the whole flow; byte for byte both ways for the five kinds; the ticket single use, 10 minutes exactly, the same 404 for every refused ticket, one file from two PUTs at once, nowhere stored or answered but once; the page's file rules on this route; who it belongs to and what is recorded; email ids; planted text cleaned; nothing else moved. The refactor of the upload path (`checkLength`, `receiveFile`) is held by `ops/test/receipt-inbox.test.ts`, unchanged |
 | `ops/test/receipt-drafts.test.ts` | card P5-05a, against a real database, the pure functions directly, the tool through the SDK's own client and the RPCs through the real router: money spellings accepted and refused and sums in cents where floats differ; every check at and just past its tolerance with its sentence; a draft with every check failing kept and flagged; only a total; the business decision as a table (each kind, two agreeing, both businesses, nothing, a removed sign, spellings, the paid card, a person's word at upload agreeing and disagreeing, a suggestion deciding nothing); supplier matching, never created; every left-out field NULL; HST 0 checked; duplicates across both businesses, possible duplicates, superseded and set-aside ones not counted; replacing, a person's draft not replaceable, two at once one live, the unique index; each refusal writing nothing; a fuel receipt kept exactly (quantity 41.287, unit price 1.459) through the tool and the by-hand RPC, a fifth decimal refused, nothing computed from quantity × unit price; drafted, `receipts_to_read`, set aside and put back; who may (tool rights, daily cap, RPC roles, planted fields); hostile text cleaned; audit rows; the role's rights; nothing else moved; the setting; the by-hand path and the inbox headline |
 | `ops/test/receipt-review.test.ts` | card P5-05b, against a real database, the RPCs through the real router, the assistant through the SDK client: the whole chain for two receipts (an assistant's draft decided by a card, one field corrected, confirmed by a manager with one change recorded; a hand-typed one with the business not known, chosen by a person, a printed name learnt by an admin's tick, then a new draft decided by it); each confirm requirement with its message and nothing written; corrections as new readings (the old row byte-identical, the checks and the decision re-run both ways); the app role unable to update figures, business or supplier, unable to delete, and the trigger refusing any change of a confirmed row but one void, also for the owner; the business chosen when not known, on conflict, overruling the signs (`person`, what the signs said kept, a reason needed), *not sure* refused, and the two books never mixing (a property over a mixed set); sign offers (printed and not yet a sign, unticked, the other business's a warning and refused when forged, a manager's tick refused server-side, the Businesses card's rules and audit, matched afterwards); suppliers (name rules, uniqueness ignoring case and spaces, search by spelling and paging, one supplier per spelling, remember on and off, matching after, inactive not choosable but still shown); failed checks needing a reason, stored with the failing checks; a duplicate of a confirmed receipt for an admin only, of a draft a warning; what was changed as a table (no change, a field, blank to value, value to blank, 12.5 = 12.50, business, supplier, other charges, lines added, removed, changed) and against the first reading after corrections and a second proposal; every write path refusing a confirmed original (correction, a proposal, by hand, set aside, confirm again); void (reason, roles, kept and marked, out of the totals, the copy equal to the voided figures, confirmed again, learnt signs and spellings listed and kept, twice refused); the books (filters, paging with a confirm between pages, totals in cents equal to the rows, a float trap, voided excluded, one receipt read only); two at once on two connections (two confirms, confirm and correction, confirm and a proposal, two voids and a confirm of the redo); `my_proposals` waiting → confirmed with a count and no values → refused once voided; no tool confirms, corrects or voids and nothing in `src/mcp/` imports the review; every RPC per role and without a token, planted fields ignored; hostile text kept as text; the audit rows; nothing else moved; a nightly copy and restore round trip with drafts, a confirmed and a voided receipt |
+| `ops/test/receipt-kinds.test.ts` | card P5-05c, against a real database, the RPCs through the real router and the tool through the SDK's client: one fictional document of each kind from original to the books (a plain grocery receipt with every stored column, check and audit row pinned as before; a credit note printed positive and one printed negative, both counted as minus, the mismatch flag on the first only; a tax-included receipt with the exact *at most about* figure and no HST stored, flagged with an HST also given; taxed deposit, untaxed eco fee, tobacco tax and a discount with the HST to the cent; a USD invoice waiting, then its Canadian amount added once by a manager, a second add refused, an admin on another, a payroll admin and an employee refused, void and redo; a statement flagged, confirmed with a reason, counting nothing; a meal with a tip); `countsOnBooks` as a table over every kind × sign × currency × status × Canadian amount; the database's rule equal to it row by row and summed per business over a generated set, never mixing the two, with counted + every excluded group = every row and each named; the trigger with the app role and the owner role (once, never again, never cleared, never on CAD, voided, a draft or a superseded reading, never with another column); each adapted check at its edges with its sentence; nothing refused for a failed check; a reading made before the card reading, checking, confirming and counting as before; what was changed for the facts and a charge's kind and tax mark; the cost history leaving out a foreign document, a statement and a credit note (no flag, the reason in the summary, the catch-up not coming back); `receipt_propose` with the new fields, hostile text in a label, a made-up kind and a four-letter currency; who may and the audit rows; six other tables unmoved; the nightly copy round trip with the new columns holding values |
 | `ops/test/legacy-purchases.test.ts` | card P5-16, against a real database, a fictional workbook built in the test: the row rules as a table (kept as typed, blank supplier kept, zero and negative kept, every reject and its reason, never the value); the columns found by heading in any order; the reader's default mode unchanged; the load cell for cell with the spreadsheet's row numbers, repeats kept, one insert for 30 rows and for 300; no cell value in the tool's output (as a real process too), `import-report.json` or `rejects.csv`; the same file again adds nothing; a changed file refused without `--replace-file`, and with it the old rows marked and nothing removed, links carried over and counted; `--dry-run` byte for byte; a non-local database refused; `--as` an active admin; the business unset on arrival, set for a row or a spelling in one statement, cleared, never set by a link; the link learns the spelling so the Receipts card's matching finds the supplier, refuses another supplier's spelling, unlinking keeps it; the readers' filters, stable cursor and totals; the books identical before and after; no MCP source names the tables; every RPC per role and with no token; the database grants; the nightly copy round trip |
 | `ops/test/businesses.test.ts` | the seven RPCs' roles in the merged contract; the two seeded businesses, blank until typed; every field rule; the HST number normalised and never shared; each kind of sign, normalised; a sign refused at the other business however it is spaced, dashed or cased, also by the database; two admins at once; removal kept and audited; who may; the assistant's `businesses` tool through the SDK client showing the new fields and nothing else |
 | `ops/test/mcp-door.test.ts` | the `businesses` tool's exact keys; the pinned tool list (with `receipt_propose`, card P5-05a) |
 | `ops/test/db-migrate.test.ts`, `ops/test/cutover-tool.test.ts` | the new tables (0010, 0012, 0013) present and skipped by the cutover tools (0014 adds no table) |
-| `tests/suites/ui-receipts.js` | an assistant's original says *added by <person>'s assistant (<key label>)*, an emailed one its sender and date, all escaped (card P5-12b); both drawer entries `opsOnly` with their roles; per role, what is rendered (an employee: no list of others, no set-aside or business control); the oversize photo refused before any request; the token only in an `Authorization` header, never in a URL, a toast or storage; blob URLs revoked; the built page carries both screens and Apps Script hides them; card P5-05a: the *Read, waiting for review* group between Waiting and Set aside (asked for only when there are some), its headline, the read-only draft per role (blank reads *not on the receipt*, a failed check reads as its sentence, hostile text escaped), an employee's *It has been read.*, *Enter the figures by hand* for admin and manager only, the by-hand sheet sending exactly the fields typed (nothing as 0 or ""), lines added one at a time; card P5-05b: the review and *On the books* offered to admin, manager and payroll admin and not to an employee (*It is on the books.*); the review prefilled from the draft and escaped, its fields, a line added and removed, an other charge, Save sending exactly what was typed (a blank left out, the reader's notes unchanged, the draft, the business and the supplier); the confirm sheet naming the business in words, the sign offers unticked and greyed for a manager (a forced tick not sent), the other business's sign a warning, the spelling ticked, Confirm disabled until a reason of 3 characters when a check failed and while not allowed; an admin's tick sent by its id and the next receipt offered; the books asked for one business at a time with the cursor, totals and rows from the server escaped, voided marked, a receipt read only with what was changed, Void for admin and manager only and its sheet listing what was learnt; by hand goes straight into the review; card P5-16: the *Old purchase list* group with its one sentence above *On the books* for admin, manager and payroll admin and not for an employee, nothing asked of the server until it is opened, *supplier not written*, money with `money()`, a formula-looking note and `<script>` shown as text, the sort-and-link controls for admin and manager only, the spelling sheet sending its key, a new supplier made with the Receipts card's own call, the empty state naming the guide |
+| `tests/suites/ui-receipts.js` | an assistant's original says *added by <person>'s assistant (<key label>)*, an emailed one its sender and date, all escaped (card P5-12b); both drawer entries `opsOnly` with their roles; per role, what is rendered (an employee: no list of others, no set-aside or business control); the oversize photo refused before any request; the token only in an `Authorization` header, never in a URL, a toast or storage; blob URLs revoked; the built page carries both screens and Apps Script hides them; card P5-05a: the *Read, waiting for review* group between Waiting and Set aside (asked for only when there are some), its headline, the read-only draft per role (blank reads *not on the receipt*, a failed check reads as its sentence, hostile text escaped), an employee's *It has been read.*, *Enter the figures by hand* for admin and manager only, the by-hand sheet sending exactly the fields typed (nothing as 0 or ""), lines added one at a time; card P5-05b: the review and *On the books* offered to admin, manager and payroll admin and not to an employee (*It is on the books.*); the review prefilled from the draft and escaped, its fields, a line added and removed, an other charge, Save sending exactly what was typed (a blank left out, the reader's notes unchanged, the draft, the business and the supplier); the confirm sheet naming the business in words, the sign offers unticked and greyed for a manager (a forced tick not sent), the other business's sign a warning, the spelling ticked, Confirm disabled until a reason of 3 characters when a check failed and while not allowed; an admin's tick sent by its id and the next receipt offered; the books asked for one business at a time with the cursor, totals and rows from the server escaped, voided marked, a receipt read only with what was changed, Void for admin and manager only and its sheet listing what was learnt; by hand goes straight into the review; card P5-16: the *Old purchase list* group with its one sentence above *On the books* for admin, manager and payroll admin and not for an employee, nothing asked of the server until it is opened, *supplier not written*, money with `money()`, a formula-looking note and `<script>` shown as text, the sort-and-link controls for admin and manager only, the spelling sheet sending its key, a new supplier made with the Receipts card's own call, the empty state naming the guide; card P5-05c: the review building the same fields for every kind of document, currency and tax mark (54 sheets), the Canadian amount box shown only for another currency, the by-hand and review sheets sending the facts and a charge's kind and tax mark only when set, the confirm sheet's *how it will count* sentence, escaped, no `$` on any foreign amount (read only, headline, confirm sheet, books row), the totals line's named exclusions, each row's mark, *Add the Canadian amount paid* for admin and manager only and gone once added |
 
 ## History
+
+- **Nov 2026 (card P5-05c):** receipts of every kind in one form: four optional
+  facts about the document (what it is, the currency, tax inside the price, the
+  Canadian amount paid), a kind and a tax mark on each extra charge, checks that
+  adapt (taxed charges in the HST base, tax inside the price, another currency
+  not checked; a credit note, a statement and another currency flagged), one
+  rule of what counts on the books with its SQL twin and a totals line that
+  names what it leaves out, the Canadian amount paid added once to a confirmed
+  receipt (`rpcAddReceiptCanadianAmount`), no cost observed from a foreign
+  document, a statement or a credit note; migration 0018 (no new table)
+  ([ADR-0032](../adr/0032-one-receipt-form-for-every-kind.md)).
 
 - **Nov 2026 (card P5-16):** the old purchase list as history, marked *no
   original on file* and never among the receipts: the owner's tool

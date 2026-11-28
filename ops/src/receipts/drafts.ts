@@ -37,6 +37,12 @@ import { type Business, type SignKind, HST_MESSAGE, SIGN_KINDS, checkHst, descri
 export const DRAFT_STATUSES = ["draft", "confirmed", "voided", "superseded"] as const;
 export type DraftStatus = (typeof DRAFT_STATUSES)[number];
 export const KINDS = ["stock", "supplies", "equipment", "licences_fees", "other"] as const;
+/** Card P5-05c: what the document is, as the reader or reviewer says (blank: not said). It changes no field of the form. */
+export const DOCUMENT_KINDS = ["receipt", "invoice", "credit_note", "statement", "other"] as const;
+export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
+/** Card P5-05c: what an extra charge is (blank: not said). A discount is a negative amount. */
+export const CHARGE_KINDS = ["deposit", "eco_fee", "tobacco_tax", "duty", "delivery", "tip", "discount", "other"] as const;
+export type ChargeKind = (typeof CHARGE_KINDS)[number];
 export const PAID_HOW = ["cash", "card", "account", "other"] as const;
 export const WHERE_FIELDS = ["supplier", "supplier_hst_number", "invoice_number", "date", "paid", "subtotal", "hst", "other", "total", "kind", "buyer", "lines"] as const;
 export const LINES_MAX = 300;
@@ -143,6 +149,16 @@ const quantityText = (milli: number): string => unitsText(milli, 3).replace(/\.?
 /** A rate in thousandths of a percent: 13000 → "13", 14975 → "14.975". */
 const rateText = (milli: number): string => quantityText(milli);
 
+/** `rateMilli` thousandths of a percent INSIDE `cents` (a tax-included total): cents × rate ÷ (100 + rate), rounded half away from zero. Integers only. */
+export function hstInside(cents: number, rateMilli: number): number {
+  const n = BigInt(cents) * BigInt(rateMilli);
+  const d = 100000n + BigInt(rateMilli);
+  const neg = n < 0n;
+  const a = neg ? -n : n;
+  const q = (2n * a + d) / (2n * d);
+  return Number(neg ? -q : q);
+}
+
 /** The setting hst_rate_percent in thousandths of a percent: 0 to 30, up to three decimals; else 13. Read as text, so 0 is 0. */
 export function hstRateMilli(config: Config): number {
   const v = parseDecimal(config.value("hst_rate_percent", ""), 3, 2);
@@ -210,8 +226,17 @@ export function draftInputSchema(strict: boolean) {
     invoice_number: TEXT,
     date: TEXT,
     paid: obj({ how: z.enum(PAID_HOW), card_last4: TEXT }).nullable().optional(),
-    amounts: obj({ subtotal: AMOUNT, hst: AMOUNT, total: AMOUNT, other: z.array(obj({ label: TEXT, amount: AMOUNT })).max(OTHER_MAX).nullable().optional() }).nullable().optional(),
+    amounts: obj({
+      subtotal: AMOUNT,
+      hst: AMOUNT,
+      total: AMOUNT,
+      total_cad: AMOUNT,
+      other: z.array(obj({ label: TEXT, amount: AMOUNT, kind: z.enum(CHARGE_KINDS).nullable().optional(), taxed: z.boolean().nullable().optional() })).max(OTHER_MAX).nullable().optional(),
+    }).nullable().optional(),
     kind: z.enum(KINDS).nullable().optional(),
+    document_kind: z.enum(DOCUMENT_KINDS).nullable().optional(),
+    currency: z.string().max(200).nullable().optional(),
+    tax_included: z.boolean().nullable().optional(),
     buyer: obj({ name: TEXT, hst_number: TEXT, account_number: TEXT, card_last4: TEXT }).nullable().optional(),
     suggested_business: z.enum(["cstore", "vape"]).nullable().optional(),
     lines: z
@@ -242,6 +267,15 @@ export interface Line {
   taxed: boolean | null;
 }
 
+export interface Charge {
+  label: string;
+  amount: number;
+  /** Card P5-05c: what the charge is, or null (not said). */
+  kind: ChargeKind | null;
+  /** Card P5-05c: whether the charge is itself taxed, or null (not marked). */
+  taxed: boolean | null;
+}
+
 export interface Fields {
   originalId: string;
   supplierName: string | null;
@@ -253,8 +287,15 @@ export interface Fields {
   subtotal: number | null;
   hst: number | null;
   total: number;
-  other: Array<{ label: string; amount: number }>;
+  other: Charge[];
   kind: (typeof KINDS)[number] | null;
+  /** Card P5-05c: the four optional facts about the document. */
+  documentKind: DocumentKind | null;
+  /** The code as printed, upper case; null: none printed (taken as Canadian dollars). */
+  currency: string | null;
+  taxIncluded: boolean | null;
+  /** The Canadian amount actually paid, for a document in another currency; null until known. */
+  totalCad: number | null;
   buyer: { name: string | null; hstNumber: string | null; accountNumber: string | null; cardLast4: string | null };
   suggested: Business | null;
   lines: Line[];
@@ -285,8 +326,19 @@ export function readFields(input: Record<string, unknown>): Fields {
     const r = objOf(o);
     const amount = money(r["amount"], `amounts.other.${i}.amount`);
     if (amount === null) throw refuse(`amounts.other.${i}.amount is required: each other charge has its amount.`);
-    return { label: cleanText(r["label"], `amounts.other.${i}.label`, LIMITS.label) ?? "Other charge", amount };
+    const ck = r["kind"];
+    const kind = ck === undefined || ck === null ? null : typeof ck === "string" && (CHARGE_KINDS as readonly string[]).includes(ck) ? (ck as ChargeKind) : undefined;
+    if (kind === undefined) throw refuse(`amounts.other.${i}.kind must be one of ${CHARGE_KINDS.join(", ")}, or left out.`);
+    const taxed = r["taxed"];
+    return { label: cleanText(r["label"], `amounts.other.${i}.label`, LIMITS.label) ?? "Other charge", amount, kind, taxed: typeof taxed === "boolean" ? taxed : null };
   });
+  const dk = input["document_kind"];
+  const documentKind = dk === undefined || dk === null ? null : typeof dk === "string" && (DOCUMENT_KINDS as readonly string[]).includes(dk) ? (dk as DocumentKind) : undefined;
+  if (documentKind === undefined) throw refuse(`document_kind must be one of ${DOCUMENT_KINDS.join(", ")}, or left out when the document does not say.`);
+  const currency = cleanCurrency(input["currency"]);
+  const totalCad = money(amounts["total_cad"], "amounts.total_cad");
+  if (totalCad !== null && !isForeign(currency)) throw refuse("amounts.total_cad is the Canadian amount paid for a document in another currency: give the currency printed on it, or leave the Canadian amount out.");
+  const ti = input["tax_included"];
 
   const lines: Line[] = rawLines.map((l, i) => {
     const r = objOf(l);
@@ -328,6 +380,10 @@ export function readFields(input: Record<string, unknown>): Fields {
     total,
     other,
     kind: typeof kindRaw === "string" && (KINDS as readonly string[]).includes(kindRaw) ? (kindRaw as (typeof KINDS)[number]) : null,
+    documentKind,
+    currency,
+    taxIncluded: typeof ti === "boolean" ? ti : null,
+    totalCad,
     buyer: {
       name: cleanText(buyer["name"], "buyer.name", LIMITS.buyerName),
       hstNumber: cleanText(buyer["hst_number"], "buyer.hst_number", LIMITS.buyerHst),
@@ -339,6 +395,18 @@ export function readFields(input: Record<string, unknown>): Fields {
     whereRead: Object.keys(whereRead).length > 0 ? whereRead : null,
     note: cleanText(input["note"], "note", LIMITS.note),
   };
+}
+
+/** A currency other than Canadian dollars was printed (blank and CAD are Canadian dollars). */
+export const isForeign = (currency: string | null | undefined): boolean => currency !== null && currency !== undefined && currency !== "CAD";
+
+/** The currency as printed: three letters (any case, made upper case), or null when blank. Anything else is refused. */
+function cleanCurrency(v: unknown): string | null {
+  if (v === undefined || v === null) return null;
+  const text = typeof v === "string" ? v.normalize("NFKC").trim() : null;
+  if (text === "") return null;
+  if (text === null || !/^[A-Za-z]{3}$/.test(text)) throw refuse("currency must be the three-letter code printed on the document, such as CAD or USD; leave it out when none is printed (it is then taken as Canadian dollars).");
+  return text.toUpperCase();
 }
 
 /** The other charges added up, or null when there are none (blank, not 0). */
@@ -414,8 +482,13 @@ export function decideBusiness(evidence: Evidence, signs: readonly LiveSign[], p
 
 // ── The checks (pure; review.ts reruns them through runChecks when a person corrects or confirms) ──
 
-export type CheckId = "lines_add_up" | "parts_add_up" | "hst_plausible" | "date" | "duplicate" | "supplier_hst_number" | "business";
-export const CHECK_ORDER: readonly CheckId[] = ["lines_add_up", "parts_add_up", "hst_plausible", "date", "duplicate", "supplier_hst_number", "business"];
+export type CheckId = "lines_add_up" | "parts_add_up" | "hst_plausible" | "credit_note" | "statement" | "currency" | "date" | "duplicate" | "supplier_hst_number" | "business";
+/**
+ * The checks in the order they are run and answered. credit_note, statement and currency (card P5-05c) are
+ * there only when they have something to say (a credit note or a negative total; a statement; a currency
+ * other than CAD), so a plain receipt's checks are exactly what they were before.
+ */
+export const CHECK_ORDER: readonly CheckId[] = ["lines_add_up", "parts_add_up", "hst_plausible", "credit_note", "statement", "currency", "date", "duplicate", "supplier_hst_number", "business"];
 export interface CheckResult {
   check: CheckId;
   /** true passed, false failed (needs attention), null not checked (nothing to check). */
@@ -446,28 +519,169 @@ export function checkPartsAddUp(a: { subtotal: number | null; hst: number | null
 }
 
 /**
- * The HST is plausible. When every line has a total and a taxed/not-taxed mark: HST = rate × the taxed
- * lines, within HST_ALLOWANCE_CENTS either way. Otherwise, with a subtotal: 0 ≤ HST ≤ rate × subtotal +
- * HST_ALLOWANCE_CENTS. A blank HST is not checked; an HST of 0 is.
+ * The HST is plausible. When every line has a total and a taxed/not-taxed mark: HST = rate × (the taxed
+ * lines + the extra charges marked taxed), within HST_ALLOWANCE_CENTS either way. Otherwise, with a
+ * subtotal: 0 ≤ HST ≤ rate × (subtotal + the extra charges marked taxed) + HST_ALLOWANCE_CENTS; when that
+ * base is below zero (a credit printed negative) the same on the other side of zero. A blank HST is not
+ * checked; an HST of 0 is. Card P5-05c: a document in another currency is not checked (the rate is for
+ * Canadian dollars); when prices include HST no HST amount is expected: with none, the check says what the
+ * HST inside the total would be IF every line were taxed (total × rate ÷ (100 + rate)) and passes; with
+ * one, it flags the contradiction. With no taxed charge, no currency and nothing said about tax inside the
+ * price, the rule and its words are exactly those of card P5-05a.
  */
-export function checkHstPlausible(a: { lines: ReadonlyArray<{ total: number | null; taxed: boolean | null }>; subtotal: number | null; hst: number | null }, rateMilli: number): CheckResult {
-  if (a.hst === null) return result("hst_plausible", null, "No HST on the receipt: nothing to check.");
+export function checkHstPlausible(
+  a: {
+    lines: ReadonlyArray<{ total: number | null; taxed: boolean | null }>;
+    subtotal: number | null;
+    hst: number | null;
+    charges?: ReadonlyArray<{ amount: number; taxed: boolean | null }>;
+    taxIncluded?: boolean | null;
+    currency?: string | null;
+    total?: number;
+  },
+  rateMilli: number,
+): CheckResult {
   const rate = `${rateText(rateMilli)}%`;
+  if (isForeign(a.currency)) return result("hst_plausible", null, `Not checked: the amounts are in ${a.currency}, and the HST rate (${rate}) is for Canadian dollars.`);
+  if (a.taxIncluded === true) {
+    if (a.hst !== null) return result("hst_plausible", false, `The document says prices include HST, but an HST of ${moneyText(a.hst)} is also given: one of the two is a misreading.`);
+    if (a.total === undefined) return result("hst_plausible", null, "Prices include HST and no HST is printed: nothing to check.");
+    const inside = hstInside(a.total, rateMilli);
+    return result("hst_plausible", true, `Prices include HST and no HST is printed: the HST inside the total (${moneyText(a.total)}) is at most about ${moneyText(inside)}, if every line is taxed (${rate}).`);
+  }
+  if (a.hst === null) return result("hst_plausible", null, "No HST on the receipt: nothing to check.");
   const allow = moneyText(HST_ALLOWANCE_CENTS);
+  const taxedCharges = (a.charges ?? []).filter((c) => c.taxed === true);
+  const chargesSum = taxedCharges.reduce((n, c) => n + c.amount, 0);
   const marked = a.lines.length > 0 && a.lines.every((l) => l.taxed !== null && l.total !== null);
   if (marked) {
-    const base = a.lines.filter((l) => l.taxed === true).reduce((n, l) => n + (l.total as number), 0);
+    const lines = a.lines.filter((l) => l.taxed === true).reduce((n, l) => n + (l.total as number), 0);
+    const base = lines + chargesSum;
     const expected = expectedHst(base, rateMilli);
-    const said = `${rate} of the taxed lines (${moneyText(base)}) = ${moneyText(expected)}, within ${allow}`;
+    const of = taxedCharges.length === 0 ? `the taxed lines (${moneyText(base)})` : `the taxed lines and charges (${moneyText(lines)} ${plusMinus(chargesSum)} = ${moneyText(base)})`;
+    const said = `${rate} of ${of} = ${moneyText(expected)}, within ${allow}`;
     if (Math.abs(a.hst - expected) <= HST_ALLOWANCE_CENTS) return result("hst_plausible", true, `HST ${moneyText(a.hst)} is ${said}.`);
     return result("hst_plausible", false, `HST ${moneyText(a.hst)} should be ${said}; it is ${apart(a.hst, expected)} ${a.hst > expected ? "more" : "less"}.`);
   }
   if (a.subtotal === null) return result("hst_plausible", null, "No subtotal and no marked lines to check the HST against.");
+  const base = a.subtotal + chargesSum;
+  const of = taxedCharges.length === 0 ? `the subtotal (${moneyText(a.subtotal)})` : `the subtotal and taxed charges (${moneyText(a.subtotal)} ${plusMinus(chargesSum)} = ${moneyText(base)})`;
+  const most = expectedHst(base, rateMilli);
+  if (base < 0) {
+    // A credit printed negative: the HST is on the same side of zero, and no larger than the rate allows.
+    const said = `${rate} of ${of} = ${moneyText(most)}, less ${allow} for rounding`;
+    if (a.hst > 0) return result("hst_plausible", false, `HST ${moneyText(a.hst)} is more than nothing, but this is a credit (${of} is less than nothing).`);
+    if (a.hst >= most - HST_ALLOWANCE_CENTS) return result("hst_plausible", true, `HST ${moneyText(a.hst)} is, as a credit, between $0.00 and ${said}.`);
+    return result("hst_plausible", false, `HST ${moneyText(a.hst)} is, as a credit, beyond ${said}.`);
+  }
   if (a.hst < 0) return result("hst_plausible", false, `HST ${moneyText(a.hst)} is less than nothing.`);
-  const most = expectedHst(a.subtotal, rateMilli);
-  const said = `${rate} of the subtotal (${moneyText(a.subtotal)}) = ${moneyText(most)}, plus ${allow} for rounding`;
+  const said = `${rate} of ${of} = ${moneyText(most)}, plus ${allow} for rounding`;
   if (a.hst <= most + HST_ALLOWANCE_CENTS) return result("hst_plausible", true, `HST ${moneyText(a.hst)} is between $0.00 and ${said}.`);
   return result("hst_plausible", false, `HST ${moneyText(a.hst)} is more than ${said}.`);
+}
+
+/** "+ $2.40" or "- $0.60": a sum's second part in words. */
+const plusMinus = (cents: number): string => (cents < 0 ? `- ${moneyText(-cents)}` : `+ ${moneyText(cents)}`);
+
+const DOCUMENT_WORDS: Record<DocumentKind, string> = { receipt: "a receipt", invoice: "an invoice", credit_note: "a credit note", statement: "a statement", other: "another kind of document" };
+/** An amount in words: dollars ("-$45.20"), or the printed code beside a foreign amount ("-45.20 USD"), never a dollar sign on it. */
+const amountWords = (cents: number, currency: string | null | undefined): string => (isForeign(currency) ? `${centsText(cents)} ${currency}` : moneyText(cents));
+
+/**
+ * Card P5-05c. A credit note usually has a negative total; anything else a positive one. Amounts are kept as
+ * printed and a credit note counts as MINUS its size whatever sign is printed (countsOnBooks), so a sign
+ * that does not fit the kind is flagged, never changed. Present (not null) only for a credit note, or a
+ * negative total on anything but a statement (a statement has its own check). A total of zero fits both.
+ */
+export function checkCreditNote(f: { documentKind: DocumentKind | null; total: number; currency?: string | null }): CheckResult | null {
+  const foreign = isForeign(f.currency);
+  const shown = amountWords(f.total, f.currency);
+  if (f.documentKind === "credit_note") {
+    const counts = foreign ? "minus its Canadian amount paid" : moneyText(-Math.abs(f.total));
+    if (f.total > 0) return result("credit_note", false, `A credit note usually has a negative total, but this one is printed as ${shown}. It is kept as printed and counts as ${counts} on the books: is that right?`);
+    return result("credit_note", true, `A credit note, printed as ${shown}: it counts as ${counts} on the books.`);
+  }
+  if (f.documentKind === "statement" || f.total >= 0) return null;
+  const said = f.documentKind === null ? "it does not say what it is" : `it is marked as ${DOCUMENT_WORDS[f.documentKind]}`;
+  return result("credit_note", false, `A negative total (${shown}) usually means a credit note, but ${said}. It counts as ${foreign ? "its Canadian amount paid" : shown} on the books: is that right?`);
+}
+
+/** Card P5-05c. A statement is always flagged: it is kept on file and never counted. Present only for a statement. */
+export function checkStatement(documentKind: DocumentKind | null): CheckResult | null {
+  if (documentKind !== "statement") return null;
+  return result("statement", false, "A statement is a summary: the invoices on it should be on the books themselves, so this is kept on file and not counted.");
+}
+
+/** Card P5-05c. A document in another currency counts on the books only by its Canadian amount paid. Present only for a currency other than CAD. */
+export function checkCurrency(f: { currency: string | null; totalCad: number | null }): CheckResult | null {
+  if (!isForeign(f.currency)) return null;
+  if (f.totalCad === null) return result("currency", false, `The amounts are in ${f.currency}: it will count on the books only when the Canadian amount paid is filled in.`);
+  return result("currency", true, `The amounts are in ${f.currency}; it counts on the books as the Canadian amount paid, ${moneyText(f.totalCad)}.`);
+}
+
+// ── What counts on the books (card P5-05c; pure; review.ts holds its SQL twin, BOOKS_RULE_SQL) ──
+//
+//   | the receipt                                          | group        | total counted            | subtotal and HST counted         |
+//   |------------------------------------------------------|--------------|--------------------------|----------------------------------|
+//   | not confirmed (a draft, a superseded reading)        | not_on_books | nothing                  | nothing                          |
+//   | voided                                               | voided       | nothing                  | nothing                          |
+//   | a statement (any currency, any sign)                 | statement    | nothing: kept on file    | nothing                          |
+//   | another currency, no Canadian amount paid            | waiting      | nothing: it waits        | nothing                          |
+//   | another currency, with the Canadian amount paid      | foreign      | total_cad; for a credit  | not known in Canadian dollars:   |
+//   |                                                      |              | note −|total_cad|        | left out of both sums, counted   |
+//   | a credit note in Canadian dollars                    | credit_note  | −|total|                 | −|subtotal|, −|HST| (a blank one |
+//   |                                                      |              |                          | adds nothing, counted apart)     |
+//   | a receipt, invoice, other, or not said, in CAD       | counted      | total, as printed        | as printed (blank: nothing)      |
+//
+// "In Canadian dollars" is a blank currency or CAD. Every amount is integer cents, and sums of them exact.
+
+export type BooksGroup = "counted" | "credit_note" | "foreign" | "waiting" | "statement" | "voided" | "not_on_books";
+export const BOOKS_GROUPS: readonly BooksGroup[] = ["counted", "credit_note", "foreign", "waiting", "statement", "voided", "not_on_books"];
+export interface BooksCount {
+  group: BooksGroup;
+  /** Whether it adds to the books' totals. */
+  counts: boolean;
+  /** Cents added to the total, or null when it adds nothing. */
+  total: number | null;
+  /** Cents added to the subtotal and the HST sums, or null: nothing, blank on the receipt, or not known in Canadian dollars. */
+  subtotal: number | null;
+  hst: number | null;
+}
+
+/** What one receipt adds to its business's books (the table above). Pure. */
+export function countsOnBooks(r: { status: string; documentKind: string | null; currency: string | null; subtotal: number | null; hst: number | null; total: number; totalCad: number | null }): BooksCount {
+  const none = (group: BooksGroup): BooksCount => ({ group, counts: false, total: null, subtotal: null, hst: null });
+  if (r.status === "voided") return none("voided");
+  if (r.status !== "confirmed") return none("not_on_books");
+  if (r.documentKind === "statement") return none("statement");
+  const credit = r.documentKind === "credit_note";
+  const minus = (c: number | null): number | null => (c === null ? null : -Math.abs(c));
+  if (isForeign(r.currency)) {
+    if (r.totalCad === null) return none("waiting");
+    return { group: "foreign", counts: true, total: credit ? (minus(r.totalCad) as number) : r.totalCad, subtotal: null, hst: null };
+  }
+  if (credit) return { group: "credit_note", counts: true, total: minus(r.total) as number, subtotal: minus(r.subtotal), hst: minus(r.hst) };
+  return { group: "counted", counts: true, total: r.total, subtotal: r.subtotal, hst: r.hst };
+}
+
+/** How a receipt will count (or counts), in words: the confirm sheet and the read-only view say it. */
+export function countsWords(c: BooksCount, r: { currency: string | null; total: number }, businessName: string): string {
+  switch (c.group) {
+    case "counted":
+      return `Counts as ${moneyText(c.total as number)} on the books of ${businessName}.`;
+    case "credit_note":
+      return `Counts as ${moneyText(c.total as number)} on the books of ${businessName}: a credit note.`;
+    case "foreign":
+      return `Counts as ${moneyText(c.total as number)} on the books of ${businessName}: the Canadian amount paid for ${centsText(r.total)} ${r.currency}.`;
+    case "waiting":
+      return `Waits for its Canadian amount: the amounts are in ${r.currency}, and it counts on the books of ${businessName} only once the Canadian amount paid is added.`;
+    case "statement":
+      return "Kept on file, not counted: a statement.";
+    case "voided":
+      return "Voided: not counted.";
+    case "not_on_books":
+      return "Not on the books: nothing counts until it is confirmed.";
+  }
 }
 
 /** "YYYY-MM-DD" when it is a real day, else null. */
@@ -614,8 +828,11 @@ export interface DraftView {
   date: string | null;
   dateAsRead: string | null;
   paid: { how: string; cardLast4: string | null } | null;
-  amounts: { subtotal: string | null; hst: string | null; otherTotal: string | null; other: Array<{ label: string; amount: string }>; total: string };
+  amounts: { subtotal: string | null; hst: string | null; otherTotal: string | null; other: Array<{ label: string; amount: string; kind?: ChargeKind | null; taxed?: boolean | null }>; total: string; totalCad: string | null };
   kind: string | null;
+  /** Card P5-05c: the four optional facts (null: not said). `totalCad` is in `amounts`; `totalCadAdded` says who added it to a confirmed receipt. */
+  document: { kind: DocumentKind | null; currency: string | null; taxIncluded: boolean | null };
+  totalCadAdded: { by: string; at: string } | null;
   buyer: { name: string | null; hstNumber: string | null; accountNumber: string | null; cardLast4: string | null };
   suggestedBusiness: Business | null;
   business: {
@@ -672,8 +889,15 @@ interface DraftRow {
   hst: string | null;
   total: string;
   other_total: string | null;
-  other_charges: Array<{ label: string; amount: string }> | null;
+  other_charges: Array<{ label: string; amount: string; kind?: ChargeKind | null; taxed?: boolean | null }> | null;
   hst_rate_percent: string;
+  document_kind: DocumentKind | null;
+  currency: string | null;
+  tax_included: boolean | null;
+  total_cad: string | null;
+  total_cad_by: string | null;
+  total_cad_by_name: string | null;
+  total_cad_at: Date | null;
   kind: string | null;
   needs_attention: boolean;
   checks: CheckResult[];
@@ -692,9 +916,11 @@ const DRAFT_SELECT = `select p.purchase_id, p.original_id, p.status, p.read_by_k
                              p.receipt_date, p.receipt_date_text, p.paid_how, p.paid_card_last4,
                              p.subtotal::text as subtotal, p.hst::text as hst, p.total::text as total, p.other_total::text as other_total, p.other_charges,
                              p.hst_rate_percent::text as hst_rate_percent, p.kind, p.needs_attention, p.checks, p.where_read, p.reader_note, p.supersedes,
-                             p.signs_business, p.signs_decided_by, p.redo_of
+                             p.signs_business, p.signs_decided_by, p.redo_of,
+                             p.document_kind, p.currency, p.tax_included, p.total_cad::text as total_cad, p.total_cad_by, tc.name as total_cad_by_name, p.total_cad_at
                         from ops.purchase_receipts p
                         left join ops.staff st on st.staff_id = p.read_by
+                        left join ops.staff tc on tc.staff_id = p.total_cad_by
                         left join ops.assistant_keys ak on ak.key_id = p.read_by_key
                         left join ops.suppliers sp on sp.supplier_id = p.supplier_id`;
 
@@ -734,8 +960,10 @@ function draftView(r: DraftRow, lines: LineRow[]): DraftView {
     date: r.receipt_date,
     dateAsRead: r.receipt_date_text,
     paid: r.paid_how === null ? null : { how: r.paid_how, cardLast4: r.paid_card_last4 },
-    amounts: { subtotal: r.subtotal, hst: r.hst, otherTotal: r.other_total, other: r.other_charges ?? [], total: r.total },
+    amounts: { subtotal: r.subtotal, hst: r.hst, otherTotal: r.other_total, other: (r.other_charges ?? []).map((o) => ({ label: o.label, amount: o.amount, kind: o.kind ?? null, taxed: o.taxed ?? null })), total: r.total, totalCad: r.total_cad },
     kind: r.kind,
+    document: { kind: r.document_kind, currency: r.currency, taxIncluded: r.tax_included },
+    totalCadAdded: r.total_cad_at === null ? null : { by: (r.total_cad_by_name ?? r.total_cad_by ?? "").trim(), at: r.total_cad_at.toISOString() },
     buyer: { name: r.buyer_name, hstNumber: r.buyer_hst_number, accountNumber: r.buyer_account_number, cardLast4: r.buyer_card_last4 },
     suggestedBusiness: r.suggested_business,
     business: { key: r.business, decidedBy, why, signs, personSaid: r.business_person_said, agreesWithPerson: decision.agreesWithPerson, signsSaid: r.signs_decided_by === null ? null : { business: r.signs_business, decidedBy: r.signs_decided_by } },
@@ -863,7 +1091,8 @@ export async function runChecks(db: Db, f: Fields, originalId: string, personSai
   const checks: CheckResult[] = [
     checkLinesAddUp(f.lines, f.subtotal),
     checkPartsAddUp({ subtotal: f.subtotal, hst: f.hst, otherTotal, total: f.total }),
-    checkHstPlausible({ lines: f.lines, subtotal: f.subtotal, hst: f.hst }, rateMilli),
+    checkHstPlausible({ lines: f.lines, subtotal: f.subtotal, hst: f.hst, charges: f.other, taxIncluded: f.taxIncluded, currency: f.currency, total: f.total }, rateMilli),
+    ...[checkCreditNote(f), checkStatement(f.documentKind), checkCurrency(f)].filter((c): c is CheckResult => c !== null),
     checkDate(f.dateText, now),
     checkDuplicates({ supplierName: f.supplierName, invoiceNumber: f.invoiceNumber, date: day, total: f.total, supplierKnown: supplierKey !== null || matched !== null }, duplicates),
     checkSupplierHst(f.supplierHst),
@@ -911,6 +1140,20 @@ export const takeReadingsLock = async (tx: Tx): Promise<void> => {
   await tx.query(LOCK);
 };
 
+/**
+ * An extra charge as stored in other_charges: its label and amount, and (card P5-05c) its kind and tax mark
+ * only when said, so a charge read without them is stored exactly as before this card.
+ */
+const chargeJson = (o: Charge): Record<string, unknown> => ({ label: o.label, amount: centsText(o.amount), ...(o.kind === null ? {} : { kind: o.kind }), ...(o.taxed === null ? {} : { taxed: o.taxed }) });
+
+/** The four facts for an audit row, only those said (a plain receipt's audit row is as before this card). */
+export const factsOf = (f: { documentKind: DocumentKind | null; currency: string | null; taxIncluded: boolean | null; totalCad: number | null }): Record<string, unknown> => ({
+  ...(f.documentKind === null ? {} : { documentKind: f.documentKind }),
+  ...(f.currency === null ? {} : { currency: f.currency }),
+  ...(f.taxIncluded === null ? {} : { taxIncluded: f.taxIncluded }),
+  ...(f.totalCad === null ? {} : { totalCad: centsText(f.totalCad) }),
+});
+
 /** Write one reading of an original (see WriteMode): the one path for proposals, corrections and the draft a void makes. */
 export async function writeReading(tx: Tx, f: Fields, reader: Reader, how: WriteMode, config: Config, now: Date): Promise<ProposeResult> {
   if (!ORIGINAL_ID.test(f.originalId)) throw refuse("No receipt original with that id.");
@@ -954,9 +1197,11 @@ export async function writeReading(tx: Tx, f: Fields, reader: Reader, how: Write
        supplier_id, supplier_name, supplier_name_key, supplier_hst_number, invoice_number, invoice_key,
        receipt_date, receipt_date_text, paid_how, paid_card_last4,
        subtotal, hst, total, other_total, other_charges, hst_rate_percent, kind,
-       needs_attention, checks, where_read, reader_note, supersedes, signs_business, signs_decided_by, redo_of)
+       needs_attention, checks, where_read, reader_note, supersedes, signs_business, signs_decided_by, redo_of,
+       document_kind, currency, tax_included, total_cad)
      values ($1, $2, 'draft', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
-             $22::date, $23, $24, $25, $26::numeric, $27::numeric, $28::numeric, $29::numeric, $30, $31::numeric, $32, $33, $34, $35, $36, $37, $38, $39, $40)`,
+             $22::date, $23, $24, $25, $26::numeric, $27::numeric, $28::numeric, $29::numeric, $30, $31::numeric, $32, $33, $34, $35, $36, $37, $38, $39, $40,
+             $41, $42, $43, $44::numeric)`,
     [
       id,
       f.originalId,
@@ -987,7 +1232,7 @@ export async function writeReading(tx: Tx, f: Fields, reader: Reader, how: Write
       textOrNull(f.hst),
       centsText(f.total),
       textOrNull(c.otherTotal),
-      f.other.length === 0 ? null : JSON.stringify(f.other.map((o) => ({ label: o.label, amount: centsText(o.amount) }))),
+      f.other.length === 0 ? null : JSON.stringify(f.other.map(chargeJson)),
       quantityText(c.rateMilli),
       f.kind,
       needsAttention,
@@ -998,6 +1243,10 @@ export async function writeReading(tx: Tx, f: Fields, reader: Reader, how: Write
       c.signsSaid?.business ?? null,
       c.signsSaid?.decidedBy ?? null,
       how.mode === "redo" ? how.voidedId : null,
+      f.documentKind,
+      f.currency,
+      f.taxIncluded,
+      textOrNull(f.totalCad),
     ],
   );
   if (f.lines.length > 0) {
@@ -1036,6 +1285,7 @@ export async function writeReading(tx: Tx, f: Fields, reader: Reader, how: Write
         hst: textOrNull(f.hst),
         otherTotal: textOrNull(c.otherTotal),
         total: centsText(f.total),
+        ...factsOf(f),
         lines: f.lines.length,
         business: c.business,
         decidedBy: c.decidedBy,
@@ -1059,8 +1309,17 @@ export function inputOf(d: DraftView): Record<string, unknown> {
     invoice_number: d.invoiceNumber,
     date: d.dateAsRead,
     paid: d.paid === null ? null : { how: d.paid.how, card_last4: d.paid.cardLast4 },
-    amounts: { subtotal: d.amounts.subtotal, hst: d.amounts.hst, total: d.amounts.total, other: d.amounts.other.map((o) => ({ label: o.label, amount: o.amount })) },
+    amounts: {
+      subtotal: d.amounts.subtotal,
+      hst: d.amounts.hst,
+      total: d.amounts.total,
+      total_cad: d.amounts.totalCad,
+      other: d.amounts.other.map((o) => ({ label: o.label, amount: o.amount, kind: o.kind, taxed: o.taxed })),
+    },
     kind: d.kind,
+    document_kind: d.document.kind,
+    currency: d.document.currency,
+    tax_included: d.document.taxIncluded,
     buyer: { name: d.buyer.name, hst_number: d.buyer.hstNumber, account_number: d.buyer.accountNumber, card_last4: d.buyer.cardLast4 },
     suggested_business: d.suggestedBusiness,
     lines: d.lines.map((l) => ({ description: l.description, code: l.code, quantity: l.quantity, unit_price: l.unitPrice, total: l.total, taxed: l.taxed })),

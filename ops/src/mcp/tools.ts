@@ -440,8 +440,18 @@ function draftForAssistant(d: drafts.DraftView) {
     date: d.date,
     date_as_read: textOr(d.dateAsRead),
     paid: d.paid === null ? null : { how: d.paid.how, card_last4: d.paid.cardLast4 },
-    amounts: { subtotal: d.amounts.subtotal, hst: d.amounts.hst, other_total: d.amounts.otherTotal, other: d.amounts.other.map((o) => ({ label: asData(o.label), amount: o.amount })), total: d.amounts.total },
+    amounts: {
+      subtotal: d.amounts.subtotal,
+      hst: d.amounts.hst,
+      other_total: d.amounts.otherTotal,
+      other: d.amounts.other.map((o) => ({ label: asData(o.label), amount: o.amount, kind: o.kind ?? null, taxed: o.taxed ?? null })),
+      total: d.amounts.total,
+      total_cad: d.amounts.totalCad,
+    },
     kind: d.kind,
+    document_kind: d.document.kind,
+    currency: d.document.currency,
+    tax_included: d.document.taxIncluded,
     buyer: { name: textOr(d.buyer.name), hst_number: textOr(d.buyer.hstNumber), account_number: textOr(d.buyer.accountNumber), card_last4: d.buyer.cardLast4 },
     suggested_business: d.suggestedBusiness,
     lines: d.lines.map((l) => ({ line: l.line, description: asData(l.description, drafts.LIMITS.description), code: textOr(l.code), quantity: l.quantity, unit_price: l.unitPrice, total: l.total, taxed: l.taxed })),
@@ -456,11 +466,12 @@ const receiptPropose: ToolDef = {
   right: "propose",
   title: "Propose a draft of one receipt",
   description:
-    "Propose the figures read off ONE stored receipt original (an id from receipts_to_read; be shown it with receipt_original). Three rules. 1. Read only what is printed: leave out any field the document does not print; never invent an invoice number, a date or a tax figure (a field left out is kept as blank, never as 0). " +
+    "Propose the figures read off ONE stored receipt original (an id from receipts_to_read; be shown it with receipt_original). Four rules. 1. Read only what is printed: leave out any field the document does not print; never invent an invoice number, a date or a tax figure (a field left out is kept as blank, never as 0). " +
     "2. Report what the document prints about the BUYER (the sold-to or bill-to name, the buyer's HST number, an account or membership number, the last four digits of the card paid with) in buyer, and do not decide the business: the app decides it from those signs (suggested_business is kept as your guess and decides nothing). " +
     "3. Amounts exactly as printed: a number or a decimal string with at most two decimals (12.50, -3.10), no thousands separators or currency sign; a line's unit_price may have up to four decimals (1.459) and its quantity three; only the total is required. " +
-    "Input: original_id; optional supplier { name, hst_number } as printed; invoice_number; date (YYYY-MM-DD, the day printed); paid { how: cash, card, account or other; card_last4 for a card }; amounts { subtotal, hst, total, other: [{ label, amount }] for deposits, fees or duty }; kind (stock, supplies, equipment, licences_fees, other); buyer { name, hst_number, account_number, card_last4 }; lines [{ description, code, quantity, unit_price, total, taxed }] (up to 300; leave taxed out when not marked); where_read { field: where on the page, e.g. bottom right, under TOTAL }; note. " +
-    "The app checks the arithmetic (lines to subtotal, parts to total, HST against the rate, the date, duplicates, the supplier's HST number, the business) and keeps the draft even when a check fails, marked needs attention. The answer is the draft as stored, the business decision and why, and each check as passed, failed or not checked in words: look again once and propose a correction if a check shows a misreading (it replaces your draft, unless a person has started correcting it). Nothing counts until a person confirms it; an original whose receipt is confirmed (on the books) is refused. " +
+    "4. Every kind of document goes through this one tool, as printed: say what it is in document_kind (receipt, invoice, credit_note for a refund, return or credit from a supplier, statement for a summary of several invoices or of an account, other), the currency code if one is printed (USD; leave it out when none is), tax_included true only when the document says prices include HST and prints no HST amount, and for each extra charge its kind (deposit, eco_fee, tobacco_tax, duty, delivery, tip, discount, other) and taxed when it is marked; leave out what the document does not say. Work nothing out: never convert a currency (amounts.total_cad is the Canadian amount a person saw leave the account, not a conversion: leave it out), never split a tax out of a tax-included price, never change a sign (a credit note printed 45.20 is reported as 45.20; a discount printed -3.00 as -3.00). " +
+    "Input: original_id; optional supplier { name, hst_number } as printed; invoice_number; date (YYYY-MM-DD, the day printed); paid { how: cash, card, account or other; card_last4 for a card }; amounts { subtotal, hst, total, total_cad, other: [{ label, amount, kind, taxed }] for deposits, fees, duty, tips or discounts }; kind (stock, supplies, equipment, licences_fees, other: the kind of purchase); document_kind; currency (three letters); tax_included; buyer { name, hst_number, account_number, card_last4 }; lines [{ description, code, quantity, unit_price, total, taxed }] (up to 300; leave taxed out when not marked); where_read { field: where on the page, e.g. bottom right, under TOTAL }; note. " +
+    "The app checks the arithmetic (lines to subtotal, parts to total, HST against the rate with the taxed charges, the date, duplicates, the supplier's HST number, the business), and flags what does not fit the document's kind (a credit note with a positive total, a negative total on anything else, a statement, which is kept on file and not counted, another currency, which counts only once a person adds the Canadian amount paid) and keeps the draft even when a check fails, marked needs attention. The answer is the draft as stored, the business decision and why, and each check as passed, failed or not checked in words: look again once and propose a correction if a check shows a misreading (it replaces your draft, unless a person has started correcting it). Nothing counts until a person confirms it; an original whose receipt is confirmed (on the books) is refused. " +
     DATA_SENTENCE,
   input: drafts.draftInputSchema(true),
   async run(ctx, input) {

@@ -589,8 +589,10 @@ describe("what was changed at review (decision 8)", () => {
     date: "2026-11-20",
     dateAsRead: "2026-11-20",
     paid: { how: "card", cardLast4: "4821" },
-    amounts: { subtotal: "10.00", hst: "1.30", otherTotal: null, other: [], total: "11.30" },
+    amounts: { subtotal: "10.00", hst: "1.30", otherTotal: null, other: [], total: "11.30", totalCad: null },
     kind: "supplies",
+    document: { kind: null, currency: null, taxIncluded: null },
+    totalCadAdded: null,
     buyer: { name: null, hstNumber: null, accountNumber: null, cardLast4: null },
     suggestedBusiness: null,
     business: { key: "cstore", decidedBy: ["card_last4"], why: "", signs: [], personSaid: null, agreesWithPerson: null, signsSaid: null },
@@ -635,7 +637,7 @@ describe("what was changed at review (decision 8)", () => {
     });
   }
   it("compares the header fields, the business and the supplier named here, and nothing else (the note and the where-read phrases are the reader's)", () => {
-    expect(review.COMPARED_FIELDS).toEqual(["supplier.name", "supplier.hst_number", "invoice_number", "date", "paid.how", "paid.card_last4", "amounts.subtotal", "amounts.hst", "amounts.other", "amounts.total", "kind", "buyer.name", "buyer.hst_number", "buyer.account_number", "buyer.card_last4", "business", "supplier"]);
+    expect(review.COMPARED_FIELDS).toEqual(["supplier.name", "supplier.hst_number", "invoice_number", "date", "paid.how", "paid.card_last4", "amounts.subtotal", "amounts.hst", "amounts.other", "amounts.total", "amounts.total_cad", "kind", "document_kind", "currency", "tax_included", "buyer.name", "buyer.hst_number", "buyer.account_number", "buyer.card_last4", "business", "supplier"]);
     expect(review.compareReadings(base(), edit((d) => ((d.note = "x"), (d.whereRead = { total: "y" })))).count).toBe(0);
   });
 
@@ -756,7 +758,12 @@ describe("the books view", () => {
     expect(all.items.map((r: any) => r.id)).toEqual([late.receipt.id, ...[...made].reverse()]);
     const cents = (s: string | null) => (s === null ? 0 : (drafts.parseMoney(s) as number));
     const sum = (k: string) => drafts.centsText(all.items.reduce((n: number, r: any) => n + cents(r[k]), 0));
-    expect(all.totals).toEqual({ count: 8, subtotal: sum("subtotal"), hst: sum("hst"), total: sum("total"), voided: 0, noSubtotal: 1, noHst: 1 });
+    expect(all.totals).toEqual({
+      count: 8, subtotal: sum("subtotal"), hst: sum("hst"), total: sum("total"), voided: 0, noSubtotal: 1, noHst: 1,
+      // Card P5-05c: what counts otherwise or is left out, each counted and named (none of it here).
+      creditNotes: 0, byCanadianAmount: 0, waiting: 0, statements: 0, shown: 8,
+      notes: [{ about: "no_subtotal", count: 1, words: "1 with no subtotal on the receipt" }, { about: "no_hst", count: 1, words: "1 with no HST on the receipt" }],
+    });
     expect(all.totals.total).toBe("2.90");
     expect(all.totals.subtotal).toBe("2.80");
     // Filters.

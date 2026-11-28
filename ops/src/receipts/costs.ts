@@ -191,8 +191,21 @@ export interface CostSummary {
   uncounted: number;
   flagsRaised: number;
   flagsWithdrawn: number;
+  /**
+   * Card P5-05c: the receipt's lines were NOT observed, and why: a document in another currency (costs are
+   * Canadian dollars; a foreign unit price would raise false flags), a statement (its invoices are on the
+   * books themselves), a credit note (a return is not a cost). `lines` is how many lines were left out.
+   */
+  skipped?: { reason: NotObserved; lines: number };
   message: string;
 }
+
+export type NotObserved = "foreign_currency" | "statement" | "credit_note";
+const NOT_OBSERVED_WORDS: Record<NotObserved, string> = {
+  foreign_currency: "the amounts are not in Canadian dollars, and the cost history is kept in Canadian dollars",
+  statement: "it is a statement: the invoices on it are observed themselves",
+  credit_note: "it is a credit note: a return is not a cost",
+};
 
 function observedWords(s: Omit<CostSummary, "message">): string {
   if (!s.done) return "The cost history already had this receipt.";
@@ -315,6 +328,8 @@ interface ReceiptRow {
   supplier_id: string | null;
   receipt_date: string | null;
   confirmed_at: Date | null;
+  document_kind: string | null;
+  currency: string | null;
 }
 interface LineRow {
   line_no: number;
@@ -337,8 +352,21 @@ export async function observeReceipt(tx: Tx, receiptId: string, actor: { staffId
   const done = await tx.maybeOne<{ receipt_id: string }>("select receipt_id from ops.receipt_observations where receipt_id = $1", [receiptId]);
   const blank = { receiptId, done: false, noLines: false, lines: 0, observed: 0, noCost: 0, uncounted: 0, flagsRaised: 0, flagsWithdrawn: 0 };
   if (done !== null) return { ...blank, message: observedWords(blank) };
-  const receipt = await tx.one<ReceiptRow>("select status, business, supplier_id, receipt_date::text as receipt_date, confirmed_at from ops.purchase_receipts where purchase_id = $1", [receiptId]);
+  const receipt = await tx.one<ReceiptRow>("select status, business, supplier_id, receipt_date::text as receipt_date, confirmed_at, document_kind, currency from ops.purchase_receipts where purchase_id = $1", [receiptId]);
   if (receipt.status !== "confirmed" || receipt.business === null || receipt.supplier_id === null || receipt.receipt_date === null || receipt.confirmed_at === null) throw new Error("Only a receipt on the books has costs to observe.");
+  // Card P5-05c, the guard: some documents give no cost at all. Recorded as observed with nothing observed
+  // (so the catch-up does not come back to it), audited with the reason, and said in the summary.
+  const why: NotObserved | null = receipt.currency !== null && receipt.currency !== "CAD" ? "foreign_currency" : receipt.document_kind === "statement" ? "statement" : receipt.document_kind === "credit_note" ? "credit_note" : null;
+  if (why !== null) {
+    const n = (await tx.one<{ n: number }>("select count(*)::int as n from ops.purchase_receipt_lines where purchase_id = $1", [receiptId])).n;
+    await tx.query(
+      "insert into ops.receipt_observations (receipt_id, business, lines, lines_observed, lines_no_cost, source, observed_at, observed_by) values ($1, $2, $3, 0, 0, $4, $5, $6)",
+      [receiptId, receipt.business, n, source, now, actor.staffId],
+    );
+    await audit.write(tx, { actorId: actor.staffId, action: "costs.observe", targetType: "purchase_receipts", targetId: receiptId, after: { source, business: receipt.business, lines: n, observed: 0, noCost: 0, notObserved: why, flagsRaised: [], flagsWithdrawn: [] } }, { now });
+    const parts = { receiptId, done: true, noLines: n === 0, lines: n, observed: 0, noCost: 0, uncounted: 0, flagsRaised: 0, flagsWithdrawn: 0 };
+    return { ...parts, skipped: { reason: why, lines: n }, message: `Nothing was added to the cost history${n === 0 ? "" : ` (${plural(n, "line", "lines")} left out)`}: ${NOT_OBSERVED_WORDS[why]}. No price rise flagged.` };
+  }
   const lines = await tx.query<LineRow>(
     "select line_no, description, item_code, quantity::text as quantity, unit_price::text as unit_price, line_total::text as line_total, taxed from ops.purchase_receipt_lines where purchase_id = $1 order by line_no",
     [receiptId],

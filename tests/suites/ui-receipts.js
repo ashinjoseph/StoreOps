@@ -15,6 +15,11 @@
 //     code builds (every fetch is inspected), a toast or storage;
 //   - every blob URL is revoked when its view closes;
 //   - the Businesses screen is read only unless the server says canEdit.
+//  Card P5-05c (receipts of every kind in one form): the review builds the
+//  same fields for every kind of document; the confirm sheet says how it will
+//  count; a foreign amount is never shown with a dollar sign; the totals line
+//  names what was left out; "Add the Canadian amount paid" per role; blank
+//  stays blank in what the sheets send.
 // ============================================================
 const fs = require('fs');
 const path = require('path');
@@ -30,11 +35,12 @@ const SCREEN = ['receiptSizeText_', 'receiptBusinessLabel_', 'receiptWhen_', 're
   'openReceiptReview_', 'showReceiptReviewOriginal_', 'drawReceiptReview_', 'closeReceiptReview_', 'wireReceiptReview_', 'wireReceiptReviewRows_', 'saveReceiptReview_', 'openReceiptConfirmSheet_',
   'loadReceiptBooks_', 'receiptBooksHTML_', 'wireReceiptBooks_', 'receiptChangesHTML_', 'openReceiptOnBooks_', 'openReceiptVoidSheet_',
   'receiptEmailLines_', 'receiptPrintNotice_', 'receiptEmailRowHTML_', 'receiptEmailMoreHTML_', 'receiptEmailsHTML_', 'wireReceiptEmails_',
+  'receiptForeign_', 'receiptAmount_', 'receiptFactsHTML_', 'wireReceiptFacts_', 'receiptChargeFieldsHTML_', 'receiptFactsInput_', 'receiptBooksMark_', 'openReceiptCadSheet_',
   'loadBusinessesTab', 'businessSignText_', 'businessCardHTML_', 'renderBusinessesTab', 'openBusinessEditSheet_', 'openBusinessSignSheet_',
   'legacyCents_', 'legacySupplierHTML_', 'legacySortedWords_', 'legacySpellingHTML_', 'legacyRowHTML_', 'legacyHTML_', 'legacyLoad_', 'legacyToggle_', 'legacyWire_', 'openLegacySpellingSheet_'];
 const CALLS = ['rpcGetReceiptInbox', 'rpcSetReceiptAside', 'rpcSetReceiptBusiness', 'rpcGetBusinesses', 'rpcUpdateBusiness', 'rpcAddBusinessSign', 'rpcRemoveBusinessSign', 'rpcGetReceiptDraft', 'rpcEnterReceiptDraft',
   'rpcGetReceiptReview', 'rpcSaveReceiptCorrection', 'rpcConfirmReceipt', 'rpcVoidReceipt', 'rpcGetReceiptSuppliers', 'rpcCreateReceiptSupplier', 'rpcGetReceiptBooks',
-  'rpcGetLegacyPurchases', 'rpcGetLegacySpellings', 'rpcSetLegacyBusiness', 'rpcLinkLegacySupplier', 'rpcGetReceiptEmails'];
+  'rpcGetLegacyPurchases', 'rpcGetLegacySpellings', 'rpcSetLegacyBusiness', 'rpcLinkLegacySupplier', 'rpcGetReceiptEmails', 'rpcAddReceiptCanadianAmount'];
 
 const item = (o) => Object.assign({ id: 'ro' + 'a'.repeat(24), addedAt: '2026-11-27T15:00:00.000Z', addedBy: 'Cleo Marsh', mine: false, business: null, source: 'photo', contentType: 'image/jpeg', size: 2516582, fileName: 'IMG_0042.JPG', note: 'Fictional Grocer', status: 'waiting', setAside: null }, o);
 const ALL = { scope: 'all', status: 'waiting', items: [item({}), item({ id: 'ro' + 'b'.repeat(24), contentType: 'application/pdf', fileName: 'invoice.pdf', addedBy: 'Eli <b>Stone</b>', business: 'vape' })], counts: { waiting: 2, set_aside: 1 }, next: null, canSetAside: true, maxMb: 10 };
@@ -42,6 +48,7 @@ const ASIDE = { scope: 'all', status: 'set_aside', items: [item({ id: 'ro' + 'c'
 const OWN = { scope: 'own', days: 7, items: [item({ mine: true, addedBy: 'Jordan Reyes' })], maxMb: 10 };
 
 const pending = [];
+const esc_ = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 H.uiScripts().forEach(([label, js]) => {
   t.section('Against ' + label);
 
@@ -126,7 +133,7 @@ H.uiScripts().forEach(([label, js]) => {
       window: { open: (u, n, f) => { w.opened.push([u, n, f]); return null; } },
     };
     const names = Object.keys(deps);
-    const consts = ['RECEIPT_ACCEPT', 'RECEIPT_MB', 'RECEIPT_PRINT_WORDS', 'RECEIPT_EMAIL_WORDS', 'receiptState_', 'BUSINESS_SIGN_KINDS', 'RECEIPT_KINDS', 'legacyState_', 'LEGACY_VIEWS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
+    const consts = ['RECEIPT_ACCEPT', 'RECEIPT_MB', 'RECEIPT_PRINT_WORDS', 'RECEIPT_EMAIL_WORDS', 'receiptState_', 'BUSINESS_SIGN_KINDS', 'RECEIPT_KINDS', 'RECEIPT_DOC_KINDS', 'RECEIPT_CHARGE_KINDS', 'legacyState_', 'LEGACY_VIEWS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
     w.fns = new Function(...names, consts + '\n' + H.fnSource(js, 'esc') + '\n' + H.fnSource(js, 'money') + '\n' + own + '; return { receiptState_, legacyState_, ' + SCREEN.join(', ') + ' };')(...names.map(n => deps[n]));
     return w;
   }
@@ -679,6 +686,144 @@ H.uiScripts().forEach(([label, js]) => {
     await a.els.signSave.onclick();
     t.eq(label + ': adding a card sign sends the business, the kind and the four digits; no supplier', (a.calls.find(c => c[0] === 'rpcAddBusinessSign') || [])[1], [TOKEN, { business: 'cstore', kind: 'card_last4', value: '4821', supplier: null }]);
   })());
+
+  // ── Receipts of every kind in one form (card P5-05c) ──────
+  pending.push((async () => {
+    const KD = (doc, over) => Object.assign({ id: 'pr' + '9'.repeat(24), originalId: ALL.items[0].id, status: 'draft', readBy: { kind: 'person', name: 'Priya Nair', keyLabel: null }, readAt: '2026-11-28T15:05:00.000Z',
+      supplier: { id: null, name: 'Fictional Vapour Works', hstNumber: null, onList: false, listedName: null }, invoiceNumber: 'FVW-1', date: '2026-11-20', dateAsRead: '2026-11-20', paid: null,
+      amounts: { subtotal: '100.00', hst: null, otherTotal: '5.00', other: [{ label: 'Freight <b>in</b>', amount: '5.00', kind: 'delivery', taxed: false }], total: '105.00', totalCad: null }, kind: 'stock',
+      document: doc, totalCadAdded: null, buyer: { name: null, hstNumber: null, accountNumber: null, cardLast4: null }, suggestedBusiness: null,
+      business: { key: 'vape', decidedBy: ['person'], why: 'chosen by a person', signs: [], personSaid: null, agreesWithPerson: null, signsSaid: { business: null, decidedBy: ['not_known'] } },
+      lines: [{ line: 1, description: 'Fictional coil pack', code: 'C-1', quantity: '4', unitPrice: '1.2500', total: '5.00', taxed: null }], needsAttention: true, failed: 1,
+      checks: [{ check: 'statement', passed: false, words: 'A statement is a summary: kept on file and not counted.' }], whereRead: null, note: null, supersedes: null, redoOf: null, hstRatePercent: '13' }, over || {});
+    const RVK = (draft, counts) => ({ original: { id: ALL.items[0].id, status: 'drafted', business: null, contentType: 'image/jpeg', fileName: 'doc.jpg', addedBy: 'Jordan Reyes', addedAt: '2026-11-28T15:00:00.000Z' },
+      draft, first: draft, changes: null, readings: [], supplierCandidates: [], signOffers: { business: 'vape', offers: [], warnings: [], known: [] }, spelling: null,
+      confirm: { allowed: true, why: [], missing: [], checks: draft.checks, failed: draft.checks, reasonNeeded: true, adminOnly: false, counts }, canEdit: true, canLearnSigns: true, onBooks: null, businessNames: { cstore: 'Fictional Corner Mart', vape: 'Fictional Vape Co' } });
+    const readItem = item({ status: 'drafted' });
+
+    // The form does not branch: the same fields for every kind of document, in any currency, with any tax mark.
+    const shapes = [];
+    for (const kind of [null, 'receipt', 'invoice', 'credit_note', 'statement', 'other']) {
+      for (const currency of [null, 'CAD', 'USD']) {
+        for (const taxIncluded of [null, true, false]) {
+          const m = world({ role: 'manager', answers: { rpcGetReceiptReview: RVK(KD({ kind, currency, taxIncluded })) } });
+          await m.fns.openReceiptReview_(readItem);
+          const b = m.sheets[m.sheets.length - 1].bodyHTML;
+          shapes.push([kind + '/' + currency + '/' + taxIncluded, JSON.stringify(ids(b).sort()), b]);
+        }
+      }
+    }
+    t.eq(label + ': kinds: the review builds the same set of fields for every kind of document, currency and tax mark (54 sheets)', [...new Set(shapes.map(x => x[1]))].length, 1);
+    const f = JSON.parse(shapes[0][1]);
+    t.ok(label + ': kinds: the four facts and each charge\'s kind and tax mark are among them', ['rdDocKind', 'rdCurrency', 'rdTaxIncluded', 'rdTotalCad', 'rdTotalCadBox', 'rvOtherKind0', 'rvOtherTaxed0', 'rdSupplier', 'rdTotal', 'rdKind', 'rdLines'].every(x => f.indexOf(x) !== -1));
+    t.ok(label + ': kinds: the Canadian amount paid is offered only with another currency (shown, not built, by the choice)',
+      shapes.filter(x => /\/USD\//.test(x[0])).every(x => /id="rdTotalCadBox" style="display:block"/.test(x[2])) && shapes.filter(x => !/\/USD\//.test(x[0])).every(x => /id="rdTotalCadBox" style="display:none"/.test(x[2])));
+    {
+      const m = world({ role: 'manager', answers: { rpcGetReceiptReview: RVK(KD({ kind: null, currency: null, taxIncluded: null })) } });
+      await m.fns.openReceiptReview_(readItem);
+      m.els.rdCurrency.value = 'usd';
+      m.els.rdCurrency.oninput();
+      t.eq(label + ': kinds: typing a currency other than CAD offers the Canadian amount box', m.els.rdTotalCadBox.style.display, 'block');
+      m.els.rdCurrency.value = 'CAD';
+      m.els.rdCurrency.oninput();
+      t.eq(label + ': kinds: and CAD takes it away again', m.els.rdTotalCadBox.style.display, 'none');
+    }
+
+    // Blank stays blank in what the sheets send; set facts are sent exactly.
+    {
+      const m = world({ role: 'manager', answers: {} });
+      m.fns.openReceiptDraftEntry_(item({}));
+      const byHand = ids(m.sheets[m.sheets.length - 1].bodyHTML);
+      t.ok(label + ': kinds: the by-hand sheet has the four facts and the charge\'s kind and tax mark', ['rdDocKind', 'rdCurrency', 'rdTaxIncluded', 'rdTotalCad', 'rdOtherKind', 'rdOtherTaxed'].every(x => byHand.indexOf(x) !== -1));
+      m.els.rdTotal.value = '12.00';
+      t.eq(label + ': kinds: by hand, nothing said about the document: none of the facts is sent', m.fns.receiptDraftInput_('ro' + 'a'.repeat(24), 0), { original_id: 'ro' + 'a'.repeat(24), amounts: { total: '12.00' } });
+      m.els.rdCurrency.value = 'CAD';
+      m.els.rdTotalCad.value = '12.00';
+      t.eq(label + ': kinds: a Canadian amount typed on a CAD document is not sent', m.fns.receiptDraftInput_('ro' + 'a'.repeat(24), 0), { original_id: 'ro' + 'a'.repeat(24), amounts: { total: '12.00' }, currency: 'CAD' });
+      m.els.rdDocKind.value = 'credit_note';
+      m.els.rdCurrency.value = 'usd';
+      m.els.rdTaxIncluded.value = 'no';
+      m.els.rdOtherLabel.value = 'Restocking fee';
+      m.els.rdOtherAmount.value = '-5.00';
+      m.els.rdOtherKind.value = 'other';
+      m.els.rdOtherTaxed.value = '';
+      t.eq(label + ': kinds: by hand, the facts and the charge\'s kind as chosen (the code upper case), a tax mark left blank not sent',
+        m.fns.receiptDraftInput_('ro' + 'a'.repeat(24), 0), { original_id: 'ro' + 'a'.repeat(24), amounts: { total: '12.00', other: [{ label: 'Restocking fee', amount: '-5.00', kind: 'other' }], total_cad: '12.00' }, document_kind: 'credit_note', currency: 'USD', tax_included: false });
+      const r = world({ role: 'manager', answers: { rpcGetReceiptReview: RVK(KD({ kind: 'invoice', currency: 'USD', taxIncluded: null })) } });
+      await r.fns.openReceiptReview_(readItem);
+      const rb = r.sheets[r.sheets.length - 1].bodyHTML;
+      ['rdDocKind', 'rdCurrency', 'rdTaxIncluded', 'rdTotalCad', 'rvOtherKind0', 'rvOtherTaxed0', 'rvOtherLabel0', 'rvOtherAmount0', 'rdTotal', 'rdSubtotal'].forEach(k => {
+        const sel = new RegExp('id="' + k + '"[^>]*value="([^"]*)"').exec(rb) || new RegExp('<select id="' + k + '">[\\s\\S]*?<option value="([^"]*)" selected').exec(rb);
+        r.els[k].value = sel ? sel[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>') : '';
+      });
+      const sent = r.fns.receiptReviewInput_(r.fns.receiptState_.review);
+      t.eq(label + ': kinds: the review sends back the facts and the charge\'s kind and tax mark as prefilled; nothing for a blank tax mark or Canadian amount', [sent.document_kind, sent.currency, sent.tax_included, sent.amounts.total_cad, sent.amounts.other], ['invoice', 'USD', undefined, undefined, [{ label: 'Freight <b>in</b>', amount: '5.00', kind: 'delivery', taxed: false }]]);
+      t.ok(label + ': kinds: the charge\'s kind and tax mark are prefilled, the label escaped', /<option value="delivery" selected>Delivery<\/option>/.test(rb) && /id="rvOtherTaxed0"><option value="">Not marked<\/option><option value="yes">Yes<\/option><option value="no" selected>No<\/option>/.test(rb) && rb.indexOf('Freight &lt;b&gt;in&lt;/b&gt;') !== -1);
+    }
+
+    // The confirm sheet says, in words, how it will count: the server's sentence, escaped.
+    for (const words of ['Counts as -$45.20 on the books of Fictional Corner Mart: a credit note.', 'Kept on file, not counted: a statement.', 'Waits for its Canadian amount: the amounts are in USD, and it counts on the books of Fictional Vape Co only once the Canadian amount paid is added.', 'Counts as $137.02 on the books of Fictional Vape Co: the Canadian amount paid for 100.00 USD.', 'Counts as <b>$11.40</b> on the books of X.']) {
+      const m = world({ role: 'manager', answers: { rpcGetReceiptReview: RVK(KD({ kind: null, currency: null, taxIncluded: null }), { group: 'counted', counts: true, total: '1.00', subtotal: null, hst: null, words }) } });
+      await m.fns.openReceiptReview_(readItem);
+      m.fns.openReceiptConfirmSheet_(m.fns.receiptState_.review);
+      const cb = m.sheets[m.sheets.length - 1].bodyHTML;
+      t.ok(label + ': kinds: confirm: "' + words.slice(0, 44) + '…" said, escaped', cb.indexOf('<div id="rvCounts"') !== -1 && cb.indexOf(esc_(words)) !== -1);
+    }
+
+    // A foreign amount is never shown with a dollar sign.
+    {
+      const usd = KD({ kind: 'invoice', currency: 'USD', taxIncluded: null });
+      const m = world({ role: 'manager', answers: { rpcGetReceiptReview: RVK(usd, { group: 'waiting', counts: false, total: null, subtotal: null, hst: null, words: 'Waits for its Canadian amount.' }) } });
+      const html = m.fns.receiptDraftHTML_(usd);
+      t.ok(label + ': kinds: read only, a USD document: every amount with its code and no dollar sign anywhere (subtotal, charge, total, unit price, line total)', html.indexOf('$') === -1 && /100\.00 USD/.test(html) && /105\.00 USD/.test(html) && /5\.00 USD/.test(html) && /1\.2500 USD/.test(html) && /not known yet/.test(html));
+      t.ok(label + ': kinds: the headline of a foreign draft: its code, no dollar sign', m.fns.receiptDraftHeadHTML_({ supplier: 'x', date: null, total: '105.00', business: null, needsAttention: false, failed: 0, currency: 'USD' }).indexOf('105.00 USD') !== -1 && m.fns.receiptDraftHeadHTML_({ supplier: 'x', date: null, total: '105.00', business: null, needsAttention: false, failed: 0, currency: 'USD' }).indexOf('$') === -1);
+      await m.fns.openReceiptReview_(readItem);
+      m.fns.openReceiptConfirmSheet_(m.fns.receiptState_.review);
+      t.ok(label + ': kinds: the confirm sheet\'s total of a USD document has its code, no dollar sign', /· <b>105\.00 USD<\/b>/.test(m.sheets[m.sheets.length - 1].bodyHTML));
+      t.ok(label + ': kinds: receiptAmount_: dollars with money(), another currency as printed with its code', m.fns.receiptAmount_('12.5', null) === '$12.50' && m.fns.receiptAmount_('-3.10', 'CAD') === '-$3.10' && m.fns.receiptAmount_('-3.10', 'EUR') === '-3.10 EUR');
+    }
+
+    // On the books: the marks, the totals line's exclusions, and "Add the Canadian amount paid" per role.
+    const row = (id, over) => Object.assign({ id: 'pr' + id.repeat(24), originalId: null, business: 'vape', status: 'confirmed', date: '2026-11-20', invoiceNumber: null, supplier: 'Fictional Vapour Works', supplierId: null, supplierActive: true, supplierPrinted: null, kind: 'stock', subtotal: null, hst: null, total: '100.00', confirmedBy: 'Priya Nair', confirmedAt: '2026-11-28T15:00:00.000Z', reason: 'r', failedAtConfirm: 1, fieldsChanged: 0, voided: null, documentKind: null, currency: null, taxIncluded: null, totalCad: null, counts: { group: 'counted', total: '100.00', subtotal: null, hst: null } }, over);
+    const KB = { business: 'vape', businessName: 'Fictional Vape Co', next: null, canVoid: true, items: [
+      row('a', { documentKind: 'credit_note', total: '45.20', counts: { group: 'credit_note', total: '-45.20', subtotal: '-40.00', hst: '-5.20' } }),
+      row('b', { documentKind: 'statement', total: '312.40', counts: { group: 'statement', total: null, subtotal: null, hst: null } }),
+      row('c', { documentKind: 'invoice', currency: 'USD', counts: { group: 'waiting', total: null, subtotal: null, hst: null } }),
+      row('d', { documentKind: 'invoice', currency: 'USD', totalCad: '137.02', counts: { group: 'foreign', total: '137.02', subtotal: null, hst: null } }),
+    ], totals: { count: 2, subtotal: '-40.00', hst: '-5.20', total: '91.82', voided: 0, noSubtotal: 0, noHst: 0, creditNotes: 1, byCanadianAmount: 1, waiting: 1, statements: 1, shown: 4, notes: [
+      { about: 'credit_note', count: 1, words: '1 credit note counted as minus' },
+      { about: 'foreign', count: 1, words: '1 receipt in another currency counted by the Canadian amount paid: its subtotal and HST are not known in Canadian dollars and are left out of those two sums' },
+      { about: 'waiting', count: 1, words: '1 receipt in another currency waiting for the Canadian amount paid: not counted until it is added' },
+      { about: 'statement', count: 1, words: '1 statement kept on file and not counted (<b>x</b>)' },
+    ] } };
+    for (const role of ['admin', 'manager', 'payroll_admin']) {
+      const detail = (over) => Object.assign({}, KD({ kind: 'invoice', currency: 'USD', taxIncluded: null }), { id: KB.items[2].id, status: 'confirmed', businessName: 'Fictional Vape Co', confirmed: { by: 'Priya Nair', at: '2026-11-28T15:00:00.000Z', reason: 'r', failed: ['currency'], checks: [] }, voided: null, changes: null, readings: [], learnt: { signs: [], spellings: [] }, redo: null, counts: { group: 'waiting', counts: false, total: null, subtotal: null, hst: null, words: 'Waits for its Canadian amount: the amounts are in USD.' } }, over || {});
+      let shown = detail();
+      const m = world({ role, answers: { rpcGetReceiptInbox: () => Object.assign({}, ALL, { counts: { waiting: 2, drafted: 0, confirmed: 4, set_aside: 0 } }), rpcGetReceiptBooks: (tok, input) => (input.receiptId ? { receipt: shown } : Object.assign({}, KB, { canVoid: role !== 'payroll_admin' })), rpcAddReceiptCanadianAmount: { message: 'Added. Counts as $137.02 on the books of Fictional Vape Co.', receipt: {} } } });
+      await m.fns.loadReceiptsTab();
+      await m.fns.loadReceiptBooks_('vape', {});
+      const bh = m.els.rcptBooks.innerHTML;
+      if (role === 'admin') {
+        t.ok(label + ': kinds: books: the totals line names each exclusion with its count, from the server, escaped', ['credit_note', 'foreign', 'waiting', 'statement'].every(a => bh.indexOf('data-books-note="' + a + '"') !== -1) && bh.indexOf('1 statement kept on file and not counted (&lt;b&gt;x&lt;/b&gt;)') !== -1 && /<b>2 receipts<\/b> · subtotal -\$40\.00 · HST -\$5\.20 · total <b>\$91\.82<\/b>/.test(bh));
+        t.ok(label + ': kinds: books: each row marked: a credit note, a statement, waiting, counted by its Canadian amount',
+          /data-books-mark="credit_note"[^>]*>Credit note: counts as -\$45\.20/.test(bh) && /data-books-mark="statement"[^>]*>Statement: kept on file, not counted/.test(bh) && /data-books-mark="waiting"[^>]*>In USD: waiting for its Canadian amount/.test(bh) && /data-books-mark="foreign"[^>]*>In USD: counts as the Canadian amount paid, \$137\.02/.test(bh));
+        t.ok(label + ': kinds: books: a foreign row\'s own total has its code, never a dollar sign', count(bh, '100.00 USD') === 2 && (bh.match(/\$100\.00/g) || []).length === 0);
+      }
+      await m.fns.openReceiptOnBooks_(KB.items[2].id);
+      const ds = m.sheets[m.sheets.length - 1];
+      t.ok(label + ': kinds: books: ' + role + ': "Add the Canadian amount paid" on a waiting receipt for admin and manager only', /id="rbAddCad"/.test(ds.actionsHTML) === (role !== 'payroll_admin') && /Waits for its Canadian amount/.test(ds.bodyHTML));
+      if (role === 'manager') {
+        m.els.rbAddCad.onclick();
+        m.els.rbCad.value = ' 137.02 ';
+        await m.els.rbCadGo.onclick();
+        t.eq(label + ': kinds: books: adding sends the receipt and the amount as typed (trimmed)', (m.calls.find(c => c[0] === 'rpcAddReceiptCanadianAmount') || [])[1], [TOKEN, { receiptId: KB.items[2].id, totalCad: '137.02' }]);
+        t.ok(label + ': kinds: books: the server\'s words after adding', /Added\. Counts as \$137\.02/.test(m.sheets[m.sheets.length - 1].bodyHTML));
+        shown = detail({ amounts: Object.assign({}, KD({}).amounts, { totalCad: '137.02' }), counts: { group: 'foreign', counts: true, total: '137.02', subtotal: null, hst: null, words: 'Counts as $137.02.' } });
+        await m.fns.openReceiptOnBooks_(KB.items[2].id);
+        t.ok(label + ': kinds: books: once added, it is not offered again', !/id="rbAddCad"/.test(m.sheets[m.sheets.length - 1].actionsHTML));
+      }
+    }
+  })());
 });
 
 
@@ -742,7 +887,7 @@ pending.push(...H.uiScripts().map(([label, js]) => ({ label, js })).map(async ({
       URL: { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} }, IntersectionObserver: undefined, window: { open: () => null },
     };
     const names = Object.keys(deps);
-    const consts = ['RECEIPT_ACCEPT', 'RECEIPT_MB', 'RECEIPT_PRINT_WORDS', 'RECEIPT_EMAIL_WORDS', 'receiptState_', 'BUSINESS_SIGN_KINDS', 'RECEIPT_KINDS', 'legacyState_', 'LEGACY_VIEWS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
+    const consts = ['RECEIPT_ACCEPT', 'RECEIPT_MB', 'RECEIPT_PRINT_WORDS', 'RECEIPT_EMAIL_WORDS', 'receiptState_', 'BUSINESS_SIGN_KINDS', 'RECEIPT_KINDS', 'RECEIPT_DOC_KINDS', 'RECEIPT_CHARGE_KINDS', 'legacyState_', 'LEGACY_VIEWS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
     w.fns = new Function(...names, consts + '\n' + H.fnSource(js, 'esc') + '\n' + H.fnSource(js, 'money') + '\n' + own + '; return { legacyState_, ' + SCREEN.join(', ') + ' };')(...names.map(n => deps[n]));
     return w;
   }

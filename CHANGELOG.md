@@ -1884,3 +1884,45 @@ both seen failing against the code before the change.
 
 New: `ops/test/receipt-emails.test.ts`, checked against ten deliberate mutations
 (each restored byte for byte), and new assertions in `tests/suites/ui-receipts.js`.
+
+### Receipts of every kind in one form (P5-05c)
+
+The owner gets "a mix of everything": plain receipts, invoices, credit notes,
+tax-included meal receipts, invoices in US dollars, statements. They all go
+through the same form, the same assistant tool and the same checks. There is no
+switch for the kind of document and no separate path.
+
+- **Four optional facts about the document**, near the totals on the by-hand
+  sheet and the review: *What it is* (receipt, invoice, credit note, statement,
+  other), *Currency printed*, *Tax inside the price* and, only when another
+  currency is typed, *Canadian amount paid*. Each is blank until the document
+  says. Each other charge gains *What it is* (deposit, eco fee, tobacco tax,
+  duty, delivery, tip, discount, other) and *Taxed itself*. A plain receipt is
+  stored and checked exactly as before.
+- **The checks adapt, and still only flag**: charges marked taxed are in the HST
+  base; with tax inside the price the check says the most the HST could be
+  (*at most about $5.20, if every line is taxed*) and flags an HST given as well;
+  another currency is not checked for HST, and says why. A credit note printed
+  positive, a negative total on anything else, a statement and another currency
+  are each flagged in words. No sign is changed.
+- **One rule of what counts on the books**: a credit note counts as minus,
+  whatever sign is printed; a statement is kept on file and counts as nothing; a
+  document in another currency counts as its Canadian amount paid and waits until
+  that is known. The confirm sheet says how it will count. *On the books* marks
+  each kind, and its totals line names everything left out, with counts. Sums
+  are exact, by the database, and a test proves its rule equal to the app's.
+- **Add the Canadian amount paid** (admin, manager): once, to a confirmed receipt
+  in another currency, with who and when. It is the only thing a confirmed
+  receipt can ever be given; the database refuses a second one. A wrong amount
+  is voided and redone.
+- **The cost history** leaves out a foreign document's, a statement's and a
+  credit note's lines, and says why.
+- `receipt_propose` takes the same facts; its description tells the assistant
+  to report them as printed and work nothing out.
+- Migration 0018 (four columns and who added the Canadian amount; the
+  final-receipt trigger allows that one addition), `rpcAddReceiptCanadianAmount`,
+  and ADR-0032.
+
+New: `ops/test/receipt-kinds.test.ts` (34 tests; 33 of them seen failing against
+the code before the change), 58 new assertions in `tests/suites/ui-receipts.js`,
+and thirteen deliberate mutations, each restored byte for byte.
