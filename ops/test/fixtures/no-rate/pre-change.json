@@ -1,0 +1,2465 @@
+{
+ "overview": [
+  {
+   "staffId": "S_001",
+   "staffName": "Ada Quill",
+   "hourlyRate": 0,
+   "shiftsOwed": 0,
+   "bonusesOwed": 0,
+   "totalOwed": 0,
+   "unpaidShiftCount": 0,
+   "pendingBonusCount": 0,
+   "hasMismatch": false,
+   "mismatchCount": 0
+  },
+  {
+   "staffId": "S_002",
+   "staffName": "Bram Hale",
+   "hourlyRate": 21,
+   "shiftsOwed": 0,
+   "bonusesOwed": 0,
+   "totalOwed": 0,
+   "unpaidShiftCount": 0,
+   "pendingBonusCount": 0,
+   "hasMismatch": false,
+   "mismatchCount": 0
+  },
+  {
+   "staffId": "S_003",
+   "staffName": "Cleo Marsh",
+   "hourlyRate": 20,
+   "shiftsOwed": 475,
+   "bonusesOwed": 0,
+   "totalOwed": 475,
+   "unpaidShiftCount": 3,
+   "pendingBonusCount": 0,
+   "hasMismatch": false,
+   "mismatchCount": 0
+  },
+  {
+   "staffId": "S_005",
+   "staffName": "Eli Stone",
+   "hourlyRate": 18,
+   "shiftsOwed": 118.36,
+   "bonusesOwed": 0,
+   "totalOwed": 118.36,
+   "unpaidShiftCount": 2,
+   "pendingBonusCount": 0,
+   "hasMismatch": false,
+   "mismatchCount": 0
+  },
+  {
+   "staffId": "S_006",
+   "staffName": "Fay Ruiz",
+   "hourlyRate": 22,
+   "shiftsOwed": 0,
+   "bonusesOwed": 0,
+   "totalOwed": 0,
+   "unpaidShiftCount": 0,
+   "pendingBonusCount": 0,
+   "hasMismatch": false,
+   "mismatchCount": 0
+  }
+ ],
+ "owed S_001": {
+  "staffId": "S_001",
+  "shiftsOwed": 0,
+  "bonusesOwed": 0,
+  "totalOwed": 0,
+  "unpaidShifts": [],
+  "pendingBonuses": [],
+  "hasMismatch": false,
+  "mismatchCount": 0
+ },
+ "owed S_002": {
+  "staffId": "S_002",
+  "shiftsOwed": 0,
+  "bonusesOwed": 0,
+  "totalOwed": 0,
+  "unpaidShifts": [],
+  "pendingBonuses": [],
+  "hasMismatch": false,
+  "mismatchCount": 0
+ },
+ "owed S_003": {
+  "staffId": "S_003",
+  "shiftsOwed": 475,
+  "bonusesOwed": 0,
+  "totalOwed": 475,
+  "unpaidShifts": [
+   {
+    "attendanceId": "A_20260908_S_003",
+    "date": "2026-09-08T04:00:00.000Z",
+    "dateStr": "2026-09-08",
+    "hoursWorked": 8,
+    "rate": 20,
+    "value": 160,
+    "paid": 0,
+    "remaining": 160,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": "",
+    "mismatch": false
+   },
+   {
+    "attendanceId": "A_20260909_S_003",
+    "date": "2026-09-09T04:00:00.000Z",
+    "dateStr": "2026-09-09",
+    "hoursWorked": 7.5,
+    "rate": 20,
+    "value": 150,
+    "paid": 0,
+    "remaining": 150,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": "",
+    "mismatch": false
+   },
+   {
+    "attendanceId": "A_20260916_S_003",
+    "date": "2026-09-16T04:00:00.000Z",
+    "dateStr": "2026-09-16",
+    "hoursWorked": 8.25,
+    "rate": 20,
+    "value": 165,
+    "paid": 0,
+    "remaining": 165,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": "",
+    "mismatch": false
+   }
+  ],
+  "pendingBonuses": [],
+  "hasMismatch": false,
+  "mismatchCount": 0
+ },
+ "owed S_005": {
+  "staffId": "S_005",
+  "shiftsOwed": 118.36,
+  "bonusesOwed": 0,
+  "totalOwed": 118.36,
+  "unpaidShifts": [
+   {
+    "attendanceId": "A_20260908_S_005",
+    "date": "2026-09-08T04:00:00.000Z",
+    "dateStr": "2026-09-08",
+    "hoursWorked": 6,
+    "rate": 18,
+    "value": 108,
+    "paid": 50,
+    "remaining": 58,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": "",
+    "mismatch": false
+   },
+   {
+    "attendanceId": "A_20260909_S_005",
+    "date": "2026-09-09T04:00:00.000Z",
+    "dateStr": "2026-09-09",
+    "hoursWorked": 3.33,
+    "rate": 18.125,
+    "value": 60.36,
+    "paid": 0,
+    "remaining": 60.36,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": "",
+    "mismatch": false
+   }
+  ],
+  "pendingBonuses": [],
+  "hasMismatch": false,
+  "mismatchCount": 0
+ },
+ "owed S_006": {
+  "staffId": "S_006",
+  "shiftsOwed": 0,
+  "bonusesOwed": 0,
+  "totalOwed": 0,
+  "unpaidShifts": [],
+  "pendingBonuses": [],
+  "hasMismatch": false,
+  "mismatchCount": 0
+ },
+ "my S_001": {
+  "staffId": "S_001",
+  "staffName": "Ada Quill",
+  "hourlyRate": 0,
+  "shiftsOwed": 0,
+  "bonusesOwed": 0,
+  "totalOwed": 0,
+  "unpaidShifts": [],
+  "pendingBonuses": []
+ },
+ "my S_002": {
+  "staffId": "S_002",
+  "staffName": "Bram Hale",
+  "hourlyRate": 21,
+  "shiftsOwed": 0,
+  "bonusesOwed": 0,
+  "totalOwed": 0,
+  "unpaidShifts": [],
+  "pendingBonuses": []
+ },
+ "my S_003": {
+  "staffId": "S_003",
+  "staffName": "Cleo Marsh",
+  "hourlyRate": 20,
+  "shiftsOwed": 475,
+  "bonusesOwed": 0,
+  "totalOwed": 475,
+  "unpaidShifts": [
+   {
+    "attendanceId": "A_20260908_S_003",
+    "date": "2026-09-08T04:00:00.000Z",
+    "dateStr": "2026-09-08",
+    "hoursWorked": 8,
+    "rate": 20,
+    "value": 160,
+    "paid": 0,
+    "remaining": 160,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": "",
+    "mismatch": false
+   },
+   {
+    "attendanceId": "A_20260909_S_003",
+    "date": "2026-09-09T04:00:00.000Z",
+    "dateStr": "2026-09-09",
+    "hoursWorked": 7.5,
+    "rate": 20,
+    "value": 150,
+    "paid": 0,
+    "remaining": 150,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": "",
+    "mismatch": false
+   },
+   {
+    "attendanceId": "A_20260916_S_003",
+    "date": "2026-09-16T04:00:00.000Z",
+    "dateStr": "2026-09-16",
+    "hoursWorked": 8.25,
+    "rate": 20,
+    "value": 165,
+    "paid": 0,
+    "remaining": 165,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": "",
+    "mismatch": false
+   }
+  ],
+  "pendingBonuses": []
+ },
+ "my S_005": {
+  "staffId": "S_005",
+  "staffName": "Eli Stone",
+  "hourlyRate": 18,
+  "shiftsOwed": 118.36,
+  "bonusesOwed": 0,
+  "totalOwed": 118.36,
+  "unpaidShifts": [
+   {
+    "attendanceId": "A_20260908_S_005",
+    "date": "2026-09-08T04:00:00.000Z",
+    "dateStr": "2026-09-08",
+    "hoursWorked": 6,
+    "rate": 18,
+    "value": 108,
+    "paid": 50,
+    "remaining": 58,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": "",
+    "mismatch": false
+   },
+   {
+    "attendanceId": "A_20260909_S_005",
+    "date": "2026-09-09T04:00:00.000Z",
+    "dateStr": "2026-09-09",
+    "hoursWorked": 3.33,
+    "rate": 18.125,
+    "value": 60.36,
+    "paid": 0,
+    "remaining": 60.36,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": "",
+    "mismatch": false
+   }
+  ],
+  "pendingBonuses": []
+ },
+ "my S_006": {
+  "staffId": "S_006",
+  "staffName": "Fay Ruiz",
+  "hourlyRate": 22,
+  "shiftsOwed": 0,
+  "bonusesOwed": 0,
+  "totalOwed": 0,
+  "unpaidShifts": [],
+  "pendingBonuses": []
+ },
+ "owed S_004 shifts": [],
+ "edit times": {
+  "attendanceId": "A_20260909_S_003",
+  "staffId": "S_003",
+  "date": null,
+  "scheduledStart": "",
+  "scheduledEnd": "",
+  "actualStart": null,
+  "actualEnd": null,
+  "hoursWorked": 7.75,
+  "rateAtAttendance": 20,
+  "status": "worked",
+  "notes": "",
+  "createdBy": "S_001",
+  "createdAt": null,
+  "modifiedBy": "S_001",
+  "modifiedAt": null,
+  "hoursBasis": ""
+ },
+ "adjust": {
+  "attendanceId": "A_20260908_S_003",
+  "staffId": "S_003",
+  "date": null,
+  "scheduledStart": "09:00",
+  "scheduledEnd": "17:00",
+  "actualStart": null,
+  "actualEnd": null,
+  "hoursWorked": 8,
+  "rateAtAttendance": 20,
+  "status": "worked",
+  "notes": "",
+  "createdBy": "S_001",
+  "createdAt": null,
+  "modifiedBy": "S_002",
+  "modifiedAt": null,
+  "hoursBasis": "scheduled"
+ },
+ "schedule": {
+  "attendanceId": "A_20260921_S_005",
+  "staffId": "S_005",
+  "date": null,
+  "scheduledStart": "10:00",
+  "scheduledEnd": "18:00",
+  "actualStart": null,
+  "actualEnd": null,
+  "hoursWorked": 0,
+  "rateAtAttendance": 0,
+  "status": "scheduled",
+  "notes": "",
+  "createdBy": "S_002",
+  "createdAt": null,
+  "modifiedBy": "",
+  "modifiedAt": null,
+  "hoursBasis": ""
+ },
+ "week": {
+  "weekStart": "2026-09-07",
+  "weekEnd": "2026-09-13",
+  "days": [
+   {
+    "date": "2026-09-07",
+    "dayName": "Mon"
+   },
+   {
+    "date": "2026-09-08",
+    "dayName": "Tue"
+   },
+   {
+    "date": "2026-09-09",
+    "dayName": "Wed"
+   },
+   {
+    "date": "2026-09-10",
+    "dayName": "Thu"
+   },
+   {
+    "date": "2026-09-11",
+    "dayName": "Fri"
+   },
+   {
+    "date": "2026-09-12",
+    "dayName": "Sat"
+   },
+   {
+    "date": "2026-09-13",
+    "dayName": "Sun"
+   }
+  ],
+  "staff": [
+   {
+    "staffId": "S_001",
+    "name": "Ada Quill"
+   },
+   {
+    "staffId": "S_002",
+    "name": "Bram Hale"
+   },
+   {
+    "staffId": "S_003",
+    "name": "Cleo Marsh"
+   },
+   {
+    "staffId": "S_004",
+    "name": "Dara Vance"
+   },
+   {
+    "staffId": "S_005",
+    "name": "Eli Stone"
+   },
+   {
+    "staffId": "S_006",
+    "name": "Fay Ruiz"
+   }
+  ],
+  "cells": [
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-07",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-08",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-09",
+    "attendanceId": "A_20260909_S_001",
+    "status": "worked",
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 5,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-10",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-11",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-12",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-13",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-07",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-08",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-09",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-10",
+    "attendanceId": "A_20260910_S_002",
+    "status": "scheduled",
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-11",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-12",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-13",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-07",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-08",
+    "attendanceId": "A_20260908_S_003",
+    "status": "worked",
+    "scheduledStart": "09:00",
+    "scheduledEnd": "17:00",
+    "hoursWorked": 8,
+    "scheduledHours": 8,
+    "actualHours": 7.5,
+    "hoursBasis": "scheduled"
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-09",
+    "attendanceId": "A_20260909_S_003",
+    "status": "worked",
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 7.75,
+    "scheduledHours": 0,
+    "actualHours": 7.75,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-10",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-11",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-12",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-13",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-07",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-08",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-09",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-10",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-11",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-12",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-13",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-07",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-08",
+    "attendanceId": "A_20260908_S_005",
+    "status": "worked",
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 6,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-09",
+    "attendanceId": "A_20260909_S_005",
+    "status": "worked",
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 3.33,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-10",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-11",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-12",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-13",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-07",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-08",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-09",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-10",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-11",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-12",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-13",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   }
+  ]
+ },
+ "week 2": {
+  "weekStart": "2026-09-14",
+  "weekEnd": "2026-09-20",
+  "days": [
+   {
+    "date": "2026-09-14",
+    "dayName": "Mon"
+   },
+   {
+    "date": "2026-09-15",
+    "dayName": "Tue"
+   },
+   {
+    "date": "2026-09-16",
+    "dayName": "Wed"
+   },
+   {
+    "date": "2026-09-17",
+    "dayName": "Thu"
+   },
+   {
+    "date": "2026-09-18",
+    "dayName": "Fri"
+   },
+   {
+    "date": "2026-09-19",
+    "dayName": "Sat"
+   },
+   {
+    "date": "2026-09-20",
+    "dayName": "Sun"
+   }
+  ],
+  "staff": [
+   {
+    "staffId": "S_001",
+    "name": "Ada Quill"
+   },
+   {
+    "staffId": "S_002",
+    "name": "Bram Hale"
+   },
+   {
+    "staffId": "S_003",
+    "name": "Cleo Marsh"
+   },
+   {
+    "staffId": "S_004",
+    "name": "Dara Vance"
+   },
+   {
+    "staffId": "S_005",
+    "name": "Eli Stone"
+   },
+   {
+    "staffId": "S_006",
+    "name": "Fay Ruiz"
+   }
+  ],
+  "cells": [
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-14",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-15",
+    "attendanceId": "A_20260915_S_001",
+    "status": "worked",
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 6.5,
+    "scheduledHours": 0,
+    "actualHours": 6.5,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-16",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-17",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-18",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-19",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_001",
+    "staffName": "Ada Quill",
+    "date": "2026-09-20",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-14",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-15",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-16",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-17",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-18",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-19",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_002",
+    "staffName": "Bram Hale",
+    "date": "2026-09-20",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-14",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-15",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-16",
+    "attendanceId": "A_20260916_S_003",
+    "status": "worked",
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 8.25,
+    "scheduledHours": 0,
+    "actualHours": 8.25,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-17",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-18",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-19",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_003",
+    "staffName": "Cleo Marsh",
+    "date": "2026-09-20",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-14",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-15",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-16",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-17",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-18",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-19",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_004",
+    "staffName": "Dara Vance",
+    "date": "2026-09-20",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-14",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-15",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-16",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-17",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-18",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-19",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_005",
+    "staffName": "Eli Stone",
+    "date": "2026-09-20",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-14",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-15",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-16",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-17",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-18",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-19",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   },
+   {
+    "staffId": "S_006",
+    "staffName": "Fay Ruiz",
+    "date": "2026-09-20",
+    "attendanceId": null,
+    "status": null,
+    "scheduledStart": "",
+    "scheduledEnd": "",
+    "hoursWorked": 0,
+    "scheduledHours": 0,
+    "actualHours": 0,
+    "hoursBasis": ""
+   }
+  ]
+ },
+ "pay S_005": {
+  "paymentId": "P_20260918_140000_*",
+  "totalAmount": 30,
+  "kind": "shifts",
+  "itemsCreated": [
+   {
+    "itemId": "IT_20260918_140000_*",
+    "attendanceId": "A_20260908_S_005",
+    "dateStr": "2026-09-08",
+    "amount": 30,
+    "isPartial": true
+   }
+  ],
+  "summary": {
+   "shiftsOwedBefore": 118.36,
+   "shiftsOwedAfter": 88.36,
+   "fullyPaidCount": 0,
+   "partialCount": 1
+  }
+ },
+ "over S_003": {
+  "ok": false,
+  "error": {
+   "message": "rpcPayShifts: Overpayment rejected: trying to pay $9999.00 but only $480.00 owed in unpaid shifts for Cleo Marsh. "
+  }
+ },
+ "pay S_003": {
+  "paymentId": "P_20260918_140500_*",
+  "totalAmount": 475,
+  "kind": "shifts",
+  "itemsCreated": [
+   {
+    "itemId": "IT_20260918_140500_*",
+    "attendanceId": "A_20260908_S_003",
+    "dateStr": "2026-09-08",
+    "amount": 160,
+    "isPartial": false
+   },
+   {
+    "itemId": "IT_20260918_140500_*",
+    "attendanceId": "A_20260909_S_003",
+    "dateStr": "2026-09-09",
+    "amount": 155,
+    "isPartial": false
+   },
+   {
+    "itemId": "IT_20260918_140500_*",
+    "attendanceId": "A_20260916_S_003",
+    "dateStr": "2026-09-16",
+    "amount": 160,
+    "isPartial": true
+   }
+  ],
+  "summary": {
+   "shiftsOwedBefore": 480,
+   "shiftsOwedAfter": 5,
+   "fullyPaidCount": 2,
+   "partialCount": 1
+  }
+ },
+ "none S_001": {
+  "ok": false,
+  "error": {
+   "message": "rpcPayShifts: No unpaid shifts for Ada Quill. Nothing to pay."
+  }
+ },
+ "history": [
+  {
+   "paymentId": "P_20260918_140500_*",
+   "staffId": "S_003",
+   "staffName": "Cleo Marsh",
+   "paidOn": "2026-09-18T18:05:00.000Z",
+   "totalAmount": 475,
+   "method": "cash",
+   "recordedBy": "S_006",
+   "notes": "",
+   "items": [
+    {
+     "itemId": "IT_20260918_140500_*",
+     "paymentId": "P_20260918_140500_*",
+     "itemType": "shift",
+     "refId": "A_20260908_S_003",
+     "amount": 160,
+     "notes": ""
+    },
+    {
+     "itemId": "IT_20260918_140500_*",
+     "paymentId": "P_20260918_140500_*",
+     "itemType": "shift",
+     "refId": "A_20260909_S_003",
+     "amount": 155,
+     "notes": ""
+    },
+    {
+     "itemId": "IT_20260918_140500_*",
+     "paymentId": "P_20260918_140500_*",
+     "itemType": "shift",
+     "refId": "A_20260916_S_003",
+     "amount": 160,
+     "notes": "Partial — $160.00 of $165.00"
+    }
+   ]
+  },
+  {
+   "paymentId": "P_20260918_140000_*",
+   "staffId": "S_005",
+   "staffName": "Eli Stone",
+   "paidOn": "2026-09-18T18:00:00.000Z",
+   "totalAmount": 30,
+   "method": "bank",
+   "recordedBy": "S_001",
+   "notes": "part",
+   "items": [
+    {
+     "itemId": "IT_20260918_140000_*",
+     "paymentId": "P_20260918_140000_*",
+     "itemType": "shift",
+     "refId": "A_20260908_S_005",
+     "amount": 30,
+     "notes": "Partial — $30.00 of $58.00"
+    }
+   ]
+  },
+  {
+   "paymentId": "P_20260912_120000_*",
+   "staffId": "S_005",
+   "staffName": "Eli Stone",
+   "paidOn": "2026-09-12T16:00:00.000Z",
+   "totalAmount": 50,
+   "method": "cash",
+   "recordedBy": "S_006",
+   "notes": "",
+   "items": [
+    {
+     "itemId": "IT_P_20260912_120000_old_0",
+     "paymentId": "P_20260912_120000_*",
+     "itemType": "shift",
+     "refId": "A_20260908_S_005",
+     "amount": 50,
+     "notes": ""
+    }
+   ]
+  }
+ ],
+ "my history": [
+  {
+   "paymentId": "P_20260918_140500_*",
+   "staffId": "S_003",
+   "staffName": "Cleo Marsh",
+   "paidOn": "2026-09-18T18:05:00.000Z",
+   "totalAmount": 475,
+   "method": "cash",
+   "recordedBy": "S_006",
+   "notes": "",
+   "items": [
+    {
+     "itemId": "IT_20260918_140500_*",
+     "paymentId": "P_20260918_140500_*",
+     "itemType": "shift",
+     "refId": "A_20260908_S_003",
+     "amount": 160,
+     "notes": ""
+    },
+    {
+     "itemId": "IT_20260918_140500_*",
+     "paymentId": "P_20260918_140500_*",
+     "itemType": "shift",
+     "refId": "A_20260909_S_003",
+     "amount": 155,
+     "notes": ""
+    },
+    {
+     "itemId": "IT_20260918_140500_*",
+     "paymentId": "P_20260918_140500_*",
+     "itemType": "shift",
+     "refId": "A_20260916_S_003",
+     "amount": 160,
+     "notes": "Partial — $160.00 of $165.00"
+    }
+   ]
+  }
+ ],
+ "all staff": [
+  {
+   "staffId": "S_001",
+   "name": "Ada Quill",
+   "hourlyRate": 0,
+   "active": true,
+   "role": "admin",
+   "companiesAuthorized": [
+    "cstore",
+    "vape"
+   ],
+   "email": "",
+   "startDate": null
+  },
+  {
+   "staffId": "S_002",
+   "name": "Bram Hale",
+   "hourlyRate": 21,
+   "active": true,
+   "role": "manager",
+   "companiesAuthorized": [
+    "cstore",
+    "vape"
+   ],
+   "email": "",
+   "startDate": null
+  },
+  {
+   "staffId": "S_003",
+   "name": "Cleo Marsh",
+   "hourlyRate": 20,
+   "active": true,
+   "role": "employee",
+   "companiesAuthorized": [
+    "cstore",
+    "vape"
+   ],
+   "email": "",
+   "startDate": null
+  },
+  {
+   "staffId": "S_004",
+   "name": "Dara Vance",
+   "hourlyRate": 0,
+   "active": true,
+   "role": "employee",
+   "companiesAuthorized": [
+    "cstore",
+    "vape"
+   ],
+   "email": "",
+   "startDate": null
+  },
+  {
+   "staffId": "S_005",
+   "name": "Eli Stone",
+   "hourlyRate": 18,
+   "active": true,
+   "role": "employee",
+   "companiesAuthorized": [
+    "cstore",
+    "vape"
+   ],
+   "email": "",
+   "startDate": null
+  },
+  {
+   "staffId": "S_006",
+   "name": "Fay Ruiz",
+   "hourlyRate": 22,
+   "active": true,
+   "role": "payroll_admin",
+   "companiesAuthorized": [],
+   "email": "",
+   "startDate": null
+  }
+ ],
+ "overview after": [
+  {
+   "staffId": "S_001",
+   "staffName": "Ada Quill",
+   "hourlyRate": 0,
+   "shiftsOwed": 0,
+   "bonusesOwed": 0,
+   "totalOwed": 0,
+   "unpaidShiftCount": 0,
+   "pendingBonusCount": 0,
+   "hasMismatch": false,
+   "mismatchCount": 0
+  },
+  {
+   "staffId": "S_002",
+   "staffName": "Bram Hale",
+   "hourlyRate": 21,
+   "shiftsOwed": 0,
+   "bonusesOwed": 0,
+   "totalOwed": 0,
+   "unpaidShiftCount": 0,
+   "pendingBonusCount": 0,
+   "hasMismatch": false,
+   "mismatchCount": 0
+  },
+  {
+   "staffId": "S_003",
+   "staffName": "Cleo Marsh",
+   "hourlyRate": 20,
+   "shiftsOwed": 5,
+   "bonusesOwed": 0,
+   "totalOwed": 5,
+   "unpaidShiftCount": 1,
+   "pendingBonusCount": 0,
+   "hasMismatch": false,
+   "mismatchCount": 0
+  },
+  {
+   "staffId": "S_005",
+   "staffName": "Eli Stone",
+   "hourlyRate": 18,
+   "shiftsOwed": 88.36,
+   "bonusesOwed": 0,
+   "totalOwed": 88.36,
+   "unpaidShiftCount": 2,
+   "pendingBonusCount": 0,
+   "hasMismatch": false,
+   "mismatchCount": 0
+  },
+  {
+   "staffId": "S_006",
+   "staffName": "Fay Ruiz",
+   "hourlyRate": 22,
+   "shiftsOwed": 0,
+   "bonusesOwed": 0,
+   "totalOwed": 0,
+   "unpaidShiftCount": 0,
+   "pendingBonusCount": 0,
+   "hasMismatch": false,
+   "mismatchCount": 0
+  }
+ ],
+ "rows": {
+  "attendance": [
+   {
+    "attendance_id": "A_20260901_S_004",
+    "staff_id": "S_004",
+    "date": "2026-09-01",
+    "scheduled_start": null,
+    "scheduled_end": null,
+    "actual_start": null,
+    "actual_end": null,
+    "hours_worked": 7,
+    "rate_at_attendance": 0,
+    "status": "worked",
+    "notes": null,
+    "created_by": "S_001",
+    "created_at": "2026-09-01T12:00:00.000Z",
+    "modified_by": null,
+    "modified_at": null,
+    "hours_basis": null,
+    "store_id": "store_main"
+   },
+   {
+    "attendance_id": "A_20260908_S_003",
+    "staff_id": "S_003",
+    "date": "2026-09-08",
+    "scheduled_start": "09:00",
+    "scheduled_end": "17:00",
+    "actual_start": "2026-09-09T13:00:00.000Z",
+    "actual_end": "2026-09-09T20:30:00.000Z",
+    "hours_worked": 8,
+    "rate_at_attendance": 20,
+    "status": "worked",
+    "notes": null,
+    "created_by": "S_001",
+    "created_at": "2026-09-08T12:00:00.000Z",
+    "modified_by": "S_002",
+    "modified_at": "2026-09-18T18:00:00.000Z",
+    "hours_basis": "scheduled",
+    "store_id": "store_main"
+   },
+   {
+    "attendance_id": "A_20260908_S_005",
+    "staff_id": "S_005",
+    "date": "2026-09-08",
+    "scheduled_start": null,
+    "scheduled_end": null,
+    "actual_start": null,
+    "actual_end": null,
+    "hours_worked": 6,
+    "rate_at_attendance": 18,
+    "status": "worked",
+    "notes": null,
+    "created_by": "S_001",
+    "created_at": "2026-09-08T12:00:00.000Z",
+    "modified_by": null,
+    "modified_at": null,
+    "hours_basis": null,
+    "store_id": "store_main"
+   },
+   {
+    "attendance_id": "A_20260909_S_001",
+    "staff_id": "S_001",
+    "date": "2026-09-09",
+    "scheduled_start": null,
+    "scheduled_end": null,
+    "actual_start": null,
+    "actual_end": null,
+    "hours_worked": 5,
+    "rate_at_attendance": 0,
+    "status": "worked",
+    "notes": null,
+    "created_by": "S_001",
+    "created_at": "2026-09-09T12:00:00.000Z",
+    "modified_by": null,
+    "modified_at": null,
+    "hours_basis": null,
+    "store_id": "store_main"
+   },
+   {
+    "attendance_id": "A_20260909_S_003",
+    "staff_id": "S_003",
+    "date": "2026-09-09",
+    "scheduled_start": null,
+    "scheduled_end": null,
+    "actual_start": "2026-09-09T13:00:00.000Z",
+    "actual_end": "2026-09-09T20:45:00.000Z",
+    "hours_worked": 7.75,
+    "rate_at_attendance": 20,
+    "status": "worked",
+    "notes": null,
+    "created_by": "S_001",
+    "created_at": "2026-09-09T12:00:00.000Z",
+    "modified_by": "S_001",
+    "modified_at": "2026-09-18T18:00:00.000Z",
+    "hours_basis": null,
+    "store_id": "store_main"
+   },
+   {
+    "attendance_id": "A_20260909_S_005",
+    "staff_id": "S_005",
+    "date": "2026-09-09",
+    "scheduled_start": null,
+    "scheduled_end": null,
+    "actual_start": null,
+    "actual_end": null,
+    "hours_worked": 3.33,
+    "rate_at_attendance": 18.125,
+    "status": "worked",
+    "notes": null,
+    "created_by": "S_001",
+    "created_at": "2026-09-09T12:00:00.000Z",
+    "modified_by": null,
+    "modified_at": null,
+    "hours_basis": null,
+    "store_id": "store_main"
+   },
+   {
+    "attendance_id": "A_20260910_S_002",
+    "staff_id": "S_002",
+    "date": "2026-09-10",
+    "scheduled_start": null,
+    "scheduled_end": null,
+    "actual_start": null,
+    "actual_end": null,
+    "hours_worked": 0,
+    "rate_at_attendance": 0,
+    "status": "scheduled",
+    "notes": null,
+    "created_by": "S_001",
+    "created_at": "2026-09-10T12:00:00.000Z",
+    "modified_by": null,
+    "modified_at": null,
+    "hours_basis": null,
+    "store_id": "store_main"
+   },
+   {
+    "attendance_id": "A_20260915_S_001",
+    "staff_id": "S_001",
+    "date": "2026-09-15",
+    "scheduled_start": null,
+    "scheduled_end": null,
+    "actual_start": "2026-09-15T14:00:00.000Z",
+    "actual_end": "2026-09-15T20:30:00.000Z",
+    "hours_worked": 6.5,
+    "rate_at_attendance": 0,
+    "status": "worked",
+    "notes": null,
+    "created_by": "S_001",
+    "created_at": "2026-09-15T14:00:00.000Z",
+    "modified_by": "S_001",
+    "modified_at": "2026-09-15T20:30:00.000Z",
+    "hours_basis": null,
+    "store_id": "store_main"
+   },
+   {
+    "attendance_id": "A_20260916_S_003",
+    "staff_id": "S_003",
+    "date": "2026-09-16",
+    "scheduled_start": null,
+    "scheduled_end": null,
+    "actual_start": "2026-09-16T13:00:00.000Z",
+    "actual_end": "2026-09-16T21:15:00.000Z",
+    "hours_worked": 8.25,
+    "rate_at_attendance": 20,
+    "status": "worked",
+    "notes": null,
+    "created_by": "S_003",
+    "created_at": "2026-09-16T13:00:00.000Z",
+    "modified_by": "S_003",
+    "modified_at": "2026-09-16T21:15:00.000Z",
+    "hours_basis": null,
+    "store_id": "store_main"
+   },
+   {
+    "attendance_id": "A_20260921_S_005",
+    "staff_id": "S_005",
+    "date": "2026-09-21",
+    "scheduled_start": "10:00",
+    "scheduled_end": "18:00",
+    "actual_start": null,
+    "actual_end": null,
+    "hours_worked": 0,
+    "rate_at_attendance": 0,
+    "status": "scheduled",
+    "notes": null,
+    "created_by": "S_002",
+    "created_at": "2026-09-18T18:00:00.000Z",
+    "modified_by": null,
+    "modified_at": null,
+    "hours_basis": null,
+    "store_id": "store_main"
+   }
+  ],
+  "payments": [
+   {
+    "payment_id": "P_20260918_140500_*",
+    "staff_id": "S_003",
+    "paid_on": "2026-09-18",
+    "total_amount": 475,
+    "method": "cash",
+    "recorded_by": "S_006",
+    "notes": null,
+    "store_id": "store_main",
+    "voided_at": null,
+    "voided_by": null,
+    "void_reason": null
+   },
+   {
+    "payment_id": "P_20260918_140000_*",
+    "staff_id": "S_005",
+    "paid_on": "2026-09-18",
+    "total_amount": 30,
+    "method": "bank",
+    "recorded_by": "S_001",
+    "notes": "part",
+    "store_id": "store_main",
+    "voided_at": null,
+    "voided_by": null,
+    "void_reason": null
+   },
+   {
+    "payment_id": "P_20260912_120000_*",
+    "staff_id": "S_005",
+    "paid_on": "2026-09-12",
+    "total_amount": 50,
+    "method": "cash",
+    "recorded_by": "S_006",
+    "notes": null,
+    "store_id": "store_main",
+    "voided_at": null,
+    "voided_by": null,
+    "void_reason": null
+   }
+  ],
+  "payment_items": [
+   {
+    "item_id": "IT_20260918_140500_*",
+    "payment_id": "P_20260918_140500_*",
+    "item_type": "shift",
+    "ref_id": "A_20260908_S_003",
+    "amount": 160,
+    "notes": null
+   },
+   {
+    "item_id": "IT_20260918_140000_*",
+    "payment_id": "P_20260918_140000_*",
+    "item_type": "shift",
+    "ref_id": "A_20260908_S_005",
+    "amount": 30,
+    "notes": "Partial — $30.00 of $58.00"
+   },
+   {
+    "item_id": "IT_P_20260912_120000_old_0",
+    "payment_id": "P_20260912_120000_*",
+    "item_type": "shift",
+    "ref_id": "A_20260908_S_005",
+    "amount": 50,
+    "notes": null
+   },
+   {
+    "item_id": "IT_20260918_140500_*",
+    "payment_id": "P_20260918_140500_*",
+    "item_type": "shift",
+    "ref_id": "A_20260909_S_003",
+    "amount": 155,
+    "notes": null
+   },
+   {
+    "item_id": "IT_20260918_140500_*",
+    "payment_id": "P_20260918_140500_*",
+    "item_type": "shift",
+    "ref_id": "A_20260916_S_003",
+    "amount": 160,
+    "notes": "Partial — $160.00 of $165.00"
+   }
+  ],
+  "till_sessions": [
+   {
+    "session_id": "CST-20260915-S_001",
+    "attendance_id": "A_20260915_S_001",
+    "staff_id": "S_001",
+    "company": "cstore",
+    "date": "2026-09-15",
+    "status": "closed",
+    "start_time": "2026-09-15T14:00:00.000Z",
+    "end_time": "2026-09-15T20:30:00.000Z",
+    "expected_opening": 250,
+    "opening_float": 250,
+    "opening_note": null,
+    "closing_cash_counted": 550,
+    "cash_left_in_till": 250,
+    "cash_removed_at_close": 300,
+    "expected_cash": 550,
+    "closing_variance": 0,
+    "variance_status": "OK",
+    "notes": null,
+    "lotto_reserve_counted": 500,
+    "lotto_topup_from_till": 0,
+    "lotto_reserve_note": null,
+    "store_id": "store_main"
+   },
+   {
+    "session_id": "VAP-20260916-S_003",
+    "attendance_id": "A_20260916_S_003",
+    "staff_id": "S_003",
+    "company": "vape",
+    "date": "2026-09-16",
+    "status": "closed",
+    "start_time": "2026-09-16T13:00:00.000Z",
+    "end_time": "2026-09-16T21:15:00.000Z",
+    "expected_opening": 60,
+    "opening_float": 60,
+    "opening_note": null,
+    "closing_cash_counted": 200,
+    "cash_left_in_till": 60,
+    "cash_removed_at_close": 140,
+    "expected_cash": 200,
+    "closing_variance": 0,
+    "variance_status": "OK",
+    "notes": null,
+    "lotto_reserve_counted": null,
+    "lotto_topup_from_till": null,
+    "lotto_reserve_note": null,
+    "store_id": "store_main"
+   }
+  ],
+  "sales": [
+   {
+    "sales_id": "CST-20260915-S_001",
+    "session_id": "CST-20260915-S_001",
+    "staff_id": "S_001",
+    "company": "cstore",
+    "date": "2026-09-15",
+    "cash_sales": 300,
+    "credit_card_sales": null,
+    "debit_card_sales": null,
+    "cashback_paid": 0,
+    "hst_collected": 0,
+    "bottle_deposit": 0,
+    "round_off": 0,
+    "misc_cash_sales": 0,
+    "misc_credit_sales": null,
+    "misc_debit_sales": null,
+    "misc_notes": null,
+    "card_total_sales": 410,
+    "misc_card_sales": 0,
+    "store_id": "store_main"
+   },
+   {
+    "sales_id": "VAP-20260916-S_003",
+    "session_id": "VAP-20260916-S_003",
+    "staff_id": "S_003",
+    "company": "vape",
+    "date": "2026-09-16",
+    "cash_sales": 140,
+    "credit_card_sales": 61.2,
+    "debit_card_sales": 38.8,
+    "cashback_paid": 0,
+    "hst_collected": 0,
+    "bottle_deposit": 0,
+    "round_off": 0,
+    "misc_cash_sales": 0,
+    "misc_credit_sales": 0,
+    "misc_debit_sales": 0,
+    "misc_notes": null,
+    "card_total_sales": null,
+    "misc_card_sales": null,
+    "store_id": "store_main"
+   }
+  ],
+  "cash_handovers": [],
+  "commission_runs": [],
+  "bonuses": []
+ },
+ "audit": [
+  {
+   "actor_id": "S_001",
+   "action": "attendance.open",
+   "target_type": "attendance",
+   "target_id": "A_20260915_S_001",
+   "before": null,
+   "after": "{\"staffId\":\"S_001\",\"date\":\"2026-09-15\",\"status\":\"in_progress\",\"actualStart\":\"2026-09-15T14:00:00.000Z\"}",
+   "details": null
+  },
+  {
+   "actor_id": "S_001",
+   "action": "till.open",
+   "target_type": "till_sessions",
+   "target_id": "CST-20260915-S_001",
+   "before": null,
+   "after": "{\"staffId\":\"S_001\",\"company\":\"cstore\",\"openingFloat\":250,\"attendanceId\":\"A_20260915_S_001\"}",
+   "details": null
+  },
+  {
+   "actor_id": "SYSTEM",
+   "action": "notify.shift.opened",
+   "target_type": "notification",
+   "target_id": null,
+   "before": null,
+   "after": null,
+   "details": "🟢 Ada Quill opened cstore shift (float $250)"
+  },
+  {
+   "actor_id": "S_001",
+   "action": "sales.create",
+   "target_type": "sales",
+   "target_id": "CST-20260915-S_001",
+   "before": null,
+   "after": "{\"cashSales\":300,\"creditCardSales\":\"\",\"debitCardSales\":\"\",\"cashbackPaid\":0}",
+   "details": null
+  },
+  {
+   "actor_id": "S_001",
+   "action": "till.close",
+   "target_type": "till_sessions",
+   "target_id": "CST-20260915-S_001",
+   "before": null,
+   "after": "{\"physicalCount\":550,\"expectedCash\":550,\"variance\":0,\"varianceStatus\":\"OK\",\"reserveFedToTill\":0,\"lottoReserveCounted\":500,\"lottoTopupFromTill\":0,\"lottoReserveNote\":\"\"}",
+   "details": null
+  },
+  {
+   "actor_id": "SYSTEM",
+   "action": "notify.shift.closed",
+   "target_type": "notification",
+   "target_id": null,
+   "before": null,
+   "after": null,
+   "details": "🔴 Ada Quill closed cstore shift, $0 variance, lotto reserve $500.00, $300.00 in hand"
+  },
+  {
+   "actor_id": "S_001",
+   "action": "attendance.complete",
+   "target_type": "attendance",
+   "target_id": "A_20260915_S_001",
+   "before": "{\"status\":\"in_progress\",\"hoursWorked\":0}",
+   "after": "{\"status\":\"worked\",\"hoursWorked\":6.5,\"rate\":0}",
+   "details": null
+  },
+  {
+   "actor_id": "S_003",
+   "action": "attendance.open",
+   "target_type": "attendance",
+   "target_id": "A_20260916_S_003",
+   "before": null,
+   "after": "{\"staffId\":\"S_003\",\"date\":\"2026-09-16\",\"status\":\"in_progress\",\"actualStart\":\"2026-09-16T13:00:00.000Z\"}",
+   "details": null
+  },
+  {
+   "actor_id": "S_003",
+   "action": "till.open",
+   "target_type": "till_sessions",
+   "target_id": "VAP-20260916-S_003",
+   "before": null,
+   "after": "{\"staffId\":\"S_003\",\"company\":\"vape\",\"openingFloat\":60,\"attendanceId\":\"A_20260916_S_003\"}",
+   "details": null
+  },
+  {
+   "actor_id": "SYSTEM",
+   "action": "notify.shift.opened",
+   "target_type": "notification",
+   "target_id": null,
+   "before": null,
+   "after": null,
+   "details": "🟢 Cleo Marsh opened vape shift (float $60)"
+  },
+  {
+   "actor_id": "S_003",
+   "action": "sales.create",
+   "target_type": "sales",
+   "target_id": "VAP-20260916-S_003",
+   "before": null,
+   "after": "{\"cashSales\":140,\"creditCardSales\":61.2,\"debitCardSales\":38.8,\"cashbackPaid\":0}",
+   "details": null
+  },
+  {
+   "actor_id": "S_003",
+   "action": "till.close",
+   "target_type": "till_sessions",
+   "target_id": "VAP-20260916-S_003",
+   "before": null,
+   "after": "{\"physicalCount\":200,\"expectedCash\":200,\"variance\":0,\"varianceStatus\":\"OK\",\"reserveFedToTill\":null,\"lottoReserveCounted\":null,\"lottoTopupFromTill\":null,\"lottoReserveNote\":\"\"}",
+   "details": null
+  },
+  {
+   "actor_id": "SYSTEM",
+   "action": "notify.shift.closed",
+   "target_type": "notification",
+   "target_id": null,
+   "before": null,
+   "after": null,
+   "details": "🔴 Cleo Marsh closed vape shift, $0 variance, $140.00 in hand"
+  },
+  {
+   "actor_id": "S_003",
+   "action": "attendance.complete",
+   "target_type": "attendance",
+   "target_id": "A_20260916_S_003",
+   "before": "{\"status\":\"in_progress\",\"hoursWorked\":0}",
+   "after": "{\"status\":\"worked\",\"hoursWorked\":8.25,\"rate\":20}",
+   "details": null
+  },
+  {
+   "actor_id": "S_001",
+   "action": "attendance.edit_times",
+   "target_type": "attendance",
+   "target_id": "A_20260909_S_003",
+   "before": "{\"actualStart\":null,\"actualEnd\":null,\"hoursWorked\":7.5}",
+   "after": "{\"actualStart\":\"2026-09-09T13:00:00.000Z\",\"actualEnd\":\"2026-09-09T20:45:00.000Z\",\"hoursWorked\":7.75}",
+   "details": null
+  },
+  {
+   "actor_id": "S_002",
+   "action": "attendance.adjust_hours",
+   "target_type": "attendance",
+   "target_id": "A_20260908_S_003",
+   "before": "{\"hoursWorked\":8}",
+   "after": "{\"hoursWorked\":8,\"basis\":\"scheduled\"}",
+   "details": null
+  },
+  {
+   "actor_id": "S_002",
+   "action": "attendance.schedule",
+   "target_type": "attendance",
+   "target_id": "A_20260921_S_005",
+   "before": null,
+   "after": "{\"staffId\":\"S_005\",\"date\":\"2026-09-21\",\"scheduledStart\":\"10:00\",\"scheduledEnd\":\"18:00\"}",
+   "details": null
+  },
+  {
+   "actor_id": "S_001",
+   "action": "payment.shifts",
+   "target_type": "payments",
+   "target_id": "P_20260918_140000_*",
+   "before": null,
+   "after": "{\"staffId\":\"S_005\",\"amount\":30,\"itemCount\":1,\"attendanceIds\":[\"A_20260908_S_005\"]}",
+   "details": null
+  },
+  {
+   "actor_id": "SYSTEM",
+   "action": "notify.payment.recorded",
+   "target_type": "notification",
+   "target_id": null,
+   "before": null,
+   "after": null,
+   "details": "💰 Paid $30.00 to Eli Stone"
+  },
+  {
+   "actor_id": "S_006",
+   "action": "payment.shifts",
+   "target_type": "payments",
+   "target_id": "P_20260918_140500_*",
+   "before": null,
+   "after": "{\"staffId\":\"S_003\",\"amount\":475,\"itemCount\":3,\"attendanceIds\":[\"A_20260908_S_003\",\"A_20260909_S_003\",\"A_20260916_S_003\"]}",
+   "details": null
+  },
+  {
+   "actor_id": "SYSTEM",
+   "action": "notify.payment.recorded",
+   "target_type": "notification",
+   "target_id": null,
+   "before": null,
+   "after": null,
+   "details": "💰 Paid $475.00 to Cleo Marsh"
+  }
+ ]
+}

@@ -206,7 +206,9 @@ H.uiScripts().forEach(([label, js]) => {
     t.ok('an ordinary day says nothing', h.indexOf('earlier result') === -1 && h.indexOf('run on') === -1 && h.indexOf('re-run') === -1);
 
     // Today's forced re-run reads the same way.
-    h = html(ops('admin'), [row({ businessDate: TODAY, validatedAt: RERUN_AT, cashCounted: 222 }), row({ businessDate: TODAY, validatedAt: FIRST_AT, cashCounted: 333 })]);
+    // Both runs are timed ON today (noon and 10:00 Toronto, whatever day the suite runs), so the note is
+    // "re-run", not "re-run on <another day>". A fixed instant here made the suite pass only on 2026-11-27.
+    h = html(ops('admin'), [row({ businessDate: TODAY, validatedAt: TODAY + 'T17:00:00.000Z', cashCounted: 222 }), row({ businessDate: TODAY, validatedAt: TODAY + 'T15:00:00.000Z', cashCounted: 333 })]);
     t.ok('today with a forced re-run shows the newest result and says "re-run · 1 earlier result"', /\$222\.00/.test(h) && !/\$333\.00/.test(h) && h.indexOf('re-run · 1 earlier result') !== -1);
 
     // Not verified stays in words, never a measured $0.00; text is escaped.

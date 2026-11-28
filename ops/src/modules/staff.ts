@@ -82,6 +82,18 @@ export async function getById(db: Db, staffId: string): Promise<StaffRecord | nu
   return row ? toRecord(row) : null;
 }
 
+/**
+ * The hourly rate of each id that names a person, as stored: null when blank ("no rate set"; ADR-0031),
+ * never 0 for a blank (a real 0 stays 0). An id that names nobody is absent from the map. One query.
+ * For the pay screens and the till close; the records above keep the old `Number(x) || 0`.
+ */
+export async function hourlyRatesOf(db: Db, staffIds: readonly string[]): Promise<Map<string, number | null>> {
+  const ids = [...new Set(staffIds.filter((x) => typeof x === "string"))];
+  if (ids.length === 0) return new Map();
+  const rows = await db.query<{ staff_id: string; hourly_rate: number | null }>("select staff_id, hourly_rate from ops.staff where staff_id = any($1::text[])", [ids]);
+  return new Map(rows.map((r) => [r.staff_id, r.hourly_rate === null ? null : Number(r.hourly_rate) || 0]));
+}
+
 /** What rpcGetStaffDirectory returns: everyone, sorted by name as JavaScript's localeCompare does. */
 export async function directory(db: Db): Promise<Array<{ staffId: string; name: string; active: boolean }>> {
   return (await getAll(db)).map((s) => ({ staffId: s.staffId, name: s.name, active: s.active })).sort((a, b) => a.name.localeCompare(b.name));

@@ -161,10 +161,11 @@ describe("what is owed", () => {
     expect(await payments.getUnpaidForStaff(db, 3 as never)).toEqual([]);
   });
 
-  it("a worked day with a blank rate or blank hours counts as 0 (the old `Number(x) || 0`) and is owed nothing", async () => {
+  it("a worked day with blank hours counts as 0 (the old `Number(x) || 0`) and is owed nothing; one with a blank rate is owed nothing and listed as no rate set (ADR-0031)", async () => {
     const ids = (await payments.getUnpaidForStaff(db, "S_003")).map((a) => a.attendanceId);
     expect(ids).not.toContain("A_20260605_S_003");
     expect(ids).not.toContain("A_20260606_S_003");
+    expect((await owedOf("S_003")).noRateDays).toEqual([{ attendanceId: "A_20260605_S_003", dateStr: "2026-06-05", hoursWorked: 8, paid: 0 }]);
   });
 
   it("getOwedSummary: the old shape, totals rounded at each step, pending bonuses newest first, a deduction and a proposed one left out", async () => {
@@ -261,7 +262,8 @@ describe("payShifts", () => {
         target_type: "payments",
         target_id: out.paymentId,
         before: null,
-        after: JSON.stringify({ staffId: "S_003", amount: 300, itemCount: 3, attendanceIds: ["A_20260601_S_003", "A_20260602_S_003", "A_20260603_S_003"] }),
+        // A_20260605_S_003 has a blank rate: never paid, and named (card P4-11b, ADR-0031).
+        after: JSON.stringify({ staffId: "S_003", amount: 300, itemCount: 3, attendanceIds: ["A_20260601_S_003", "A_20260602_S_003", "A_20260603_S_003"], skippedNoRate: ["A_20260605_S_003"] }),
         details: null,
       },
       { actor_id: "SYSTEM", action: "notify.payment.recorded", target_type: "notification", target_id: null, before: null, after: null, details: "💰 Paid $300.00 to Cleo Marsh" },
@@ -480,7 +482,8 @@ describe("the RPCs", () => {
   it("rpcGetMyOwedSummary: an employee gets their own figures whatever they pass, with their rate", async () => {
     const out = await rpc(rpcGetMyOwedSummary, CLEO, ["S_005"]);
     expect(out).toMatchObject({ staffId: "S_003", staffName: "Cleo Marsh", hourlyRate: 17.6, shiftsOwed: S3_OWED, bonusesOwed: 62.32, totalOwed: 632.03 });
-    expect(Object.keys(out)).toEqual(["staffId", "staffName", "hourlyRate", "shiftsOwed", "bonusesOwed", "totalOwed", "unpaidShifts", "pendingBonuses"]);
+    // The last two are ADDED because Cleo has a worked day with a blank rate (card P4-11b, ADR-0031).
+    expect(Object.keys(out)).toEqual(["staffId", "staffName", "hourlyRate", "shiftsOwed", "bonusesOwed", "totalOwed", "unpaidShifts", "pendingBonuses", "noRateDayCount", "noRateDays"]);
     expect((await rpc(rpcGetMyOwedSummary, MANAGER, [])).totalOwed).toBe(120);
   });
 
@@ -527,7 +530,7 @@ describe("the RPCs", () => {
     await expect(rpc(rpcGetOwedSummary, ADMIN, [])).rejects.toThrow(/^staffId required$/); // the router adds "rpcGetOwedSummary: "
     const overview = await rpc(rpcGetPayrollOverview, PAYROLL, []);
     expect(overview.map((o: any) => o.staffId)).toEqual(["S_001", "S_002", "S_003", "S_005", "S_006"]); // active only
-    expect(overview[2]).toEqual({ staffId: "S_003", staffName: "Cleo Marsh", hourlyRate: 17.6, shiftsOwed: S3_OWED, bonusesOwed: 62.32, totalOwed: 632.03, unpaidShiftCount: 4, pendingBonusCount: 2, hasMismatch: false, mismatchCount: 0 });
+    expect(overview[2]).toEqual({ staffId: "S_003", staffName: "Cleo Marsh", hourlyRate: 17.6, shiftsOwed: S3_OWED, bonusesOwed: 62.32, totalOwed: 632.03, unpaidShiftCount: 4, pendingBonusCount: 2, hasMismatch: false, mismatchCount: 0, noRateDayCount: 1, noRateDays: [{ attendanceId: "A_20260605_S_003", dateStr: "2026-06-05", hoursWorked: 8, paid: 0 }] });
     expect(overview[3]).toMatchObject({ staffId: "S_005", hourlyRate: 16.125, shiftsOwed: S5_OWED });
   });
 

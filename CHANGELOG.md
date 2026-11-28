@@ -1815,3 +1815,28 @@ on. The app changes no selling price: those live in the tills.
 New: `ops/test/costs.test.ts` (134 tests), checked against twelve deliberate
 mutations (each restored byte for byte), and `tests/suites/ui-costs.js` (139
 assertions).
+
+### A day worked with no pay rate shows as "no rate set", not $0 (P4-11b)
+
+In the Operations app only; the Apps Script app is unchanged
+([ADR-0031](docs/adr/0031-a-day-with-no-rate-is-not-a-day-at-zero.md)).
+
+- **A blank rate is stored blank.** When a till closes for someone whose hourly
+  rate is blank (every new hire a manager adds, until an admin sets their pay),
+  the day is stored with no rate instead of 0. A real rate of 0 is still 0.
+  Days already at 0 are not rewritten.
+- **Payroll** says *"N days worked with no rate set"* on the person's card, with
+  the dates and hours, that nothing can be paid for them, and how to fix it on
+  the Staff screen; the totals owed leave them out and say *not counted: N days
+  with no rate*.
+- **My Pay** says *Hourly Rate: no rate set* (a real 0 still reads $0.00/hr)
+  and lists those days with *no rate set* where the value would be.
+- **Paying shifts** never pays such a day: it is skipped and named; when only
+  such days are left the payment is refused (*"<name> has no pay rate set: set
+  it on the Staff screen first."*).
+- For everyone with a rate, every answer and every row written is exactly as
+  before: the 1,020 comparison cases pass unchanged.
+
+New: `ops/test/no-rate.test.ts` (with the pre-change answers pinned in
+`ops/test/fixtures/no-rate/pre-change.json`) and `tests/suites/ui-no-rate.js`,
+both seen failing against the code before the change.

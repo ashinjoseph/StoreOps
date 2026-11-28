@@ -158,6 +158,13 @@ the input changes nothing.
   was blank or 0 takes the new rate too: that is how someone added with no
   rate gets paid for their first days. A date with an unchanged or blank rate
   is refused.
+- **Until then, their days read "no rate set"** on Payroll and My Pay, are
+  not counted in any total (which says how many it leaves out) and cannot be
+  paid; Payroll names this screen and the date to apply the rate from
+  ([payroll](payroll.md), [ADR-0031](../adr/0031-a-day-with-no-rate-is-not-a-day-at-zero.md)).
+  Days already at 0 (from the Apps Script app, or closed before card P4-11b)
+  are not rewritten: they read $0.00 until a rate is applied to them from
+  their date.
 - One audit row `staff.update` with the whole record before and after (no
   hash) and the reason; when days were re-rated, a second row
   `staff.rate_applied` with the date, the old and new rate, both owed figures,
@@ -206,6 +213,7 @@ day in progress and a scheduled day are not touched.
 | Suite | Holds down |
 |---|---|
 | `ops/test/staff-admin.test.ts` | who may call each of the five (admin, manager, payroll admin, employee, no token) through the real router and the merged contract; a manager's add refused for another role, a rate, an email or notes with nothing written; planted `role`/`actorId` ignored; the manager's list keys; every field rule; the id sequence; blank rate `NULL`; sign-in with the new PIN; the PIN and its hash in no audit row, answer or message; every update guard and its message; deactivation signing out; a role change on the next call; the raise end to end with payroll (paid, partly paid, voided, blank and 0 rates, cancelled, scheduled, in progress); preview writing nothing; set PIN (sessions, own session kept, lockout from real failed sign-ins lifted); no money table touched; the races on two connections (two adds, the same name twice, two admins demoting each other, a payment against a raise both ways) |
+| `ops/test/no-rate.test.ts` | the whole story through the real router: a manager adds an employee with no rate (`rpcCreateStaff`), two days stored with no rate, refused at payroll, re-rated from the first day with `rpcUpdateStaff`, then owed and paid; the audit rows in order (card P4-11b) |
 | `tests/suites/ui-staff-admin.js` | the entry is `opsOnly`, for admin and manager only; a manager's sheet has no rate, role, email or notes; PIN boxes are password boxes; a blank rate is "no rate set"; the PIN goes to `call` only (not the cache, a toast or storage); the preview and after-save words; the built page keeps the screen |
 
 ## History
@@ -215,3 +223,6 @@ day in progress and a scheduled day are not touched.
   ([ADR-0023](../adr/0023-the-operations-app-has-rpcs-and-screens-of-its-own.md)).
 - **Nov 2026 (card P5-02b):** an admin's screen gets a *Till logins* section
   below the list ([till link](till-link.md)); the list and a manager's screen are unchanged.
+- **Nov 2026 (card P4-11b):** a person added with no rate has their days shown
+  as *no rate set* on Payroll and My Pay until a rate is applied
+  ([ADR-0031](../adr/0031-a-day-with-no-rate-is-not-a-day-at-zero.md)).

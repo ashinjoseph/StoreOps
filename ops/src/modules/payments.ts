@@ -22,9 +22,17 @@
 //                      partial when it takes less than its remaining - 0.005  Payments.gs:352
 //   overpayment        refused when the rounded amount > owed + 0.005          Payments.gs:322
 //
+// One deliberate difference (card P4-11b, ADR-0031): a worked day whose rate_at_attendance is blank
+// cannot be valued yet. It is still left out of every total and of unpaidShifts (as before, when it
+// counted as 0), but it is no longer silent: the owed summary ADDS `noRateDays` and `noRateDayCount`,
+// payShifts never pays it, names it in an ADDED `skippedNoRate`, says how many were not counted when
+// it refuses an overpayment, and refuses with words when such days are all there is. The added
+// fields are present only when there is such a day, so for everyone else every answer is as before.
+// A real rate of 0 is not blank: it is a day worth $0, as before.
+//
 // Same as the old code, deliberately (each is listed in the card's report):
-//   - a blank hours_worked or rate_at_attendance counts as 0 (`Number(x) || 0` in Attendance.gs), so
-//     a worked day with a blank rate is owed nothing and never appears;
+//   - a blank hours_worked counts as 0 (`Number(x) || 0` in Attendance.gs), so a worked day with blank
+//     hours is owed nothing and never appears;
 //   - an amount that is not a number (NaN: '', 'abc' or a missing amount reaches here as NaN from the
 //     RPC's Number()) passes the "positive number" check and rounds to 0: a $0.00 payment with no
 //     items is recorded, audited and announced. So is an amount under half a cent (0.004);
@@ -100,6 +108,17 @@ export interface UnpaidShift {
   remaining: number;
 }
 
+/** A worked day whose rate is blank ("no rate set"): unpaid work that cannot be valued yet. */
+export interface NoRateDay {
+  attendanceId: string;
+  /** "YYYY-MM-DD". */
+  dateStr: string;
+  /** null when the hours are blank too. */
+  hoursWorked: number | null;
+  /** Paid against it through payments that stand (normally 0). */
+  paid: number;
+}
+
 export interface OwedShift {
   attendanceId: string;
   /** The ISO instant of Toronto midnight of the day, as the old answer had it. */
@@ -137,6 +156,10 @@ export interface OwedSummary {
   pendingBonuses: OwedBonus[];
   mismatchCount: number;
   hasMismatch: boolean;
+  /** Present only when there are worked days with no rate set: how many, left out of every total above. */
+  noRateDayCount?: number;
+  /** Present only with noRateDayCount: those days, oldest first. */
+  noRateDays?: NoRateDay[];
 }
 
 // ── The one place a voided payment is left out ────────────
@@ -305,21 +328,43 @@ interface WorkedRow {
   status: string | null;
 }
 
-/** Unpaid worked days of several people (two queries), oldest first per person. */
-async function unpaidFor(db: Db, staffIds: readonly string[]): Promise<Map<string, UnpaidShift[]>> {
+interface Worked {
+  /** Worked days with something left to pay, oldest first. */
+  unpaid: Map<string, UnpaidShift[]>;
+  /** Worked days whose rate is blank, oldest first (ADR-0031). */
+  noRate: Map<string, NoRateDay[]>;
+}
+
+/** Unpaid worked days of several people, and their days with no rate set (two queries), oldest first per person. */
+async function workedFor(db: Db, staffIds: readonly string[]): Promise<Worked> {
   const out = new Map<string, UnpaidShift[]>(staffIds.map((s) => [s, []]));
-  if (staffIds.length === 0) return out;
+  const noRate = new Map<string, NoRateDay[]>(staffIds.map((s) => [s, []]));
+  if (staffIds.length === 0) return { unpaid: out, noRate };
   const rows = await db.query<WorkedRow>(
     `select attendance_id, staff_id, date, hours_worked, rate_at_attendance, status from ops.attendance
       where staff_id = any($1::text[]) order by date, created_at nulls last, attendance_id collate "C"`,
     [[...staffIds]],
   );
-  // Attendance.gs rowToRecord_: trimmed text, a blank status is 'scheduled', blank numbers are 0 (kept).
+  // Attendance.gs rowToRecord_: trimmed text, a blank status is 'scheduled', blank numbers are 0 (kept),
+  // except a blank rate, which is remembered (rateBlank) so that the day is listed, not valued at 0.
   const worked = rows
-    .map((r) => ({ attendanceId: trimmed(r.attendance_id), staffId: trimmed(r.staff_id), date: r.date, hoursWorked: Number(r.hours_worked) || 0, rateAtAttendance: Number(r.rate_at_attendance) || 0, status: trimmed(r.status) || "scheduled" }))
+    .map((r) => ({
+      attendanceId: trimmed(r.attendance_id),
+      staffId: trimmed(r.staff_id),
+      date: r.date,
+      hoursWorked: Number(r.hours_worked) || 0,
+      hoursBlank: r.hours_worked === null,
+      rateAtAttendance: Number(r.rate_at_attendance) || 0,
+      rateBlank: r.rate_at_attendance === null,
+      status: trimmed(r.status) || "scheduled",
+    }))
     .filter((a) => a.attendanceId && a.staffId && a.status === "worked");
   const paidMap = await getAttendancePaidAmounts(db, worked.map((a) => a.attendanceId));
   for (const r of worked) {
+    if (r.rateBlank) {
+      noRate.get(r.staffId)?.push({ attendanceId: r.attendanceId, dateStr: r.date, hoursWorked: r.hoursBlank ? null : r.hoursWorked, paid: roundMoney(paidMap[r.attendanceId] || 0) });
+      continue;
+    }
     const value = roundMoney(r.hoursWorked * r.rateAtAttendance);
     const paid = roundMoney(paidMap[r.attendanceId] || 0);
     const remaining = roundMoney(value - paid);
@@ -327,7 +372,7 @@ async function unpaidFor(db: Db, staffIds: readonly string[]): Promise<Map<strin
       out.get(r.staffId)?.push({ attendanceId: r.attendanceId, date: r.date, dateStr: r.date, staffId: r.staffId, hoursWorked: r.hoursWorked, rateAtAttendance: r.rateAtAttendance, value, paid, remaining });
     }
   }
-  return out;
+  return { unpaid: out, noRate };
 }
 
 /**
@@ -337,7 +382,7 @@ async function unpaidFor(db: Db, staffIds: readonly string[]): Promise<Map<strin
  */
 export async function getUnpaidForStaff(db: Db, staffId: unknown): Promise<UnpaidShift[]> {
   if (typeof staffId !== "string") return []; // the old comparison was ===
-  return (await unpaidFor(db, [staffId])).get(staffId) ?? [];
+  return (await workedFor(db, [staffId])).unpaid.get(staffId) ?? [];
 }
 
 const ms = (d: Date | null): number => (d ? d.getTime() : 0);
@@ -372,7 +417,7 @@ function dateInstant(b: BonusRecord): Date | null {
 }
 
 /** The summary of one person from what was read (Payments.getOwedSummary_ lines 189-260). */
-function summarise(staffId: string, unpaid: readonly UnpaidShift[], ownBonuses: readonly BonusRecord[], bonusPaidMap: Record<string, number>): OwedSummary {
+function summarise(staffId: string, unpaid: readonly UnpaidShift[], ownBonuses: readonly BonusRecord[], bonusPaidMap: Record<string, number>, noRate: readonly NoRateDay[] = []): OwedSummary {
   const unpaidShifts: OwedShift[] = [];
   let shiftsOwed = 0;
   for (const a of unpaid) {
@@ -419,7 +464,13 @@ function summarise(staffId: string, unpaid: readonly UnpaidShift[], ownBonuses: 
     .filter((b) => b.remaining > 0.005);
   const bonusesOwed = roundMoney(pendingBonuses.reduce((s, b) => s + b.remaining, 0));
 
-  return { staffId, shiftsOwed, bonusesOwed, totalOwed: roundMoney(shiftsOwed + bonusesOwed), unpaidShifts, pendingBonuses, mismatchCount, hasMismatch: mismatchCount > 0 };
+  const out: OwedSummary = { staffId, shiftsOwed, bonusesOwed, totalOwed: roundMoney(shiftsOwed + bonusesOwed), unpaidShifts, pendingBonuses, mismatchCount, hasMismatch: mismatchCount > 0 };
+  // ADDED, and only when there is something to say: the answer is unchanged for everyone else.
+  if (noRate.length > 0) {
+    out.noRateDayCount = noRate.length;
+    out.noRateDays = [...noRate];
+  }
+  return out;
 }
 
 /**
@@ -430,15 +481,15 @@ export async function getOwedSummary(db: Db, staffId: unknown): Promise<OwedSumm
   if (!staffId) throw new Error("staffId required");
   const id = staffId as string; // used only when it is text; anything else matched no row in the old code
   const isText = typeof staffId === "string";
-  const unpaid = isText ? await getUnpaidForStaff(db, id) : [];
+  const worked = isText ? await workedFor(db, [id]) : null;
   const own = isText ? await bonuses.getForStaff(db, id) : [];
   const paid = await getBonusPaidAmounts(db, own.map((b) => b.bonusId));
-  return summarise(id, unpaid, own, paid);
+  return summarise(id, worked?.unpaid.get(id) ?? [], own, paid, worked?.noRate.get(id) ?? []);
 }
 
 /** getOwedSummary for several people in a fixed number of queries (four), whatever their number. */
 export async function getOwedSummaries(db: Db, staffIds: readonly string[]): Promise<Map<string, OwedSummary>> {
-  const unpaid = await unpaidFor(db, staffIds);
+  const { unpaid, noRate } = await workedFor(db, staffIds);
   const wanted = new Set(staffIds);
   const all = (await bonuses.getAll(db)).filter((b) => wanted.has(b.staffId));
   const paid = await getBonusPaidAmounts(db, all.map((b) => b.bonusId));
@@ -451,6 +502,7 @@ export async function getOwedSummaries(db: Db, staffIds: readonly string[]): Pro
         unpaid.get(s) ?? [],
         all.filter((b) => b.staffId === s),
         paid,
+        noRate.get(s) ?? [],
       ),
     );
   }
@@ -500,6 +552,31 @@ export interface PayShiftsResult {
   kind: "shifts";
   itemsCreated: Array<{ itemId: string; attendanceId: string; dateStr: string; amount: number; isPartial: boolean }>;
   summary: { shiftsOwedBefore: number; shiftsOwedAfter: number; fullyPaidCount: number; partialCount: number };
+  /** Present only when the person has worked days with no rate set: not paid, named here (ADR-0031). */
+  skippedNoRate?: NoRateDay[];
+}
+
+const days = (n: number): string => n + (n === 1 ? " day" : " days");
+
+/** "Not counted: N days worked with no rate set." for a message that states a total; "" when there are none. */
+function notCounted(noRate: readonly NoRateDay[]): string {
+  return noRate.length > 0 ? "Not counted: " + days(noRate.length) + " worked with no rate set." : "";
+}
+
+/** The refusal when there is nothing to pay but days with no rate set. Words, never "$0". */
+function noRateRefusal(name: string, currentRate: number | null | undefined, noRate: readonly NoRateDay[]): string {
+  if (currentRate === null || currentRate === undefined) return name + " has no pay rate set: set it on the Staff screen first.";
+  const first = noRate[0] as NoRateDay;
+  return (
+    name +
+    " has " +
+    days(noRate.length) +
+    " worked with no rate set (" +
+    noRate.map((d) => d.dateStr).join(", ") +
+    "): set the rate on the Staff screen, with 'also apply to unpaid days from' " +
+    first.dateStr +
+    ", first."
+  );
 }
 
 /**
@@ -535,8 +612,14 @@ export async function payShifts(db: Tx, input: PayShiftsInput, deps: PaymentDeps
 
   const amount = override && mism.length ? owed.shiftsOwed : roundMoney(input.amount);
 
-  if (owed.shiftsOwed <= 0.005) throw new Error("No unpaid shifts for " + person.name + ". Nothing to pay.");
+  // Days with no rate set are never paid and never $0: they are not in owed.unpaidShifts (ADR-0031).
+  const noRate = owed.noRateDays ?? [];
+  if (owed.shiftsOwed <= 0.005) {
+    if (noRate.length > 0) throw new Error(noRateRefusal(person.name, (await staff.hourlyRatesOf(db, [staffId])).get(staffId), noRate));
+    throw new Error("No unpaid shifts for " + person.name + ". Nothing to pay.");
+  }
   if (amount > owed.shiftsOwed + 0.005) {
+    const bonusHint = owed.bonusesOwed > 0 ? "To pay a bonus (" + formatMoney(owed.bonusesOwed) + " pending), use the bonus flow." : "";
     throw new Error(
       "Overpayment rejected: trying to pay " +
         formatMoney(amount) +
@@ -545,7 +628,8 @@ export async function payShifts(db: Tx, input: PayShiftsInput, deps: PaymentDeps
         " owed in unpaid shifts for " +
         person.name +
         ". " +
-        (owed.bonusesOwed > 0 ? "To pay a bonus (" + formatMoney(owed.bonusesOwed) + " pending), use the bonus flow." : ""),
+        bonusHint +
+        (noRate.length > 0 ? (bonusHint ? " " : "") + notCounted(noRate) : ""),
     );
   }
   const method = checkMethod(input.method);
@@ -574,7 +658,19 @@ export async function payShifts(db: Tx, input: PayShiftsInput, deps: PaymentDeps
   }
   await audit.write(
     db,
-    { actorId, action: "payment.shifts", targetType: "payments", targetId: paymentId, after: { staffId, amount, itemCount: itemsCreated.length, attendanceIds: itemsCreated.map((i) => i.attendanceId) } },
+    {
+      actorId,
+      action: "payment.shifts",
+      targetType: "payments",
+      targetId: paymentId,
+      after: {
+        staffId,
+        amount,
+        itemCount: itemsCreated.length,
+        attendanceIds: itemsCreated.map((i) => i.attendanceId),
+        ...(noRate.length > 0 ? { skippedNoRate: noRate.map((d) => d.attendanceId) } : {}),
+      },
+    },
     { now },
   );
   const payload: NotifyPayload & Record<string, unknown> = { staffId, staffName: person.name, amount, kind: "shifts", itemCount: itemsCreated.length };
@@ -591,6 +687,7 @@ export async function payShifts(db: Tx, input: PayShiftsInput, deps: PaymentDeps
       fullyPaidCount: itemsCreated.filter((i) => !i.isPartial).length,
       partialCount: itemsCreated.filter((i) => i.isPartial).length,
     },
+    ...(noRate.length > 0 ? { skippedNoRate: [...noRate] } : {}),
   };
 }
 

@@ -1,0 +1,391 @@
+// Frozen before card P4-11b (commit 91f8df5): the pay screens and the Schedule cell sheet exactly as they were.
+// Inside Apps Script the page must still render what these render (tests/suites/ui-no-rate.js).
+function renderMyPayTab(data) {
+    const view = $('view-mypay');
+    if (!data) {
+      view.innerHTML = '<div class="empty"><div class="empty-icon">💵</div>Could not load pay info.</div>';
+      return;
+    }
+
+    let html = '';
+
+    // ── Summary cards ────────────────────────────────
+    html += '<div class="mypay-summary">' +
+      '<div class="sales-total-card"><div class="sales-total-label">Hourly Rate</div><div class="sales-total-amount">' + money(data.hourlyRate) + '/hr</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Shifts Owed</div><div class="sales-total-amount">' + money(data.shiftsOwed) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Bonuses Owed</div><div class="sales-total-amount">' + money(data.bonusesOwed) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Total Owed</div><div class="sales-total-amount" style="color:#15803d">' + money(data.totalOwed) + '</div></div>' +
+    '</div>';
+
+    // ── Unpaid shifts breakdown ──────────────────────
+    const shifts = data.unpaidShifts || [];
+    html += '<div class="mypay-section-title">Unpaid shifts (' + shifts.length + ')</div>';
+    if (shifts.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">✓</div>All worked shifts have been paid in full.</div>';
+    } else {
+      html += '<div class="mypay-table">';
+      html += '<div class="mypay-row header">' +
+        '<div>Date</div>' +
+        '<div class="right">Hours</div>' +
+        '<div class="right">Rate</div>' +
+        '<div class="right">Value</div>' +
+        '<div class="right">Paid</div>' +
+        '<div class="right">Remaining</div>' +
+      '</div>';
+      shifts.forEach(s => {
+        const isPartial = Number(s.paid || 0) > 0.005;
+        html += '<div class="mypay-row' + (isPartial ? ' partial' : '') + '">' +
+          '<div>' + esc(s.dateStr || fmtDate(s.date)) + '</div>' +
+          '<div class="right">' + Number(s.hoursWorked || 0).toFixed(2) + 'h</div>' +
+          '<div class="right">' + money(s.rate) + '</div>' +
+          '<div class="right">' + money(s.value) + '</div>' +
+          '<div class="right">' + money(s.paid) + '</div>' +
+          '<div class="right"><strong>' + money(s.remaining) + '</strong></div>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    // ── Pending bonuses & commissions ────────────────
+    const bonuses = data.pendingBonuses || [];
+    html += '<div class="mypay-section-title">Pending bonuses & commissions (' + bonuses.length + ')</div>';
+    if (bonuses.length === 0) {
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">🎁</div>No pending bonuses or commissions.</div>';
+    } else {
+      bonuses.forEach(b => {
+        const type = (b.type || 'bonus').toLowerCase();
+        const badgeClass = type === 'commission' ? 'mypay-badge commission' : 'mypay-badge';
+        const partialNote = Number(b.paid || 0) > 0.005
+          ? ' · paid ' + money(b.paid) + ' so far'
+          : '';
+        html += '<div class="history-item">' +
+          '<div class="history-head">' +
+            '<div style="flex:1; min-width:0; padding-right:10px">' +
+              '<div><span class="' + badgeClass + '">' + esc(type) + '</span>' +
+                '<span style="font-weight:600">' + esc(b.reason || '—') + '</span>' +
+              '</div>' +
+              '<div class="history-meta">' +
+                esc(b.dateStr || (b.date ? fmtDate(b.date) : '—')) +
+                (b.company ? ' · ' + esc(b.company) : '') +
+                partialNote +
+              '</div>' +
+            '</div>' +
+            '<div class="history-amount">' + money(b.remaining) + '</div>' +
+          '</div>' +
+        '</div>';
+      });
+    }
+
+    // ── Explainer ────────────────────────────────────
+    html += '<div class="mypay-explainer">' +
+      '<strong>How your pay is calculated:</strong> ' +
+      'Each shift\'s value = <em>hours worked × your hourly rate at the time</em>. ' +
+      'Your rate is snapshotted when a shift is completed, so old shifts keep their original rate even if your rate changes later. ' +
+      'Bonuses and commissions are tracked separately and become payable once approved by an admin. ' +
+      'When a payment is recorded, it is applied to your <strong>oldest unpaid shifts first</strong>.' +
+    '</div>';
+
+    view.innerHTML = html;
+  }
+
+function renderPayrollTab(overview) {
+    const view = $('view-payroll');
+    overview = overview || [];
+    const totalOwed = overview.reduce((s, p) => s + (p.totalOwed || 0), 0);
+    const totalShifts = overview.reduce((s, p) => s + (p.unpaidShiftCount || 0), 0);
+    const totalStaff = overview.filter(p => p.totalOwed > 0.005).length;
+
+    let html = moreBack() + '<div class="payroll-totals">' +
+      '<div class="payroll-totals-label">TOTAL OWED</div>' +
+      '<div class="payroll-totals-amount">' + money(totalOwed) + '</div>' +
+      '<div class="payroll-totals-meta">' + totalShifts + ' unpaid shifts · ' + totalStaff + ' of ' + overview.length + ' staff</div>' +
+    '</div>';
+
+    // Per-staff cards
+    html += '<div style="margin-top:14px"></div>';
+    overview.forEach(p => {
+      const hasOwed = p.totalOwed > 0.005;
+      html += '<div class="payroll-card">' +
+        '<div class="payroll-card-head">' +
+          '<div>' +
+            '<div class="payroll-name">' + esc(p.staffName) + '</div>' +
+            '<div class="payroll-rate">' + money(p.hourlyRate) + '/hr</div>' +
+          '</div>' +
+          '<div class="payroll-owed ' + (hasOwed ? '' : 'zero') + '">' + money(p.totalOwed) + '</div>' +
+        '</div>' +
+        '<div class="payroll-body">' +
+          '<div class="payroll-body-row"><span class="payroll-body-row-label">Unpaid shifts</span>' +
+            '<span class="payroll-body-row-value">' + p.unpaidShiftCount + ' (' + money(p.shiftsOwed) + ')</span></div>' +
+          '<div class="payroll-body-row"><span class="payroll-body-row-label">Pending bonuses</span>' +
+            '<span class="payroll-body-row-value">' + p.pendingBonusCount + ' (' + money(p.bonusesOwed) + ')</span></div>' +
+          (p.hasMismatch
+            ? '<div class="payroll-warn-chip">⚠ ' + p.mismatchCount + ' shift' + (p.mismatchCount === 1 ? '' : 's') + ' need schedule review before pay</div>'
+            : '') +
+        '</div>' +
+        '<div class="payroll-actions">' +
+          (p.shiftsOwed > 0.005
+            ? '<button class="payroll-btn payroll-btn-primary" data-pay-shifts="' + esc(p.staffId) + '">Pay Shifts</button>'
+            : '') +
+          (p.bonusesOwed > 0.005
+            ? '<button class="payroll-btn payroll-btn-secondary" data-pay-bonus-list="' + esc(p.staffId) + '">Pay Bonus</button>'
+            : '') +
+          (!hasOwed
+            ? '<button class="payroll-btn payroll-btn-primary" disabled>All settled</button>'
+            : '') +
+        '</div>' +
+      '</div>';
+    });
+
+    view.innerHTML = html;
+
+    // Lookup so modals can read the staff name without re-fetching the overview.
+    const byId = {};
+    overview.forEach(p => { byId[p.staffId] = p; });
+
+    view.querySelectorAll('[data-pay-shifts]').forEach(b => {
+      b.onclick = () => { haptic(); openPayShiftsForm(b.dataset.payShifts, byId[b.dataset.payShifts]); };
+    });
+    view.querySelectorAll('[data-pay-bonus-list]').forEach(b => {
+      b.onclick = () => { haptic(); openPayBonusList(b.dataset.payBonusList, byId[b.dataset.payBonusList]); };
+    });
+  }
+
+function renderPayShiftsForm(owed, staff) {
+    if (!owed || !staff) {
+      toast('Could not load payment details', 'error');
+      closeSheet();
+      return;
+    }
+    const unpaidShifts = owed.unpaidShifts || [];
+    const shiftsOwed = owed.shiftsOwed || 0;
+    if (unpaidShifts.length === 0 || shiftsOwed <= 0.005) {
+      $('sheetBody').innerHTML = '<div class="empty"><div class="empty-icon">✓</div>No unpaid shifts for ' + esc(staff.staffName) + '</div>';
+      $('sheetActions').innerHTML = '<button class="sheet-cancel" onclick="closeSheet()">Close</button>';
+      $('sheetTitle').textContent = staff.staffName;
+      return;
+    }
+
+    // Payroll guard: block payment while any unpaid shift has scheduled hours
+    // ≠ actual (open→close) that hasn't been reconciled. The manager must fix
+    // the schedule or override to pay per actual.
+    const mismatched = unpaidShifts.filter(s => s.mismatch);
+    if (mismatched.length) { renderPayMismatch_(owed, staff, mismatched); return; }
+    const shiftLines = unpaidShifts.map(s =>
+      '<div class="payroll-body-row" style="font-size:12px">' +
+        '<span class="payroll-body-row-label">' + esc(s.dateStr) + ' · ' + (s.hoursWorked || 0).toFixed(2) + 'h × ' + money(s.rate) + '</span>' +
+        '<span class="payroll-body-row-value">' + money(s.remaining) + (s.paid > 0.005 ? ' <small style="color:#6a6e79">(of ' + money(s.value) + ')</small>' : '') + '</span>' +
+      '</div>'
+    ).join('');
+
+    const bodyHTML =
+      '<div style="margin-bottom:14px">' +
+        '<div style="font-size:11px;font-weight:700;color:#6a6e79;letter-spacing:0.7px;margin-bottom:6px">UNPAID SHIFTS · OLDEST FIRST</div>' +
+        shiftLines +
+        '<div class="payroll-body-row" style="margin-top:6px;padding-top:6px;border-top:1px solid #e2e4ea;font-size:13px"><strong>Total owed</strong><strong>' + money(shiftsOwed) + '</strong></div>' +
+      '</div>' +
+      '<div class="sheet-field">' +
+        '<label>Amount to pay ($)</label>' +
+        '<input type="number" step="0.01" id="payAmount" inputmode="decimal" value="' + shiftsOwed.toFixed(2) + '">' +
+      '</div>' +
+      '<div class="progress-row" id="payProgress">' +
+        '<div class="progress-label"><span>This payment</span><span id="progressLabel">' + money(shiftsOwed) + ' / ' + money(shiftsOwed) + '</span></div>' +
+        '<div class="progress-bar"><div class="progress-bar-fill" id="progressFill" style="width:100%"></div></div>' +
+      '</div>' +
+      '<div class="sheet-field">' +
+        '<label>Method</label>' +
+        '<select id="payMethod"><option value="cash">Cash</option><option value="bank">Bank</option><option value="etransfer">e-Transfer</option><option value="other">Other</option></select>' +
+      '</div>' +
+      '<div class="sheet-field">' +
+        '<label>Notes (optional)</label>' +
+        '<input type="text" id="payNotes" placeholder="e.g. April 1-7 payroll">' +
+      '</div>';
+
+    const actionsHTML =
+      '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+      '<button class="sheet-submit" id="payFullBtn" style="background:#15803d">Pay Full</button>' +
+      '<button class="sheet-submit" id="paySubmitBtn">Pay</button>';
+
+    openSheet({
+      title: 'Pay ' + staff.staffName,
+      subtitle: money(shiftsOwed) + ' owed across ' + unpaidShifts.length + ' shift(s)',
+      bodyHTML, actionsHTML,
+    });
+
+    function updateProgress() {
+      const amount = parseFloat($('payAmount').value) || 0;
+      const total = shiftsOwed;
+      const pct = total > 0 ? Math.min(100, Math.max(0, (amount / total) * 100)) : 0;
+      $('progressFill').style.width = pct.toFixed(1) + '%';
+      $('progressLabel').textContent = money(amount) + ' / ' + money(total);
+    }
+    $('payAmount').addEventListener('input', updateProgress);
+
+    $('payFullBtn').onclick = () => {
+      $('payAmount').value = shiftsOwed.toFixed(2);
+      updateProgress();
+      $('paySubmitBtn').click();
+    };
+
+    $('paySubmitBtn').onclick = async () => {
+      const amount = parseFloat($('payAmount').value);
+      if (isNaN(amount) || amount <= 0) return toast('Enter a positive amount', 'error');
+      if (!confirm('Pay ' + money(amount) + ' to ' + staff.staffName + '?')) return;
+      $('paySubmitBtn').disabled = true;
+      $('paySubmitBtn').textContent = 'Paying…';
+      try {
+        const result = await call('rpcPayShifts', state.token, {
+          staffId: staff.staffId,
+          amount,
+          method: $('payMethod').value,
+          notes: $('payNotes').value.trim(),
+        });
+        closeSheet();
+        const summary = result.summary || {};
+        toast('✓ Paid ' + money(amount) + ' · ' + summary.fullyPaidCount + ' shifts settled' +
+              (summary.partialCount ? ' (1 partial)' : ''), 'success');
+        loadPayrollTab();
+      } catch (e) {
+        toast(e.message, 'error');
+        $('paySubmitBtn').disabled = false;
+        $('paySubmitBtn').textContent = 'Pay';
+      }
+    };
+  }
+
+function editScheduleCell(staffId, date, weekData) {
+    const cell = weekData.cells.find(c => c.staffId === staffId && c.date === date);
+    const staff = weekData.staff.find(s => s.staffId === staffId);
+    const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+    const canEditTimes = cell && cell.status === 'scheduled';
+    const isPastWork = cell && (cell.status === 'in_progress' || cell.status === 'worked');
+
+    let bodyHTML;
+    if (isPastWork) {
+      const canAdjust = state.me.role === 'admin' || state.me.role === 'manager';
+      const sH = cell.scheduledHours || 0;
+      const aH = cell.actualHours || 0;
+      const mismatch = sH > 0 && aH > 0 && Math.abs(sH - aH) >= 0.01;
+      bodyHTML =
+        '<div style="font-size:13px;color:#4a4e59;line-height:1.6">' +
+          '<div>Status: <strong>' + esc(cell.status) + '</strong></div>' +
+          (cell.hoursWorked ? '<div>Recorded hours: <strong>' + cell.hoursWorked.toFixed(2) + 'h</strong></div>' : '') +
+          (sH > 0 ? '<div>Scheduled: <strong>' + sH.toFixed(2) + 'h</strong></div>' : '') +
+          (aH > 0 ? '<div>Actual (open→close): <strong>' + aH.toFixed(2) + 'h</strong></div>' : '') +
+        '</div>';
+      if (mismatch && canAdjust) {
+        const reviewed = !!cell.hoursBasis;
+        bodyHTML +=
+          '<div style="margin-top:14px;padding:12px;background:' + (reviewed ? '#dcfce7' : '#fef3c7') + ';border-radius:9px;font-size:12px;color:' + (reviewed ? '#15803d' : '#92611a') + '">' +
+            (reviewed ? '✓ Reviewed — recorded hours set to ' + esc(cell.hoursBasis) + '. Change to:'
+                      : '⚠︎ Scheduled and actual hours differ. Set recorded hours to:') +
+            '<div style="display:flex;gap:8px;margin-top:10px">' +
+              '<button class="btn-primary" id="useSchedBtn" style="flex:1;padding:9px;font-size:12px;background:#1a4ca1">Scheduled ' + sH.toFixed(2) + 'h</button>' +
+              '<button class="btn-primary" id="useActualBtn" style="flex:1;padding:9px;font-size:12px;background:#15803d">Actual ' + aH.toFixed(2) + 'h</button>' +
+            '</div>' +
+          '</div>';
+      } else {
+        bodyHTML +=
+          '<div style="margin-top:14px;padding:12px;background:#f5f6f8;border-radius:9px;font-size:12px;color:#6a6e79">' +
+            (mismatch ? 'Scheduled and actual hours differ — ask an admin/manager to adjust.'
+                      : 'To correct the actual open/close times, use admin tools.') +
+          '</div>';
+      }
+    } else {
+      bodyHTML =
+        '<div class="sheet-row">' +
+          '<div class="sheet-field">' +
+            '<label>Scheduled start</label>' +
+            '<input type="text" id="schedStart" placeholder="09:00" value="' + esc(cell ? cell.scheduledStart : '') + '">' +
+          '</div>' +
+          '<div class="sheet-field">' +
+            '<label>Scheduled end</label>' +
+            '<input type="text" id="schedEnd" placeholder="17:00" value="' + esc(cell ? cell.scheduledEnd : '') + '">' +
+          '</div>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#6a6e79">Times like 09:00, 17:30. 24-hour format.</div>';
+    }
+
+    // Corrections after the fact: an admin, in the Operations app only (ADR-0023).
+    const offers = scheduleCellOffers_(state.me.role, isOpsApp_(), cell ? cell.status : null, date, torontoToday_());
+    if (offers.correct || offers.addWorked) {
+      bodyHTML += '<button type="button" class="btn-primary" id="correctDayBtn" style="width:100%;margin-top:14px;padding:10px;font-size:13px;background:#6a3fb5">' +
+        (offers.correct ? 'Correct this day' : 'Add a day worked') + '</button>';
+    }
+
+    let actionsHTML;
+    if (isPastWork) {
+      actionsHTML = '<button class="sheet-cancel" onclick="closeSheet()">Close</button>';
+    } else if (cell && cell.attendanceId) {
+      // existing scheduled — allow edit or cancel
+      actionsHTML =
+        '<button class="sheet-cancel" id="cancelSchedBtn">Cancel shift</button>' +
+        '<button class="sheet-submit" id="saveSchedBtn">Save</button>';
+    } else {
+      actionsHTML =
+        '<button class="sheet-cancel" onclick="closeSheet()">Cancel</button>' +
+        '<button class="sheet-submit" id="saveSchedBtn">Schedule</button>';
+    }
+
+    openSheet({
+      title: esc(staff.name),
+      subtitle: esc(dateLabel),
+      bodyHTML, actionsHTML,
+    });
+
+    const correctBtn = $('correctDayBtn');
+    if (correctBtn) correctBtn.onclick = () => { haptic(); openDayCorrection_(staffId, date); };
+
+    const saveBtn = $('saveSchedBtn');
+    if (saveBtn) saveBtn.onclick = async () => {
+      const start = $('schedStart').value.trim();
+      const end = $('schedEnd').value.trim();
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      try {
+        if (cell && cell.attendanceId) {
+          // editing existing — call schedule which is idempotent only on missing rows.
+          // For existing rows we just say "cancel + re-create".
+          await call('rpcCancelScheduledShift', state.token, cell.attendanceId, 'Replaced');
+        }
+        if (start || end) {
+          await call('rpcScheduleShift', state.token, { staffId, date, scheduledStart: start, scheduledEnd: end });
+        }
+        closeSheet();
+        toast('✓ Saved', 'success');
+        loadScheduleTab();
+      } catch (e) {
+        toast(e.message, 'error');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    };
+    const cancelBtn = $('cancelSchedBtn');
+    if (cancelBtn) cancelBtn.onclick = async () => {
+      if (!confirm('Cancel this scheduled shift?')) return;
+      cancelBtn.disabled = true;
+      try {
+        await call('rpcCancelScheduledShift', state.token, cell.attendanceId, 'Cancelled via UI');
+        closeSheet();
+        toast('✓ Shift cancelled', 'success');
+        loadScheduleTab();
+      } catch (e) {
+        toast(e.message, 'error');
+        cancelBtn.disabled = false;
+      }
+    };
+    [['useSchedBtn', 'scheduled'], ['useActualBtn', 'actual']].forEach(([id, basis]) => {
+      const b = $(id);
+      if (!b) return;
+      b.onclick = async () => {
+        haptic();
+        b.disabled = true;
+        try {
+          await call('rpcAdjustAttendanceHours', state.token, cell.attendanceId, basis);
+          closeSheet();
+          toast('✓ Hours set to ' + basis, 'success');
+          loadScheduleTab();
+        } catch (e) { toast(e.message, 'error'); b.disabled = false; }
+      };
+    });
+  }

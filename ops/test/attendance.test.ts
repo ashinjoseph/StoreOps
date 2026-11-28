@@ -111,7 +111,7 @@ const row = (id: string) => db.one<any>("select * from ops.attendance where atte
 const audits = () => db.query<any>(`select actor_id, action, target_type, target_id, "before", "after", details, "timestamp" from ops.audit_log order by seq`);
 
 describe("reads", () => {
-  it("getById returns the old record shape: trimmed text, blank times null, blank hours and rate 0", async () => {
+  it("getById returns the old record shape: trimmed text, blank times null, blank hours 0; a blank rate is null (ADR-0031)", async () => {
     expect(await attendance.getById(db, "A_20260603_S_005")).toEqual({
       attendanceId: "A_20260603_S_005",
       staffId: "S_005",
@@ -121,7 +121,7 @@ describe("reads", () => {
       actualStart: null,
       actualEnd: null,
       hoursWorked: 0, // blank in the database, 0 in the old record (Number(x) || 0): kept
-      rateAtAttendance: 0,
+      rateAtAttendance: null, // blank: null, not the old 0 (card P4-11b, ADR-0031)
       status: "scheduled",
       notes: "",
       createdBy: "S_002",

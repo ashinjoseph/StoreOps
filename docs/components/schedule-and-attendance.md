@@ -41,7 +41,11 @@ stateDiagram-v2
   closing. A cashier who runs cstore and vape from 09:00 to 17:00 worked 8
   hours, not 16.
 - The **rate is snapshotted** (`rate_at_attendance`) when the day completes.
-  A raise next month doesn't re-price this month.
+  A raise next month doesn't re-price this month. In the Operations app a
+  person whose hourly rate is blank gets a **blank** snapshot, not 0 (the Apps
+  Script app copies 0); a real rate of 0 is copied as 0
+  ([ADR-0031](../adr/0031-a-day-with-no-rate-is-not-a-day-at-zero.md)). Rows
+  already holding 0 are not rewritten.
 - **`hours_basis`** records whether a manager chose `scheduled` or `actual`.
   Editing the clock times clears it, so the day gets reviewed again.
 
@@ -138,6 +142,10 @@ the day is created as worked, 8 h at $18/h, owed $144.00.
 - **Cancelled days are ignored by payroll.**
 - **A correction never touches a paid day, an open till, or any money record**,
   and a blank rate stays blank.
+- **A blank rate is never snapshotted as 0** (Operations app): the till close
+  stores it blank, and the Schedule calls answer `rateAtAttendance: null` for
+  such a day. Everything else the close writes is as before. The Schedule cell
+  sheet shows no rate and is unchanged in both apps.
 
 ## Code map
 
@@ -155,6 +163,8 @@ the day is created as worked, 8 h at $18/h, owed $144.00.
 | `ops/test/attendance-corrections.test.ts` | corrections: the two owner cases end to end with payroll; admin only through the real router; every rule with an accepting and a refusing case; the audit row; nothing else moves; two corrections at once, and a correction racing a payment |
 | `ui-schedule-corrections` | the correction controls only for an admin in the Operations app, today or earlier; Toronto instants across both clock changes; the Apps Script cell sheet and its old calls unchanged |
 | `ops/test/attendance.test.ts` | the Operations app's port of the schedule calls |
+| `ops/test/no-rate.test.ts` | the till close stores a blank rate blank, a real 0 as 0 and a rate as itself, every other column as before; the Schedule answers for people with a rate pinned against the pre-change code (card P4-11b) |
+| `ui-no-rate` | the Schedule cell sheet byte-identical to a frozen copy in both apps, for every role |
 
 The Apps Script side has no dedicated suite yet; attendance is exercised
 through the close (`wiring`, `lotto-payout`) and payroll. A suite for the
@@ -165,6 +175,8 @@ state machine and the paid-day guard is on the
 
 - **P4-10 (Operations app):** an admin corrects a past day, or adds a day
   worked, after the fact (`rpcGetAttendanceDay`, `rpcCorrectAttendance`).
+- **P4-11b (Operations app):** a day completed for a person with no rate stores
+  a blank rate, not 0 ([ADR-0031](../adr/0031-a-day-with-no-rate-is-not-a-day-at-zero.md)).
 
 - **Batch 4:** schedule grid in the web UI.
 - **Batch 2:** attendance as the payroll source of truth; completes on the last

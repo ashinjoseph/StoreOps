@@ -29,20 +29,28 @@ async function deps(ctx: RpcContext): Promise<PaymentDeps> {
   return { config: await ctx.config(), env: ctx.env, fetch: ctx.fetch, now: ctx.now };
 }
 
-/** Admin or payroll admin: every active person and what they are owed. Four queries for everyone. */
+/**
+ * The fields a summary ADDS when the person has worked days with no rate set (ADR-0031), and nothing
+ * otherwise, so that for everyone else the answer is exactly the old one.
+ */
+function noRateFields(o: Partial<OwedSummary>): { noRateDayCount?: number; noRateDays?: OwedSummary["noRateDays"] } {
+  return o.noRateDays && o.noRateDays.length > 0 ? { noRateDayCount: o.noRateDays.length, noRateDays: o.noRateDays } : {};
+}
+
+/** Admin or payroll admin: every active person and what they are owed. Five queries for everyone. */
 export const rpcGetPayrollOverview: RpcHandler = async (ctx) => {
   who(ctx);
   const people = await staff.getActive(ctx.db);
-  const owed = await payments.getOwedSummaries(
-    ctx.db,
-    people.map((s) => s.staffId),
-  );
+  const ids = people.map((s) => s.staffId);
+  const owed = await payments.getOwedSummaries(ctx.db, ids);
+  // The rate as stored: null when blank ("no rate set"), where the old answer had 0 (ADR-0031).
+  const rates = await staff.hourlyRatesOf(ctx.db, ids);
   return people.map((s) => {
     const o: Partial<OwedSummary> = owed.get(s.staffId) ?? {};
     return {
       staffId: s.staffId,
       staffName: s.name,
-      hourlyRate: s.hourlyRate,
+      hourlyRate: rates.has(s.staffId) ? (rates.get(s.staffId) as number | null) : s.hourlyRate,
       shiftsOwed: o.shiftsOwed || 0,
       bonusesOwed: o.bonusesOwed || 0,
       totalOwed: o.totalOwed || 0,
@@ -50,6 +58,7 @@ export const rpcGetPayrollOverview: RpcHandler = async (ctx) => {
       pendingBonusCount: (o.pendingBonuses || []).length,
       hasMismatch: !!o.hasMismatch,
       mismatchCount: o.mismatchCount || 0,
+      ...noRateFields(o),
     };
   });
 };
@@ -67,23 +76,26 @@ export const rpcGetOwedSummary: RpcHandler = async (ctx, staffId) => {
     pendingBonuses: result.pendingBonuses || [],
     hasMismatch: !!result.hasMismatch,
     mismatchCount: result.mismatchCount || 0,
+    ...noRateFields(result),
   };
 };
 
 /** Anyone signed in: what they themselves are owed. Only the session says who; arguments are ignored. */
 export const rpcGetMyOwedSummary: RpcHandler = async (ctx) => {
   const session = who(ctx);
-  const person = await staff.getById(ctx.db, session.staffId);
+  // The rate as stored: null when blank ("no rate set"), where the old answer had 0 (ADR-0031). No row: 0, as before.
+  const rates = await staff.hourlyRatesOf(ctx.db, [session.staffId]);
   const summary = await payments.getOwedSummary(ctx.db, session.staffId);
   return {
     staffId: session.staffId,
     staffName: session.name,
-    hourlyRate: person ? person.hourlyRate : 0,
+    hourlyRate: rates.has(session.staffId) ? (rates.get(session.staffId) as number | null) : 0,
     shiftsOwed: summary.shiftsOwed,
     bonusesOwed: summary.bonusesOwed,
     totalOwed: summary.totalOwed,
     unpaidShifts: summary.unpaidShifts,
     pendingBonuses: summary.pendingBonuses,
+    ...noRateFields(summary),
   };
 };
 
@@ -119,6 +131,8 @@ export const rpcPayShifts: RpcHandler = async (ctx, input) => {
       fullyPaidCount: Number(result.summary.fullyPaidCount) || 0,
       partialCount: Number(result.summary.partialCount) || 0,
     },
+    // ADDED only when days with no rate set were skipped (ADR-0031): they are never paid, and named.
+    ...(result.skippedNoRate && result.skippedNoRate.length > 0 ? { skippedNoRate: result.skippedNoRate } : {}),
   };
 };
 

@@ -3565,6 +3565,16 @@
   //  pay. Designed to make the math obvious — shift value = hours × rate,
   //  bonuses/commissions itemized with the calculation in `reason`.
   // ============================================================
+  // A day worked with no pay rate (card P4-11b, ADR-0031). In the Operations app a blank rate is
+  // null and reads "no rate set", never $0.00; a real 0 is still $0.00. Apps Script always sends
+  // a number (a blank rate is 0 there) and never sends noRateDays, so there these are money() and
+  // nothing, and every screen renders as before.
+  function noRateSet_(v) { return isOpsApp_() && (v === null || v === undefined || v === ''); }
+  function payRateText_(v, unit) { return noRateSet_(v) ? 'no rate set' : money(v) + unit; }
+  function noRateDaysOf_(o) { return isOpsApp_() && o && Array.isArray(o.noRateDays) ? o.noRateDays : []; }
+  function dayCount_(n) { return n + ' day' + (n === 1 ? '' : 's'); }
+  function noRateHours_(d) { return d.hoursWorked === null || d.hoursWorked === undefined ? 'hours not recorded' : Number(d.hoursWorked).toFixed(2) + 'h'; }
+
   async function loadMyPayTab(force) {
     const view = $('view-mypay');
     if (force || !cacheFresh('rpcGetMyOwedSummary', [state.token], TTL_SEMI)) {
@@ -3586,11 +3596,13 @@
     }
 
     let html = '';
+    const noRateDays = noRateDaysOf_(data);
 
     // ── Summary cards ────────────────────────────────
     html += '<div class="mypay-summary">' +
-      '<div class="sales-total-card"><div class="sales-total-label">Hourly Rate</div><div class="sales-total-amount">' + money(data.hourlyRate) + '/hr</div></div>' +
-      '<div class="sales-total-card"><div class="sales-total-label">Shifts Owed</div><div class="sales-total-amount">' + money(data.shiftsOwed) + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Hourly Rate</div><div class="sales-total-amount">' + payRateText_(data.hourlyRate, '/hr') + '</div></div>' +
+      '<div class="sales-total-card"><div class="sales-total-label">Shifts Owed</div><div class="sales-total-amount">' + money(data.shiftsOwed) + '</div>' +
+        (noRateDays.length ? '<div class="sales-total-label" id="mypayNotCounted">not counted: ' + dayCount_(noRateDays.length) + ' with no rate</div>' : '') + '</div>' +
       '<div class="sales-total-card"><div class="sales-total-label">Bonuses Owed</div><div class="sales-total-amount">' + money(data.bonusesOwed) + '</div></div>' +
       '<div class="sales-total-card"><div class="sales-total-label">Total Owed</div><div class="sales-total-amount" style="color:#15803d">' + money(data.totalOwed) + '</div></div>' +
     '</div>';
@@ -3599,7 +3611,7 @@
     const shifts = data.unpaidShifts || [];
     html += '<div class="mypay-section-title">Unpaid shifts (' + shifts.length + ')</div>';
     if (shifts.length === 0) {
-      html += '<div class="empty" style="padding:20px"><div class="empty-icon">✓</div>All worked shifts have been paid in full.</div>';
+      html += '<div class="empty" style="padding:20px"><div class="empty-icon">✓</div>' + (noRateDays.length ? 'Every shift with a rate set has been paid in full.' : 'All worked shifts have been paid in full.') + '</div>';
     } else {
       html += '<div class="mypay-table">';
       html += '<div class="mypay-row header">' +
@@ -3622,6 +3634,25 @@
         '</div>';
       });
       html += '</div>';
+    }
+
+    // ── Days worked with no rate set (Operations app only) ──
+    if (noRateDays.length) {
+      html += '<div class="mypay-section-title" id="mypayNoRate">Days worked with no rate set (' + noRateDays.length + ')</div>';
+      html += '<div class="mypay-table">';
+      html += '<div class="mypay-row header"><div>Date</div><div class="right">Hours</div><div class="right">Rate</div><div class="right">Value</div><div class="right">Paid</div><div class="right">Remaining</div></div>';
+      noRateDays.forEach(d => {
+        html += '<div class="mypay-row">' +
+          '<div>' + esc(d.dateStr) + '</div>' +
+          '<div class="right">' + esc(noRateHours_(d)) + '</div>' +
+          '<div class="right">no rate set</div>' +
+          '<div class="right">no rate set</div>' +
+          '<div class="right">' + money(d.paid) + '</div>' +
+          '<div class="right">no rate set</div>' +
+        '</div>';
+      });
+      html += '</div>';
+      html += '<div class="mypay-explainer">These days are not counted in what you are owed until an admin sets your hourly rate.</div>';
     }
 
     // ── Pending bonuses & commissions ────────────────
@@ -4823,22 +4854,25 @@
     const totalOwed = overview.reduce((s, p) => s + (p.totalOwed || 0), 0);
     const totalShifts = overview.reduce((s, p) => s + (p.unpaidShiftCount || 0), 0);
     const totalStaff = overview.filter(p => p.totalOwed > 0.005).length;
+    const totalNoRate = overview.reduce((s, p) => s + noRateDaysOf_(p).length, 0);
 
     let html = moreBack() + '<div class="payroll-totals">' +
       '<div class="payroll-totals-label">TOTAL OWED</div>' +
       '<div class="payroll-totals-amount">' + money(totalOwed) + '</div>' +
-      '<div class="payroll-totals-meta">' + totalShifts + ' unpaid shifts · ' + totalStaff + ' of ' + overview.length + ' staff</div>' +
+      '<div class="payroll-totals-meta">' + totalShifts + ' unpaid shifts · ' + totalStaff + ' of ' + overview.length + ' staff' +
+        (totalNoRate ? '<span id="payrollNotCounted"> · not counted: ' + dayCount_(totalNoRate) + ' with no rate</span>' : '') + '</div>' +
     '</div>';
 
     // Per-staff cards
     html += '<div style="margin-top:14px"></div>';
     overview.forEach(p => {
       const hasOwed = p.totalOwed > 0.005;
+      const noRate = noRateDaysOf_(p);
       html += '<div class="payroll-card">' +
         '<div class="payroll-card-head">' +
           '<div>' +
             '<div class="payroll-name">' + esc(p.staffName) + '</div>' +
-            '<div class="payroll-rate">' + money(p.hourlyRate) + '/hr</div>' +
+            '<div class="payroll-rate">' + payRateText_(p.hourlyRate, '/hr') + '</div>' +
           '</div>' +
           '<div class="payroll-owed ' + (hasOwed ? '' : 'zero') + '">' + money(p.totalOwed) + '</div>' +
         '</div>' +
@@ -4850,6 +4884,7 @@
           (p.hasMismatch
             ? '<div class="payroll-warn-chip">⚠ ' + p.mismatchCount + ' shift' + (p.mismatchCount === 1 ? '' : 's') + ' need schedule review before pay</div>'
             : '') +
+          (noRate.length ? payrollNoRateHTML_(p, noRate) : '') +
         '</div>' +
         '<div class="payroll-actions">' +
           (p.shiftsOwed > 0.005
@@ -4859,7 +4894,7 @@
             ? '<button class="payroll-btn payroll-btn-secondary" data-pay-bonus-list="' + esc(p.staffId) + '">Pay Bonus</button>'
             : '') +
           (!hasOwed
-            ? '<button class="payroll-btn payroll-btn-primary" disabled>All settled</button>'
+            ? '<button class="payroll-btn payroll-btn-primary" disabled>' + (noRate.length ? 'Rate needed' : 'All settled') + '</button>'
             : '') +
         '</div>' +
       '</div>';
@@ -4877,6 +4912,18 @@
     view.querySelectorAll('[data-pay-bonus-list]').forEach(b => {
       b.onclick = () => { haptic(); openPayBonusList(b.dataset.payBonusList, byId[b.dataset.payBonusList]); };
     });
+  }
+
+  // A person's days worked with no rate set, on their Payroll card (card P4-11b): the dates and
+  // hours, that nothing can be paid for them, and how to fix it.
+  function payrollNoRateHTML_(p, noRate) {
+    return '<div class="payroll-warn-chip" data-no-rate="' + esc(p.staffId) + '">⚠ ' + dayCount_(noRate.length) + ' worked with no rate set</div>' +
+      noRate.map(d =>
+        '<div class="payroll-body-row" style="font-size:12px"><span class="payroll-body-row-label">' + esc(d.dateStr) + '</span>' +
+          '<span class="payroll-body-row-value">' + esc(noRateHours_(d)) + ' · no rate set</span></div>'
+      ).join('') +
+      '<div style="font-size:12px;color:#92611a;margin-top:4px">Nothing can be paid for ' + (noRate.length === 1 ? 'it' : 'them') + ' until a rate is set. ' +
+        'Set ' + esc(p.staffName) + '\'s rate on the Staff screen, with \'also apply to unpaid days from\' ' + esc(noRate[0].dateStr) + '.</div>';
   }
 
   // ── Pay shifts modal ────────────────────────────────────
@@ -4923,11 +4970,16 @@
       '</div>'
     ).join('');
 
+    const noRate = noRateDaysOf_(owed);
     const bodyHTML =
       '<div style="margin-bottom:14px">' +
         '<div style="font-size:11px;font-weight:700;color:#6a6e79;letter-spacing:0.7px;margin-bottom:6px">UNPAID SHIFTS · OLDEST FIRST</div>' +
         shiftLines +
         '<div class="payroll-body-row" style="margin-top:6px;padding-top:6px;border-top:1px solid #e2e4ea;font-size:13px"><strong>Total owed</strong><strong>' + money(shiftsOwed) + '</strong></div>' +
+        (noRate.length
+          ? '<div id="payNoRate" style="margin-top:8px;font-size:12px;color:#92611a">Not counted: ' + dayCount_(noRate.length) + ' worked with no rate set (' +
+            noRate.map(d => esc(d.dateStr)).join(', ') + '). They are not paid until a rate is set.</div>'
+          : '') +
       '</div>' +
       '<div class="sheet-field">' +
         '<label>Amount to pay ($)</label>' +
@@ -4987,8 +5039,9 @@
         });
         closeSheet();
         const summary = result.summary || {};
+        const skipped = isOpsApp_() && result.skippedNoRate ? result.skippedNoRate.length : 0;
         toast('✓ Paid ' + money(amount) + ' · ' + summary.fullyPaidCount + ' shifts settled' +
-              (summary.partialCount ? ' (1 partial)' : ''), 'success');
+              (summary.partialCount ? ' (1 partial)' : '') + (skipped ? ' · ' + dayCount_(skipped) + ' with no rate not paid' : ''), 'success');
         loadPayrollTab();
       } catch (e) {
         toast(e.message, 'error');

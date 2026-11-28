@@ -71,7 +71,7 @@ hand one out.
 | P4-09 | Settings screen: an admin edits the settings | T2 | P4-08 | security | done (four things for the owner, in the card) |
 | P4-10 | Schedule corrections after the fact | T3 | P4-08 | money | done (the owner confirmed its three rules, Nov 27) |
 | P4-11 | Staff screen: add, change, deactivate, PINs, raises | T3 | P4-08 | security, money | done (one thing for the owner, in the card) |
-| P4-11b | A day worked with no rate shows as "no rate set", not $0 | T3 | P4-11 | money | in progress (the owner agreed, Nov 28) |
+| P4-11b | A day worked with no rate shows as "no rate set", not $0 | T3 | P4-11 | money | done |
 | P4-12a | Correct a closed till | T3 | P4-08 | money | done (three things for the owner, in the card) |
 | P4-12b | Enter a shift that was never put in the app | T3 | P4-12a | money | done (notes in the card) |
 | P4-12c | Reconcile a past day again | T2 | P4-08 | money | done (three things for the owner, in the card) |
@@ -1500,6 +1500,34 @@ matter):
    purchase: the lock is set for seven unless the bookkeeper says otherwise.
 5. **The Reconcile screen fix and the live app:** it waits. Building goes
    on on this branch and is merged to `main` when it is stable.
+
+### What the Nov 28 answers started, as landed
+
+**P4-11b · a day with no rate is not a day at zero · done.** In the
+Operations app only: a till closed by a person whose rate is blank stores the
+day with no rate (a real 0 stays 0). Payroll and My Pay say "no rate set",
+list those days with their hours, and say what the totals leave out; paying
+them is refused in words until an admin sets the rate on the Staff screen
+with "also apply to unpaid days from". Inside Apps Script every pay screen
+renders exactly as before. The comparison harness needed no change: no case
+has a person with a blank rate working a day, and a test now fails if one is
+added. [ADR-0031](../adr/0031-a-day-with-no-rate-is-not-a-day-at-zero.md);
+[payroll](../components/payroll.md).
+Found on the way, and fixed at landing: one assertion in
+`tests/suites/ui-reconcile-past.js` used a fixed instant for "a re-run
+today", so the suite passed only on 2026-11-27. It now times both runs on the
+day the suite runs.
+**For the owner:**
+1. **Days the old app already closed at $0 stay at $0.** They cannot be told
+   from a real 0, so nothing rewrites them. After the switch, for each
+   person whose rate is blank: Staff → set the rate → "also apply to unpaid
+   days from" their first unpaid day → check the preview → save. Then pay as
+   usual.
+2. The schedule-correction sheet and the missed-shift preview already never
+   show $0 for a blank rate, but their words are "none recorded" and "no
+   rate recorded". Should they read "no rate set" too?
+3. `rpcGetAllStaff` (admin only, called by no screen) still answers 0 for a
+   blank rate.
 
 ## Phase 6 — App
 

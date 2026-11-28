@@ -78,6 +78,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [0028. The app makes its own nightly copy of every table, and a restore tool proves it](docs/adr/0028-the-app-makes-its-own-nightly-copy.md)
 - [0029. A confirmed receipt is final; a mistake is voided and done again](docs/adr/0029-a-confirmed-receipt-is-final-and-a-mistake-is-voided.md)
 - [0030. An item is a supplier's own line; a cost is kept only when it is known exactly; a rise is a flag for a person](docs/adr/0030-an-item-is-a-suppliers-own-line.md)
+- [0031. A day worked with no pay rate is "no rate set", not a day at $0](docs/adr/0031-a-day-with-no-rate-is-not-a-day-at-zero.md)
 
 ## Guides
 

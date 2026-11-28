@@ -9,9 +9,13 @@
 //
 // Same as the old code, deliberately (ADR-0004 warns about each; parity decides, so they are
 // kept and listed in the card's report):
-//   - a blank hours_worked or rate_at_attendance reads as 0 (`Number(x) || 0`);
+//   - a blank hours_worked reads as 0 (`Number(x) || 0`);
 //   - a new scheduled row is written with hours_worked = 0 and rate_at_attendance = 0, not blank;
 //   - a blank hours_worked is audited as 0 in "before".
+//
+// One deliberate difference (card P4-11b, ADR-0031): a blank rate is not 0. complete() stores
+// rate_at_attendance NULL when the person's hourly rate is blank (the old code copied 0), and a blank
+// rate_at_attendance reads as null. A real 0 stays 0, and rows already holding 0 are not rewritten.
 //
 // Writes: one statement per row changed, in the caller's transaction, the row locked before it is
 // read (lockRow) so two managers editing one shift cannot both win, and the audit row written
@@ -47,8 +51,8 @@ export interface AttendanceRecord {
   actualEnd: Date | null;
   /** Blank in the database reads as 0, as in the old app. */
   hoursWorked: number;
-  /** Blank in the database reads as 0, as in the old app. */
-  rateAtAttendance: number;
+  /** Blank in the database reads as null ("no rate set"; ADR-0031), not 0 as in the old app. */
+  rateAtAttendance: number | null;
   status: string;
   notes: string;
   createdBy: string;
@@ -92,7 +96,7 @@ function toRecord(r: AttendanceRow): AttendanceRecord {
     actualStart: r.actual_start,
     actualEnd: r.actual_end,
     hoursWorked: Number(r.hours_worked) || 0,
-    rateAtAttendance: Number(r.rate_at_attendance) || 0,
+    rateAtAttendance: r.rate_at_attendance === null ? null : Number(r.rate_at_attendance) || 0,
     status: trimmed(r.status) || "scheduled",
     notes: (r.notes || "").toString(),
     createdBy: trimmed(r.created_by),
@@ -541,8 +545,9 @@ export async function openOrPromote(db: Tx, staffId: string, dateObj: Date, acto
 
 /**
  * Complete a day when its last till session closes: hours from the day's actual start (else the
- * earliest session start) to the latest session end, rounded; the person's rate snapshotted; status
- * worked. A worked or cancelled day is returned unchanged. (Attendance.complete)
+ * earliest session start) to the latest session end, rounded; the person's rate snapshotted (NULL
+ * when it is blank, never 0: ADR-0031); status worked. A worked or cancelled day is returned
+ * unchanged. (Attendance.complete)
  */
 export async function complete(db: Tx, id: string, now: Date, actorId: string): Promise<AttendanceRecord> {
   if (typeof id === "string") await lockRow(db, "attendance", id);
@@ -568,8 +573,9 @@ export async function complete(db: Tx, id: string, now: Date, actorId: string): 
   const dayEnd = new Date(Math.max(...allEnds.map((d) => d.getTime())));
   const hours = roundMoney(diffHours(dayStart, dayEnd));
 
-  const person = await staff.getById(db, existing.staffId);
-  const rate = person ? person.hourlyRate : 0;
+  // The rate as stored: a blank is NULL here, where the old code copied 0 (`Number(x) || 0`).
+  const rates = await staff.hourlyRatesOf(db, [existing.staffId]);
+  const rate = rates.has(existing.staffId) ? (rates.get(existing.staffId) as number | null) : 0;
 
   await db.query(
     "update ops.attendance set actual_end = $2, hours_worked = $3, rate_at_attendance = $4, status = 'worked', modified_by = $5, modified_at = $6 where attendance_id = $1",
