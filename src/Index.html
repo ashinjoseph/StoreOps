@@ -567,6 +567,17 @@
     display: flex; align-items: center; justify-content: space-between;
     border-bottom: 1px solid #f0f1f5;
   }
+  /* A card whose content is placed directly inside it (the Operations-only screens): the inner margin the head and body give the Payroll cards. */
+  .card-pad { padding: 12px 16px; }
+  /* The receipt review on a phone: tighter vertical spacing, Subtotal and HST side by side. Nothing is hidden. */
+  .rv-pair { display: flex; gap: 8px; }
+  .rv-pair > .sheet-field { flex: 1; min-width: 0; }
+  @media (max-width: 560px) {
+    .rv-wrap { gap: 6px !important; }
+    .rv-wrap .sheet-field { margin-bottom: 8px; }
+    .rv-wrap .sheet-field label { margin-bottom: 3px; }
+    .rv-wrap .sheet-field input, .rv-wrap .sheet-field select { padding-top: 8px; padding-bottom: 8px; }
+  }
   .payroll-name { font-size: 15px; font-weight: 700; }
   .payroll-rate { font-size: 11px; color: #6a6e79; margin-top: 2px; }
   .payroll-owed {
@@ -6968,7 +6979,7 @@
   // ============================================================
   const RECEIPT_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,application/pdf';
   const RECEIPT_MB = 1024 * 1024;
-  const receiptState_ = { file: null, source: 'upload', previewUrl: null, blobs: [], maxMb: 10 };
+  const receiptState_ = { file: null, source: 'upload', previewUrl: null, blobs: [], held: [], maxMb: 10 };
 
   // "2.4 MB", "830 KB", "512 bytes" (the server's own wording).
   function receiptSizeText_(bytes) {
@@ -7040,6 +7051,14 @@
     if (!url) return;
     try { URL.revokeObjectURL(url); } catch (e) { /* already gone */ }
     receiptState_.blobs = receiptState_.blobs.filter(u => u !== url);
+    receiptState_.held = receiptState_.held.filter(u => u !== url);
+  }
+
+  // A sheet that is showing an original owns its URL: the list's redraw and leaving the screen revoke the
+  // list's thumbnails (blobs) and never this one. The sheet revokes it itself when it closes (card P5-17).
+  function holdReceiptUrl_(url) {
+    receiptState_.blobs = receiptState_.blobs.filter(u => u !== url);
+    receiptState_.held.push(url);
   }
 
   // Every blob URL the Receipts screen made: called when the screen is left or drawn again.
@@ -7072,7 +7091,7 @@
   }
 
   function receiptAddHTML_(maxMb) {
-    return '<div class="payroll-card" style="margin-bottom:12px" id="rcptAdd">' +
+    return '<div class="payroll-card card-pad" style="margin-bottom:12px" id="rcptAdd">' +
       '<div style="font-size:15px;font-weight:700;margin-bottom:4px">Add a receipt</div>' +
       '<div style="font-size:11px;color:#6a6e79;margin-bottom:10px">A photo or a PDF, up to ' + esc(maxMb) + ' MB. It is kept exactly as sent.</div>' +
       '<div style="display:flex;gap:8px;margin-bottom:10px">' +
@@ -7126,7 +7145,7 @@
     const n = Number(e.originals) || 0;
     const outcome = (RECEIPT_EMAIL_WORDS[e.outcome] || 'Unknown') + ': ' + n + ' receipt' + (n === 1 ? '' : 's') + ' from it';
     const by = e.recordedBy || {};
-    return '<div class="payroll-card" data-email-id="' + esc(e.id) + '" style="margin-bottom:8px' + (bad ? ';border:1px solid #fca5a5;background:#fef2f2' : '') + '">' +
+    return '<div class="payroll-card card-pad" data-email-id="' + esc(e.id) + '" style="margin-bottom:8px' + (bad ? ';border:1px solid #fca5a5;background:#fef2f2' : '') + '">' +
       '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(e.subject || 'no subject') + '</div>' +
       '<div class="payroll-rate">' + esc(receiptWhen_(e.date)) + ' · from ' + esc(e.from) + '</div>' +
       '<div class="payroll-rate" data-email-outcome="' + esc(e.outcome) + '"' + (bad ? ' style="color:#b91c1c;font-weight:700"' : '') + '>' + esc(outcome) + '</div>' +
@@ -7420,6 +7439,7 @@
     try {
       const o = await fetchReceiptOriginal_(it.id);
       if (!open) { revokeReceiptUrl_(o.url); return; }
+      holdReceiptUrl_(o.url);
       url = o.url;
       const big = $('rcptBig');
       if (isPdf) {
@@ -7856,7 +7876,7 @@
     html += field('Date (YYYY-MM-DD)', 'rdDate', d.dateAsRead, ' maxlength="40" placeholder="2026-11-27"');
     html += '<div class="sheet-field"><label>How it was paid</label><select id="rdPaidHow">' + opt('', 'Not on the receipt', !paid.how) + opt('cash', 'Cash', paid.how === 'cash') + opt('card', 'Card', paid.how === 'card') + opt('account', 'On account', paid.how === 'account') + opt('other', 'Other', paid.how === 'other') + '</select></div>';
     html += field('Card ending (four digits)', 'rdCard', paid.cardLast4, ' maxlength="4" inputmode="numeric"');
-    html += field('Subtotal', 'rdSubtotal', a.subtotal, money2) + field('HST', 'rdHst', a.hst, money2);
+    html += '<div class="rv-pair">' + field('Subtotal', 'rdSubtotal', a.subtotal, money2) + field('HST', 'rdHst', a.hst, money2) + '</div>';
     html += '<div id="rvOther">' + receiptReviewOtherHTML_(st.other) + '</div><button class="payroll-btn payroll-btn-secondary" id="rvOtherAdd" style="margin-bottom:10px">+ Add an other charge</button>';
     html += field('Total (required)', 'rdTotal', a.total, money2);
     html += receiptFactsHTML_(d.document, a.totalCad);
@@ -7890,6 +7910,8 @@
       return;
     }
     if (!rv || !rv.draft) { toast(rv && rv.onBooks ? 'This receipt is on the books.' : 'There is no draft of this original to review.', 'warning'); return; }
+    // A review still open (never closed, a "next" opened over it) lets go of its original first.
+    if (receiptState_.review) { receiptState_.review.open = false; revokeReceiptUrl_(receiptState_.review.url); receiptState_.review.url = null; }
     // On a wide screen the original sits beside the fields, as tall as the screen allows.
     const st = { it, rv, url: null, open: true, large: !!(window.innerWidth && window.innerWidth >= 760), lines: [], other: [] };
     receiptState_.review = st;
@@ -7897,6 +7919,7 @@
     try {
       const o = await fetchReceiptOriginal_(it.id);
       if (!st.open) { revokeReceiptUrl_(o.url); return; }
+      holdReceiptUrl_(o.url);
       st.url = o.url;
       st.type = o.type;
       showReceiptReviewOriginal_(st);
@@ -7922,12 +7945,13 @@
     st.lines = (rv.draft.lines || []).map(receiptLineValues_);
     st.other = ((rv.draft.amounts || {}).other || []).map(o => ({ label: o.label, amount: o.amount, kind: o.kind || '', taxed: o.taxed === true ? 'yes' : o.taxed === false ? 'no' : '' }));
     const bodyHTML =
-      '<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">' +
+      '<div class="rv-wrap" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">' +
         '<div style="flex:1 1 320px;min-width:0;position:sticky;top:0;z-index:2;background:#fff;padding-bottom:6px">' +
           receiptPrintNotice_(st.it) +
           (st.it.email && !st.it.email.print ? receiptEmailLines_(st.it) : '') +
-          '<div id="rvOrig" style="height:' + (st.large ? '78vh' : '32vh') + ';overflow:auto;-webkit-overflow-scrolling:touch;background:#f6f7f9;border-radius:8px;font-size:12px;color:#6a6e79;display:flex;align-items:flex-start;justify-content:center">Loading the original…</div>' +
-          '<button class="payroll-btn payroll-btn-secondary" id="rvBig" style="margin-top:6px;width:100%">' + (st.large ? 'Make the original smaller' : 'Make the original large') + '</button>' +
+          '<button class="payroll-btn payroll-btn-secondary" id="rvHide" style="width:100%;padding:6px;font-size:12px;margin-bottom:4px">' + (st.hidden ? 'Show the original' : 'Hide the original') + '</button>' +
+          '<div id="rvOrig" style="height:' + (st.large ? '78vh' : '32vh') + ';overflow:auto;-webkit-overflow-scrolling:touch;background:#f6f7f9;border-radius:8px;font-size:12px;color:#6a6e79;display:' + (st.hidden ? 'none' : 'flex') + ';align-items:flex-start;justify-content:center">Loading the original…</div>' +
+          '<button class="payroll-btn payroll-btn-secondary" id="rvBig" style="margin-top:6px;width:100%' + (st.hidden ? ';display:none' : '') + '">' + (st.large ? 'Make the original smaller' : 'Make the original large') + '</button>' +
         '</div>' +
         '<div style="flex:1 1 340px;min-width:0" id="rvFields">' + receiptReviewHTML_(st) + '</div>' +
       '</div>';
@@ -7953,6 +7977,14 @@
     $('rvClose').onclick = () => { haptic(); close(); };
     $('rvAside').onclick = () => { haptic(); close(); openReceiptAsideSheet_(st.it); };
     wireReceiptFacts_();
+    // The thin bar: the original folds away (kept, not fetched again) and comes back; remembered while the review is open.
+    $('rvHide').onclick = () => {
+      haptic();
+      st.hidden = !st.hidden;
+      $('rvOrig').style.display = st.hidden ? 'none' : 'flex';
+      $('rvBig').style.display = st.hidden ? 'none' : '';
+      $('rvHide').textContent = st.hidden ? 'Show the original' : 'Hide the original';
+    };
     $('rvBig').onclick = () => {
       haptic();
       st.large = !st.large;
@@ -8145,11 +8177,11 @@
       ? t.notes.map(x => '<div class="payroll-rate" data-books-note="' + esc(x.about) + '">' + esc(x.words) + '</div>').join('')
       : (t.voided ? '<div class="payroll-rate">' + esc(t.voided) + ' voided, shown and not counted</div>' : '') +
         (t.noSubtotal || t.noHst ? '<div class="payroll-rate">' + [t.noSubtotal ? esc(t.noSubtotal) + ' with no subtotal on the receipt' : '', t.noHst ? esc(t.noHst) + ' with no HST on the receipt' : ''].filter(Boolean).join(' · ') + '</div>' : '');
-    html += '<div class="payroll-card" style="margin-bottom:8px;font-size:12px"><b>' + esc(t.count) + ' receipt' + (t.count === 1 ? '' : 's') + '</b> · subtotal ' + esc(money(t.subtotal)) + ' · HST ' + esc(money(t.hst)) + ' · total <b>' + esc(money(t.total)) + '</b>' + notes + '</div>';
+    html += '<div class="payroll-card card-pad" style="margin-bottom:8px;font-size:12px"><b>' + esc(t.count) + ' receipt' + (t.count === 1 ? '' : 's') + '</b> · subtotal ' + esc(money(t.subtotal)) + ' · HST ' + esc(money(t.hst)) + ' · total <b>' + esc(money(t.total)) + '</b>' + notes + '</div>';
     if (!items.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing on the books for this choice.</div>';
     items.forEach(x => {
       const v = x.status === 'voided';
-      html += '<div class="payroll-card" data-books-id="' + esc(x.id) + '" style="margin-bottom:6px;cursor:pointer' + (v ? ';opacity:.6' : '') + '">' +
+      html += '<div class="payroll-card card-pad" data-books-id="' + esc(x.id) + '" style="margin-bottom:6px;cursor:pointer' + (v ? ';opacity:.6' : '') + '">' +
         '<div style="display:flex;gap:8px;font-size:13px"><div style="flex:1;min-width:0;overflow-wrap:anywhere' + (v ? ';text-decoration:line-through' : '') + '"><b>' + esc(x.supplier || x.supplierPrinted || 'supplier') + '</b> · ' + esc(x.date || '') + (x.invoiceNumber ? ' · ' + esc(x.invoiceNumber) : '') + '</div>' +
         '<div style="font-weight:700;text-align:right' + (v ? ';text-decoration:line-through' : '') + '">' + esc(receiptAmount_(x.total, x.currency)) + '</div></div>' +
         receiptBooksMark_(x) +
@@ -8200,7 +8232,7 @@
   }
 
   function legacySpellingHTML_(s, i, canEdit) {
-    return '<div class="payroll-card" style="margin-bottom:6px">' +
+    return '<div class="payroll-card card-pad" style="margin-bottom:6px">' +
       '<div style="display:flex;gap:8px;font-size:13px"><div style="flex:1;min-width:0;overflow-wrap:anywhere"><b>' + legacySupplierHTML_(s.text) + '</b>' +
         (s.variants > 1 ? ' <span class="payroll-rate">(' + esc(s.variants) + ' ways of typing it)</span>' : '') + '</div>' +
         '<div style="font-weight:700">' + esc(legacyCents_(s.totalCents)) + '</div></div>' +
@@ -8214,7 +8246,7 @@
 
   function legacyRowHTML_(r, canEdit) {
     const opt = (v, label) => '<option value="' + v + '"' + ((r.business || '') === v ? ' selected' : '') + '>' + label + '</option>';
-    return '<div class="payroll-card" style="margin-bottom:6px">' +
+    return '<div class="payroll-card card-pad" style="margin-bottom:6px">' +
       '<div style="display:flex;gap:8px;font-size:13px"><div style="flex:1;min-width:0;overflow-wrap:anywhere"><b>' + legacySupplierHTML_(r.supplier) + '</b> · ' + esc(r.date) + '</div>' +
         '<div style="font-weight:700">' + esc(money(r.amountCents / 100)) + '</div></div>' +
       (r.note !== '' ? '<div class="payroll-rate" style="overflow-wrap:anywhere">' + esc(r.note) + '</div>' : '') +
@@ -8228,7 +8260,7 @@
 
   function legacyHTML_(sp, page, items) {
     if (!sp || !sp.imported) {
-      return '<div class="payroll-card" style="font-size:12px;color:#4a4e59">Nothing has been imported from the old list yet. The guide “Import the old purchase list” (docs/guides/import-the-old-purchase-list.md) says how.</div>';
+      return '<div class="payroll-card card-pad" style="font-size:12px;color:#4a4e59">Nothing has been imported from the old list yet. The guide “Import the old purchase list” (docs/guides/import-the-old-purchase-list.md) says how.</div>';
     }
     const st = legacyState_;
     const canEdit = !!page.canEdit;
@@ -8250,7 +8282,7 @@
       html += '<div class="payroll-rate" style="margin-bottom:6px">Only rows written ' + (hit ? '“' + legacySupplierHTML_(hit.text) + '”' : 'one way') + ' <button class="payroll-btn payroll-btn-secondary" id="lgClearKey" style="flex:none;padding:4px 10px">Show all</button></div>';
     }
     const t = page.totals || { count: 0, totalCents: 0 };
-    html += '<div class="payroll-card" style="margin-bottom:8px;font-size:12px"><b>' + esc(t.count) + ' row' + (t.count === 1 ? '' : 's') + '</b> · total <b>' + esc(legacyCents_(t.totalCents)) + '</b>' +
+    html += '<div class="payroll-card card-pad" style="margin-bottom:8px;font-size:12px"><b>' + esc(t.count) + ' row' + (t.count === 1 ? '' : 's') + '</b> · total <b>' + esc(legacyCents_(t.totalCents)) + '</b>' +
       '<div class="payroll-rate">' + esc(page.counts.unsorted) + ' not sorted in the whole list · ' + esc(page.label) + '</div></div>';
     if (!items.length) html += '<div style="font-size:12px;color:#6a6e79">No rows for this choice.</div>';
     items.forEach(r => { html += legacyRowHTML_(r, canEdit); });
@@ -8436,6 +8468,7 @@
     if (!rc.originalId) return;
     try {
       const o = await fetchReceiptOriginal_(rc.originalId);
+      holdReceiptUrl_(o.url);
       url = o.url;
       const box = $('rbOrig');
       if (o.type === 'application/pdf') {
@@ -8565,7 +8598,7 @@
   }
 
   function costFlagHTML_(f, canAct) {
-    let h = '<div class="payroll-card" data-flag-id="' + esc(f.id) + '" style="margin-bottom:8px' + (f.state === 'withdrawn' ? ';opacity:.7' : '') + '">' +
+    let h = '<div class="payroll-card card-pad" data-flag-id="' + esc(f.id) + '" style="margin-bottom:8px' + (f.state === 'withdrawn' ? ';opacity:.7' : '') + '">' +
       '<div style="font-size:13px;line-height:1.4;overflow-wrap:anywhere">' + costFlagSentence_(f) + '</div>' +
       '<div class="payroll-rate" style="overflow-wrap:anywhere">' + costFlagNotes_(f) + '</div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">';
@@ -8593,7 +8626,7 @@
       '</div>' +
       '<div id="costsBody"></div>';
     if (role === 'admin') {
-      html += '<div class="payroll-card" style="margin-top:14px"><div style="font-size:13px;font-weight:700;margin-bottom:4px">Receipts confirmed before this screen</div>' +
+      html += '<div class="payroll-card card-pad" style="margin-top:14px"><div style="font-size:13px;font-weight:700;margin-bottom:4px">Receipts confirmed before this screen</div>' +
         '<div style="font-size:11px;color:#6a6e79;margin-bottom:8px">Their costs are not in the history yet. This works them out (safe to run twice; a lot of receipts take a few clicks).</div>' +
         '<button class="payroll-btn payroll-btn-secondary" id="costsCatchUp">Work out costs for earlier receipts</button>' +
         '<div id="costsCatchUpMsg" style="font-size:12px;font-weight:600;margin-top:8px;min-height:16px">' + esc(costsState_.catchUp) + '</div></div>';
@@ -8738,7 +8771,7 @@
 
   function costItemRowHTML_(it) {
     const latest = it.latest;
-    return '<div class="payroll-card" data-cost-item="' + esc(it.id) + '" style="margin-bottom:8px;cursor:pointer">' +
+    return '<div class="payroll-card card-pad" data-cost-item="' + esc(it.id) + '" style="margin-bottom:8px;cursor:pointer">' +
       '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(it.name) + (it.code ? ' <span style="color:#6a6e79;font-weight:400">(' + esc(it.code) + ')</span>' : '') + '</div>' +
       '<div class="payroll-rate">' + esc(it.supplier.name) + ' · ' + (latest ? 'latest ' + esc(costEach_(latest.cost)) + ', ' + esc(costDate_(latest.date)) + (latest.how === 'worked_out' ? ' (' + esc(COST_WORKED_) + ')' : '') : 'no cost recorded') + ' · ' + esc(it.observations) + (it.observations === 1 ? ' cost' : ' costs') + (it.joinedCount ? ' · ' + esc(it.joinedCount) + ' joined in' : '') + '</div></div>';
   }
@@ -8861,7 +8894,7 @@
         const r = await call('rpcFindItems', state.token, input);
         const others = r.items.filter(function (it) { return it.id !== h.item.id; });
         list.innerHTML = others.length ? others.map(function (it) {
-          return '<div class="payroll-card" data-join-into="' + esc(it.id) + '" style="margin-bottom:6px;cursor:pointer"><div style="font-size:12px;font-weight:600;overflow-wrap:anywhere">' + esc(it.name) + (it.code ? ' (' + esc(it.code) + ')' : '') + '</div>' +
+          return '<div class="payroll-card card-pad" data-join-into="' + esc(it.id) + '" style="margin-bottom:6px;cursor:pointer"><div style="font-size:12px;font-weight:600;overflow-wrap:anywhere">' + esc(it.name) + (it.code ? ' (' + esc(it.code) + ')' : '') + '</div>' +
             '<div class="payroll-rate">' + (it.latest ? 'latest ' + esc(costEach_(it.latest.cost)) + ', ' + esc(costDate_(it.latest.date)) : 'no cost recorded') + '</div></div>';
         }).join('') : '<div style="font-size:12px;color:#6a6e79">No other item of this supplier matches.</div>';
         list.querySelectorAll('[data-join-into]').forEach(function (el) {
@@ -8933,7 +8966,7 @@
   }
 
   function businessCardHTML_(b, canEdit) {
-    let html = '<div class="payroll-card" data-business="' + esc(b.key) + '" style="margin-bottom:12px">' +
+    let html = '<div class="payroll-card card-pad" data-business="' + esc(b.key) + '" style="margin-bottom:12px">' +
       '<div style="font-size:15px;font-weight:700">' + esc(b.displayName) + ' <span style="font-size:11px;color:#6a6e79;font-weight:600">' + esc(b.key) + '</span></div>' +
       '<div class="payroll-rate">Legal name: ' + (b.legalName ? esc(b.legalName) : '<i>not recorded</i>') + '</div>' +
       '<div class="payroll-rate">HST number: ' + (b.hstNumber ? esc(b.hstNumber) : '<i>not recorded</i>') + '</div>' +

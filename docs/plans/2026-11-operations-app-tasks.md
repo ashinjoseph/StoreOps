@@ -98,7 +98,7 @@ hand one out.
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
 | P5-05c | Receipts of every kind in one form: credit notes, statements, other currencies, tax inside the price, typed extra charges | T3 | P5-05b | money | done |
 | P5-12c | Older receipt files move to cheaper storage; the app says which are archived | T1 | P5-12a | money | in progress |
-| P5-17 | The receipt screens on a phone: cards with no inner margin clip their text; the original turns into a broken image after "Save corrections" | T1 | P5-05c | - | in progress |
+| P5-17 | The receipt screens on a phone: cards with no inner margin clip their text; the original turns into a broken image after "Save corrections" | T1 | P5-05c | - | done |
 | P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | done (where "an item" breaks on real receipts, for the owner, in the card) |
 | P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | done (the owner runs the import; things to check in the real file, in the card) |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
@@ -1620,6 +1620,21 @@ Seen in the browser run and not from this card (card P5-17): on a phone,
 the cards of the receipt screens have no inner margin and clip the first
 letter of each row; and after "Save corrections" on a review opened from
 "Enter the figures by hand", the original shows as a broken image.
+
+**P5-17 · the receipt screens on a phone · done.** Thirteen cards on the
+Operations-only screens (Receipts, On the books, Emails checked, the old
+purchase list, Costs, Businesses) gained an inner margin, so no row is cut
+at the left edge; the Payroll cards and every screen the live app shows are
+pixel-identical to before. The original in an open review no longer turns
+into a broken image when the list behind it reloads: each open sheet now
+owns the file it shows and lets it go when it closes. The review is about
+an eighth shorter on a phone (Subtotal and HST share a row, tighter
+spacing), and a thin bar folds the original away and back without fetching
+it again; no field moved or changed. A test now fails if a new screen puts
+text straight into a card without the margin.
+**For the owner:** the live app's Suppliers and Product Master screens have
+the same clipped-edge fault; they were left alone because the live app is
+not changed by these cards. Say if they should be fixed there too.
 
 ## Phase 6 — App
 

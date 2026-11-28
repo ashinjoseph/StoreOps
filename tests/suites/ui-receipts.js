@@ -27,8 +27,77 @@ const H = require('./_lib/harness');
 const t = H.suite('Receipts and Businesses screens — Operations app');
 
 const TOKEN = 'tok3n5ecretabcdef0123456789abcdef';
+// Pinned from the page as it was before card P5-17: the fields of the review, in order, and what the form sends for a fixed input.
+const PIN_IDS = ["rvFields","rvChecks","rdSupplier","rvSupplierPick","rvSupplierQ","rvSupplierFind","rvSupplierNew","rvNewSupplier","rvNewName","rvNewHst","rvNewSave","rdSupplierHst","rdInvoice","rdDate","rdPaidHow","rdCard","rdSubtotal","rdHst","rvOther","rvOtherLabel0","rvOtherAmount0","rvOtherDel0","rvOtherKind0","rvOtherTaxed0","rvOtherLabel1","rvOtherAmount1","rvOtherDel1","rvOtherKind1","rvOtherTaxed1","rvOtherAdd","rdTotal","rdDocKind","rdCurrency","rdTaxIncluded","rdTotalCadBox","rdTotalCad","rdKind","rdBuyerName","rdBuyerHst","rdBuyerAccount","rdBuyerCard","rvBusiness","rdLines","rdLineDesc0","rdLineCode0","rdLineQty0","rdLinePrice0","rdLineTotal0","rdLineTaxed0","rvLineDel0","rdLineDesc1","rdLineCode1","rdLineQty1","rdLinePrice1","rdLineTotal1","rdLineTaxed1","rvLineDel1","rdAddLine","rvErr"];
+const PIN_LABELS = ["Supplier, as printed","Supplier on the list","New supplier's name","Its HST number (optional)","Supplier's HST number","Invoice or receipt number","Date (YYYY-MM-DD)","How it was paid","Card ending (four digits)","Subtotal","HST","Other charge 1","Amount","What it is","Taxed itself","Other charge 2","Amount","What it is","Taxed itself","Total (required)","What it is","Currency printed","Tax inside the price","Canadian amount paid (from the card or bank statement)","Kind of purchase","Name (sold to, bill to)","Buyer's HST number","Account or membership number","Card ending","Which business","Description","Code","Quantity","Unit price","Line total","Taxed","Description","Code","Quantity","Unit price","Line total","Taxed"];
+const PIN_SENT = {
+  "original_id": "roaaaaaaaaaaaaaaaaaaaaaaaa",
+  "supplier": {
+    "name": "Fictional Grocer",
+    "hst_number": "123456789 RT 0001"
+  },
+  "invoice_number": "INV-9",
+  "date": "2026-11-02",
+  "paid": {
+    "how": "card",
+    "card_last4": "4821"
+  },
+  "amounts": {
+    "subtotal": "10.00",
+    "hst": "1.30",
+    "total": "11.45",
+    "total_cad": "15.50",
+    "other": [
+      {
+        "label": "Bottle deposit",
+        "amount": "0.10",
+        "kind": "deposit",
+        "taxed": false
+      },
+      {
+        "label": "Fuel fee",
+        "amount": "0.05"
+      }
+    ]
+  },
+  "kind": "supplies",
+  "buyer": {
+    "name": "Fictional Corner Mart",
+    "hst_number": "987654321 RT 0001",
+    "account_number": "A-12",
+    "card_last4": "4821"
+  },
+  "lines": [
+    {
+      "description": "Milk 2L",
+      "code": "M2",
+      "quantity": "2",
+      "unit_price": "2.50",
+      "total": "5.00",
+      "taxed": false
+    },
+    {
+      "description": "Bread",
+      "quantity": "1",
+      "unit_price": "3.00",
+      "total": "3.00",
+      "taxed": true
+    }
+  ],
+  "document_kind": "invoice",
+  "currency": "USD",
+  "tax_included": false,
+  "where_read": {
+    "total": "bottom"
+  },
+  "note": "A note",
+  "draft_id": "pr777777777777777777777777",
+  "business": "vape",
+  "supplier_id": "sp11111111111111111111"
+};
+
 const SCREEN = ['receiptSizeText_', 'receiptBusinessLabel_', 'receiptWhen_', 'receiptTooLarge_', 'receiptUploadHeaders_', 'sendReceiptOriginal_', 'fetchReceiptOriginal_',
-  'revokeReceiptUrl_', 'revokeReceiptBlobs_', 'loadReceiptsTab', 'receiptAddHTML_', 'receiptThumbHTML_', 'receiptRowHTML_', 'renderReceiptsTab', 'loadReceiptThumbs_',
+  'revokeReceiptUrl_', 'holdReceiptUrl_', 'revokeReceiptBlobs_', 'loadReceiptsTab', 'receiptAddHTML_', 'receiptThumbHTML_', 'receiptRowHTML_', 'renderReceiptsTab', 'loadReceiptThumbs_',
   'receiptPickHTML_', 'wireReceiptAdd_', 'submitReceipt_', 'openReceiptSheet_', 'openReceiptAsideSheet_', 'openReceiptBusinessSheet_',
   'receiptDraftHeadHTML_', 'receiptDraftPaid_', 'receiptUnitPrice_', 'receiptDraftHTML_', 'receiptDraftInput_', 'receiptDraftLineHTML_', 'openReceiptDraftEntry_',
   'receiptBusinessName_', 'receiptFailedHTML_', 'receiptLineValues_', 'receiptReviewLinesHTML_', 'receiptReviewOtherHTML_', 'receiptReviewInput_', 'receiptReviewKeep_', 'receiptReviewHTML_',
@@ -823,6 +892,186 @@ H.uiScripts().forEach(([label, js]) => {
         t.ok(label + ': kinds: books: once added, it is not offered again', !/id="rbAddCad"/.test(m.sheets[m.sheets.length - 1].actionsHTML));
       }
     }
+  })());
+
+  // ── Card P5-17: the original in an open review stays; every blob URL is revoked when its view closes ──
+  //  Cause (seen here before the fix): the by-hand sheet starts loadReceiptsTab(true) without waiting and opens
+  //  the review at once; the list's redraw called revokeReceiptBlobs_(), which revoked EVERY URL the screen had
+  //  made, the review's included, so the next redraw of the review (Save corrections) drew a dead address.
+  //  A view that is open now holds its own URL (holdReceiptUrl_): the screen's redraw and leaving the screen
+  //  revoke what the list made (its thumbnails) and nothing a sheet is still showing.
+  pending.push((async () => {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const OID = ALL.items[0].id;
+    const SP = 'sp' + '1'.repeat(20);
+    const RD = {
+      id: 'pr' + '7'.repeat(24), originalId: OID, status: 'draft', readBy: { kind: 'person', name: 'Priya Nair' }, readAt: '2026-11-27T15:05:00.000Z',
+      supplier: { id: SP, name: 'Fictional Grocer', hstNumber: '123456789 RT 0001', onList: true, listedName: 'Fictional Grocer Ltd' }, invoiceNumber: 'INV-9', date: '2026-11-02', dateAsRead: '2026-11-02',
+      paid: { how: 'card', cardLast4: '4821' },
+      amounts: { subtotal: '10.00', hst: '1.30', otherTotal: '0.15', other: [{ label: 'Bottle deposit', amount: '0.10', kind: 'deposit', taxed: false }, { label: 'Fuel fee', amount: '0.05', kind: '', taxed: null }], total: '11.45', totalCad: '15.50' },
+      document: { kind: 'invoice', currency: 'USD', taxIncluded: false }, kind: 'supplies', buyer: { name: 'Fictional Corner Mart', hstNumber: '987654321 RT 0001', accountNumber: 'A-12', cardLast4: '4821' }, suggestedBusiness: null,
+      business: { key: 'cstore', decidedBy: ['card_last4'], why: 'decided by the card ending 4821', signs: [], personSaid: null, agreesWithPerson: null, signsSaid: null },
+      lines: [{ line: 1, description: 'Milk 2L', code: 'M2', quantity: '2', unitPrice: '2.50', total: '5.00', taxed: false }, { line: 2, description: 'Bread', code: null, quantity: '1', unitPrice: '3.00', total: '3.00', taxed: true }],
+      needsAttention: false, failed: 0, checks: [], whereRead: { total: 'bottom' }, note: 'A note', supersedes: null, redoOf: null, hstRatePercent: '13',
+    };
+    const RV = () => ({
+      original: { id: OID, status: 'drafted', business: null, contentType: 'image/jpeg', fileName: 'IMG_0042.JPG', addedBy: 'Jordan Reyes', addedAt: '2026-11-27T15:00:00.000Z' },
+      draft: RD, first: RD, changes: { comparedWith: RD.id, fields: [], lines: { added: 0, removed: 0, changed: 0 }, count: 0 }, readings: [],
+      supplierCandidates: [{ id: SP, displayName: 'Fictional Grocer Ltd', hstNumber: null, notes: null, active: true, spellings: [], receipts: 0 }],
+      signOffers: { business: 'cstore', offers: [], warnings: [], known: [] }, spelling: null,
+      confirm: { allowed: true, why: [], missing: [], checks: [], failed: [], reasonNeeded: false, adminOnly: false },
+      canEdit: true, canLearnSigns: false, onBooks: null, businessNames: { cstore: 'Fictional Corner Mart', vape: 'Fictional Vape Co' },
+    });
+    const readItem = item({ status: 'drafted', draft: { id: RD.id, supplier: 'Fictional Grocer', date: '2026-11-02', total: '11.45', business: 'cstore', needsAttention: false, failed: 0 } });
+    const second = item({ id: 'ro' + 'd'.repeat(24), status: 'drafted' });
+    // The list behind answers late: it redraws after the review has its original.
+    const slowInbox = (tok, input) => sleep(15).then(() => (input.status === 'set_aside' ? ASIDE : ALL));
+    const mk = extra => world({ role: 'manager', answers: Object.assign({
+      rpcGetReceiptReview: RV(), rpcSaveReceiptCorrection: { replaced: RD.id, review: RV() }, rpcEnterReceiptDraft: { draft: { needsAttention: false } },
+      rpcConfirmReceipt: { message: 'On the books of Fictional Corner Mart.', learnt: { signs: [], spelling: null }, next: null, receipt: {} }, rpcGetReceiptInbox: slowInbox,
+    }, extra || {}) });
+    const live = (w, u) => !!u && w.created.indexOf(u) !== -1 && w.revoked.indexOf(u) === -1;
+    const outstanding = w => w.created.filter(u => w.revoked.indexOf(u) === -1);
+    const shown = w => { const m = /src="(blob:[^"]*)"/.exec(w.els.rvOrig.innerHTML); return m && m[1]; };
+    const P = label + ': P5-17: ';
+    // Wait until the list behind has been asked for and drawn (the suite shares one busy event loop: poll, do not guess a delay).
+    const listDrawn = async w => {
+      for (let i = 0; i < 400; i++) {
+        const h = w.els['view-receipts'].innerHTML;
+        if (/Waiting \(2\)/.test(h) && h.indexOf('Loading receipts') === -1) break;
+        await sleep(10);
+      }
+      await sleep(10);
+      await tick();
+    };
+
+    // By hand, then the review, then Save corrections, then Confirm.
+    const a = mk();
+    a.fns.openReceiptDraftEntry_(ALL.items[0]);
+    a.els.rdTotal.value = '12.00';
+    await a.els.rdSave.onclick();
+    const url = shown(a);
+    t.ok(P + 'by hand, then the review: the original is shown from a live blob URL', live(a, url));
+    await listDrawn(a);
+    t.ok(P + 'the list behind the review was asked for again and drawn', a.calls.filter(c => c[0] === 'rpcGetReceiptInbox').length >= 2 && /Waiting \(2\)/.test(a.els['view-receipts'].innerHTML));
+    t.ok(P + 'after the list behind reloads, the original in the open review is still a live URL', live(a, url));
+    await a.els.rvSave.onclick();
+    await tick();
+    t.ok(P + 'after Save corrections the review shows the same original, from a live URL', shown(a) === url && live(a, url));
+    await a.els.rvConfirm.onclick();
+    a.els.rvBack.onclick();
+    t.ok(P + 'Back to the review from the confirm sheet: still live', shown(a) === url && live(a, url));
+    await a.els.rvConfirm.onclick();
+    await a.els.rvConfirmGo.onclick();
+    await listDrawn(a);
+    t.ok(P + 'after Confirm the review\'s URL is revoked, once', a.revoked.filter(u => u === url).length === 1);
+    a.fns.revokeReceiptBlobs_();
+    t.eq(P + 'after Confirm and leaving the screen: zero URLs outstanding (none leaked)', [outstanding(a).length, a.created.length === a.revoked.length], [0, true]);
+
+    // Open, fail a save, close.
+    const c = mk({ rpcSaveReceiptCorrection: undefined });
+    await c.fns.openReceiptReview_(readItem);
+    await tick();
+    const cu = shown(c);
+    await c.els.rvSave.onclick();
+    t.ok(P + 'a failed save leaves the original showing from a live URL (and says why)', live(c, cu) && c.els.rvErr.textContent !== '' && c.els.rvSave.disabled === false);
+    c.els.rvClose.onclick();
+    t.eq(P + 'open, fail a save, close: zero outstanding, the URL revoked once', [outstanding(c).length, c.revoked.filter(u => u === cu).length], [0, 1]);
+
+    // Two reviews one after the other, the first never closed: only the second view's URL is outstanding.
+    const d = mk();
+    await d.fns.openReceiptReview_(readItem);
+    await tick();
+    const u1 = shown(d);
+    await d.fns.openReceiptReview_(second);
+    await tick();
+    const u2 = shown(d);
+    t.ok(P + 'a second review: the first one\'s URL is revoked, only the second\'s is outstanding', !!u1 && !!u2 && u1 !== u2 && outstanding(d).length === 1 && outstanding(d)[0] === u2);
+    d.els.rvClose.onclick();
+    t.eq(P + 'two reviews in a row, then close: zero outstanding', outstanding(d).length, 0);
+
+    // The large view of an original is held the same way: a redraw of the list does not kill it.
+    const e = mk();
+    await e.fns.openReceiptSheet_(ALL.items[0], true);
+    const eu = e.created[e.created.length - 1];
+    await e.fns.loadReceiptsTab(true);
+    await tick();
+    t.ok(P + 'the large view of an original survives a redraw of the list behind it', live(e, eu) && /src="blob:/.test(e.els.rcptBig.innerHTML));
+    e.els.sheetClose.onclick();
+    e.fns.revokeReceiptBlobs_();
+    t.eq(P + 'the large view: closed and the screen left: zero outstanding', outstanding(e).length, 0);
+  })());
+
+  // ── Card P5-17: the review is shorter on a phone; nothing in it changes ──
+  pending.push((async () => {
+    const OID = ALL.items[0].id;
+    const SP = 'sp' + '1'.repeat(20);
+    const RD = {
+      id: 'pr' + '7'.repeat(24), originalId: OID, status: 'draft', readBy: { kind: 'person', name: 'Priya Nair' }, readAt: '2026-11-27T15:05:00.000Z',
+      supplier: { id: SP, name: 'Fictional Grocer', hstNumber: '123456789 RT 0001', onList: true, listedName: 'Fictional Grocer Ltd' }, invoiceNumber: 'INV-9', date: '2026-11-02', dateAsRead: '2026-11-02',
+      paid: { how: 'card', cardLast4: '4821' },
+      amounts: { subtotal: '10.00', hst: '1.30', otherTotal: '0.15', other: [{ label: 'Bottle deposit', amount: '0.10', kind: 'deposit', taxed: false }, { label: 'Fuel fee', amount: '0.05', kind: '', taxed: null }], total: '11.45', totalCad: '15.50' },
+      document: { kind: 'invoice', currency: 'USD', taxIncluded: false }, kind: 'supplies', buyer: { name: 'Fictional Corner Mart', hstNumber: '987654321 RT 0001', accountNumber: 'A-12', cardLast4: '4821' }, suggestedBusiness: null,
+      business: { key: 'cstore', decidedBy: ['card_last4'], why: 'decided by the card ending 4821', signs: [], personSaid: null, agreesWithPerson: null, signsSaid: null },
+      lines: [{ line: 1, description: 'Milk 2L', code: 'M2', quantity: '2', unitPrice: '2.50', total: '5.00', taxed: false }, { line: 2, description: 'Bread', code: null, quantity: '1', unitPrice: '3.00', total: '3.00', taxed: true }],
+      needsAttention: true, failed: 1, checks: [{ check: 'parts_add_up', passed: false, words: 'Subtotal $10.00 + HST $1.30 = $11.30, but the total is $11.45.' }], whereRead: { total: 'bottom' }, note: 'A note', supersedes: null, redoOf: null, hstRatePercent: '13',
+    };
+    const RV = () => ({
+      original: { id: OID, status: 'drafted', business: null, contentType: 'image/jpeg', fileName: 'IMG_0042.JPG', addedBy: 'Jordan Reyes', addedAt: '2026-11-27T15:00:00.000Z' },
+      draft: RD, first: RD, changes: { comparedWith: RD.id, fields: [], lines: { added: 0, removed: 0, changed: 0 }, count: 0 }, readings: [],
+      supplierCandidates: [{ id: SP, displayName: 'Fictional Grocer Ltd', hstNumber: null, notes: null, active: true, spellings: [], receipts: 0 }],
+      signOffers: { business: 'cstore', offers: [], warnings: [], known: [] }, spelling: null,
+      confirm: { allowed: true, why: [], missing: [], checks: [], failed: [], reasonNeeded: false, adminOnly: false },
+      canEdit: true, canLearnSigns: false, onBooks: null, businessNames: { cstore: 'Fictional Corner Mart', vape: 'Fictional Vape Co' },
+    });
+    const readItem = item({ status: 'drafted' });
+    const f = world({ role: 'manager', answers: { rpcGetReceiptReview: RV(), rpcSaveReceiptCorrection: { replaced: RD.id, review: RV() }, rpcGetReceiptInbox: ALL } });
+    await f.fns.openReceiptReview_(readItem);
+    await tick();
+    const body = f.sheets[f.sheets.length - 1].bodyHTML;
+    const at = body.indexOf('id="rvFields"');
+    const fieldsPart = body.slice(at);
+    const idsIn = fieldsPart.match(/\bid="[^"]+"/g).map(s => /"([^"]+)"/.exec(s)[1]);
+    const labels = (fieldsPart.match(/<label>.*?<\/label>/g) || []).map(s => s.replace(/<[^>]+>/g, ''));
+    const P = label + ': P5-17: ';
+    if (process.env.PIN_DUMP) console.log('PIN_DUMP ' + label + ' ' + JSON.stringify({ idsIn, labels, outside: ids(body.slice(0, at)) }));
+    t.eq(P + 'the review\'s fields: the ids, in order, are those of the page before this card', idsIn, PIN_IDS);
+    t.eq(P + 'the review\'s labels, in order, are those of the page before this card', labels, PIN_LABELS);
+    t.eq(P + 'outside the fields the review has the original and its two controls: the bar was added, nothing else', ids(body.slice(0, at)).slice().sort(), ['rvBig', 'rvHide', 'rvOrig']);
+
+    // A fixed input: what the form sends is identical to what the page before this card sent.
+    const typed = {
+      rdSupplier: 'Fictional Grocer', rvSupplierPick: SP, rdSupplierHst: '123456789 RT 0001', rdInvoice: 'INV-9', rdDate: '2026-11-02', rdPaidHow: 'card', rdCard: '4821', rdSubtotal: '10.00', rdHst: '1.30',
+      rvOtherLabel0: 'Bottle deposit', rvOtherAmount0: '0.10', rvOtherKind0: 'deposit', rvOtherTaxed0: 'no', rvOtherLabel1: 'Fuel fee', rvOtherAmount1: '0.05', rvOtherKind1: '', rvOtherTaxed1: '',
+      rdTotal: '11.45', rdDocKind: 'invoice', rdCurrency: 'usd', rdTaxIncluded: 'no', rdTotalCad: '15.50', rdKind: 'supplies', rdBuyerName: 'Fictional Corner Mart', rdBuyerHst: '987654321 RT 0001', rdBuyerAccount: 'A-12', rdBuyerCard: '4821', rvBusiness: 'vape',
+      rdLineDesc0: 'Milk 2L', rdLineCode0: 'M2', rdLineQty0: '2', rdLinePrice0: '2.50', rdLineTotal0: '5.00', rdLineTaxed0: 'no', rdLineDesc1: 'Bread', rdLineCode1: '', rdLineQty1: '1', rdLinePrice1: '3.00', rdLineTotal1: '3.00', rdLineTaxed1: 'yes',
+    };
+    Object.keys(typed).forEach(k => { f.els[k].value = typed[k]; });
+    const sent = f.fns.receiptReviewInput_(f.fns.receiptState_.review);
+    if (process.env.PIN_DUMP) console.log('PIN_SENT ' + label + ' ' + JSON.stringify(sent));
+    t.eq(P + 'the object the form sends for a fixed input is identical to the page before this card', sent, PIN_SENT);
+
+    // The collapse bar: hides and shows the original without asking for it again; remembered while the review is open.
+    const fetchesBefore = f.fetches.length, madeBefore = f.created.length;
+    const st = f.fns.receiptState_.review;
+    t.ok(P + 'the bar says "Hide the original" and the original is showing', />Hide the original</.test(body) && !/id="rvOrig"[^>]*display:none/.test(body) && /<img alt="Receipt original"/.test(f.els.rvOrig.innerHTML));
+    f.els.rvHide.onclick();
+    t.ok(P + 'Hide: the original and its "large" button are hidden and the bar now says "Show the original"', f.els.rvOrig.style.display === 'none' && f.els.rvBig.style.display === 'none' && f.els.rvHide.textContent === 'Show the original');
+    // A save redraws the review: the choice is remembered, the original is not fetched again.
+    await f.els.rvSave.onclick();
+    await tick();
+    const redrawn = f.sheets[f.sheets.length - 1].bodyHTML;
+    t.ok(P + 'after Save corrections the original is still folded away, the bar says "Show the original"', /id="rvOrig"[^>]*display:none/.test(redrawn) && />Show the original</.test(redrawn) && !/>Hide the original</.test(redrawn) && /id="rvBig"[^>]*display:none/.test(redrawn));
+    f.els.rvHide.onclick();
+    t.ok(P + 'Show: the original is back, the bar says "Hide the original"', f.els.rvOrig.style.display === 'flex' && f.els.rvBig.style.display === '' && f.els.rvHide.textContent === 'Hide the original');
+    t.eq(P + 'hiding and showing asked the server for nothing and made no new URL', [f.fetches.length, f.created.length], [fetchesBefore, madeBefore]);
+    t.ok(P + 'a new review starts with the original showing (the choice belongs to the open review)', await (async () => {
+      f.els.rvHide.onclick();
+      f.els.rvClose.onclick();
+      await f.fns.openReceiptReview_(readItem);
+      await tick();
+      return !/id="rvOrig"[^>]*display:none/.test(f.sheets[f.sheets.length - 1].bodyHTML) && />Hide the original</.test(f.sheets[f.sheets.length - 1].bodyHTML);
+    })());
   })());
 });
 

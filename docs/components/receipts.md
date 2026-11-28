@@ -730,6 +730,24 @@ code.
   already shows a row with no original (no original to open). The confirm
   record requires a supplier, a date and a kind, which the old list must supply.
 
+#### On a phone (card P5-17)
+
+The review is long: the original, then supplier, dates, totals, the four facts
+about the document, the extra charges, the lines and the checks. On a phone
+(560 px and narrower) the spacing between fields is tighter, and *Subtotal*
+and *HST* share a row. Nothing is hidden, removed, reordered or renamed, and
+what the form sends is the same. A thin bar above the original, *Hide the
+original* / *Show the original*, folds the original (and its *Make the original
+large* button) away so the fields have the screen; it is remembered while the
+review is open, survives *Save corrections* and *Back to the review*, and
+unfolding it does not fetch the original again. A new review starts with the
+original showing.
+
+The original shown in a review (or in the large view, or in a book entry) is
+held by that view: the list's redraw and leaving the screen revoke the list's
+thumbnails and never a URL a sheet is still showing; the sheet revokes its own
+when it closes, when *Confirm* succeeds, or when another review opens over it.
+
 ### Every kind of document in one form (card P5-05c)
 
 [ADR-0032](../adr/0032-one-receipt-form-for-every-kind.md). The owner gets "a
@@ -1129,9 +1147,20 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 | `ops/test/businesses.test.ts` | the seven RPCs' roles in the merged contract; the two seeded businesses, blank until typed; every field rule; the HST number normalised and never shared; each kind of sign, normalised; a sign refused at the other business however it is spaced, dashed or cased, also by the database; two admins at once; removal kept and audited; who may; the assistant's `businesses` tool through the SDK client showing the new fields and nothing else |
 | `ops/test/mcp-door.test.ts` | the `businesses` tool's exact keys; the pinned tool list (with `receipt_propose`, card P5-05a) |
 | `ops/test/db-migrate.test.ts`, `ops/test/cutover-tool.test.ts` | the new tables (0010, 0012, 0013) present and skipped by the cutover tools (0014 adds no table) |
+| `tests/suites/ui-card-pad.js` | card P5-17: every `.payroll-card` whose content is placed directly inside it carries `card-pad` (the two Apps Script screens left alone named); the Payroll rules byte for byte; hostile text escaped in the cards touched |
 | `tests/suites/ui-receipts.js` | an assistant's original says *added by <person>'s assistant (<key label>)*, an emailed one its sender and date, all escaped (card P5-12b); both drawer entries `opsOnly` with their roles; per role, what is rendered (an employee: no list of others, no set-aside or business control); the oversize photo refused before any request; the token only in an `Authorization` header, never in a URL, a toast or storage; blob URLs revoked; the built page carries both screens and Apps Script hides them; card P5-05a: the *Read, waiting for review* group between Waiting and Set aside (asked for only when there are some), its headline, the read-only draft per role (blank reads *not on the receipt*, a failed check reads as its sentence, hostile text escaped), an employee's *It has been read.*, *Enter the figures by hand* for admin and manager only, the by-hand sheet sending exactly the fields typed (nothing as 0 or ""), lines added one at a time; card P5-05b: the review and *On the books* offered to admin, manager and payroll admin and not to an employee (*It is on the books.*); the review prefilled from the draft and escaped, its fields, a line added and removed, an other charge, Save sending exactly what was typed (a blank left out, the reader's notes unchanged, the draft, the business and the supplier); the confirm sheet naming the business in words, the sign offers unticked and greyed for a manager (a forced tick not sent), the other business's sign a warning, the spelling ticked, Confirm disabled until a reason of 3 characters when a check failed and while not allowed; an admin's tick sent by its id and the next receipt offered; the books asked for one business at a time with the cursor, totals and rows from the server escaped, voided marked, a receipt read only with what was changed, Void for admin and manager only and its sheet listing what was learnt; by hand goes straight into the review; card P5-16: the *Old purchase list* group with its one sentence above *On the books* for admin, manager and payroll admin and not for an employee, nothing asked of the server until it is opened, *supplier not written*, money with `money()`, a formula-looking note and `<script>` shown as text, the sort-and-link controls for admin and manager only, the spelling sheet sending its key, a new supplier made with the Receipts card's own call, the empty state naming the guide; card P5-05c: the review building the same fields for every kind of document, currency and tax mark (54 sheets), the Canadian amount box shown only for another currency, the by-hand and review sheets sending the facts and a charge's kind and tax mark only when set, the confirm sheet's *how it will count* sentence, escaped, no `$` on any foreign amount (read only, headline, confirm sheet, books row), the totals line's named exclusions, each row's mark, *Add the Canadian amount paid* for admin and manager only and gone once added |
 
 ## History
+
+- **Nov 2026 (card P5-17):** the receipt screens on a phone. The Operations-only
+  screens that put their text straight into a `.payroll-card` (On the books,
+  Emails checked, the old purchase list, Costs, Businesses, Add a receipt) had
+  their first letter cut by the card's rounded corner: those cards now carry
+  one new class, `card-pad`, and the Payroll rules are unchanged. The original
+  in an open review no longer turns into a broken image after *Save
+  corrections*: the redraw of the list behind it had revoked its object URL;
+  a sheet now holds its own. The review is tighter and its original can be
+  folded to a thin bar. No server change.
 
 - **Nov 2026 (card P5-05c):** receipts of every kind in one form: four optional
   facts about the document (what it is, the currency, tax inside the price, the

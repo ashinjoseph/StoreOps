@@ -1926,3 +1926,21 @@ switch for the kind of document and no separate path.
 New: `ops/test/receipt-kinds.test.ts` (34 tests; 33 of them seen failing against
 the code before the change), 58 new assertions in `tests/suites/ui-receipts.js`,
 and thirteen deliberate mutations, each restored byte for byte.
+
+## The receipt screens on a phone (card P5-17)
+
+- **Cards no longer clip their first letter.** On Receipts (On the books,
+  Emails checked, the old purchase list, Add a receipt), Costs and
+  Businesses, the text sat against the card's rounded corner. Those cards take
+  one new class, `card-pad`. The Payroll screen and every screen the Apps Script
+  app shows are unchanged.
+- **The original in a review stays.** After *Save corrections* (or after the
+  list behind the review reloaded) the original turned into a broken image: the
+  list's redraw revoked the address the review was still showing. A sheet now
+  keeps its own and revokes it when it closes.
+- **A shorter review on a phone.** Tighter spacing, *Subtotal* and *HST* on one
+  row, and *Hide the original* / *Show the original* to fold the original to a
+  thin bar. No field, label or check changed, and the form sends the same.
+
+New: `tests/suites/ui-card-pad.js`, and assertions in
+`tests/suites/ui-receipts.js` (all seen failing before the change).
