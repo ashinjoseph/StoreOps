@@ -488,7 +488,7 @@ kept.
 | `hst_plausible`, lines marked | when every line has a total and a taxed/not-taxed mark: HST = rate × the taxed lines, rounded half up to the cent, **within $0.02** either way | taxed 40.00 at 13%, HST 5.22: *HST $5.22 is 13% of the taxed lines ($40.00) = $5.20, within $0.02.* | HST 5.23: *… should be 13% of the taxed lines ($40.00) = $5.20, within $0.02; it is $0.03 more.* |
 | `hst_plausible`, not marked | when there is a subtotal: $0.00 ≤ HST ≤ rate × subtotal **+ $0.02** | subtotal 50.00, HST 6.52 | HST 6.53: *HST $6.53 is more than 13% of the subtotal ($50.00) = $6.50, plus $0.02 for rounding.*; HST −0.01: *HST -$0.01 is less than nothing.* |
 | `date` | a real day written `YYYY-MM-DD`, not after today in Toronto, not before the same day **7 years** ago (29 February: the 28th) | on Nov 27, 2026: 2026-11-27 and 2019-11-27 | 2026-11-28 (*in the future*), 2019-11-26 (*more than 7 years old*), 2026-02-30 (*not a real day*) |
-| `duplicate` | another live reading (a draft or a confirmed receipt of **either** business, of another original, whose original is not set aside) from the same supplier (the same normalised name, or the same matched supplier): the same invoice number (normalised) is a *Duplicate*; with no invoice number on one of the two, the same date and total is a *Possible duplicate*; each names the other draft, its business and its original | another invoice number, another day, a cent different | *Duplicate: invoice INV-77 from … is already on file (draft pr…, vape, receipt original ro…).* |
+| `duplicate` | another live reading (a draft or a confirmed receipt of **either** business, of another original, whose original is not set aside) from the same supplier (the same normalised name, or the same matched supplier): the same invoice number (normalised) is a *Duplicate*; with no invoice number on one of the two, the same date and total is a *Possible duplicate*; each names the other reading (a draft, or a receipt on the books), its business and its original | another invoice number, another day, a cent different | *Duplicate: invoice INV-77 from … is already on file (draft pr…, vape, receipt original ro…).* |
 | `supplier_hst_number` | when printed: nine digits, RT, four digits (spaces and dashes allowed; the Businesses card's `checkHst`) | `123456789 RT 0001` | `12345` |
 | `business` | the decision above | decided, and agreeing with a person if one said | not known, conflict, or disagreeing |
 
@@ -888,6 +888,40 @@ reader to report them as printed and to work nothing out (no conversion, no
 splitting a tax-included price, no sign changed); its answer has them and the
 new checks' words.
 
+### An updated invoice (card P5-18)
+
+A wholesaler sometimes accepts an order, finds items out of stock, and sends
+an **updated invoice** under the same number. The owner (Nov 28): if nothing
+changed, nothing changes; if something did, the new one replaces the old
+([ADR-0033](../adr/0033-an-updated-invoice-replaces-the-one-it-updates.md)).
+
+- **The same file again** (from another email or uploaded twice): it is
+  already on file and no second original is kept; an emailed one is recorded
+  as *Already on file*.
+- **An updated invoice** is a different file: it is read like any receipt.
+  When its business is settled and it has the same supplier and invoice
+  number as a receipt of that business on the books (or a draft of another
+  original), the review offers it as **the update of that receipt**
+  (`confirm.revision`), in words: *This looks like an updated invoice: invoice
+  FW-2001 from … ($113.00) is on the books of …*. On the confirm sheet **It
+  replaces it** is ticked. Confirming then, in one step:
+  1. the old receipt is **voided**, reason *Replaced by an updated invoice
+     (receipt &lt;new id&gt;)*, and its original is **set aside**, reason
+     *Replaced by an updated invoice* (no redo draft is made); an old one that
+     was still a draft has its original set aside instead;
+  2. the update is confirmed, recording `replaces`; the books show it with
+     *Replaces an earlier invoice*;
+  3. the cost history drops the old receipt's lines, then takes the update's.
+- The duplicate the update resolves asks for **no admin and no reason** (it
+  stays in the check results, and is not a failure confirmed with a reason).
+  Any other failed check still needs a reason. Admin and manager may do it.
+- **The same figures** (subtotal, HST and total equal): a copy, not an update.
+  The review says *Set it aside instead*, and replacing is refused.
+- Only the one receipt offered can be replaced; one receipt is replaced at
+  most once; an update of an update replaces the update. Unticking **It
+  replaces it** confirms as before (a duplicate of a receipt on the books
+  still needs an admin and a reason).
+
 ### Archived files (card P5-12c)
 
 The owner's choice (Nov 28): recent receipt files stay at hand, and **after one
@@ -1242,6 +1276,7 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 |---|---|
 | `ops/test/receipt-archive.test.ts` | card P5-12c, against a real database with the in-memory bucket, the RPCs through the real router, the file route's handler with an injected clock and the tools through the SDK client: `isArchived` as a table at its edges (the day before, the day of and the day after the boundary, the hour of the day added, the November and March clock changes, the setting at 1, 30 and 3650, a bad setting reading as 30, an invalid date); the setting's reader; the tile's words; `archived` right for a recent and an archived original in the same list for the inbox, an employee's own list, Set aside, Put back, Change business, the review and a confirmed receipt's view, changing at once with the setting; no storage call to list; the setting on the Settings screen (listed, validated in words, admin only); the file route's headers for a recent original pinned byte for byte and an archived one's with the one cache header, who may unchanged for every role and for no session; the audit row once per person, original and Toronto day (not for a recent file, a refusal or a missing object; one row for opens at the same moment); `receipts_to_read`'s flag, `receipt_original`'s words and data on an archived original, the descriptions, the tool list unchanged; nothing under `ops/src/receipts/` deleting, copying or moving a file |
 | `ops/test/receipt-inbox.test.ts` | through the Worker's own `fetch` with the in-memory bucket: each of the five types kept with the type its bytes say, whatever was sent; the exact signatures; SVG, HTML, zip, GIF, empty, cut-short refused with nothing stored or written; over the limit refused before the body is read, a lying `Content-Length` stopped at its claim, the limit following the setting; byte for byte and the real SHA-256; the same bytes twice (and twice at once on two connections) one object and one row; no `delete` under `src/receipts/`, no key reused, the database role unable to remove or rewrite; set aside and put back leaving the object and hash; who may add, list, view, set aside and change business; a foreign `Origin`; the view's headers for an image and a PDF, no cookie, no CORS, the same 404 for a forbidden and a missing id, no answer without the header; the audit rows; names and notes cleaned and kept out of the key; a failure after the object was stored; no other table moved |
+| `ops/test/receipt-revisions.test.ts` | card P5-18, against a real database through the real router: an updated invoice of a receipt on the books offered and confirmed by a manager (the old voided with the reason, its original set aside, no redo draft, the books counting only the update, the audit rows); of a draft (its original set aside, nothing voided); the same figures a copy and refused; only the offered receipt replaceable (another, another business's, junk); who may; another failed check still needing a reason; an update of an update; the database's unique index, foreign key and final row |
 | `ops/test/receipt-emails.test.ts` | card P5-13: the message id's normal form (a table, and the SQL function agreeing); one email found in both spellings and an original stored before the card; a whole scan over five fictional emails played as the assistant and a second scan that is a no-op; `receipt_email_done` (refusals both ways, again keeps the first-seen time, audit rows, a read key refused, the daily cap); the attachment and print rules, a print that is not a PDF refused at the PUT, the database's checks and grants; hostile subject, sender, attachment name and note; the call record and audit log without email text; nothing under `ops/src/` naming a mail host, library or protocol; `rpcGetReceiptEmails` per role and paging. See [assistants](assistants.md) |
 | `ops/test/mcp-receipts.test.ts` | card P5-12b: an assistant's originals by ticket through the Worker's `fetch` and the tools through the SDK client: the whole flow; byte for byte both ways for the five kinds; the ticket single use, 10 minutes exactly, the same 404 for every refused ticket, one file from two PUTs at once, nowhere stored or answered but once; the page's file rules on this route; who it belongs to and what is recorded; email ids; planted text cleaned; nothing else moved. The refactor of the upload path (`checkLength`, `receiveFile`) is held by `ops/test/receipt-inbox.test.ts`, unchanged |
 | `ops/test/receipt-drafts.test.ts` | card P5-05a, against a real database, the pure functions directly, the tool through the SDK's own client and the RPCs through the real router: money spellings accepted and refused and sums in cents where floats differ; every check at and just past its tolerance with its sentence; a draft with every check failing kept and flagged; only a total; the business decision as a table (each kind, two agreeing, both businesses, nothing, a removed sign, spellings, the paid card, a person's word at upload agreeing and disagreeing, a suggestion deciding nothing); supplier matching, never created; every left-out field NULL; HST 0 checked; duplicates across both businesses, possible duplicates, superseded and set-aside ones not counted; replacing, a person's draft not replaceable, two at once one live, the unique index; each refusal writing nothing; a fuel receipt kept exactly (quantity 41.287, unit price 1.459) through the tool and the by-hand RPC, a fifth decimal refused, nothing computed from quantity × unit price; drafted, `receipts_to_read`, set aside and put back; who may (tool rights, daily cap, RPC roles, planted fields); hostile text cleaned; audit rows; the role's rights; nothing else moved; the setting; the by-hand path and the inbox headline |
@@ -1346,4 +1381,10 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
   assistant try once more (`rpcSettleReceiptEmail`; `tries`, `next`); an
   email whose file was already on file from another email is recorded as
   *already on file* (`same_as`), and nothing changes. Migration 0019.
+- **Nov 2026 (card P5-18, the owner's answer of Nov 28):** an updated invoice
+  (same supplier, invoice number and business) is offered in the review as
+  the update of the receipt on file; confirming it with *It replaces it* voids
+  the old one and sets its original aside in the same step, and records
+  `replaces`. The same figures are a copy, to set aside. Migration 0020;
+  [ADR-0033](../adr/0033-an-updated-invoice-replaces-the-one-it-updates.md).
 

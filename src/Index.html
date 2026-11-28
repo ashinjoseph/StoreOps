@@ -8234,7 +8234,16 @@
     html += '<div class="payroll-rate" style="font-size:13px;margin-bottom:10px">' + esc((d.supplier || {}).listedName || (d.supplier || {}).name || 'no supplier') + ' · ' + esc(d.date || 'no date') + ' · <b>' + esc(receiptAmount_(d.amounts.total, (d.document || {}).currency)) + '</b></div>';
     if (c.counts && c.counts.words) html += '<div id="rvCounts" style="background:#eef2ff;border-radius:6px;padding:8px;margin-bottom:10px;font-size:13px;font-weight:600;color:#1a2540">' + esc(c.counts.words) + '</div>';
     if ((c.missing || []).length) html += '<div style="color:#b91c1c;font-size:12px;font-weight:600;margin-bottom:8px">Settle first: ' + esc(c.missing.join(', ')) + '.</div>';
+    // Card P5-18: an updated invoice of a receipt on file. "It replaces it", ticked by default, confirms it as the update.
+    const rev = c.revision || null;
+    const canReplace = !!(rev && !rev.sameFigures);
+    if (rev) {
+      html += '<div id="rvRevision" style="background:' + (rev.sameFigures ? '#fef3c7' : '#ecfdf5') + ';border-radius:6px;padding:8px;margin-bottom:10px;font-size:12px;color:#1a2540">' + esc(rev.words) +
+        (canReplace ? '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:700;margin-top:6px"><input type="checkbox" id="rvReplace" checked> It replaces it</label>' : '') + '</div>';
+    }
+    html += '<div id="rvWhy">';
     (c.why || []).forEach(w => { html += '<div style="color:#b91c1c;font-size:12px;font-weight:600;margin-bottom:8px">' + esc(w) + '</div>'; });
+    html += '</div>';
     if (offers.offers.length || offers.warnings.length || offers.known.length) {
       html += '<div style="font-size:12px;font-weight:700;margin:10px 0 4px">Signs printed on it</div>';
       offers.offers.forEach((o, i) => {
@@ -8250,8 +8259,8 @@
         : '<div style="font-size:12px;color:' + (sp.belongsTo ? '#b45309' : '#6a6e79') + ';margin:8px 0">' + esc(sp.words) + '</div>';
     }
     if ((c.failed || []).length) {
-      html += '<div style="background:#fef3c7;border-radius:6px;padding:8px;margin:10px 0;color:#92400e;font-size:12px"><b>Failed checks</b>' + c.failed.map(f => '<div style="margin-top:4px">' + esc(f.words) + '</div>').join('') + '</div>';
-      html += '<div class="sheet-field"><label>Why it is right to confirm it anyway (3 to 300 characters)</label><input type="text" id="rvReason" maxlength="300" autocomplete="off"></div>';
+      html += '<div id="rvFailed"><div style="background:#fef3c7;border-radius:6px;padding:8px;margin:10px 0;color:#92400e;font-size:12px"><b>Failed checks</b>' + c.failed.map(f => '<div style="margin-top:4px">' + esc(f.words) + '</div>').join('') + '</div>';
+      html += '<div class="sheet-field"><label>Why it is right to confirm it anyway (3 to 300 characters)</label><input type="text" id="rvReason" maxlength="300" autocomplete="off"></div></div>';
     }
     html += '<div style="font-size:11px;color:#6a6e79">Once confirmed it cannot be changed: a mistake found later is voided and done again.</div>';
     html += '<div id="rvConfirmErr" style="color:#b91c1c;font-size:12px;font-weight:600;min-height:16px;margin-top:8px"></div>';
@@ -8259,12 +8268,18 @@
     st.open = false;
     openSheet({ title: 'Confirm onto the books', subtitle: st.it.fileName || 'Receipt original', bodyHTML: html, actionsHTML });
     const go = $('rvConfirmGo');
+    const replacing = () => canReplace && $('rvReplace').checked === true;
     const ready = () => {
-      const reasonOk = !(c.failed || []).length || String($('rvReason').value || '').trim().length >= 3;
-      go.disabled = !(c.allowed && reasonOk);
+      const needReason = replacing() ? rev.reasonNeeded : (c.failed || []).length > 0;
+      const reasonOk = !needReason || String($('rvReason').value || '').trim().length >= 3;
+      go.disabled = !((replacing() ? rev.allowed : c.allowed) && reasonOk);
+      if (canReplace) $('rvWhy').style.display = replacing() ? 'none' : '';
+      // Replacing resolves the duplicate: with no other failed check there is nothing to explain.
+      if (canReplace && (c.failed || []).length) $('rvFailed').style.display = replacing() && !rev.reasonNeeded ? 'none' : '';
     };
     ready();
     if ((c.failed || []).length) $('rvReason').oninput = ready;
+    if (canReplace) $('rvReplace').onchange = ready;
     $('rvBack').onclick = () => { haptic(); st.open = true; drawReceiptReview_(st); };
     $('sheetClose').onclick = () => { revokeReceiptUrl_(st.url); st.url = null; $('sheetClose').onclick = closeSheet; closeSheet(); };
     go.onclick = async () => {
@@ -8273,7 +8288,8 @@
       $('rvConfirmErr').textContent = '';
       const learnSigns = offers.offers.filter((o, i) => rv.canLearnSigns && $('rvSign' + i).checked === true).map(o => o.id);
       const input = { originalId: st.it.id, draftId: d.id, learnSigns, rememberSpelling: !!(sp && sp.offered && $('rvSpelling').checked === true) };
-      if ((c.failed || []).length) input.reason = $('rvReason').value;
+      if (replacing() ? rev.reasonNeeded : (c.failed || []).length) input.reason = $('rvReason').value;
+      if (replacing()) input.replaces = rev.purchaseId;
       try {
         const r = await call('rpcConfirmReceipt', state.token, input);
         revokeReceiptUrl_(st.url);
@@ -8355,6 +8371,7 @@
   function receiptBooksMark_(x) {
     const c = x.counts || {};
     const mark = (color, words) => '<div class="payroll-rate" data-books-mark="' + esc(c.group) + '" style="color:' + color + ';font-weight:600">' + words + '</div>';
+    if (x.replaces) return mark('#1d4ed8', 'Replaces an earlier invoice (an updated invoice; the earlier one is voided)') + receiptBooksMark_(Object.assign({}, x, { replaces: null }));
     if (c.group === 'credit_note') return mark('#15803d', 'Credit note: counts as ' + esc(money(c.total)));
     if (c.group === 'statement') return mark('#6a6e79', 'Statement: kept on file, not counted');
     if (c.group === 'waiting') return mark('#b45309', 'In ' + esc(x.currency) + ': waiting for its Canadian amount, not counted yet');

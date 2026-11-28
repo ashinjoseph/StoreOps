@@ -751,7 +751,7 @@ export interface DuplicateMatch {
 export function checkDuplicates(f: { supplierName: string | null; invoiceNumber: string | null; date: string | null; total: number; supplierKnown: boolean }, matches: readonly DuplicateMatch[]): CheckResult {
   if (!f.supplierKnown) return result("duplicate", null, "No supplier name to compare with the receipts on file.");
   if (f.invoiceNumber === null && f.date === null) return result("duplicate", null, "No invoice number and no date to compare with the receipts on file.");
-  const where = (m: DuplicateMatch) => `draft ${m.purchaseId}, ${m.business ?? "business not known"}${m.originalId === null ? "" : `, receipt original ${m.originalId}`}`;
+  const where = (m: DuplicateMatch) => `${m.status === "confirmed" ? "on the books as receipt" : "draft"} ${m.purchaseId}, ${m.business ?? "business not known"}${m.originalId === null ? "" : `, receipt original ${m.originalId}`}`;
   const same = matches.find((m) => m.sameInvoice);
   if (same !== undefined) return result("duplicate", false, `Duplicate: invoice ${f.invoiceNumber} from ${f.supplierName ?? same.supplierName ?? "this supplier"} is already on file (${where(same)}).`);
   const possible = matches[0];

@@ -249,3 +249,8 @@ has no cost row, so without it the catch-up could not tell it had been done).
   catch-up for earlier receipts, the **Costs** screen, six RPCs and four
   tables (migration 0016)
   ([ADR-0030](../adr/0030-an-item-is-a-suppliers-own-line.md)).
+- **Nov 2026 (card P5-18):** when an updated invoice replaces a receipt on the
+  books, the old receipt's lines leave the cost history (as for any void)
+  before the update's are taken, so a price is compared with what was there
+  before ([ADR-0033](../adr/0033-an-updated-invoice-replaces-the-one-it-updates.md)).
+

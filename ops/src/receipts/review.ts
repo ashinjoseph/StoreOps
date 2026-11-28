@@ -37,6 +37,7 @@ import { archiveAfterDays, isArchived } from "./archive";
 import { type Business, type SignKind, type SignView, SIGN_KINDS, addSign, checkHst, checkLine, checkNotes, checkSign, describeSign, displayName, isBusiness, normalise, signKey } from "./businesses";
 import * as costs from "./costs";
 import * as drafts from "./drafts";
+import * as originals from "./originals";
 
 export const REVIEW_ROLES: readonly string[] = ["admin", "manager"];
 export const READ_ROLES: readonly string[] = ["admin", "manager", "payroll_admin"];
@@ -443,7 +444,31 @@ export interface ConfirmState {
   adminOnly: boolean;
   /** Card P5-05c: how it will count on the books once confirmed (drafts.countsOnBooks), in words. */
   counts: CountsView;
+  /** Card P5-18: the receipt this reading looks like an updated invoice of, or null. */
+  revision: Revision | null;
 }
+
+/**
+ * Card P5-18. A receipt of the same business with the same supplier and invoice number (on the books, or a
+ * draft of another original): this reading is offered as its updated invoice. Confirming with `replaces`
+ * takes it off the books in the same step. `sameFigures`: subtotal, HST and total all equal, so it is a
+ * copy, not an update, and may not replace it (set it aside instead). `allowed` and `reasonNeeded` say
+ * what confirming WITH replacing needs: the duplicate this resolves no longer asks for an admin or a reason.
+ */
+export interface Revision {
+  purchaseId: string;
+  originalId: string | null;
+  status: "confirmed" | "draft";
+  invoiceNumber: string | null;
+  date: string | null;
+  total: string;
+  sameFigures: boolean;
+  allowed: boolean;
+  reasonNeeded: boolean;
+  words: string;
+}
+
+export const REPLACED_ASIDE_REASON = "Replaced by an updated invoice";
 
 /** A BooksCount as answered: amounts as exact text, and the words. */
 export interface CountsView {
@@ -502,8 +527,77 @@ async function prepare(db: Db, d: drafts.DraftView, actor: Actor, config: Config
   const adminOnly = failed.some((c) => c.check === "duplicate") && checked.duplicates.some((m) => m.sameInvoice && m.status === "confirmed");
   if (adminOnly && actor.role !== "admin") why.push(DUPLICATE_WHY);
   const counts = countsView(d, d.business.key === null ? "the business not chosen yet" : displayName(config, d.business.key), true);
-  const state: ConfirmState = { allowed: missing.length === 0 && why.length === 0, why, missing, checks: checked.checks, failed, reasonNeeded: failed.length > 0, adminOnly, counts };
+  const revision = await revisionOf(db, d, checked, failed, missing, why, config);
+  const state: ConfirmState = { allowed: missing.length === 0 && why.length === 0, why, missing, checks: checked.checks, failed, reasonNeeded: failed.length > 0, adminOnly, counts, revision };
   return { state, checked, offers: await signOffers(db, d, d.business.key), spelling: await spellingOffer(db, d), supplier };
+}
+
+/**
+ * The receipt this reading looks like an updated invoice of (card P5-18), or null. Only a same-invoice
+ * match of the SAME business (the reading's business must be settled); a match on the books is preferred
+ * to a draft. Pure apart from reading the match's own figures.
+ */
+async function revisionOf(db: Db, d: drafts.DraftView, checked: drafts.Checked, failed: readonly drafts.CheckResult[], missing: readonly string[], why: readonly string[], config: Config): Promise<Revision | null> {
+  const business = d.business.key;
+  if (business === null) return null;
+  const same = checked.duplicates.filter((m) => m.sameInvoice && m.business === business && (m.status === "confirmed" || m.status === "draft"));
+  const m = same.find((x) => x.status === "confirmed") ?? same[0];
+  if (m === undefined) return null;
+  const row = await db.one<{ subtotal: string | null; hst: string | null; total: string }>("select subtotal::text, hst::text, total::text from ops.purchase_receipts where purchase_id = $1", [m.purchaseId]);
+  const eq = (a: string | null, b: string | null) => (a === null ? null : drafts.parseMoney(a)) === (b === null ? null : drafts.parseMoney(b));
+  const sameFigures = eq(row.total, d.amounts.total) && eq(row.subtotal, d.amounts.subtotal) && eq(row.hst, d.amounts.hst);
+  // The duplicate this would resolve: every match is the one replaced.
+  const resolved = checked.duplicates.every((x) => x.purchaseId === m.purchaseId);
+  const otherFailed = failed.filter((c) => !(resolved && c.check === "duplicate"));
+  const otherWhy = why.filter((w) => !(resolved && w === DUPLICATE_WHY));
+  const total = drafts.centsText(drafts.parseMoney(row.total) as number);
+  const which = `invoice ${m.invoiceNumber ?? ""} from ${d.supplier.listedName ?? d.supplier.name ?? m.supplierName ?? "this supplier"} (${m.date ?? "no date"}, ${drafts.moneyText(drafts.parseMoney(row.total) as number)})`;
+  const where = m.status === "confirmed" ? `is on the books of ${displayName(config, business)}` : "is waiting for review";
+  const words = sameFigures
+    ? `The same invoice with the same figures, ${which}, ${where}: this is a copy, not an update. Set it aside instead of confirming it.`
+    : m.status === "confirmed"
+      ? `This looks like an updated invoice: ${which} ${where}. Confirming it as an update takes that one off the books (voided and kept on file, its original set aside) and puts this one on, in one step.`
+      : `This looks like an updated invoice: ${which} ${where}. Confirming it as an update sets that one aside and puts this one on the books.`;
+  return {
+    purchaseId: m.purchaseId,
+    originalId: m.originalId,
+    status: m.status as "confirmed" | "draft",
+    invoiceNumber: m.invoiceNumber,
+    date: m.date,
+    total,
+    sameFigures,
+    allowed: !sameFigures && missing.length === 0 && otherWhy.length === 0,
+    reasonNeeded: otherFailed.length > 0,
+    words,
+  };
+}
+
+/** Take the receipt an update replaces off the books, inside the confirm's transaction (card P5-18). */
+async function replaceOld(tx: Tx, rv: Revision, newId: string, actor: Actor, now: Date): Promise<costs.CostSummary | null> {
+  const old = await tx.maybeOne<{ status: string; original_id: string | null; total: string; business: Business | null }>(
+    "select status, original_id, total::text as total, business from ops.purchase_receipts where purchase_id = $1 for update",
+    [rv.purchaseId],
+  );
+  if (old === null || old.status !== rv.status) throw notConfirmed("The receipt it would replace changed since you opened it: open it again.");
+  if (old.status === "confirmed") {
+    const reason = `Replaced by an updated invoice (receipt ${newId}).`;
+    await tx.query("update ops.purchase_receipts set status = 'voided', voided_by = $2, voided_at = $3, void_reason = $4 where purchase_id = $1", [rv.purchaseId, actor.staffId, now, reason]);
+    if (old.original_id !== null) {
+      await tx.query("select 1 from ops.receipt_originals where receipt_id = $1 for update", [old.original_id]);
+      await tx.query("update ops.receipt_originals set status = 'set_aside', set_aside_reason = $2, set_aside_by = $3, set_aside_at = $4 where receipt_id = $1", [old.original_id, REPLACED_ASIDE_REASON, actor.staffId, now]);
+      await audit.write(tx, { actorId: actor.staffId, action: "receipt_original.set_aside", targetType: "receipt_originals", targetId: old.original_id, before: { status: "confirmed" }, after: { status: "set_aside", reason: REPLACED_ASIDE_REASON } }, { now });
+    }
+    await audit.write(
+      tx,
+      { actorId: actor.staffId, action: "receipt.replaced", targetType: "purchase_receipts", targetId: rv.purchaseId, before: { status: "confirmed" }, after: { status: "voided", reason, replacedBy: newId, originalId: old.original_id, total: old.total, business: old.business } },
+      { now },
+    );
+    return costs.unobserveReceipt(tx, rv.purchaseId, actor, now);
+  }
+  // Still a draft of another original: that original is set aside (its draft leaves the live list with it).
+  if (old.original_id !== null) await originals.setAside(tx, { id: old.original_id, aside: true, reason: REPLACED_ASIDE_REASON }, { staffId: actor.staffId, role: actor.role }, now);
+  await audit.write(tx, { actorId: actor.staffId, action: "receipt.replaced", targetType: "purchase_receipts", targetId: rv.purchaseId, before: { status: "draft" }, after: { status: "draft", replacedBy: newId, originalId: old.original_id, total: old.total, business: old.business } }, { now });
+  return null;
 }
 
 // ── The review sheet ──────────────────────────────────────
@@ -692,6 +786,8 @@ export interface ConfirmInput {
   reason?: unknown;
   learnSigns?: unknown;
   rememberSpelling?: unknown;
+  /** Card P5-18: the receipt this one replaces, as offered in `confirm.revision`. */
+  replaces?: unknown;
 }
 
 /** Confirm the live draft of an original: it goes on the books of its business and is final. */
@@ -723,8 +819,16 @@ export async function confirm(tx: Tx, input: ConfirmInput, actor: Actor, config:
   if (p.state.missing.length > 0) throw notConfirmed(`To confirm, settle ${and(p.state.missing)}.`);
   if (p.supplier !== null && !p.supplier.active) throw notConfirmed(`${p.supplier.displayName} is no longer an active supplier: choose another, or make it active again on the supplier list.`);
   if (p.state.why.includes(DRIFT)) throw notConfirmed(DRIFT);
-  if (p.state.adminOnly && actor.role !== "admin") throw notConfirmed("It duplicates a receipt already on the books (the same supplier and invoice number): only an admin can confirm it, with a reason.");
-  const reason = p.state.reasonNeeded ? cleanReason(input.reason, `A check failed: say why it is right to confirm it anyway, in ${REASON_MIN} to ${REASON_MAX} characters.`, notConfirmed) : null;
+  // Card P5-18: confirming as the update of the one offered (and only that one).
+  const rv = p.state.revision;
+  const replacing = input.replaces !== undefined && input.replaces !== null;
+  if (replacing && (rv === null || typeof input.replaces !== "string" || input.replaces !== rv.purchaseId)) {
+    throw notConfirmed("That receipt is not one this invoice can replace: only a receipt of the same business with the same supplier and invoice number is offered as the one it updates.");
+  }
+  if (replacing && rv !== null && rv.sameFigures) throw notConfirmed("It has the same figures as the receipt it would replace: it is a copy, not an update. Set it aside instead.");
+  if (!replacing && p.state.adminOnly && actor.role !== "admin") throw notConfirmed("It duplicates a receipt already on the books (the same supplier and invoice number): only an admin can confirm it, with a reason.");
+  const reasonNeeded = replacing && rv !== null ? rv.reasonNeeded : p.state.reasonNeeded;
+  const reason = reasonNeeded ? cleanReason(input.reason, `A check failed: say why it is right to confirm it anyway, in ${REASON_MIN} to ${REASON_MAX} characters.`, notConfirmed) : null;
   if (learn.length > 0 && actor.role !== "admin") throw notConfirmed("Only an admin can add a sign (as on the Businesses screen): untick it, or ask an admin to confirm.");
   const business = draft.business.key as Business;
   const toLearn = (learn as string[]).map((id) => {
@@ -736,11 +840,16 @@ export async function confirm(tx: Tx, input: ConfirmInput, actor: Actor, config:
 
   const first = (await firstReading(tx, originalId)) as drafts.DraftView;
   const changes = compareReadings(first, draft);
-  const failed = p.state.failed.map((c) => c.check);
+  // Replacing resolves the duplicate it was offered for (every match is the one replaced): that check is
+  // kept in confirm_checks with its words, and is not a failure confirmed with a reason.
+  const resolvedDuplicate = replacing && rv !== null && p.checked.duplicates.every((x) => x.purchaseId === rv.purchaseId);
+  const failed = p.state.failed.map((c) => c.check).filter((c) => !(resolvedDuplicate && c === "duplicate"));
+  // The old one comes off the books first, so the cost history compares the update with what was there before.
+  const replacedCosts = replacing && rv !== null ? await replaceOld(tx, rv, draft.id, actor, now) : null;
   await tx.query(
-    `update ops.purchase_receipts set status = 'confirmed', confirmed_by = $2, confirmed_at = $3, confirm_checks = $4, confirm_failed = $5, confirm_reason = $6, review_changes = $7, compared_with = $8
+    `update ops.purchase_receipts set status = 'confirmed', confirmed_by = $2, confirmed_at = $3, confirm_checks = $4, confirm_failed = $5, confirm_reason = $6, review_changes = $7, compared_with = $8, replaces = $9
       where purchase_id = $1`,
-    [draft.id, actor.staffId, now, JSON.stringify(p.state.checks), failed, reason, JSON.stringify(changes), changes.comparedWith],
+    [draft.id, actor.staffId, now, JSON.stringify(p.state.checks), failed, reason, JSON.stringify(changes), changes.comparedWith, replacing && rv !== null ? rv.purchaseId : null],
   );
   await tx.query("update ops.receipt_originals set status = 'confirmed' where receipt_id = $1", [originalId]);
   const signs: SignView[] = [];
@@ -775,13 +884,19 @@ export async function confirm(tx: Tx, input: ConfirmInput, actor: Actor, config:
         changed: changes.count,
         learntSigns: signs.map((s) => s.id),
         spellingLearnt: spelling,
+        ...(replacing && rv !== null ? { replaces: rv.purchaseId } : {}),
       },
     },
     { now },
   );
+  void replacedCosts;
   const observed = await costs.observeReceipt(tx, draft.id, actor, config, now);
   const next = await tx.maybeOne<{ receipt_id: string }>("select receipt_id from ops.receipt_originals where status = 'drafted' order by added_at, receipt_id limit 1");
-  return { receipt: await receiptDetail(tx, draft.id, config, now), message: `On the books of ${displayName(config, business)}.`, learnt: { signs, spelling }, next: next === null ? null : { originalId: next.receipt_id }, costs: observed };
+  const message =
+    replacing && rv !== null
+      ? `On the books of ${displayName(config, business)}. It replaces invoice ${rv.invoiceNumber ?? ""} (${drafts.moneyText(drafts.parseMoney(rv.total) as number)}), which is ${rv.status === "confirmed" ? "off the books: voided and kept on file" : "set aside"}.`
+      : `On the books of ${displayName(config, business)}.`;
+  return { receipt: await receiptDetail(tx, draft.id, config, now), message, learnt: { signs, spelling }, next: next === null ? null : { originalId: next.receipt_id }, costs: observed };
 }
 
 // ── Voiding (decision 10) ─────────────────────────────────
@@ -877,6 +992,8 @@ export interface BooksRow {
   taxIncluded: boolean | null;
   totalCad: string | null;
   counts: { group: drafts.BooksGroup; total: string | null; subtotal: string | null; hst: string | null };
+  /** Card P5-18: the receipt this one replaced (an updated invoice), or null. */
+  replaces: string | null;
 }
 
 export interface Books {
@@ -988,12 +1105,13 @@ export async function books(db: Db, input: Record<string, unknown>, actor: Actor
     books_total: string | null;
     books_subtotal: string | null;
     books_hst: string | null;
+    replaces: string | null;
   }>(
     `select p.purchase_id, p.original_id, p.status, p.receipt_date, p.invoice_number, s.display_name, p.supplier_id, s.active, p.supplier_name, p.kind,
             p.subtotal::text as subtotal, p.hst::text as hst, p.total::text as total,
             c.name as confirmed_name, p.confirmed_by, p.confirmed_at, p.confirm_reason, coalesce(cardinality(p.confirm_failed), 0) as failed,
             coalesce((p.review_changes->>'count')::int, 0) as changed, v.name as voided_name, p.voided_by, p.voided_at, p.void_reason,
-            p.document_kind, p.currency, p.tax_included, p.total_cad::text as total_cad,
+            p.document_kind, p.currency, p.tax_included, p.total_cad::text as total_cad, p.replaces,
             g.grp, b.total::numeric(14, 2)::text as books_total, b.subtotal::numeric(14, 2)::text as books_subtotal, b.hst::numeric(14, 2)::text as books_hst
        from ops.purchase_receipts p
        ${BOOKS_JOIN_SQL}
@@ -1068,6 +1186,7 @@ export async function books(db: Db, input: Record<string, unknown>, actor: Actor
       taxIncluded: r.tax_included,
       totalCad: r.total_cad,
       counts: { group: r.grp, total: r.books_total, subtotal: r.books_subtotal, hst: r.books_hst },
+      replaces: r.replaces,
     })),
     next: rows.length > limit ? (page[page.length - 1]?.purchase_id ?? null) : null,
     totals: {

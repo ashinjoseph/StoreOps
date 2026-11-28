@@ -2017,3 +2017,23 @@ New tests in `ops/test/receipt-emails.test.ts` (nine) and
 `tests/suites/ui-receipts.js`, written first and seen failing on the previous
 code.
 
+### An updated invoice replaces the one it updates (card P5-18; the owner, Nov 28)
+
+- When a supplier sends an **updated invoice** (same invoice number, items
+  out of stock, a new total), the review recognises it by its supplier,
+  invoice number and business and says which receipt it updates. On the
+  confirm sheet **It replaces it** is ticked: confirming takes the old one
+  off the books in the same step (voided with the reason *Replaced by an
+  updated invoice*, kept on file, its original set aside) and puts the
+  update on. A manager can do it; no reason is asked for the duplicate it
+  resolves, but any other failed check still needs one.
+- **The same figures** again is a copy, not an update: the review says to
+  set it aside, and it cannot replace anything.
+- "On the books" marks a receipt that replaced another. The cost history
+  drops the old invoice's prices before taking the update's.
+- Migration 0020; [ADR-0033](docs/adr/0033-an-updated-invoice-replaces-the-one-it-updates.md).
+
+New: `ops/test/receipt-revisions.test.ts` and new assertions in
+`tests/suites/ui-receipts.js`, written first and seen failing on the previous
+code.
+

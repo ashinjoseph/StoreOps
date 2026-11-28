@@ -99,7 +99,7 @@ hand one out.
 | P5-05c | Receipts of every kind in one form: credit notes, statements, other currencies, tax inside the price, typed extra charges | T3 | P5-05b | money | done |
 | P5-12c | Older receipt files move to cheaper storage; the app says which are archived | T1 | P5-12a | money | done (the storage rule itself is set at the hosted setup) |
 | P5-17 | The receipt screens on a phone: cards with no inner margin clip their text; the original turns into a broken image after "Save corrections" | T1 | P5-05c | - | done |
-| P5-18 | A revised invoice replaces the one it revises; the same invoice sent twice changes nothing | T3 | P5-13, P5-05c | money | in progress |
+| P5-18 | A revised invoice replaces the one it revises; the same invoice sent twice changes nothing | T3 | P5-13, P5-05c | money | done |
 | P5-19 | An email that could not be read is tried once more, then waits for a person | T2 | P5-13 | - | done |
 | P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | done (where "an item" breaks on real receipts, for the owner, in the card) |
 | P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | done (the owner runs the import; things to check in the real file, in the card) |
@@ -1696,6 +1696,21 @@ half of P5-18 came with it: an email whose file was already on file from
 another email is recorded as *already on file* (`same_as`), and nothing
 changes. Migration 0019. Built in the session (the session's model is no
 longer Fable, so by the house rule no sub-agent was used).
+
+**P5-18 · an updated invoice replaces the one it updates · done.** The same
+file again changes nothing (*already on file*, with P5-19). An updated
+invoice (same supplier, invoice number and business) is offered in the
+review as the update of the receipt on file; with **It replaces it** ticked,
+confirming voids the old one (*Replaced by an updated invoice (receipt
+…)*), sets its original aside, and puts the update on the books, in one
+step; a manager may do it, and no reason is asked for the duplicate it
+resolves. The same figures are a copy: set it aside. Seen in a browser at
+phone width on a local fictional database: $113.00 voided, $90.40 counted,
+no page errors. Migration 0020;
+[ADR-0033](../adr/0033-an-updated-invoice-replaces-the-one-it-updates.md).
+**For the owner:** an update is recognised only by the same supplier and
+invoice number; an updated invoice with a new number is two receipts, and
+the old one is voided by hand.
 
 ## Phase 6 — App
 

@@ -125,7 +125,7 @@ export const rpcSaveReceiptCorrection: RpcHandler = async (ctx, input) => {
 export const rpcConfirmReceipt: RpcHandler = async (ctx, input) => {
   const s = caller(ctx, review.REVIEW_ROLES);
   const o = fields(input);
-  return review.confirm(ctx.db, { originalId: o["originalId"], draftId: o["draftId"], reason: o["reason"], learnSigns: o["learnSigns"], rememberSpelling: o["rememberSpelling"] }, actor(s), await ctx.config(), ctx.now);
+  return review.confirm(ctx.db, { originalId: o["originalId"], draftId: o["draftId"], reason: o["reason"], learnSigns: o["learnSigns"], rememberSpelling: o["rememberSpelling"], replaces: o["replaces"] }, actor(s), await ctx.config(), ctx.now);
 };
 
 /** Admin or manager: `{ receiptId, reason }`. */

@@ -28,7 +28,7 @@ go in your password manager and into the place named below, nowhere else.
 2. Run the roles script once in the SQL editor, with three new strong
    passwords (owner, app, read). Password manager first.
 3. In the project's API settings, keep `ops` **out of the exposed schemas**.
-4. The deploy runs the migrations (there are 14 so far) before the app.
+4. The deploy runs the migrations (there are 20 so far) before the app.
 
 To confirm in the rehearsal:
 

@@ -767,6 +767,51 @@ H.uiScripts().forEach(([label, js]) => {
     no.els.rvReason.oninput();
     t.ok(label + ': confirm: not allowed (missing, admin only): the reasons in words and Confirm stays disabled', no.els.rvConfirmGo.disabled === true && /Settle first: the supplier\./.test(no.sheets[no.sheets.length - 1].bodyHTML) && /only an admin can confirm it/.test(no.sheets[no.sheets.length - 1].bodyHTML));
 
+    // Card P5-18: an updated invoice. The review offers the receipt it updates; "It replaces it" is ticked by default and
+    // sends `replaces`; the duplicate it resolves asks for no admin and no reason; unticked, confirming is as before.
+    const DUP = { check: 'duplicate', passed: false, words: 'Duplicate: invoice FW-2001 from Fictional Wholesale is already on file (draft pr…).' };
+    const REV = { purchaseId: 'pr' + '9'.repeat(24), originalId: 'ro' + '9'.repeat(24), status: 'confirmed', invoiceNumber: 'FW-<b>2001</b>', date: '2026-11-20', total: '113.00', sameFigures: false, allowed: true, reasonNeeded: false,
+      words: 'This looks like an updated invoice: invoice FW-<b>2001</b> from Fictional Wholesale (2026-11-20, $113.00) is on the books of Fictional Corner Mart.' };
+    const upd = world({ role: 'manager', answers: { rpcGetReceiptReview: RV({ confirm: { allowed: false, why: ['It duplicates a receipt already on the books: only an admin can confirm it, with a reason.'], missing: [], checks: [DUP], failed: [DUP], reasonNeeded: true, adminOnly: true, revision: REV } }),
+      rpcConfirmReceipt: { message: 'On the books of Fictional Corner Mart. It replaces invoice FW-2001 ($113.00), which is off the books: voided and kept on file.', learnt: { signs: [], spelling: null }, next: null } } });
+    await upd.fns.openReceiptReview_(readItem);
+    upd.fns.openReceiptConfirmSheet_(upd.fns.receiptState_.review);
+    const us = upd.sheets[upd.sheets.length - 1];
+    t.ok(label + ': update: the sheet says which invoice it updates, escaped, with "It replaces it" ticked', us.bodyHTML.indexOf('FW-&lt;b&gt;2001&lt;/b&gt;') !== -1 && us.bodyHTML.indexOf('FW-<b>2001') === -1 && /<input type="checkbox" id="rvReplace" checked>/.test(us.bodyHTML));
+    upd.els.rvReplace.checked = true; // as the browser has it: ticked in the markup
+    upd.els.rvReplace.onchange();
+    t.ok(label + ': update: a manager may confirm it as an update with no reason, and the admin-only words are hidden', upd.els.rvConfirmGo.disabled === false && upd.els.rvWhy.style.display === 'none');
+    t.ok(label + ': update: the duplicate it resolves is not asked about: no failed-checks box, no reason box', upd.els.rvFailed.style.display === 'none');
+    upd.els.rvReplace.checked = false;
+    upd.els.rvReplace.onchange();
+    t.ok(label + ': update: unticked, it is a plain duplicate again: the words come back and Confirm is disabled for a manager', upd.els.rvConfirmGo.disabled === true && upd.els.rvWhy.style.display === '' && upd.els.rvFailed.style.display === '');
+    upd.els.rvReplace.checked = true;
+    upd.els.rvReplace.onchange();
+    await upd.els.rvConfirmGo.onclick();
+    t.eq(label + ': update: it sends what it replaces, and no reason', (upd.calls.find(c => c[0] === 'rpcConfirmReceipt') || [])[1], [TOKEN, { originalId: readItem.id, draftId: RD.id, learnSigns: [], rememberSpelling: false, replaces: REV.purchaseId }]);
+    t.ok(label + ': update: the answer says what it replaced', /It replaces invoice FW-2001/.test(upd.sheets[upd.sheets.length - 1].bodyHTML));
+    // Another check failed too: replacing still needs a reason.
+    const upd2 = world({ role: 'manager', answers: { rpcGetReceiptReview: RV({ confirm: { allowed: false, why: [], missing: [], checks: [DUP].concat(RD.checks), failed: [DUP].concat(RD.checks), reasonNeeded: true, adminOnly: true, revision: Object.assign({}, REV, { reasonNeeded: true }) } }) } });
+    await upd2.fns.openReceiptReview_(readItem);
+    upd2.fns.openReceiptConfirmSheet_(upd2.fns.receiptState_.review);
+    upd2.els.rvReplace.checked = true;
+    upd2.els.rvReplace.onchange();
+    t.ok(label + ': update: with another failed check, Confirm waits for a reason, and the box stays', upd2.els.rvConfirmGo.disabled === true && upd2.els.rvFailed.style.display === '');
+    upd2.els.rvReason.value = 'The till added ten cents';
+    upd2.els.rvReason.oninput();
+    t.ok(label + ': update: and is enabled with one', upd2.els.rvConfirmGo.disabled === false);
+    // The same figures: a copy. No "replaces" box; the words say set it aside.
+    const cp = world({ role: 'admin', answers: { rpcGetReceiptReview: RV({ confirm: { allowed: true, why: [], missing: [], checks: [DUP], failed: [DUP], reasonNeeded: true, adminOnly: true,
+      revision: Object.assign({}, REV, { sameFigures: true, allowed: false, words: 'The same invoice with the same figures, invoice FW-2001 …: this is a copy, not an update. Set it aside instead of confirming it.' }) } }) } });
+    await cp.fns.openReceiptReview_(readItem);
+    cp.fns.openReceiptConfirmSheet_(cp.fns.receiptState_.review);
+    const cps = cp.sheets[cp.sheets.length - 1];
+    t.ok(label + ': update: the same figures: no "It replaces it" box, and the words say it is a copy to set aside', ids(cps.bodyHTML).indexOf('rvReplace') === -1 && /this is a copy, not an update\. Set it aside instead/.test(cps.bodyHTML));
+    // No revision offered: the sheet is as before (no box, nothing sent).
+    t.ok(label + ': update: with no revision there is no box', ids(m.sheets.filter(x => x.title === 'Confirm onto the books')[0].bodyHTML).indexOf('rvReplace') === -1);
+
+    t.ok(label + ': update: a receipt on the books that replaced another says so', /Replaces an earlier invoice/.test(m.fns.receiptBooksMark_({ counts: { group: 'counted' }, replaces: 'pr' + '9'.repeat(24) })) && m.fns.receiptBooksMark_({ counts: { group: 'counted' }, replaces: null }) === '');
+
     // The books: asked for one business at a time; totals and rows from the server, voided marked; void for admin and manager.
     const BOOKS = { business: 'vape', businessName: 'Fictional <i>Vape</i> Co', items: [
       { id: 'pr' + '7'.repeat(24), originalId: ALL.items[0].id, business: 'vape', status: 'confirmed', date: '2026-11-20', invoiceNumber: 'W-<b>1</b>', supplier: 'Fictional <b>Wholesale</b>', supplierId: SP, supplierActive: true, supplierPrinted: null, kind: 'stock', subtotal: '100.00', hst: '13.00', total: '113.00', confirmedBy: 'Daniel Okafor', confirmedAt: '2026-11-27T15:00:00.000Z', reason: null, failedAtConfirm: 0, fieldsChanged: 1, voided: null },

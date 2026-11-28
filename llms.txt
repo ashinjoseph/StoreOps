@@ -80,6 +80,7 @@ Server code is `src/*.gs` (one module object per file, one global scope); the UI
 - [0030. An item is a supplier's own line; a cost is kept only when it is known exactly; a rise is a flag for a person](docs/adr/0030-an-item-is-a-suppliers-own-line.md)
 - [0031. A day worked with no pay rate is "no rate set", not a day at $0](docs/adr/0031-a-day-with-no-rate-is-not-a-day-at-zero.md)
 - [0032. One receipt form for every kind of document: optional facts and checks that adapt](docs/adr/0032-one-receipt-form-for-every-kind.md)
+- [0033. An updated invoice replaces the one it updates, in one step](docs/adr/0033-an-updated-invoice-replaces-the-one-it-updates.md)
 
 ## Guides
 
