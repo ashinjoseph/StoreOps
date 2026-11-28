@@ -99,6 +99,8 @@ hand one out.
 | P5-05c | Receipts of every kind in one form: credit notes, statements, other currencies, tax inside the price, typed extra charges | T3 | P5-05b | money | done |
 | P5-12c | Older receipt files move to cheaper storage; the app says which are archived | T1 | P5-12a | money | done (the storage rule itself is set at the hosted setup) |
 | P5-17 | The receipt screens on a phone: cards with no inner margin clip their text; the original turns into a broken image after "Save corrections" | T1 | P5-05c | - | done |
+| P5-18 | A revised invoice replaces the one it revises; the same invoice sent twice changes nothing | T3 | P5-13, P5-05c | money | in progress |
+| P5-19 | An email that could not be read is tried once more, then waits for a person | T2 | P5-13 | - | in progress |
 | P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | done (where "an item" breaks on real receipts, for the owner, in the card) |
 | P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | done (the owner runs the import; things to check in the real file, in the card) |
 | P6-01 | Installable web app | T2 | P4-05 | | todo |
@@ -1659,6 +1661,30 @@ the audit log once per file per day. No migration.
    the app's number one lower than the rule if that matters.
 2. A manager opening many old receipts at tax time writes one audit row per
    file per day. That is intended; say if it is too much.
+
+### The owner's answers (Nov 28, second round)
+
+- **Where archived receipts go:** every receipt file is in the R2 bucket
+  `storeops-receipts` from the moment it is added. Archiving does not send
+  it anywhere: the storage's own rule moves it to the cheaper class inside
+  the same bucket after 30 days.
+1. **The same invoice by email twice:** if nothing changed, nothing
+   changes. **If something changed, the new one replaces the old**: a
+   wholesaler sometimes accepts an order, finds items out of stock, and
+   sends an updated invoice (P5-18).
+2. **An email that could not be read:** try once more, then wait for a
+   person (P5-19).
+3. **Statements with new charges:** not common. Nothing changes: a
+   statement stays on file and is not counted.
+4. **The live app's clipped cards:** fix them. Done for Suppliers (the
+   only one that clipped; Product Master's rows already had their margin).
+   It reaches the live app when this branch is merged.
+5. **One set of words for a missing rate:** done; "no rate set" everywhere.
+- **For the bookkeeper's questions:** no supplier is outside Canada (the
+  currency fields stay, and should go unused; the question about a foreign
+  supplier's HST does not arise). The retention lock is **seven years**.
+  The files need not be stored in Canada. Still open: is "minus the size of
+  the total" right for every credit note?
 
 ## Phase 6 — App
 

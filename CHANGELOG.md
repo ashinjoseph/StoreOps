@@ -1978,3 +1978,20 @@ behaves like the bank's page.
 New: `ops/test/receipt-archive.test.ts` and archive assertions in
 `tests/suites/ui-receipts.js`, seen failing before the change and with ten
 deliberate mutations, each restored byte for byte.
+
+### One set of words for a missing pay rate, and the Suppliers screen on a phone (the owner, Nov 28)
+
+- Everywhere a pay rate is missing, the app now says **no rate set**: the
+  day-correction sheet (*Rate*, *Current rate*, what the day is worth, the
+  hours preview), the missed-shift preview and the Staff screen's rate box,
+  as Payroll and My Pay already did. On the day-correction sheet a real rate
+  of 0 now reads $0.00/h instead of *none recorded*.
+- **Suppliers** (a screen the live app shows too): each supplier's card has
+  an inner margin, so names are no longer cut at the left edge on a phone.
+  The live app gets this when the branch is merged. Product Master's cards
+  were already padded and are unchanged.
+
+`tests/suites/ui-card-pad.js`, `ui-schedule-corrections.js` and
+`ui-missed-shifts.js` were changed first and seen failing on the previous
+page.
+

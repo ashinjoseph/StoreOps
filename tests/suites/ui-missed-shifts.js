@@ -299,7 +299,7 @@ H.uiScripts().forEach(([label, js]) => {
   {
     const w = world({ role: 'admin', ops: true });
     const text = fn(w, 'missedShiftHoursText_')(answerOf({ attendance: { hoursWorked: 8, rateAtAttendance: null, owed: null } }));
-    t.ok('a day with no pay rate says so in words, not $0.00', text === 'The day is added as worked: 8 hours (no pay rate recorded, so nothing is owed for it yet).');
+    t.ok('a day with no pay rate says so in words, not $0.00', text === 'The day is added as worked: 8 hours (no rate set, so nothing is owed for it yet).');
     const sum = fn(w, 'missedShiftSummaryHTML_')(answerOf({ session: Object.assign(answerOf().session, { expectedCash: null }), notAuthorised: true }));
     t.ok('a blank expected cash is words; a person not authorised for the till is asked about', sum.indexOf('Expected cash:</span> <strong>not worked out') !== -1 && sum.indexOf('Dara Vance is not authorised for the vape till now. Are you sure?') !== -1);
   }

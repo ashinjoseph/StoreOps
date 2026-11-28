@@ -222,7 +222,7 @@ H.uiScripts().forEach(([label, js]) => {
     pending.push(fn(w2, 'openDayCorrection_')('S_005', DAY).then(() => {
       const s = w2.sheets[w2.sheets.length - 1];
       t.ok('a name is escaped', s.title === 'Add a day worked: Eli <Stone>' && s.bodyHTML.indexOf('<Stone>') === -1);
-      t.ok('no rate recorded is said, not $0.00', s.bodyHTML.indexOf('Current rate: no rate recorded') !== -1);
+      t.ok('no rate set is said, not $0.00', s.bodyHTML.indexOf('Current rate: no rate set') !== -1);
       const d = w2.dom();
       t.eq('nothing to prefill from', [d.get('corrStart').value, d.get('corrEnd').value], ['', '']);
       d.get('corrStatus').value = 'cancelled';
@@ -236,7 +236,15 @@ H.uiScripts().forEach(([label, js]) => {
     pending.push(Promise.resolve().then(() => {
       t.eq('a blank owed figure is said in words, never $0.00',
         [owed(0, { status: 'scheduled' }), owed(null, null), owed(null, { status: 'cancelled' }), owed(null, { status: 'worked' }), owed(140.8, { status: 'worked' })],
-        ['$0.00', 'nothing (no day recorded)', 'nothing (did not work)', 'nothing (no hours or no rate recorded)', '$140.80']);
+        ['$0.00', 'nothing (no day recorded)', 'nothing (did not work)', 'nothing (no hours recorded, or no rate set)', '$140.80']);
+    }));
+    // The day's own rate: blank reads "no rate set" (the same words as Payroll and My Pay); a real 0 is $0.00/h.
+    const dayHTML = fn(world({ role: 'admin', ops: true }), 'dayCorrectionHTML_');
+    pending.push(Promise.resolve().then(() => {
+      const withRate = v => dayHTML(Object.assign({}, base, { record: Object.assign({}, base.record, { rateAtAttendance: v }), canCorrect: false, blockedBy: 'x' }));
+      t.ok('a blank day rate reads "Rate: no rate set"', withRate(null).indexOf('Rate: no rate set') !== -1);
+      t.ok('a real 0 day rate reads $0.00/h, never "no rate set"', withRate(0).indexOf('Rate: $0.00/h') !== -1 && withRate(0).indexOf('Rate: no rate set') === -1);
+      t.ok('no screen of this sheet says "recorded" about a rate', ['none recorded', 'no rate recorded'].every(x => withRate(null).indexOf('Rate: ' + x) === -1));
     }));
   }
 

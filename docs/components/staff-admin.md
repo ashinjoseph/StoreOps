@@ -120,7 +120,7 @@ the input changes nothing.
   an employee (*"A manager can add an employee only."*).
 - **Tills:** cstore, vape, both, or none (someone who opens no till), each
   once; stored as the comma list the table uses (`cstore,vape`).
-- **Hourly rate:** blank means *no rate yet* and is stored `NULL`, never 0
+- **Hourly rate:** blank means *no rate set* and is stored `NULL`, never 0
   ([ADR-0004](../adr/0004-blank-is-not-zero.md)); otherwise a plain number from
   0 to 1000 with at most 4 decimals. From a manager, any rate is refused
   (*"Only an admin sets a pay rate."*), and so are an email and notes.
@@ -226,3 +226,5 @@ day in progress and a scheduled day are not touched.
 - **Nov 2026 (card P4-11b):** a person added with no rate has their days shown
   as *no rate set* on Payroll and My Pay until a rate is applied
   ([ADR-0031](../adr/0031-a-day-with-no-rate-is-not-a-day-at-zero.md)).
+- **Nov 2026 (the owner, Nov 28):** the rate box says *blank = no rate set*,
+  the same words every pay screen uses.

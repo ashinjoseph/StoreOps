@@ -173,6 +173,12 @@ state machine and the paid-day guard is on the
 
 ## History
 
+- **Nov 2026 (the owner, Nov 28):** one set of words for a missing pay rate.
+  The day-correction sheet and the missed-shift preview said *none recorded*,
+  *no rate recorded* and *no pay rate recorded*; they now say **no rate set**,
+  as Payroll and My Pay do. The day's own rate on the correction sheet now
+  checks for a blank, so a real rate of 0 reads $0.00/h (it read *none
+  recorded* before).
 - **P4-10 (Operations app):** an admin corrects a past day, or adds a day
   worked, after the fact (`rpcGetAttendanceDay`, `rpcCorrectAttendance`).
 - **P4-11b (Operations app):** a day completed for a person with no rate stores

@@ -2914,7 +2914,7 @@
     if (v !== null && v !== undefined) return money(v);
     if (!rec) return 'nothing (no day recorded)';
     if (rec.status === 'cancelled') return 'nothing (did not work)';
-    return 'nothing (no hours or no rate recorded)';
+    return 'nothing (no hours recorded, or no rate set)';
   }
 
   function dayCorrectionHTML_(d) {
@@ -2926,11 +2926,11 @@
         '<div>Scheduled: ' + (r.scheduledStart ? esc(r.scheduledStart) + '–' + esc(r.scheduledEnd) : 'not scheduled') + '</div>' +
         '<div>Actual: ' + esc(fmtT(r.actualStart)) + ' → ' + esc(fmtT(r.actualEnd)) + '</div>' +
         '<div>Hours: ' + (r.hoursWorked === null ? 'none recorded' : esc(Number(r.hoursWorked).toFixed(2)) + 'h') +
-        ' · Rate: ' + (r.rateAtAttendance ? money(r.rateAtAttendance) + '/h' : 'none recorded') + '</div>';
+        ' · Rate: ' + (r.rateAtAttendance === null || r.rateAtAttendance === undefined || r.rateAtAttendance === '' ? 'no rate set' : money(r.rateAtAttendance) + '/h') + '</div>';
     } else {
       html += '<div>Nothing recorded for this day.</div>';
     }
-    html += '<div>Current rate: ' + (d.currentRate === null ? 'no rate recorded' : money(d.currentRate) + '/h') + '</div>';
+    html += '<div>Current rate: ' + (d.currentRate === null ? 'no rate set' : money(d.currentRate) + '/h') + '</div>';
     html += '<div>Paid against this day: <strong>' + money(d.paid) + '</strong></div>';
     if (d.tillSessions && d.tillSessions.length) {
       html += '<div style="margin-top:6px">Tills that day:</div>';
@@ -2975,7 +2975,7 @@
     const r = d.record;
     const rate = r && r.rateAtAttendance ? r.rateAtAttendance : d.currentRate;
     return 'These times make <strong>' + hours.toFixed(2) + 'h</strong>' +
-      (rate ? ' × ' + money(rate) + '/h = ' + money(Math.round(hours * rate * 100) / 100) : ' (no rate recorded)') + '.';
+      (rate ? ' × ' + money(rate) + '/h = ' + money(Math.round(hours * rate * 100) / 100) : ' (no rate set)') + '.';
   }
 
   async function openDayCorrection_(staffId, date) {
@@ -3409,7 +3409,7 @@
   function missedShiftHoursText_(p) {
     const a = p.attendance || {};
     if (p.attendanceChange === 'left') return esc(p.hoursLeft ? p.hoursLeft.message : 'The day\'s hours were left as they were.');
-    const owed = a.owed === null || a.owed === undefined ? 'no pay rate recorded, so nothing is owed for it yet' : money(a.owed) + ' owed';
+    const owed = a.owed === null || a.owed === undefined ? 'no rate set, so nothing is owed for it yet' : money(a.owed) + ' owed';
     return (p.attendanceChange === 'created' ? 'The day is added as worked: ' : 'The scheduled day becomes worked: ') +
       esc(String(a.hoursWorked)) + ' hours (' + owed + ').';
   }
@@ -4282,7 +4282,7 @@
       if (inCat.length === 0) return;
       html += '<div class="mypay-section-title">' + esc(cat) + '</div>';
       inCat.forEach(s => {
-        html += '<div class="payroll-card">' +
+        html += '<div class="payroll-card card-pad">' +
           '<div class="payroll-name">' + esc(s.name) + '</div>' +
           (s.products ? '<div style="font-size:12px; color:#4a4e59; margin-top:4px; line-height:1.5">' + esc(s.products) + '</div>' : '') +
           (s.contact ? '<div style="font-size:12px; color:#1a4ca1; margin-top:4px">' + esc(s.contact) + '</div>' : '') +
@@ -6088,7 +6088,7 @@
       '<label style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;font-weight:500"><input type="checkbox" data-staff-till="' + t[0] + '"' + ((p.companies || []).indexOf(t[0]) >= 0 ? ' checked' : '') + ' style="width:auto"> ' + esc(t[1]) + '</label>').join(''));
     if (isAdmin) {
       const rate = p.hourlyRate === null || p.hourlyRate === undefined ? '' : String(p.hourlyRate);
-      html += field('Hourly rate (blank = no rate yet)', '<input type="number" step="0.01" min="0" inputmode="decimal" id="staffRate" value="' + esc(rate) + '" placeholder="no rate set">');
+      html += field('Hourly rate (blank = no rate set)', '<input type="number" step="0.01" min="0" inputmode="decimal" id="staffRate" value="' + esc(rate) + '" placeholder="no rate set">');
       if (person) {
         html += '<div class="sheet-field" id="staffApplyWrap" style="display:none"><label>Also apply to unpaid days from (optional)</label>' +
           '<input type="date" id="staffApplyFrom" value=""><div id="staffPreview" style="font-size:12px;color:#4a4e59;margin-top:6px"></div></div>';

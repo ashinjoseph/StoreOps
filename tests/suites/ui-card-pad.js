@@ -25,8 +25,9 @@ const PAYROLL_RULES = [
   '  .payroll-card-head {\n    padding: 13px 16px;\n    display: flex; align-items: center; justify-content: space-between;\n    border-bottom: 1px solid #f0f1f5;\n  }\n',
   '  .payroll-body { padding: 10px 16px; }\n',
 ];
-// Screens the live Apps Script app shows, which must look exactly as before: they are left alone.
-const UNCHANGED_SCREENS = ['renderProductsTab', 'renderSuppliersTab'];
+// Every directly filled card now carries the class, the live app's Suppliers screen included (the owner, Nov 28).
+// Product Master's card wraps its content in rows that carry their own padding, so it counts as wrapped.
+const UNCHANGED_SCREENS = [];
 
 const src = fs.readFileSync(path.join(H.SRC, 'Index.html'), 'utf8');
 
@@ -43,7 +44,7 @@ function uses(js) {
     const after = js.slice(m.index + m[0].length);
     const tagEnd = after.indexOf('>');
     const next = after.slice(tagEnd + 1, tagEnd + 120);
-    const wrapped = /^[^<]*<div class="payroll-card-(head|body)/.test(next);
+    const wrapped = /^[^<]*<div class="(payroll-card-(head|body)|product-row-head)/.test(next);
     const before = js.slice(0, m.index);
     const at = Math.max(before.lastIndexOf('\n  function '), before.lastIndexOf('\n  async function '));
     const fn = (/function ([A-Za-z0-9_]+)\(/.exec(before.slice(at)) || [])[1];
@@ -58,9 +59,11 @@ H.uiScripts().forEach(([label, js]) => {
   t.ok(label + ': the page has its cards', all.length === 26);
   const direct = all.filter(u => !u.wrapped);
   const bare = direct.filter(u => !/\bcard-pad\b/.test(u.extra));
-  t.eq(label + ': every directly filled card carries card-pad, but the two Apps Script screens left alone', bare.map(u => u.fn).sort(), UNCHANGED_SCREENS);
+  t.eq(label + ': every directly filled card carries card-pad', bare.map(u => u.fn).sort(), UNCHANGED_SCREENS);
   t.eq(label + ': a card wrapped in head/body never has card-pad (no doubled margin)', all.filter(u => u.wrapped && /card-pad/.test(u.extra)).length, 0);
-  t.eq(label + ': thirteen cards got the class', direct.length - bare.length, 13);
+  t.eq(label + ': fourteen cards carry the class', direct.length - bare.length, 14);
+  t.ok(label + ': the Suppliers card carries it', all.some(u => u.fn === 'renderSuppliersTab' && /\bcard-pad\b/.test(u.extra)));
+  t.ok(label + ': the Product Master card is wrapped (its rows are padded) and has no card-pad', all.filter(u => u.fn === 'renderProductsTab').every(u => u.wrapped && !/card-pad/.test(u.extra)));
   t.ok(label + ': no "<?" anywhere in the page script', js.indexOf('<?') === -1);
 
   // Hostile text is still escaped in the touched cards that can be drawn on their own.
