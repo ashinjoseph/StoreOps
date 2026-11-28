@@ -105,7 +105,8 @@ function streamOf(chunks: Uint8Array[]): { stream: ReadableStream<Uint8Array>; p
 const env = (): Record<string, unknown> => ({ OPS_DB_APP_URL: w.testDb.appUrl, PIN_PEPPER: "x", RECEIPTS: w.bucket });
 
 type Client = Awaited<ReturnType<typeof sdkClient>>;
-const EMAIL = (n: number | string = 1) => ({ message_id: `<fictional-${n}@mail.example-corner-supply.test>`, from: "Fictional Corner Supply <billing@example-corner-supply.test>", date: "Thu, 26 Nov 2026 09:14:00 -0500" });
+// Since card P5-13 an emailed file says which attachment it is (or that it is a print of the email).
+const EMAIL = (n: number | string = 1) => ({ message_id: `<fictional-${n}@mail.example-corner-supply.test>`, from: "Fictional Corner Supply <billing@example-corner-supply.test>", date: "Thu, 26 Nov 2026 09:14:00 -0500", attachment: { name: `invoice-${n}.pdf`, position: 1 } });
 
 async function startUpload(client: Client, args: Record<string, unknown> = { source: "assistant" }): Promise<{ url: string; ticket: string; ticketId: string; data: any; result: any }> {
   // One millisecond on, so tickets asked one after the other are newest-first in a fixed order.
@@ -194,7 +195,7 @@ describe("the whole flow", () => {
     expect(list.waiting).toBe(3);
     expect(list.receipts.map((r: any) => r.id)).toEqual([ids["jpeg"], ids["pdf"], ids["heic"]]);
     expect(Object.keys(list.receipts[0]).sort()).toEqual(["added_at", "business", "email", "file_name", "id", "note", "size", "source", "type"]);
-    expect(list.receipts[1].email).toEqual({ from: EMAIL(1).from, date: "2026-11-26T14:14:00.000Z" });
+    expect(list.receipts[1].email).toEqual({ from: EMAIL(1).from, date: "2026-11-26T14:14:00.000Z", attachment: { name: "invoice-1.pdf", position: 1 } });
     expect(list.receipts[0].email).toBeNull();
     expect(list.next).toBeNull();
 
@@ -642,6 +643,8 @@ describe("receipt_original", () => {
       receipt_original: { id },
       receipt_upload_start: { source: "assistant" },
       receipts_from_email: { message_ids: ["<a@example.test>"] },
+      // card P5-13
+      receipt_email_done: { message_id: "<a@example.test>", from: "Fictional Corner Supply <billing@example-corner-supply.test>", date: "2026-11-26T09:14:00-05:00", outcome: "nothing_to_file" },
       // card P5-05a
       receipt_propose: { original_id: id, amounts: { total: "1.00" } },
     };
@@ -680,7 +683,7 @@ describe("email", () => {
     const bad: Array<[Record<string, unknown>, RegExp]> = [
       [{ source: "email" }, /email: required/],
       [{ source: "assistant", email: EMAIL() }, /email: only for source email/],
-      [{ source: "email", email: { ...EMAIL(), message_id: "<a\u0000b@example.test>" } }, /email\.message_id: at most 300/],
+      [{ source: "email", email: { ...EMAIL(), message_id: "<a\u0000b@example.test>" } }, /email\.message_id: .*at most 300/],
       [{ source: "email", email: { ...EMAIL(), message_id: "<a\nb@example.test>" } }, /email\.message_id/],
       [{ source: "email", email: { ...EMAIL(), message_id: "x".repeat(5000) } }, /email\.message_id/],
       [{ source: "email", email: { ...EMAIL(), message_id: "   " } }, /email\.message_id/],
@@ -714,13 +717,16 @@ describe("email", () => {
     const r = await put((await startUpload(client, { source: "email", email: EMAIL("filed") })).url, FILES.pdf());
     const open = await startUpload(client, { source: "email", email: EMAIL("open") });
     const ask = async (ids: string[]) => (jsonOf(await client.callTool({ name: "receipts_from_email", arguments: { message_ids: ids } })) as any).results;
+    // Since card P5-13 an id is compared in one normal form (receipts/emails.ts messageKey): surrounding white
+    // space and one pair of angle brackets are not part of it; case and inner spaces are. The same email is answered once.
     const res = await ask([filed, EMAIL("open").message_id, "<never@example.test>", `  ${filed}  `, filed.toUpperCase(), filed.replace("@", " @"), filed.slice(1, -1)]);
-    expect(res[0]).toEqual({ message_id: filed, on_file: true, originals: [{ id: r.body.result.id, added_at: expect.any(String), status: "waiting" }], open_tickets: [] });
-    expect(res[1]).toEqual({ message_id: EMAIL("open").message_id, on_file: false, originals: [], open_tickets: [{ id: open.ticketId, expires_at: open.data.upload.expires_at }] });
+    const mine = { id: r.body.result.id, added_at: expect.any(String), status: "waiting", attachment: { name: "invoice-filed.pdf", position: 1 }, print: false };
+    expect(res[0]).toEqual({ message_id: filed.slice(1, -1), recorded: null, on_file: true, originals: [mine], open_tickets: [] });
+    expect(res[1]).toEqual({ message_id: EMAIL("open").message_id.slice(1, -1), recorded: null, on_file: false, originals: [], open_tickets: [{ id: open.ticketId, expires_at: open.data.upload.expires_at, attachment: { name: "invoice-open.pdf", position: 1 }, print: false }] });
     expect(res[2]).toMatchObject({ on_file: false, originals: [], open_tickets: [] });
-    // Surrounding spaces are trimmed, so it is the same id as the first (and answered once).
-    expect(res.map((x: any) => x.message_id)).toEqual([filed, EMAIL("open").message_id, "<never@example.test>", filed.toUpperCase(), filed.replace("@", " @"), filed.slice(1, -1)]);
-    for (const x of res.slice(3)) expect(x.on_file, x.message_id).toBe(false);
+    expect(res.map((x: any) => x.message_id)).toEqual([filed.slice(1, -1), EMAIL("open").message_id.slice(1, -1), "never@example.test", filed.toUpperCase().slice(1, -1), filed.replace("@", " @").slice(1, -1)]);
+    expect(res[3].on_file, "upper case is another id").toBe(false);
+    expect(res[4].on_file, "an inner space is another id").toBe(false);
     // A spent ticket is no longer open.
     await put(open.url, FILES.png());
     expect((await ask([EMAIL("open").message_id]))[0]).toMatchObject({ on_file: true, open_tickets: [] });
@@ -752,7 +758,7 @@ describe("everything an assistant supplies is data", () => {
     const note = "line one\nline two\u2028<script>alert(1)</script> " + INJECT + " " + "z".repeat(4000);
     const sender = "‮Fictional <b>Supply</b> " + INJECT;
     const messageId = "<⁦inj@example.test⁩><script>" + "a".repeat(10);
-    const t = await startUpload(client, { source: "email", email: { message_id: messageId, from: sender, date: "2026-11-26T09:14:00-05:00" }, file_name: fileName, note });
+    const t = await startUpload(client, { source: "email", email: { message_id: messageId, from: sender, date: "2026-11-26T09:14:00-05:00", attachment: { name: "invoice.pdf", position: 1 } }, file_name: fileName, note });
     const r = await put(t.url, FILES.pdf());
     expect(r.status).toBe(201);
     const [row] = await originalRows();

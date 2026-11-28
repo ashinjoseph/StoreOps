@@ -24,13 +24,15 @@ import type { Tx } from "../db/tx";
 import * as audit from "../lib/audit";
 import { formatDateTime } from "../lib/dates";
 import { type Business, isBusiness } from "./businesses";
-import { cleanFileName, cleanNote } from "./originals";
+import { cleanFileName, cleanLine, cleanNote } from "./originals";
 
 export const TICKET_PREFIX = "/files/receipt-original/by-ticket/";
 export const TICKET_MINUTES = 10;
 export const TICKET_MS = TICKET_MINUTES * 60_000;
 export const MESSAGE_ID_MAX = 300;
 export const SENDER_MAX = 200;
+export const SUBJECT_MAX = 200;
+export const POSITION_MAX = 999;
 /** Tool name in ops.assistant_calls for a PUT to the ticket route (never the ticket or the file). */
 export const PUT_RECORD_NAME = "upload_by_ticket";
 
@@ -42,12 +44,12 @@ const DUMMY_ID = "rt000000000000000000000000";
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 /** Direction embeddings, overrides and isolates: removed from a message id or a sender. */
-const BIDI = /[‪-‮⁦-⁩]/g;
+const BIDI = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 
 export type TicketSource = "assistant" | "email";
 export type Outcome = "waiting" | "kept" | "duplicate" | "refused" | "expired";
 /** Why a spent ticket's file was refused. `interrupted`: set when the ticket is spent, replaced once the PUT finishes. */
-export type FileRefusal = "not_accepted" | "empty" | "too_long" | "incomplete" | "interrupted";
+export type FileRefusal = "not_accepted" | "not_a_pdf" | "empty" | "too_long" | "incomplete" | "interrupted";
 
 const hex = (b: Uint8Array): string => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 function base64url(bytes: Uint8Array): string {
@@ -122,9 +124,26 @@ export function parseEmailDate(raw: unknown): Date | null {
 export interface AskInput {
   business?: Business | null | undefined;
   source: TicketSource;
-  email?: { message_id: string; from: string; date: string } | undefined;
+  email?: EmailInput | undefined;
   file_name?: string | undefined;
   note?: string | undefined;
+}
+
+/** What an assistant declares about an emailed file: exactly one of `attachment` and `print` (card P5-13). */
+export interface EmailInput {
+  message_id: string;
+  from: string;
+  date: string;
+  subject?: string | undefined;
+  attachment?: { name: string; position: number } | undefined;
+  print?: true | undefined;
+}
+
+/** The attachment an emailed file was, or that it is a PDF print of the email's own text. */
+export interface EmailPart {
+  subject: string | null;
+  attachment: { name: string; position: number } | null;
+  print: boolean;
 }
 
 export interface Asker {
@@ -138,7 +157,33 @@ export interface Asked {
   ticket: string;
   askedAt: Date;
   expiresAt: Date;
-  declared: { business: Business | null; source: TicketSource; email: { message_id: string; from: string; date: string } | null; file_name: string | null; note: string | null };
+  declared: {
+    business: Business | null;
+    source: TicketSource;
+    email: { message_id: string; from: string; date: string; subject: string | null; attachment: { name: string; position: number } | null; print: boolean } | null;
+    file_name: string | null;
+    note: string | null;
+  };
+}
+
+/**
+ * The subject, and which part of the email the file is: exactly one of an attachment (its name as the email
+ * gives it, cleaned, and its position, 1 to 999) and the mark that it is a print of the email itself. null
+ * when neither or both are given, the position is not a whole number in range, or the name is empty once
+ * cleaned. The subject is text an email's author wrote: one line, capped, never obeyed.
+ */
+export function emailPart(email: { subject?: unknown; attachment?: unknown; print?: unknown } | undefined): EmailPart | null {
+  if (email === undefined) return null;
+  const print = email.print === true;
+  const given = email.attachment !== undefined && email.attachment !== null;
+  if (email.print !== undefined && email.print !== true) return null;
+  if (print === given) return null;
+  const subject = cleanLine(email.subject, SUBJECT_MAX);
+  if (print) return { subject, attachment: null, print: true };
+  const a = email.attachment as { name?: unknown; position?: unknown };
+  const name = cleanFileName(a.name);
+  if (name === null || typeof a.position !== "number" || !Number.isInteger(a.position) || a.position < 1 || a.position > POSITION_MAX) return null;
+  return { subject, attachment: { name, position: a.position }, print: false };
 }
 
 /**
@@ -148,13 +193,15 @@ export interface Asked {
  */
 export async function ask(tx: Tx, input: AskInput, asker: Asker, now: Date): Promise<Asked> {
   const business: Business | null = isBusiness(input.business) ? input.business : null;
-  let email: { messageId: string; sender: string; date: Date } | null = null;
+  let email: ({ messageId: string; sender: string; date: Date } & EmailPart) | null = null;
   if (input.source === "email") {
     const messageId = cleanEmailText(input.email?.message_id, MESSAGE_ID_MAX);
     const sender = cleanEmailText(input.email?.from, SENDER_MAX);
     const date = parseEmailDate(input.email?.date);
     if (messageId === null || sender === null || date === null) throw new TypeError("the email's message id, sender and date did not pass the tool's schema");
-    email = { messageId, sender, date };
+    const part = emailPart(input.email);
+    if (part === null) throw new TypeError("an emailed file is exactly one of an attachment and a print of the email");
+    email = { messageId, sender, date, ...part };
   }
   const fileName = cleanFileName(input.file_name);
   const note = cleanNote(input.note);
@@ -162,9 +209,11 @@ export async function ask(tx: Tx, input: AskInput, asker: Asker, now: Date): Pro
   const { ticketId, ticket } = newTicket();
   const expiresAt = new Date(now.getTime() + TICKET_MS);
   await tx.query(
-    `insert into ops.receipt_upload_tickets (ticket_id, ticket_hash, key_id, staff_id, business, source, email_message_id, email_sender, email_date, file_name, note, asked_at, expires_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-    [ticketId, await hashTicket(ticket), asker.keyId, asker.staffId, business, input.source, email?.messageId ?? null, email?.sender ?? null, email?.date ?? null, fileName, note, now, expiresAt],
+    `insert into ops.receipt_upload_tickets (ticket_id, ticket_hash, key_id, staff_id, business, source, email_message_id, email_sender, email_date, file_name, note, asked_at, expires_at,
+                                             email_subject, email_attachment_name, email_attachment_position, email_print)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+    [ticketId, await hashTicket(ticket), asker.keyId, asker.staffId, business, input.source, email?.messageId ?? null, email?.sender ?? null, email?.date ?? null, fileName, note, now, expiresAt,
+      email?.subject ?? null, email?.attachment?.name ?? null, email?.attachment?.position ?? null, email?.print ? true : null],
   );
   await audit.write(
     tx,
@@ -182,7 +231,13 @@ export async function ask(tx: Tx, input: AskInput, asker: Asker, now: Date): Pro
     ticket,
     askedAt: now,
     expiresAt,
-    declared: { business, source: input.source, email: email === null ? null : { message_id: email.messageId, from: email.sender, date: email.date.toISOString() }, file_name: fileName, note },
+    declared: {
+      business,
+      source: input.source,
+      email: email === null ? null : { message_id: email.messageId, from: email.sender, date: email.date.toISOString(), subject: email.subject, attachment: email.attachment, print: email.print },
+      file_name: fileName,
+      note,
+    },
   };
 }
 
@@ -199,7 +254,7 @@ export interface LiveTicket {
   staffId: string;
   business: Business | null;
   source: TicketSource;
-  email: { messageId: string; sender: string; date: Date } | null;
+  email: ({ messageId: string; sender: string; date: Date } & EmailPart) | null;
   fileName: string | null;
   note: string | null;
 }
@@ -216,6 +271,10 @@ interface TicketRow {
   email_message_id: string | null;
   email_sender: string | null;
   email_date: Date | null;
+  email_subject: string | null;
+  email_attachment_name: string | null;
+  email_attachment_position: number | null;
+  email_print: boolean | null;
   file_name: string | null;
   note: string | null;
   expires_at: Date;
@@ -239,7 +298,7 @@ export function ticketFromPath(pathname: string): string | null {
 export async function lockForPut(tx: Tx, presented: string | null, now: Date): Promise<{ ok: true; ticket: LiveTicket } | { ok: false; reason: TicketRefusal; keyId: string | null }> {
   const hash = await hashTicket(presented ?? DUMMY_TICKET);
   const row = await tx.maybeOne<TicketRow>(
-    `select t.ticket_id, t.key_id, t.staff_id, t.business, t.source, t.email_message_id, t.email_sender, t.email_date, t.file_name, t.note,
+    `select t.ticket_id, t.key_id, t.staff_id, t.business, t.source, t.email_message_id, t.email_sender, t.email_date, t.email_subject, t.email_attachment_name, t.email_attachment_position, t.email_print, t.file_name, t.note,
             t.expires_at, t.outcome, k.withdrawn_at as key_withdrawn_at, k.expires_at as key_expires_at, s.active
        from ops.receipt_upload_tickets t
        join ops.assistant_keys k on k.key_id = t.key_id
@@ -266,7 +325,17 @@ export async function lockForPut(tx: Tx, presented: string | null, now: Date): P
       staffId: found.staff_id.trim(),
       business: found.business,
       source: found.source,
-      email: found.email_message_id === null || found.email_sender === null || found.email_date === null ? null : { messageId: found.email_message_id, sender: found.email_sender, date: found.email_date },
+      email:
+        found.email_message_id === null || found.email_sender === null || found.email_date === null
+          ? null
+          : {
+              messageId: found.email_message_id,
+              sender: found.email_sender,
+              date: found.email_date,
+              subject: found.email_subject,
+              attachment: found.email_attachment_name === null || found.email_attachment_position === null ? null : { name: found.email_attachment_name, position: found.email_attachment_position },
+              print: found.email_print === true,
+            },
       fileName: found.file_name,
       note: found.note,
     },
@@ -302,6 +371,7 @@ export interface ProposalView {
 
 const REFUSAL_WORDS: Readonly<Record<string, string>> = {
   not_accepted: "The file was refused: it is not a photo or a PDF the app can keep (JPEG, PNG, WebP, HEIC or PDF). Nothing was stored.",
+  not_a_pdf: "The file was refused: this address was for a print of the email, which must be a PDF, and the file is not one. Nothing was stored.",
   empty: "The file was refused: it was empty. Nothing was stored.",
   too_long: "The file was refused: more bytes arrived than its stated size (Content-Length). Nothing was stored.",
   incomplete: "The file was refused: it arrived incomplete. Nothing was stored.",
@@ -351,24 +421,46 @@ export async function proposals(db: Db, keyId: string, now: Date, opts: { status
   return rows.map((r) => proposalOf(r, now));
 }
 
-/** For each cleaned message id: the originals filed from it, and the tickets for it still open (any key). */
-export async function byMessageIds(
-  db: Db,
-  messageIds: readonly string[],
-  now: Date,
-): Promise<Map<string, { originals: Array<{ id: string; added_at: string; status: string }>; open_tickets: Array<{ id: string; expires_at: string }> }>> {
-  const out = new Map<string, { originals: Array<{ id: string; added_at: string; status: string }>; open_tickets: Array<{ id: string; expires_at: string }> }>();
-  for (const m of messageIds) out.set(m, { originals: [], open_tickets: [] });
+export interface OriginalFromEmail {
+  id: string;
+  added_at: string;
+  status: string;
+  attachment: { name: string; position: number } | null;
+  print: boolean;
+}
+export interface OpenTicketForEmail {
+  id: string;
+  expires_at: string;
+  attachment: { name: string; position: number } | null;
+  print: boolean;
+}
+
+/**
+ * For each message id in NORMAL FORM (emails.messageKey): the originals filed from it and the tickets for it
+ * still open (any key), each with the attachment it is or the mark that it is a print. Rows are matched on
+ * ops.message_key(email_message_id), so an id stored with its angle brackets, or without, is the same email;
+ * no stored text is rewritten.
+ */
+export async function byMessageIds(db: Db, keys: readonly string[], now: Date): Promise<Map<string, { originals: OriginalFromEmail[]; open_tickets: OpenTicketForEmail[] }>> {
+  const out = new Map<string, { originals: OriginalFromEmail[]; open_tickets: OpenTicketForEmail[] }>();
+  for (const m of keys) out.set(m, { originals: [], open_tickets: [] });
   const ids = [...out.keys()];
-  const found = await db.query<{ email_message_id: string; receipt_id: string; added_at: Date; status: string }>(
-    "select email_message_id, receipt_id, added_at, status from ops.receipt_originals where email_message_id = any($1::text[]) order by added_at, receipt_id",
+  const part = (name: string | null, position: number | null) => (name === null || position === null ? null : { name, position });
+  const found = await db.query<{ k: string; receipt_id: string; added_at: Date; status: string; email_attachment_name: string | null; email_attachment_position: number | null; email_print: boolean | null }>(
+    `select ops.message_key(email_message_id) as k, receipt_id, added_at, status, email_attachment_name, email_attachment_position, email_print
+       from ops.receipt_originals
+      where email_message_id is not null and ops.message_key(email_message_id) = any($1::text[])
+      order by added_at, receipt_id`,
     [ids],
   );
-  for (const r of found) out.get(r.email_message_id)?.originals.push({ id: r.receipt_id, added_at: r.added_at.toISOString(), status: r.status });
-  const open = await db.query<{ email_message_id: string; ticket_id: string; expires_at: Date }>(
-    "select email_message_id, ticket_id, expires_at from ops.receipt_upload_tickets where email_message_id = any($1::text[]) and outcome = 'waiting' and expires_at > $2 order by asked_at, ticket_id",
+  for (const r of found) out.get(r.k)?.originals.push({ id: r.receipt_id, added_at: r.added_at.toISOString(), status: r.status, attachment: part(r.email_attachment_name, r.email_attachment_position), print: r.email_print === true });
+  const open = await db.query<{ k: string; ticket_id: string; expires_at: Date; email_attachment_name: string | null; email_attachment_position: number | null; email_print: boolean | null }>(
+    `select ops.message_key(email_message_id) as k, ticket_id, expires_at, email_attachment_name, email_attachment_position, email_print
+       from ops.receipt_upload_tickets
+      where email_message_id is not null and ops.message_key(email_message_id) = any($1::text[]) and outcome = 'waiting' and expires_at > $2
+      order by asked_at, ticket_id`,
     [ids, now],
   );
-  for (const r of open) out.get(r.email_message_id)?.open_tickets.push({ id: r.ticket_id, expires_at: r.expires_at.toISOString() });
+  for (const r of open) out.get(r.k)?.open_tickets.push({ id: r.ticket_id, expires_at: r.expires_at.toISOString(), attachment: part(r.email_attachment_name, r.email_attachment_position), print: r.email_print === true });
   return out;
 }

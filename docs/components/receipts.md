@@ -42,6 +42,22 @@ history and never among the receipts, has its own section,
   from an email also shows its sender and date, as text: *from Fictional
   Corner Supply <billing@…>, sent Nov 26, 09:14 a.m.* Everything else on the
   row is as for a person's upload.
+- **An emailed original says which part of the email it is** (card P5-13): its
+  subject, and either *Attachment 2 of the email: packing-slip.png* or, for an
+  invoice that was only the email's own text, **A print of the email itself,
+  made by the assistant: not the original message.** The same lines are in the
+  large view, and the review repeats the print notice above the original, with
+  *A print can be wrong or incomplete*. An emailed original from before the
+  card has neither line.
+- **Emails checked** (admin, manager, payroll admin; card P5-13), below *Set
+  aside*: every email an assistant has dealt with, whatever came of it, newest
+  first (by the email's date) and a page at a time (*Show older emails*): the
+  date, who sent it, its subject, what came of it in words (*Filed*, *Nothing
+  to file*, *Could not be read*), how many receipts came from it, a note, and
+  which assistant recorded it. The ones that **could not be read** are on top,
+  in red, saying *A person should look at this one.* A person looks at the
+  mailbox itself: the app has no way to open it. An employee does not see the
+  group.
 
 **More → Businesses**, for admin, manager and payroll admin (read only for the
 last two). Each business: its display name (the settings
@@ -63,9 +79,63 @@ business only: remove it there first.* A removed sign is kept, marked removed.
 
 **An assistant** (card P5-12b; [assistants](assistants.md)) can list the
 originals waiting to be read, be shown one (the stored file itself), hand one
-over through a one-time upload address, and ask whether an email has already
-been handed over. It reads for the business: any key may list and be shown
-every waiting original.
+over through a one-time upload address, ask whether an email has already
+been handed over, and say that it has finished with an email (card P5-13). It
+reads for the business: any key may list and be shown every waiting original.
+
+**Emails an assistant has dealt with** (card P5-13). The owner's assistant is already connected to the
+mailbox by its own means; **the Operations app has no access to email and
+none was added**: no mail library, no mailbox address, no credential. A daily
+scan, run by the assistant, needs the app to remember three things, which it
+now does:
+
+- *Every email dealt with*, including the ones with nothing to file, in
+  `ops.receipt_emails`: one row per message id, with its sender, date, subject
+  (cut to 200 characters), the outcome (`filed`, `nothing_to_file`,
+  `could_not_read`), how many originals came from it (counted by the app, never
+  told), which key and person recorded it, when it was first seen and last
+  recorded, and a note. The assistant records an email with `receipt_email_done`
+  when it has finished with it; recording again updates the outcome, count and
+  note and keeps the first-seen time, and each recording is an audit row (the
+  row's id, the outcome, the count and the key; never the email's text). `filed`
+  is refused when no original from that email is on file, `nothing_to_file`
+  when one is. Nothing is deleted.
+- *One spelling of a message id.* The id is the email's `Message-ID` header
+  value. `messageKey` (`ops/src/receipts/emails.ts`, pure) is its normal form:
+  direction marks and surrounding white space removed, one pair of surrounding
+  angle brackets removed, nothing else (case is kept: the part before the `@`
+  is case-sensitive in principle). So `<abc@x>` and `abc@x` are one email.
+  Originals and tickets keep the id as it was given and are **compared by the
+  normal form in the query**: migration 0017 adds the SQL function
+  `ops.message_key(text)` (the bracket rule, for ids already trimmed and free of
+  direction marks, as they are when stored) and an index on it, so no old row's
+  text is rewritten and one stored with its brackets before the card is still
+  found. A test checks that the function and `messageKey` agree.
+  The instructions tell the assistant to use the Message-ID header and never a
+  mail provider's own id; every tool description says so too.
+- *Which attachment a file was.* An email with several attachments is several
+  originals: each ticket and original keeps the attachment's name as the email
+  gives it and its position (1 to 999) among the attachments, or the mark that
+  it is a **print** of the email's own text (`email_print`, true or null).
+  Exactly one of the two for an emailed file; the database refuses a print with
+  an attachment name or position and any of the three on a file that is not
+  from an email.
+
+**A print of an email** is a PDF the assistant makes of the message's text,
+with its sender, date and subject visible on the page, when no attachment is
+the invoice (the owner's decision, Nov 28: start with PDF). It goes through the
+same checks as any upload and one more: it must be a PDF by its bytes (a photo
+sent as a print is refused at the PUT, `415`, and `my_proposals` says so). The
+record says it is a print because a print is not the message itself: it can be
+wrong or incomplete.
+
+**What an email says is data.** The subject, sender, attachment name and note
+are cleaned (controls and direction marks removed, one line) and capped when
+they arrive, stored as text, answered through `asData`, and shown escaped. No
+field is ever interpreted, and no tool takes an instruction. The new tool needs
+the `propose` right, counts against the daily cap, and the record of calls
+holds no email content. A hostile email's worst effect is a wrong draft a
+person sees.
 
 **Drafts: what was read off an original** (card P5-05a;
 [ADR-0027](../adr/0027-the-app-decides-the-business-and-checks-the-arithmetic.md)).
@@ -203,8 +273,8 @@ storage and audit (`checkLength`, `receiveFile` and `originals.add`, shared
 by both routes). The answer is the page's: 201 kept (`id`, `size`, `type`,
 *Kept. …*), 200 already on file (`id`, `addedAt`, *Already on file, added …
 by …*), or the page's refusal; the ticket is then marked `kept`,
-`duplicate` (with the original's id) or `refused` (`not_accepted`, `empty`,
-`too_long`, `incomplete`), and one that expires unused is marked `expired`
+`duplicate` (with the original's id) or `refused` (`not_accepted`, `not_a_pdf`
+for a print that is not a PDF, `empty`, `too_long`, `incomplete`), and one that expires unused is marked `expired`
 when it is next seen. Nothing is removed.
 
 **What is recorded for an assistant's or an emailed original.** `added_by` is
@@ -738,6 +808,7 @@ two tables, four RPCs, `ops/tools/import-purchases.ts`.
 |---|:-:|:-:|
 | `ops.receipt_originals` | ✓ | ✓ (add; status, set-aside, business only; `confirmed` since 0014) |
 | `ops.receipt_upload_tickets` | ✓ | ✓ (add; spend and outcome only) |
+| `ops.receipt_emails` | ✓ | ✓ (add; the outcome, count, note, sender, date, subject and who recorded it only; never removed; card P5-13, migration 0017) |
 | `ops.assistant_calls` | | ✓ (a PUT to the ticket route) |
 | `ops.businesses` | ✓ | ✓ (legal name, HST number, notes only; the two rows are seeded) |
 | `ops.business_signs` | ✓ | ✓ (add, also learnt from a confirmed receipt with `learnt_from_receipt`; mark removed only) |
@@ -753,7 +824,7 @@ The first three tables come from `ops/migrations/0010_receipt_inbox.sql`, the
 upload tickets from `ops/migrations/0012_receipt_upload_tickets.sql`, the drafts
 and the supplier list from `ops/migrations/0013_receipt_drafts.sql`, the review's
 columns, the status `confirmed` and the trigger from
-`ops/migrations/0014_receipt_review.sql` (no new table), the old purchase list
+`ops/migrations/0014_receipt_review.sql` (no new table), the emails an assistant has dealt with, the attachment and print columns and `ops.message_key` from `ops/migrations/0017_receipt_emails.sql` (card P5-13), the old purchase list
 from `ops/migrations/0015_legacy_purchases.sql` (two tables, and `old_list` as a
 way a spelling is learnt); all are the
 Operations app's own (no Sheet tab feeds them) and are not loaded or compared
@@ -855,7 +926,8 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 | What | Where |
 |---|---|
 | Routes | `ops/src/receipts/routes.ts`: `handleUpload`, `handleView`, `handleTicketUpload`, `checkLength`, `receiveFile`, `readCapped`, `NO_TICKET_BODY`, `VIEW_CSP`; wired in `ops/src/index.ts` (`/files/receipt-original`, `/files/receipt-original/by-ticket/`) |
-| Upload tickets | `ops/src/receipts/tickets.ts`: `ask`, `lockForPut`, `spend`, `markOutcome`, `proposals`, `byMessageIds`, `cleanEmailText`, `parseEmailDate`, `TICKET_PREFIX` |
+| Upload tickets | `ops/src/receipts/tickets.ts`: `ask`, `lockForPut`, `spend`, `markOutcome`, `proposals`, `byMessageIds`, `cleanEmailText`, `parseEmailDate`, `emailPart`, `TICKET_PREFIX` |
+| Emails dealt with (card P5-13) | `ops/src/receipts/emails.ts`: `messageKey`, `record`, `forMessageIds`, `list`, `cleanSubject`; `rpcGetReceiptEmails` in `ops/src/rpc/handlers/receipts.ts`; `ops/migrations/0017_receipt_emails.sql` |
 | Originals | `ops/src/receipts/originals.ts`: `add`, `inbox`, `forView`, `toRead`, `forAssistant`, `setAside`, `setBusiness`, `maySee`, `maxBytes`, `cleanFileName`, `cleanNote` |
 | The type | `ops/src/receipts/sniff.ts`: `sniff`, `CONTENT_TYPES`, `NOT_ACCEPTED` |
 | Storage | `ops/src/receipts/storage.ts`: `ReceiptStorage`, `bucketStorage`, `memoryBucket`, `isBucket`; the binding in `ops/wrangler.toml` (`[[r2_buckets]]`, `RECEIPTS`) |
@@ -874,6 +946,7 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 | Suite | Holds down |
 |---|---|
 | `ops/test/receipt-inbox.test.ts` | through the Worker's own `fetch` with the in-memory bucket: each of the five types kept with the type its bytes say, whatever was sent; the exact signatures; SVG, HTML, zip, GIF, empty, cut-short refused with nothing stored or written; over the limit refused before the body is read, a lying `Content-Length` stopped at its claim, the limit following the setting; byte for byte and the real SHA-256; the same bytes twice (and twice at once on two connections) one object and one row; no `delete` under `src/receipts/`, no key reused, the database role unable to remove or rewrite; set aside and put back leaving the object and hash; who may add, list, view, set aside and change business; a foreign `Origin`; the view's headers for an image and a PDF, no cookie, no CORS, the same 404 for a forbidden and a missing id, no answer without the header; the audit rows; names and notes cleaned and kept out of the key; a failure after the object was stored; no other table moved |
+| `ops/test/receipt-emails.test.ts` | card P5-13: the message id's normal form (a table, and the SQL function agreeing); one email found in both spellings and an original stored before the card; a whole scan over five fictional emails played as the assistant and a second scan that is a no-op; `receipt_email_done` (refusals both ways, again keeps the first-seen time, audit rows, a read key refused, the daily cap); the attachment and print rules, a print that is not a PDF refused at the PUT, the database's checks and grants; hostile subject, sender, attachment name and note; the call record and audit log without email text; nothing under `ops/src/` naming a mail host, library or protocol; `rpcGetReceiptEmails` per role and paging. See [assistants](assistants.md) |
 | `ops/test/mcp-receipts.test.ts` | card P5-12b: an assistant's originals by ticket through the Worker's `fetch` and the tools through the SDK client: the whole flow; byte for byte both ways for the five kinds; the ticket single use, 10 minutes exactly, the same 404 for every refused ticket, one file from two PUTs at once, nowhere stored or answered but once; the page's file rules on this route; who it belongs to and what is recorded; email ids; planted text cleaned; nothing else moved. The refactor of the upload path (`checkLength`, `receiveFile`) is held by `ops/test/receipt-inbox.test.ts`, unchanged |
 | `ops/test/receipt-drafts.test.ts` | card P5-05a, against a real database, the pure functions directly, the tool through the SDK's own client and the RPCs through the real router: money spellings accepted and refused and sums in cents where floats differ; every check at and just past its tolerance with its sentence; a draft with every check failing kept and flagged; only a total; the business decision as a table (each kind, two agreeing, both businesses, nothing, a removed sign, spellings, the paid card, a person's word at upload agreeing and disagreeing, a suggestion deciding nothing); supplier matching, never created; every left-out field NULL; HST 0 checked; duplicates across both businesses, possible duplicates, superseded and set-aside ones not counted; replacing, a person's draft not replaceable, two at once one live, the unique index; each refusal writing nothing; a fuel receipt kept exactly (quantity 41.287, unit price 1.459) through the tool and the by-hand RPC, a fifth decimal refused, nothing computed from quantity × unit price; drafted, `receipts_to_read`, set aside and put back; who may (tool rights, daily cap, RPC roles, planted fields); hostile text cleaned; audit rows; the role's rights; nothing else moved; the setting; the by-hand path and the inbox headline |
 | `ops/test/receipt-review.test.ts` | card P5-05b, against a real database, the RPCs through the real router, the assistant through the SDK client: the whole chain for two receipts (an assistant's draft decided by a card, one field corrected, confirmed by a manager with one change recorded; a hand-typed one with the business not known, chosen by a person, a printed name learnt by an admin's tick, then a new draft decided by it); each confirm requirement with its message and nothing written; corrections as new readings (the old row byte-identical, the checks and the decision re-run both ways); the app role unable to update figures, business or supplier, unable to delete, and the trigger refusing any change of a confirmed row but one void, also for the owner; the business chosen when not known, on conflict, overruling the signs (`person`, what the signs said kept, a reason needed), *not sure* refused, and the two books never mixing (a property over a mixed set); sign offers (printed and not yet a sign, unticked, the other business's a warning and refused when forged, a manager's tick refused server-side, the Businesses card's rules and audit, matched afterwards); suppliers (name rules, uniqueness ignoring case and spaces, search by spelling and paging, one supplier per spelling, remember on and off, matching after, inactive not choosable but still shown); failed checks needing a reason, stored with the failing checks; a duplicate of a confirmed receipt for an admin only, of a draft a warning; what was changed as a table (no change, a field, blank to value, value to blank, 12.5 = 12.50, business, supplier, other charges, lines added, removed, changed) and against the first reading after corrections and a second proposal; every write path refusing a confirmed original (correction, a proposal, by hand, set aside, confirm again); void (reason, roles, kept and marked, out of the totals, the copy equal to the voided figures, confirmed again, learnt signs and spellings listed and kept, twice refused); the books (filters, paging with a confirm between pages, totals in cents equal to the rows, a float trap, voided excluded, one receipt read only); two at once on two connections (two confirms, confirm and correction, confirm and a proposal, two voids and a confirm of the redo); `my_proposals` waiting → confirmed with a count and no values → refused once voided; no tool confirms, corrects or voids and nothing in `src/mcp/` imports the review; every RPC per role and without a token, planted fields ignored; hostile text kept as text; the audit rows; nothing else moved; a nightly copy and restore round trip with drafts, a confirmed and a voided receipt |
@@ -893,6 +966,16 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
   business (one row, or every row written one way) or link a spelling to a
   supplier, which also teaches the supplier that spelling; four RPCs. See
   [the guide](../guides/import-the-old-purchase-list.md).
+- **Nov 2026 (card P5-13):** emailed invoices through the assistant. The app
+  remembers every email an assistant has dealt with, including the ones with
+  nothing to file (`ops.receipt_emails`, `receipt_email_done`); a message id has
+  one spelling for comparing (`messageKey`, `ops.message_key`); an email's
+  several attachments are several originals told apart by name and position; an
+  invoice that is only the email's text is kept as a PDF print, marked as one;
+  the Receipts screen gains *Emails checked* and the attachment and print
+  lines; `rpcGetReceiptEmails`; migration 0017. The app still has no access to
+  email. The owner's instructions:
+  [Scan the mailbox for invoices](../guides/email-invoice-scan.md).
 - **Nov 2026 (card P5-15):** the cost history: `confirm` and `voidReceipt` each call one function of `ops/src/receipts/costs.ts` inside their transaction and answer a `costs` summary; four tables (migration 0015); the **Costs** screen ([costs](costs.md), [ADR-0030](../adr/0030-an-item-is-a-suppliers-own-line.md)).
 
 - **Nov 2026 (card P5-05b):** review, confirm, void and the books: a person

@@ -25,6 +25,7 @@ import type { Config } from "../lib/config";
 import { formatDate, formatDateTime } from "../lib/dates";
 import { list as listBusinesses } from "../receipts/businesses";
 import * as drafts from "../receipts/drafts";
+import * as emails from "../receipts/emails";
 import * as originals from "../receipts/originals";
 import { CONTENT_TYPES, type ContentType } from "../receipts/sniff";
 import type { ReceiptStorage } from "../receipts/storage";
@@ -152,7 +153,7 @@ const receiptsToRead: ToolDef = {
   right: "read",
   title: "Receipts waiting to be read",
   description:
-    "The receipt originals (photos and PDFs) waiting to be read, oldest first, a page at a time: each with its id, when it was added, its source (photo, upload, assistant, email), its type and size, the business if somebody said (else null: not known), its file name and note as sent, and for one from an email the sender and date. Also how many are waiting in all. Optional: after (the next value of the previous page), limit (1 to 50, default 20). Use receipt_original to be shown one. " +
+    "The receipt originals (photos and PDFs) waiting to be read, oldest first, a page at a time: each with its id, when it was added, its source (photo, upload, assistant, email), its type and size, the business if somebody said (else null: not known), its file name and note as sent, and for one from an email the sender, date and subject and which attachment it was (its name and position) or print: true when it is a print of the email's own text. Also how many are waiting in all. Optional: after (the next value of the previous page), limit (1 to 50, default 20). Use receipt_original to be shown one. " +
     DATA_SENTENCE,
   input: z.object({ after: RECEIPT_ID.optional(), limit: z.number().int().min(1).max(50).optional() }).strict(),
   async run(ctx, input) {
@@ -166,7 +167,7 @@ const receiptsToRead: ToolDef = {
       business: o.business,
       file_name: textOrNull(o.fileName),
       note: textOrNull(o.note, 300),
-      email: o.email === null ? null : { from: asData(o.email.sender), date: o.email.date.toISOString() },
+      email: o.email === null ? null : emailPartForAssistant(o.email),
     }));
     return {
       summary: `${page.waiting} original${page.waiting === 1 ? "" : "s"} waiting to be read; ${receipts.length} in this page, oldest first${page.next === null ? "" : "; more after this page"}.`,
@@ -174,6 +175,17 @@ const receiptsToRead: ToolDef = {
     };
   },
 };
+
+/** An emailed original's email part as an assistant is answered it: only what is set of the subject, the attachment and the print mark; every text through asData. */
+function emailPartForAssistant(e: { sender: string; date: Date; subject: string | null; attachment: { name: string; position: number } | null; print: boolean }) {
+  return {
+    from: asData(e.sender),
+    date: e.date.toISOString(),
+    ...(e.subject !== null ? { subject: asData(e.subject, tickets.SUBJECT_MAX) } : {}),
+    ...(e.attachment !== null ? { attachment: { name: asData(e.attachment.name), position: e.attachment.position } } : {}),
+    ...(e.print ? { print: true as const } : {}),
+  };
+}
 
 const NO_SUCH_ORIGINAL = "No receipt original with that id is waiting to be read or read already. Ask receipts_to_read for the ids.";
 
@@ -217,21 +229,37 @@ const receiptOriginal: ToolDef = {
   },
 };
 
-const MESSAGE_ID_RULE = `at most ${tickets.MESSAGE_ID_MAX} characters, no line breaks or other control characters`;
+const MESSAGE_ID_RULE = `the email's Message-ID header value, at most ${tickets.MESSAGE_ID_MAX} characters, no line breaks or other control characters; with or without its angle brackets (both are the same email); never a mail provider's own id`;
 const SENDER_RULE = `at most ${tickets.SENDER_MAX} characters, no line breaks or other control characters`;
+const DATE_RULE = "a real instant with its zone: 2026-11-26T09:14:00-05:00, or as the email header writes it, Thu, 26 Nov 2026 09:14:00 -0500";
+const MESSAGE_ID_WORDS =
+  "The message id is the email's Message-ID header value (for example <20261126.1042@mail.example.com>), with or without the angle brackets: both spellings are the same email. Never use a mail provider's own message id or thread id. ";
 
 const receiptUploadStart: ToolDef = {
   name: "receipt_upload_start",
   right: "propose",
   title: "Hand over a receipt original",
   description:
-    "Ask for a one-time address to hand over one receipt original (a photo or a PDF this assistant has as a file: an invoice attached to an email, a photo it was given). A file never travels inside a tool call: send the file itself, as the raw body of an HTTP PUT, to the address in the answer, with Content-Length. The address is for one file, works for 10 minutes, and is used up by the first PUT that sends a body, whether or not the file is then accepted. Input: source (assistant, or email for an invoice from a mailbox, which then needs email: message_id, from, date as the message gives them), and optionally business (cstore or vape, only if the document says so), file_name and note. Nothing is read from the file or confirmed; a person sees it in the app. my_proposals shows what became of it. " +
+    "Ask for a one-time address to hand over one receipt original (a photo or a PDF this assistant has as a file: an invoice attached to an email, a photo it was given). A file never travels inside a tool call: send the file itself, as the raw body of an HTTP PUT, to the address in the answer, with Content-Length. The address is for one file, works for 10 minutes, and is used up by the first PUT that sends a body, whether or not the file is then accepted. Input: source (assistant, or email for a file from a mailbox, which then needs email), and optionally business (cstore or vape, only if the document says so), file_name and note. " +
+    "For source email, email holds message_id, from and date as the message gives them, subject (optional), and EXACTLY ONE of: attachment { name, position } (the attachment's file name as the email gives it, and its place among the email's attachments, counting from 1), or print: true (this file is a PDF the assistant made of the email's own text because the email has no attachment that is the invoice: it must really be a PDF, and the app records it as a print, not the message itself). One address for each attachment of an email. " +
+    MESSAGE_ID_WORDS +
+    "Nothing is read from the file or confirmed; a person sees it in the app. my_proposals shows what became of it. When every file of an email is handed over, finish it with receipt_email_done. " +
     DATA_SENTENCE,
   input: z
     .object({
       business: z.enum(["cstore", "vape"]).nullable().optional(),
       source: z.enum(["assistant", "email"]),
-      email: z.object({ message_id: z.string().max(5000), from: z.string().max(5000), date: z.string().max(200) }).strict().optional(),
+      email: z
+        .object({
+          message_id: z.string().max(5000),
+          from: z.string().max(5000),
+          date: z.string().max(200),
+          subject: z.string().max(5000).optional(),
+          attachment: z.object({ name: z.string().max(5000), position: z.number().int().min(1).max(tickets.POSITION_MAX) }).strict().optional(),
+          print: z.literal(true).optional(),
+        })
+        .strict()
+        .optional(),
       file_name: z.string().max(5000).optional(),
       note: z.string().max(5000).optional(),
     })
@@ -242,12 +270,17 @@ const receiptUploadStart: ToolDef = {
         return;
       }
       if (v.email === undefined) {
-        issue.addIssue({ code: "custom", path: ["email"], message: "required for source email: message_id, from and date" });
+        issue.addIssue({ code: "custom", path: ["email"], message: "required for source email: message_id, from and date, and one of attachment or print" });
         return;
       }
-      if (tickets.cleanEmailText(v.email.message_id, tickets.MESSAGE_ID_MAX) === null) issue.addIssue({ code: "custom", path: ["email", "message_id"], message: MESSAGE_ID_RULE });
+      if (emails.messageKey(v.email.message_id) === null) issue.addIssue({ code: "custom", path: ["email", "message_id"], message: MESSAGE_ID_RULE });
       if (tickets.cleanEmailText(v.email.from, tickets.SENDER_MAX) === null) issue.addIssue({ code: "custom", path: ["email", "from"], message: SENDER_RULE });
-      if (tickets.parseEmailDate(v.email.date) === null) issue.addIssue({ code: "custom", path: ["email", "date"], message: "a real instant with its zone: 2026-11-26T09:14:00-05:00, or as the email header writes it, Thu, 26 Nov 2026 09:14:00 -0500" });
+      if (tickets.parseEmailDate(v.email.date) === null) issue.addIssue({ code: "custom", path: ["email", "date"], message: DATE_RULE });
+      const both = v.email.attachment !== undefined && v.email.print === true;
+      const neither = v.email.attachment === undefined && v.email.print !== true;
+      if (both) issue.addIssue({ code: "custom", path: ["email"], message: "give exactly one of attachment and print, not both: a file is either an attachment of the email or a print of its text" });
+      else if (neither) issue.addIssue({ code: "custom", path: ["email"], message: "give exactly one of attachment { name, position } or print: true for an emailed file" });
+      else if (v.email.attachment !== undefined && tickets.emailPart(v.email) === null) issue.addIssue({ code: "custom", path: ["email", "attachment", "name"], message: "the attachment's file name is empty once cleaned: give the name the email shows (or attachment-1 when it shows none)" });
     }),
   async run(ctx, input) {
     const asked = await tickets.ask(ctx.db, input as unknown as tickets.AskInput, { keyId: ctx.key.keyId, staffId: ctx.key.staffId }, ctx.now);
@@ -269,37 +302,123 @@ const receiptUploadStart: ToolDef = {
       declared: {
         business: d.business,
         source: d.source,
-        email: d.email === null ? null : { message_id: asData(d.email.message_id, tickets.MESSAGE_ID_MAX), from: asData(d.email.from), date: d.email.date },
+        email:
+          d.email === null
+            ? null
+            : {
+                message_id: asData(emails.messageKey(d.email.message_id) ?? "", tickets.MESSAGE_ID_MAX),
+                from: asData(d.email.from),
+                date: d.email.date,
+                subject: textOrNull(d.email.subject, tickets.SUBJECT_MAX),
+                attachment: d.email.attachment === null ? null : { name: asData(d.email.attachment.name), position: d.email.attachment.position },
+                print: d.email.print,
+              },
         file_name: textOrNull(d.file_name),
         note: textOrNull(d.note, 300),
       },
     };
-    return { summary: `Upload address ready for one file (up to ${Math.round(max / MB)} MB) until ${when(asked.expiresAt)} (Toronto); PUT the raw file to it.`, data };
+    const part = d.email === null ? "" : d.email.print ? " (a print of the email)" : ` (attachment ${d.email.attachment?.position} of the email)`;
+    return { summary: `Upload address ready for one file${part} (up to ${Math.round(max / MB)} MB) until ${when(asked.expiresAt)} (Toronto); PUT the raw file to it.`, data };
   },
 };
 
 const receiptsFromEmail: ToolDef = {
   name: "receipts_from_email",
   right: "read",
-  title: "Has this email been handed over",
+  title: "Has this email been dealt with",
   description:
-    "For each email message id (1 to 50), whether a receipt original from that email is already on file (each one's id, added_at and status), and whether an upload address for it is still open (each one's id and expires_at), from any assistant. Ids are compared exactly, after the surrounding white space and any direction marks are removed: case, angle brackets and inner spaces count. Use it before receipt_upload_start in a mailbox scan, so the same invoice is not filed twice. " +
+    "For each email message id (1 to 50), the whole picture, from any assistant: recorded (null when nobody has finished with the email with receipt_email_done; else its outcome, filed, nothing_to_file or could_not_read, how many originals came from it, its note, when it was first seen and last recorded), on_file, the originals already on file from it (each one's id, added_at, status: waiting, drafted, confirmed or set_aside, and which attachment it was: name and position, or print: true for a print of the email's own text), and the upload addresses still open for it (each one's id, expires_at and attachment or print). " +
+    "Use it before handing anything over in a mailbox scan: an email recorded as filed or nothing_to_file is finished and is skipped; one recorded as could_not_read, or not recorded, is looked at again, and only the attachments not yet on file are handed over. " +
+    MESSAGE_ID_WORDS +
+    "Ids are compared in that one form: surrounding white space, direction marks and one pair of angle brackets are ignored; case and everything else count. " +
     DATA_SENTENCE,
   input: z
     .object({ message_ids: z.array(z.string().max(5000)).min(1).max(50) })
     .strict()
     .superRefine((v, issue) => {
       v.message_ids.forEach((m, i) => {
-        if (tickets.cleanEmailText(m, tickets.MESSAGE_ID_MAX) === null) issue.addIssue({ code: "custom", path: ["message_ids", i], message: MESSAGE_ID_RULE });
+        if (emails.messageKey(m) === null) issue.addIssue({ code: "custom", path: ["message_ids", i], message: MESSAGE_ID_RULE });
       });
     }),
   async run(ctx, input) {
-    const asked = (input["message_ids"] as string[]).map((m) => tickets.cleanEmailText(m, tickets.MESSAGE_ID_MAX) as string);
-    const found = await tickets.byMessageIds(ctx.db, asked, ctx.now);
-    const results = [...found.entries()].map(([messageId, r]) => ({ message_id: asData(messageId, tickets.MESSAGE_ID_MAX), on_file: r.originals.length > 0, originals: r.originals, open_tickets: r.open_tickets }));
+    const asked = [...new Set((input["message_ids"] as string[]).map((m) => emails.messageKey(m) as string))];
+    const found = await emails.forMessageIds(ctx.db, asked, ctx.now);
+    const attachment = (a: { name: string; position: number } | null) => (a === null ? null : { name: asData(a.name), position: a.position });
+    const results = [...found.entries()].map(([messageId, r]) => ({
+      message_id: asData(messageId, tickets.MESSAGE_ID_MAX),
+      recorded:
+        r.recorded === null
+          ? null
+          : {
+              outcome: r.recorded.outcome,
+              originals: r.recorded.originals,
+              note: textOrNull(r.recorded.note, 300),
+              first_seen_at: r.recorded.firstSeenAt,
+              recorded_at: r.recorded.recordedAt,
+            },
+      on_file: r.originals.length > 0,
+      originals: r.originals.map((o) => ({ id: o.id, added_at: o.added_at, status: o.status, attachment: attachment(o.attachment), print: o.print })),
+      open_tickets: r.open_tickets.map((t) => ({ id: t.id, expires_at: t.expires_at, attachment: attachment(t.attachment), print: t.print })),
+    }));
+    const recorded = results.filter((r) => r.recorded !== null).length;
     const onFile = results.filter((r) => r.on_file).length;
     const open = results.filter((r) => r.open_tickets.length > 0).length;
-    return { summary: `${results.length} message id${results.length === 1 ? "" : "s"}: ${onFile} on file, ${open} with an upload address still open.`, data: { results } };
+    return { summary: `${results.length} message id${results.length === 1 ? "" : "s"}: ${recorded} recorded, ${onFile} with originals on file, ${open} with an upload address still open.`, data: { results } };
+  },
+};
+
+const receiptEmailDone: ToolDef = {
+  name: "receipt_email_done",
+  right: "propose",
+  title: "Record that an email has been dealt with",
+  description:
+    "Record that this assistant has finished with one email, whatever came of it, so that the next scan skips it and a person can see it in the app (Receipts, Emails checked). Input: message_id, from and date as the email gives them, subject (optional), outcome, and note (optional, a few words). " +
+    "outcome: filed (one or more receipt originals were handed over from it: refused when none from that message id is on file), nothing_to_file (it was looked at and is not an invoice or a receipt: refused when originals from it are on file), or could_not_read (an attachment could not be fetched or opened: a person should look at it). " +
+    "Recording the same email again updates its outcome, the count and the note and keeps the time it was first seen; every change is audited. Nothing is ever removed. Nothing about the email is read from the email by this app: the app has no access to mail. " +
+    MESSAGE_ID_WORDS +
+    DATA_SENTENCE,
+  input: z
+    .object({
+      message_id: z.string().max(5000),
+      from: z.string().max(5000),
+      date: z.string().max(200),
+      subject: z.string().max(5000).optional(),
+      outcome: z.enum(emails.OUTCOMES),
+      note: z.string().max(5000).optional(),
+    })
+    .strict()
+    .superRefine((v, issue) => {
+      if (emails.messageKey(v.message_id) === null) issue.addIssue({ code: "custom", path: ["message_id"], message: MESSAGE_ID_RULE });
+      if (tickets.cleanEmailText(v.from, tickets.SENDER_MAX) === null) issue.addIssue({ code: "custom", path: ["from"], message: SENDER_RULE });
+      if (tickets.parseEmailDate(v.date) === null) issue.addIssue({ code: "custom", path: ["date"], message: DATE_RULE });
+    }),
+  async run(ctx, input) {
+    const made = await emails.record(
+      ctx.db,
+      {
+        messageId: emails.messageKey(input["message_id"]) as string,
+        sender: tickets.cleanEmailText(input["from"], tickets.SENDER_MAX) as string,
+        date: tickets.parseEmailDate(input["date"]) as Date,
+        subject: emails.cleanSubject(input["subject"]),
+        outcome: input["outcome"] as emails.EmailOutcome,
+        note: originals.cleanNote(input["note"]),
+      },
+      { keyId: ctx.key.keyId, staffId: ctx.key.staffId },
+      ctx.now,
+    );
+    if (!made.ok) return { error: made.error };
+    const e = made.email;
+    const data = {
+      message_id: asData(e.messageId, tickets.MESSAGE_ID_MAX),
+      outcome: e.outcome,
+      originals: e.originals,
+      note: textOrNull(e.note, 300),
+      first_seen_at: e.firstSeenAt,
+      recorded_at: e.recordedAt,
+      created: made.created,
+    };
+    const count = e.originals === 0 ? "" : `, ${e.originals} original${e.originals === 1 ? "" : "s"} on file from it`;
+    return { summary: `Email ${made.created ? "recorded" : "recorded again"} as ${e.outcome.replace(/_/g, " ")}${count}.`, data };
   },
 };
 
@@ -375,7 +494,7 @@ const receiptPropose: ToolDef = {
 };
 
 /** The allowlist. Adding a tool here is the only way to add one (and the pinned list in test/mcp-door.test.ts must change with it). */
-export const TOOLS: readonly ToolDef[] = Object.freeze([whoami, businesses, myProposals, receiptsToRead, receiptOriginal, receiptUploadStart, receiptsFromEmail, receiptPropose]);
+export const TOOLS: readonly ToolDef[] = Object.freeze([whoami, businesses, myProposals, receiptsToRead, receiptOriginal, receiptUploadStart, receiptsFromEmail, receiptEmailDone, receiptPropose]);
 
 /** Whether a key with `right` may use a tool that needs `needs`. */
 export function rightAllows(right: Right, needs: Right): boolean {

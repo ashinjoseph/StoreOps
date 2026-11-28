@@ -76,13 +76,18 @@ export function cleanFileName(raw: unknown): string | null {
   return chars.length <= FILE_NAME_MAX ? text : chars.slice(0, FILE_NAME_MAX).join("");
 }
 
-/** The uploader's note: one line, no control or direction characters, capped at 300. Blank is null. */
-export function cleanNote(raw: unknown): string | null {
+/** Free text an outsider wrote (a note, an email's subject): one line, no control or direction characters, capped at `max`. Blank is null. */
+export function cleanLine(raw: unknown, max: number): string | null {
   if (typeof raw !== "string") return null;
   const text = raw.replace(/[\r\n\t\u2028\u2029]+/g, " ").replace(UNSAFE, "").replace(/\s+/g, " ").trim();
   if (text === "") return null;
   const chars = [...text];
-  return chars.length <= NOTE_MAX ? text : chars.slice(0, NOTE_MAX).join("");
+  return chars.length <= max ? text : chars.slice(0, max).join("");
+}
+
+/** The uploader's note: one line, no control or direction characters, capped at 300. Blank is null. */
+export function cleanNote(raw: unknown): string | null {
+  return cleanLine(raw, NOTE_MAX);
 }
 
 // ── The record as people see it ───────────────────────────
@@ -104,8 +109,12 @@ export interface OriginalView {
   setAside: { reason: string; by: string; at: string } | null;
   /** Only on an original an assistant handed over (card P5-12b): the label of the key it used. */
   assistant?: { label: string };
-  /** Only on an original from an email: the sender and date as the assistant gave them (text, shown as text). */
-  email?: { from: string; date: string };
+  /**
+   * Only on an original from an email: the sender and date as the assistant gave them (text, shown as text),
+   * the subject when it said, and (card P5-13) which attachment it was (its name as the email gives it and its
+   * position) or `print: true` when it is a PDF print of the email's own text, made by the assistant.
+   */
+  email?: { from: string; date: string; subject?: string; attachment?: { name: string; position: number }; print?: true };
   /** Only on a drafted original in the list of admin, manager and payroll admin (card P5-05a): its live draft's headline. */
   draft?: DraftHeadline;
 }
@@ -144,18 +153,34 @@ interface Row {
   email_message_id: string | null;
   email_sender: string | null;
   email_date: Date | null;
+  email_subject: string | null;
+  email_attachment_name: string | null;
+  email_attachment_position: number | null;
+  email_print: boolean | null;
 }
 
 const SELECT = `select o.receipt_id, o.sha256, o.size_bytes, o.content_type, o.storage_key, o.business, o.status,
                        o.set_aside_reason, o.set_aside_by, sa.name as set_aside_by_name, o.set_aside_at,
                        o.source, o.added_by, ad.name as added_by_name, o.added_at, o.file_name, o.note,
-                       o.assistant_key_id, ak.label as key_label, o.email_message_id, o.email_sender, o.email_date
+                       o.assistant_key_id, ak.label as key_label, o.email_message_id, o.email_sender, o.email_date,
+                       o.email_subject, o.email_attachment_name, o.email_attachment_position, o.email_print
                   from ops.receipt_originals o
                   left join ops.staff ad on ad.staff_id = o.added_by
                   left join ops.staff sa on sa.staff_id = o.set_aside_by
                   left join ops.assistant_keys ak on ak.key_id = o.assistant_key_id`;
 
 const nameOr = (name: string | null, id: string): string => (name ?? id).trim();
+
+/** The email part of a row: sender and date, and only what is set of the subject, the attachment and the print mark. */
+function emailOf(r: Row): { from: string; date: string; subject?: string; attachment?: { name: string; position: number }; print?: true } {
+  return {
+    from: r.email_sender as string,
+    date: (r.email_date as Date).toISOString(),
+    ...(r.email_subject !== null ? { subject: r.email_subject } : {}),
+    ...(r.email_attachment_name !== null && r.email_attachment_position !== null ? { attachment: { name: r.email_attachment_name, position: r.email_attachment_position } } : {}),
+    ...(r.email_print === true ? { print: true as const } : {}),
+  };
+}
 
 function view(r: Row, viewer: Viewer): OriginalView {
   return {
@@ -172,7 +197,7 @@ function view(r: Row, viewer: Viewer): OriginalView {
     status: r.status,
     setAside: r.status === "set_aside" && r.set_aside_at !== null ? { reason: r.set_aside_reason ?? "", by: nameOr(r.set_aside_by_name, r.set_aside_by ?? ""), at: r.set_aside_at.toISOString() } : null,
     ...(r.assistant_key_id !== null ? { assistant: { label: r.key_label ?? r.assistant_key_id } } : {}),
-    ...(r.email_sender !== null && r.email_date !== null ? { email: { from: r.email_sender, date: r.email_date.toISOString() } } : {}),
+    ...(r.email_sender !== null && r.email_date !== null ? { email: emailOf(r) } : {}),
   };
 }
 
@@ -197,7 +222,7 @@ export interface AddInput {
    * used, and the source it declared (an email's message id, sender and date, already checked).
    * Nothing a person sends can set this: the page's route never passes it.
    */
-  from?: { keyId: string; source: "assistant" | "email"; email: { messageId: string; sender: string; date: Date } | null };
+  from?: { keyId: string; source: "assistant" | "email"; email: ({ messageId: string; sender: string; date: Date } & import("./tickets").EmailPart) | null };
 }
 
 export interface AddResult {
@@ -241,9 +266,10 @@ export async function add(tx: Tx, storage: ReceiptStorage, input: AddInput, view
   await storage.put(key, input.bytes, { contentType: input.contentType, sha256: hash, receiptId: id });
   await tx.query(
     `insert into ops.receipt_originals (receipt_id, sha256, size_bytes, content_type, storage_key, business, status, source, added_by, added_at, file_name, note,
-                                        assistant_key_id, email_message_id, email_sender, email_date)
-     values ($1, $2, $3, $4, $5, $6, 'waiting', $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-    [id, input.sha256, input.bytes.byteLength, input.contentType, key, business, source, viewer.staffId, now, fileName, note, from?.keyId ?? null, email?.messageId ?? null, email?.sender ?? null, email?.date ?? null],
+                                        assistant_key_id, email_message_id, email_sender, email_date, email_subject, email_attachment_name, email_attachment_position, email_print)
+     values ($1, $2, $3, $4, $5, $6, 'waiting', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+    [id, input.sha256, input.bytes.byteLength, input.contentType, key, business, source, viewer.staffId, now, fileName, note, from?.keyId ?? null, email?.messageId ?? null, email?.sender ?? null, email?.date ?? null,
+      email?.subject ?? null, email?.attachment?.name ?? null, email?.attachment?.position ?? null, email?.print ? true : null],
   );
   const after: Record<string, unknown> = { id, sha256: hash, size: input.bytes.byteLength, type: input.contentType, business, source };
   if (from !== undefined) after["assistantKeyId"] = from.keyId;
@@ -345,7 +371,7 @@ export interface ToReadItem {
   business: Business | null;
   fileName: string | null;
   note: string | null;
-  email: { sender: string; date: Date } | null;
+  email: { sender: string; date: Date; subject: string | null; attachment: { name: string; position: number } | null; print: boolean } | null;
 }
 
 const toReadItem = (r: Row): ToReadItem => ({
@@ -357,7 +383,16 @@ const toReadItem = (r: Row): ToReadItem => ({
   business: r.business,
   fileName: r.file_name,
   note: r.note,
-  email: r.email_sender !== null && r.email_date !== null ? { sender: r.email_sender, date: r.email_date } : null,
+  email:
+    r.email_sender !== null && r.email_date !== null
+      ? {
+          sender: r.email_sender,
+          date: r.email_date,
+          subject: r.email_subject,
+          attachment: r.email_attachment_name !== null && r.email_attachment_position !== null ? { name: r.email_attachment_name, position: r.email_attachment_position } : null,
+          print: r.email_print === true,
+        }
+      : null,
 });
 
 /** The waiting originals, oldest first, a page at a time after the id `after`; and how many are waiting. */

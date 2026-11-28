@@ -7061,7 +7061,11 @@
       let drafted = null;
       if (data && data.scope === 'all') aside = await cachedCall('rpcGetReceiptInbox', [state.token, { status: 'set_aside' }], TTL_LIVE, { force });
       if (data && data.scope === 'all' && data.counts && data.counts.drafted > 0) drafted = await cachedCall('rpcGetReceiptInbox', [state.token, { status: 'drafted' }], TTL_LIVE, { force });
-      renderReceiptsTab(data, aside, drafted);
+      let emails = null;
+      if (data && data.scope === 'all') {
+        try { emails = await cachedCall('rpcGetReceiptEmails', [state.token, {}], TTL_LIVE, { force }); } catch (e) { emails = null; }
+      }
+      renderReceiptsTab(data, aside, drafted, emails);
     } catch (e) {
       handleRpcError(e, view);
     }
@@ -7094,14 +7098,93 @@
       (it.contentType === 'image/heic' ? 'HEIC' : '…') + '</div>';
   }
 
+  // An emailed original's subject and which part of the email it is: one attachment (its name and place among
+  // the attachments), or a PDF print of the email's own text made by the assistant. Everything is text an
+  // email's author wrote: escaped, never trusted.
+  const RECEIPT_PRINT_WORDS = 'A print of the email itself, made by the assistant: not the original message.';
+  function receiptEmailLines_(it) {
+    const e = it && it.email;
+    if (!e) return '';
+    let html = '';
+    if (e.subject) html += '<div class="payroll-rate">Subject: ' + esc(e.subject) + '</div>';
+    if (e.print) html += '<div class="payroll-rate" data-email-part="print"><b>' + esc(RECEIPT_PRINT_WORDS) + '</b></div>';
+    else if (e.attachment) html += '<div class="payroll-rate" data-email-part="attachment">Attachment ' + esc(e.attachment.position) + ' of the email: ' + esc(e.attachment.name) + '</div>';
+    return html;
+  }
+
+  // Above the original in the review: a print can be wrong or incomplete.
+  function receiptPrintNotice_(it) {
+    if (!(it && it.email && it.email.print)) return '';
+    return '<div id="rvPrintNotice" style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:8px;margin-bottom:6px;font-size:12px"><b>' + esc(RECEIPT_PRINT_WORDS) +
+      '</b> A print can be wrong or incomplete: check what was read against the print with that in mind.</div>';
+  }
+
+  // One email an assistant has dealt with: when, who sent it, its subject, what came of it, how many receipts, who recorded it.
+  const RECEIPT_EMAIL_WORDS = { filed: 'Filed', nothing_to_file: 'Nothing to file', could_not_read: 'Could not be read' };
+  function receiptEmailRowHTML_(e) {
+    const bad = e.outcome === 'could_not_read';
+    const n = Number(e.originals) || 0;
+    const outcome = (RECEIPT_EMAIL_WORDS[e.outcome] || 'Unknown') + ': ' + n + ' receipt' + (n === 1 ? '' : 's') + ' from it';
+    const by = e.recordedBy || {};
+    return '<div class="payroll-card" data-email-id="' + esc(e.id) + '" style="margin-bottom:8px' + (bad ? ';border:1px solid #fca5a5;background:#fef2f2' : '') + '">' +
+      '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(e.subject || 'no subject') + '</div>' +
+      '<div class="payroll-rate">' + esc(receiptWhen_(e.date)) + ' · from ' + esc(e.from) + '</div>' +
+      '<div class="payroll-rate" data-email-outcome="' + esc(e.outcome) + '"' + (bad ? ' style="color:#b91c1c;font-weight:700"' : '') + '>' + esc(outcome) + '</div>' +
+      (bad ? '<div class="payroll-rate" style="color:#b91c1c;font-weight:700">A person should look at this one.</div>' : '') +
+      (e.note ? '<div class="payroll-rate">' + esc(e.note) + '</div>' : '') +
+      '<div class="payroll-rate">Recorded by ' + esc(by.name || '') + '\'s assistant (' + esc(by.keyLabel || '') + ') · ' + esc(receiptWhen_(e.recordedAt)) + '</div>' +
+    '</div>';
+  }
+
+  function receiptEmailMoreHTML_(next) {
+    return next ? '<button class="payroll-btn payroll-btn-secondary" data-emails-more="' + esc(next) + '" style="width:100%">Show older emails</button>' : '';
+  }
+
+  function receiptEmailsHTML_(data) {
+    const c = (data && data.counts) || {};
+    const total = (Number(c.filed) || 0) + (Number(c.nothing_to_file) || 0) + (Number(c.could_not_read) || 0);
+    const items = (data && data.items) || [];
+    let html = '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Emails checked (' + esc(total) + ')</div>' +
+      '<div style="font-size:11px;color:#6a6e79;margin-bottom:6px">Every email the assistant has dealt with, whatever came of it, so it is not looked at twice. ' +
+      esc(c.filed || 0) + ' filed, ' + esc(c.nothing_to_file || 0) + ' with nothing to file, ' + esc(c.could_not_read || 0) + ' that could not be read.</div>';
+    if (!items.length) return html + '<div style="font-size:12px;color:#6a6e79">No email has been checked yet.</div>';
+    html += '<div id="rcptEmails">' + items.map(receiptEmailRowHTML_).join('') + '</div>';
+    html += '<div id="rcptEmailsMore">' + receiptEmailMoreHTML_(data.next) + '</div>';
+    return html;
+  }
+
+  function wireReceiptEmails_(view) {
+    view.querySelectorAll('[data-emails-more]').forEach(el => {
+      el.onclick = async () => {
+        haptic();
+        const before = el.dataset.emailsMore;
+        el.disabled = true;
+        try {
+          const page = await call('rpcGetReceiptEmails', state.token, { before: before });
+          const list = $('rcptEmails');
+          if (list) list.innerHTML += ((page && page.items) || []).map(receiptEmailRowHTML_).join('');
+          const more = $('rcptEmailsMore');
+          if (more) {
+            more.innerHTML = receiptEmailMoreHTML_(page && page.next);
+            wireReceiptEmails_(more);
+          }
+        } catch (e) {
+          el.disabled = false;
+          handleRpcError(e);
+        }
+      };
+    });
+  }
+
   function receiptRowHTML_(it) {
     const aside = it.status === 'set_aside' && it.setAside;
     return '<div class="payroll-card" data-receipt-id="' + esc(it.id) + '" style="margin-bottom:8px;cursor:pointer' + (aside ? ';opacity:.7' : '') + '">' +
       '<div class="payroll-card-head" style="gap:10px">' +
         receiptThumbHTML_(it) +
         '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(it.fileName || (it.contentType === 'application/pdf' ? 'PDF' : 'Photo')) + '</div>' +
+          '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(it.fileName || (it.email && it.email.attachment && it.email.attachment.name) || (it.email && it.email.print ? 'Print of an email' : it.contentType === 'application/pdf' ? 'PDF' : 'Photo')) + '</div>' +
           '<div class="payroll-rate">' + (it.assistant ? 'added by ' + esc(it.addedBy) + '\'s assistant (' + esc(it.assistant.label) + ')' : esc(it.addedBy)) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + (it.email ? ' · from ' + esc(it.email.from) + ', sent ' + esc(receiptWhen_(it.email.date)) : '') + '</div>' +
+          receiptEmailLines_(it) +
           '<div class="payroll-rate">' + esc(receiptBusinessLabel_(it.business)) + (it.note ? ' · ' + esc(it.note) : '') + '</div>' +
           (aside ? '<div class="payroll-rate">Set aside by ' + esc(it.setAside.by) + ': ' + esc(it.setAside.reason) + '</div>' : '') +
           (it.draft ? receiptDraftHeadHTML_(it.draft) : (it.status === 'drafted' ? '<div class="payroll-rate">It has been read.</div>' : it.status === 'confirmed' ? '<div class="payroll-rate">It is on the books.</div>' : '')) +
@@ -7112,7 +7195,7 @@
 
   // data: the waiting page, or an employee's own list; aside: the set-aside page (admin, manager, payroll admin);
   // drafted: the read ones, waiting for review (the same roles; card P5-05a).
-  function renderReceiptsTab(data, aside, drafted) {
+  function renderReceiptsTab(data, aside, drafted, emails) {
     const view = $('view-receipts');
     revokeReceiptBlobs_();
     receiptState_.file = null;
@@ -7139,6 +7222,7 @@
       html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Set aside (' + esc(counts.set_aside || 0) + ')</div>';
       if (!asideItems.length) html += '<div style="font-size:12px;color:#6a6e79">Nothing set aside.</div>';
       asideItems.forEach(it => { html += receiptRowHTML_(it); });
+      if (emails) html += receiptEmailsHTML_(emails);
       html += '<div style="font-size:13px;font-weight:700;margin:14px 0 6px">Old purchase list</div>' +
         '<div style="font-size:11px;color:#6a6e79;margin-bottom:6px">Purchases from the old spreadsheet. No original is on file for any of these, and they are not part of the books below.</div>' +
         '<button class="payroll-btn payroll-btn-secondary" data-old-list="toggle" style="width:100%">Old purchase list</button>' +
@@ -7150,6 +7234,7 @@
     }
     view.innerHTML = html;
     wireReceiptAdd_();
+    wireReceiptEmails_(view);
     const all = items.concat((aside && aside.items) || [], (drafted && drafted.items) || []);
     const canEdit = !!(data && data.scope === 'all' && data.canSetAside);
     view.querySelectorAll('[data-receipt-id]').forEach(el => {
@@ -7278,6 +7363,7 @@
     const bodyHTML =
       '<div id="rcptBig" style="min-height:120px;display:flex;align-items:center;justify-content:center;background:#f6f7f9;border-radius:8px;margin-bottom:10px;font-size:12px;color:#6a6e79">Loading the original…</div>' +
       '<div class="payroll-rate">' + (it.assistant ? 'added by ' + esc(it.addedBy) + '\'s assistant (' + esc(it.assistant.label) + ')' : esc(it.addedBy)) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + ' · ' + esc(it.source === 'photo' ? 'photo' : 'file') + (it.email ? ' · from ' + esc(it.email.from) + ', sent ' + esc(receiptWhen_(it.email.date)) : '') + '</div>' +
+      receiptEmailLines_(it) +
       '<div class="payroll-rate">' + esc(receiptBusinessLabel_(it.business)) + (it.note ? ' · ' + esc(it.note) : '') + '</div>' +
       (aside && it.setAside ? '<div class="payroll-rate">Set aside by ' + esc(it.setAside.by) + ', ' + esc(receiptWhen_(it.setAside.at)) + ': ' + esc(it.setAside.reason) + '</div>' : '') +
       (it.draft ? '<div id="rcptDraft" style="margin-top:10px;font-size:12px;color:#6a6e79">Loading what was read…</div>' : '') +
@@ -7753,6 +7839,8 @@
     const bodyHTML =
       '<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">' +
         '<div style="flex:1 1 320px;min-width:0;position:sticky;top:0;z-index:2;background:#fff;padding-bottom:6px">' +
+          receiptPrintNotice_(st.it) +
+          (st.it.email && !st.it.email.print ? receiptEmailLines_(st.it) : '') +
           '<div id="rvOrig" style="height:' + (st.large ? '78vh' : '32vh') + ';overflow:auto;-webkit-overflow-scrolling:touch;background:#f6f7f9;border-radius:8px;font-size:12px;color:#6a6e79;display:flex;align-items:flex-start;justify-content:center">Loading the original…</div>' +
           '<button class="payroll-btn payroll-btn-secondary" id="rvBig" style="margin-top:6px;width:100%">' + (st.large ? 'Make the original smaller' : 'Make the original large') + '</button>' +
         '</div>' +

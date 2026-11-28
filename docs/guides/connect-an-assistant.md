@@ -90,6 +90,11 @@ address it asked for counts as one proposal. The assistant can ask
 `my_proposals` whether each file was kept, was already on file, or was refused
 (and why).
 
+For a **daily scan of the mailbox** that does this for every invoice email,
+remembers which emails are done (including the ones with nothing to file) and
+prints an invoice that is only the email's own text, give the assistant the
+instructions in [Scan the mailbox for invoices](email-invoice-scan.md).
+
 ## 6. Withdraw a key
 
 **More → Assistants**, **Withdraw** on the key, give a reason. It stops

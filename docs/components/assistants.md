@@ -35,18 +35,19 @@ withdrawn, expired and stopped keys greyed), and has two actions:
   secure field, never into a chat. Closing the sheet wipes it from the page.
 - **Withdraw**, with a reason (3 to 300 characters). The key stops at once.
 
-**The tools** (cards P5-11, P5-12b and P5-05a; later cards add delivery tools):
+**The tools** (cards P5-11, P5-12b, P5-05a and P5-13; later cards add delivery tools):
 
 | Tool | Right | Answers |
 |---|---|---|
 | `whoami` | read | `{ label, name, right, expires, personalDetails }`: the key's label, its person's name, the right, the expiry day (Toronto, `YYYY-MM-DD`), and whether it may see personal details. Nothing else about the person |
 | `businesses` | read | `{ businesses: [ { key, name, legalName, hstNumber, signs: [ { kind, value, supplier } ] } ] }` for `cstore` then `vape`: `name` is the display name (`cstore_business_name`, `vape_business_name`); `legalName` and `hstNumber` are null until an admin records them on the Businesses screen; `signs` are the live signs that say a receipt is that business's (`kind` `name`, `hst_number`, `supplier_account` with its `supplier`, or `card_last4`; `supplier` is null for the others). None of it is secret: it is what is printed on receipts. Nothing about who added a sign. See [receipts](receipts.md) |
 | `my_proposals` | read | `{ proposals: [ { id, kind, status, made_at, decided_at, note } ] }`: this key's own proposals, newest first. Two kinds, merged newest first. `receipt_upload` (an upload address this key asked for): `status` `waiting` (the address is still open; `decided_at` null), `confirmed` (the file was kept, or the same bytes were already on file: the note says which and names the original's id), `refused` (the file was refused: the note says why in plain words, *it is not a photo or a PDF the app can keep*, *it was empty*, *more bytes arrived than its stated size*, *it arrived incomplete*, *the upload stopped before the file was kept*; or *the upload address expired unused*). `made_at` is when it was asked for, `decided_at` when the PUT finished or the address expired. `receipt_draft` (card P5-05a, a draft this key proposed): `waiting` while it is the live draft (*A draft of receipt original ro…, waiting for a person to review it. All checks passed.* or *Needs attention: N checks failed.*), `refused` when it was replaced by a later proposal (*Replaced by this key's own later proposal pr…*, *…by another assistant's later proposal (pr…)*; `decided_at` when), when its receipt was confirmed and then voided (*Confirmed, then voided by a person…*), or when its original was set aside (*Its receipt original ro… was set aside by a person…*). Card P5-05b: a person's correction (or figures typed by hand over it) is a new reading that follows the draft, so the draft shares that reading's fate: still `waiting` (*… A person corrected it (pr…).*), or `confirmed` (*Confirmed by a person onto the books of <business>, from receipt original ro…: N fields were changed at review, compared with the first reading of the original.*, `decided_at` the confirm) with `fields_changed`, the count of fields the reviewer changed (a number, never the values; see [receipts](receipts.md#what-was-changed)). Optional input: `status`, `limit` (1 to 50, default 20) |
-| `receipts_to_read` | read | `{ waiting, receipts: [ { id, added_at, source, type, size, business, file_name, note, email } ], next }`: the originals that are `waiting` (not set aside, and not read yet: a `drafted` one is not listed, card P5-05a), **oldest first**, a page at a time; `waiting` is how many there are in all; `source` is `photo`, `upload`, `assistant` or `email`; `business` `cstore`, `vape` or null (not known); `email` is `{ from, date }` for an emailed one, else null; `next` is the id to pass as `after` for the next page, or null. Optional input: `after` (an id), `limit` (1 to 50, default 20). Any key may list every waiting original: an assistant reads for the business, not for one person |
+| `receipts_to_read` | read | `{ waiting, receipts: [ { id, added_at, source, type, size, business, file_name, note, email } ], next }`: the originals that are `waiting` (not set aside, and not read yet: a `drafted` one is not listed, card P5-05a), **oldest first**, a page at a time; `waiting` is how many there are in all; `source` is `photo`, `upload`, `assistant` or `email`; `business` `cstore`, `vape` or null (not known); `email` is `{ from, date, subject?, attachment?: { name, position }, print?: true }` for an emailed one (only what is set: `attachment` is which attachment of the email it was, `print: true` that it is a PDF print of the email's own text, card P5-13), else null; `next` is the id to pass as `after` for the next page, or null. Optional input: `after` (an id), `limit` (1 to 50, default 20). Any key may list every waiting original: an assistant reads for the business, not for one person |
 | `receipt_original` | read | Input `{ id }`. **Two blocks**: a text block (summary, then `{ id, type, size, added_at, source, business, file_name, note, too_large_to_show }`), then the file itself, byte for byte: an **image** block (`{ type: "image", data: <base64>, mimeType }`) for a JPEG, PNG, WebP or HEIC photo (the stored type, so `image/heic` for a HEIC), or an **embedded resource** (`{ type: "resource", resource: { uri: "storeops://receipt-original/<id>", mimeType: "application/pdf", blob: <base64> } }`) for a PDF. An original larger than `assistant_show_max_mb` (default 8, 1 to 25) is not shortened or resized: the text block alone, with `too_large_to_show: true` and `show_max_bytes`. An original already read (`drafted`, card P5-05a) is shown too, so a draft can be looked at again and corrected. An unknown id, a malformed one, one set aside and one whose receipt is on the books (`confirmed`, card P5-05b: nothing is left to do with it) get the same tool error |
-| `receipt_upload_start` | **propose** | Input `{ business?, source: "assistant" \| "email", email?: { message_id, from, date }, file_name?, note? }` (`email` exactly when `source` is `email`; `message_id` at most 300 characters and `from` at most 200, no control characters; `date` a real instant, ISO 8601 with a zone or the email header's own form). Answers `{ ticket_id, upload: { url, method: "PUT", body, headers, max_bytes, accepted, accepted_in_words, expires_at, single_use }, declared: { business, source, email, file_name, note } }`: the **one-time upload address** and how to use it (below). Counted against the daily proposal cap. Nothing is read from the file or confirmed |
+| `receipt_upload_start` | **propose** | Input `{ business?, source: "assistant" \| "email", email?: { message_id, from, date, subject?, attachment?: { name, position }, print?: true }, file_name?, note? }` (`email` exactly when `source` is `email`). `message_id` is the email's **Message-ID header value**, at most 300 characters, no control characters, with or without its angle brackets (never a mail provider's own id); `from` at most 200; `date` a real instant, ISO 8601 with a zone or the email header's own form; `subject` optional, cut to 200 characters. **Exactly one of `attachment` and `print`** (card P5-13): `attachment` is the file's name as the email gives it and its place among the email's attachments (1 to 999, counting from 1), so an email with two attachments is two addresses and two originals that can be told apart; `print: true` says the file is a PDF the assistant made of the email's own text because no attachment is the invoice (it must really be a PDF by its bytes). Both, neither, a position of 0 or a name that is nothing once cleaned are bad input. Answers `{ ticket_id, upload: { url, method: "PUT", body, headers, max_bytes, accepted, accepted_in_words, expires_at, single_use }, declared: { business, source, email: { message_id (normal form), from, date, subject, attachment, print }, file_name, note } }`: the **one-time upload address** and how to use it (below). Counted against the daily proposal cap. Nothing is read from the file or confirmed |
 | `receipt_propose` | **propose** | Card P5-05a ([receipts](receipts.md#drafts-card-p5-05a), [ADR-0027](../adr/0027-the-app-decides-the-business-and-checks-the-arithmetic.md)). Input (strict: an unknown field is bad input): `{ original_id, supplier?: { name?, hst_number? }, invoice_number?, date? (YYYY-MM-DD), paid?: { how: cash \| card \| account \| other, card_last4? }, amounts: { subtotal?, hst?, total, other?: [ { label, amount } ] }, kind?: stock \| supplies \| equipment \| licences_fees \| other, buyer?: { name?, hst_number?, account_number?, card_last4? }, suggested_business?: cstore \| vape, lines?: [ { description, code?, quantity?, unit_price?, total?, taxed? } ], where_read?: { supplier \| supplier_hst_number \| invoice_number \| date \| paid \| subtotal \| hst \| other \| total \| kind \| buyer \| lines: text }, note? }`; any optional field may also be `null` (blank). Amounts are a number or a decimal string with at most two decimals; a line's `unit_price` may have up to four (fuel at `1.459`, `0.3333` each) and its `quantity` three; nothing is computed from quantity × unit price. Its description gives the three rules: read only what is printed and leave the rest out (never invent an invoice number, a date or a tax figure); report what the document says about the BUYER and do not decide the business; amounts exactly as printed. Answers `{ draft: { id, original_id, status, read_by: { kind, name, key_label }, read_at, supplier: { name, hst_number, supplier_id, on_list }, invoice_number, date, date_as_read, paid: { how, card_last4 } \| null, amounts: { subtotal, hst, other_total, other: [ { label, amount } ], total }, kind, buyer: { name, hst_number, account_number, card_last4 }, suggested_business, lines: [ { line, description, code, quantity, unit_price (as given, at least two decimals: `"1.459"`, `"6.00"`), total, taxed } ], where_read, note, supersedes }, business: { business, decided_by, why, signs: [ { kind, value, supplier, business } ], person_said, agrees_with_person, suggested_business }, checks: [ { check, result: passed \| failed \| not checked, words } ], needs_attention, replaced }` (amounts as exact text, `"56.60"`; blank as `null`); the summary says the business and why and how many checks failed. A refusal (no such original, one set aside, one a person is working on, one whose receipt is on the books (card P5-05b: *That receipt is on the books (confirmed): it cannot be changed. To correct it, void it first.*), no total, an amount that is not money, over 300 lines, text over its limit) is a tool error ending *Nothing was kept.* Counted against the daily proposal cap. Nothing is confirmed |
-| `receipts_from_email` | read | Input `{ message_ids: [ ... ] }` (1 to 50). `{ results: [ { message_id, on_file, originals: [ { id, added_at, status } ], open_tickets: [ { id, expires_at } ] } ] }`: for each message id, the originals already filed from that email (an email with two invoices attached has two) and the upload addresses for it still open, from any key. Ids are compared exactly after the surrounding white space and any direction marks are removed: case, angle brackets and inner spaces count, so `<A@x>`, `<a@x>` and `a@x` are three ids. An id given twice is answered once |
+| `receipts_from_email` | read | Input `{ message_ids: [ ... ] }` (1 to 50). `{ results: [ { message_id, recorded, on_file, originals, open_tickets } ] }`, the whole picture for each id, from any key: `recorded` is null when nobody has finished with the email with `receipt_email_done`, else `{ outcome, originals, note, first_seen_at, recorded_at }`; `originals` are the ones already filed from the email, each `{ id, added_at, status (waiting, drafted, confirmed or set_aside), attachment: { name, position } \| null, print }` (an email with two attachments has two); `open_tickets` the upload addresses for it still open, each `{ id, expires_at, attachment, print }`. **Ids are compared in one normal form** (card P5-13): surrounding white space, direction marks and one pair of angle brackets are ignored, so `<a@x>` and `a@x` are the same email; case, inner spaces and everything else count, so `<A@x>` is another. `message_id` in the answer is that normal form. Two spellings of one id in one call are answered once. This is how a scan knows what is handled: it does not remember |
+| `receipt_email_done` | **propose** | Card P5-13. Input (strict) `{ message_id, from, date, subject?, outcome: "filed" \| "nothing_to_file" \| "could_not_read", note? }`. Records that this assistant has finished with one email, whatever came of it, so the next scan skips it and a person sees it under **Receipts → Emails checked**. `filed`: one or more originals came from it (refused: *No receipt original from that message id is on file…* when none is). `nothing_to_file`: looked at, not an invoice or a receipt (refused when originals from it are on file). `could_not_read`: an attachment could not be fetched or opened, a person should look (allowed either way). The count of originals is what is on file, counted by the app, never taken from the assistant. Recording the same email again updates the outcome, count, note and who recorded it and keeps the time it was first seen; every recording is an audit row (`receipt_email.record`, `receipt_email.update`: ids, outcome, count and key, never the sender, subject or note). Answers `{ message_id, outcome, originals, note, first_seen_at, recorded_at, created }`. Counted against the daily proposal cap. Nothing is ever removed |
 
 Every answer is one text block: a one-line summary, then the JSON; and
 `receipt_original` alone adds one file block after it (the door refuses a file
@@ -60,11 +61,16 @@ and a file in a tool's arguments would pass through the assistant's own
 context). An assistant that has the file itself (an invoice attached to an
 email it found, a photo it was given) does this:
 
-1. Optionally, `receipts_from_email` with the message ids it is about to file:
-   skip any that are `on_file` or have an `open_tickets` entry.
+1. For a mailbox scan, `receipts_from_email` with the message ids it is
+   about to look at (the Message-ID header values, up to 50 a call): an email
+   with `recorded` filed or nothing_to_file is finished and is skipped; one
+   `could_not_read`, or not recorded, is looked at, and only the attachments
+   not yet in `originals` (by `attachment.position`, or `print`) and without an
+   open ticket are handed over.
 2. `receipt_upload_start` with `source` (`email` with the message's id, sender
-   and date as the message gives them; or `assistant`), and if it knows them
-   the `business`, a `file_name` and a `note`.
+   and date as the message gives them, its subject, and which attachment this
+   file is or `print: true`; or `assistant`), and if it knows them the
+   `business`, a `file_name` and a `note`. One address for each file.
 3. From the answer, `upload.url` (`https://<this site>/files/receipt-original/by-ticket/<ticket>`):
    send **one HTTP `PUT`** to it whose body is **the file's own bytes**, nothing
    else (no form, no JSON, no base64), with a `Content-Length` header (required).
@@ -87,7 +93,24 @@ email it found, a photo it was given) does this:
 6. `my_proposals` then shows the address as `confirmed` (naming the original's
    id) or `refused` (saying why). In the app, the original is under **More →
    Receipts → Waiting**, *added by <person>'s assistant (<key label>)*, with
-   the sender and date of an emailed one.
+   the sender, date and subject of an emailed one and which attachment it was,
+   or *A print of the email itself, made by the assistant: not the original
+   message.*
+7. When every file of an email is handed over, or the email has none, or a
+   file could not be fetched, `receipt_email_done` records what came of the
+   email. The owner's instructions for a daily scan, in order, are in
+   [Scan the mailbox for invoices](../guides/email-invoice-scan.md).
+
+**A print of the email (card P5-13).** An email whose invoice is its own text
+has no file to hand over. The assistant makes a PDF of the message's text (its
+sender, date and subject visible on the page) and hands it over like any file
+with `print: true`. The PUT checks the bytes as it does for any file and, for
+a print, that they are a PDF: a PNG or a text file sent as a print is refused
+(a PNG with *…this address was for a print of the email, which must be a PDF…*,
+`415`, the ticket `refused` with the reason `not_a_pdf`; anything the app does
+not keep at all with the usual *not a photo or a PDF* message). A print is kept
+and shown marked as a print, because a print is not the message itself and can
+be wrong or incomplete.
 
 ## How it works
 
@@ -185,7 +208,8 @@ inactive (the ticket stays `waiting` and expires); while the door is off the
 route answers the same 404 and writes nothing. The original it becomes is
 `added_by` the key's person, with the key id in `assistant_key_id` and `source`
 `assistant` or `email` (the message id, sender and date in the columns 0010
-reserved); its audit row is the existing `receipt_original.add`, with
+reserved; since card P5-13 also the subject, the attachment's name and
+position, or the print mark); its audit row is the existing `receipt_original.add`, with
 `assistantKeyId`. Asking for an address writes `receipt_upload_ticket.create`
 (the ticket id, key id, source, business, expiry; never the ticket, its hash,
 the file name or the note). Nothing is removed. See [receipts](receipts.md).
@@ -255,6 +279,14 @@ nothing.
   address; every refused address is the same 404.
 - **No browser.** A request with an `Origin` header is refused; no CORS header
   is ever sent.
+- **No access to email.** The app holds no mailbox address, no mail library
+  and no credential for one; an assistant reads the mailbox by its own means
+  and tells the app (`receipt_email_done`). A test reads every file under
+  `ops/src/` for a mail host, library or protocol.
+- **What an email says is data.** A subject, a sender, an attachment's name
+  and a note are cleaned and capped on the way in, stored as text, answered
+  through `asData` and shown escaped; no field is interpreted and no tool takes
+  an instruction.
 - **Nothing is deleted.** A key is withdrawn; call records are kept.
 
 ## Code map
@@ -264,7 +296,8 @@ nothing.
 | The door | `ops/src/mcp/server.ts`: `handleMcp(request, deps)`; wired as `/mcp` in `ops/src/index.ts` |
 | Keys | `ops/src/mcp/keys.ts`: `newKey`, `hashKey`, `authenticate`, `lockKey`, `createKey`, `revokeKey`, `listKeys`, `people` |
 | Tools | `ops/src/mcp/tools.ts`: `TOOLS`, `ToolDef`, `ToolContext`, `ToolAnswer`, `FILE_TOOLS`, `DATA_SENTENCE`, `showMaxBytes` |
-| Upload addresses | `ops/src/receipts/tickets.ts`: `ask`, `lockForPut`, `spend`, `markOutcome`, `proposals`, `byMessageIds`, `cleanEmailText`, `parseEmailDate`; the route `handleTicketUpload` in `ops/src/receipts/routes.ts`; `ops/migrations/0012_receipt_upload_tickets.sql` |
+| Upload addresses | `ops/src/receipts/tickets.ts`: `ask`, `lockForPut`, `spend`, `markOutcome`, `proposals`, `byMessageIds`, `cleanEmailText`, `parseEmailDate`, `emailPart`; the route `handleTicketUpload` in `ops/src/receipts/routes.ts`; `ops/migrations/0012_receipt_upload_tickets.sql` |
+| Emails dealt with | `ops/src/receipts/emails.ts`: `messageKey` (the one normal form of a message id), `record`, `forMessageIds`, `list`; `ops/migrations/0017_receipt_emails.sql` (`ops.receipt_emails`, the attachment and print columns, `ops.message_key`) |
 | Limits and the record | `ops/src/mcp/limits.ts`: `checkCallLimit`, `checkProposalLimit`, `floodAllows`, `recordCall` |
 | Data | `ops/src/mcp/data.ts`: `asData`, `toolText` |
 | RPCs | `ops/src/rpc/handlers/assistants.ts`; listed in `ops/contracts/rpc-ops.json` |
@@ -280,11 +313,21 @@ nothing.
 | `ops/test/mcp-keys.test.ts` | the three RPCs through the real router and merged contract for every role and no token; making a key (record and key once, hash stored, audit without the key), defaults, every field rule, label uniqueness among working keys; withdrawing (idempotent, audited once) and its rules; the list (never a hash, status per key, the people); the three settings and their ranges; `src/mcp/` importing nothing from the RPC registry, router or handlers |
 | `tests/suites/ui-assistants.js` | the drawer entry is `opsOnly` and admin only; making a key end to end with the page's real `call` and read cache: the key in the sheet once, never in the cache, a toast, storage or the address bar, wiped when the sheet closes by any control; the list escaped and greyed; withdrawing; the built page carries the screen |
 | `ops/test/mcp-receipts.test.ts` | card P5-12b, through the SDK's own client and the Worker's `fetch`: the whole flow (a JPEG, an emailed PDF and a HEIC handed over, listed oldest first, shown byte for byte in the right block, confirmed in `my_proposals`); byte for byte both ways for the five kinds; the ticket single use (also after a refused file), expiring at 10 minutes exactly, the same 404 byte for byte for unknown, malformed, used, expired, a withdrawn or expired key, a deactivated person and the door off, with the reason recorded; two PUTs at once taking one file; the ticket in no table, audit row, call record or other answer; no other credential read; `Origin` refused; the page's file rules (size before reading, a lying length, SVG, HTML, zip, empty, the same bytes); rights (a read key cannot ask), the daily cap, the per-minute limit and a stopped key for each tool; `receipt_original`'s same error for set-aside, unknown and malformed ids, `too_large_to_show` and its setting, and no other tool able to answer a file (the allowlist iterated, and a stub refused); the email fields and their refusals; `receipts_from_email` exact matching and 1 to 50 ids; planted control, direction, HTML and injection text cleaned and capped; the record holding no file, ticket or name; the business tables unchanged; the app role unable to remove or rewrite a ticket; the flood limit on bad tickets; the route in the Worker |
+| `ops/test/receipt-emails.test.ts` | card P5-13: the normal form of a message id as a table and the database function agreeing with it; one email found in both spellings, and an original stored before the card; a whole scan of five fictional emails played as the assistant (a single PDF, two attachments handed over separately, an invoice that is its own text kept as a print, marketing, an attachment that cannot be fetched) and a second scan that is a no-op; `receipt_email_done` (`filed` refused with nothing on file, `nothing_to_file` refused with something on file, recording again keeps the first-seen time, the audit rows, a read key refused, the daily cap with 60 in a row); attachment and print rules (both or neither refused, position 0, a print that is not a PDF refused at the PUT); the database's checks and grants; hostile subject, sender, attachment name and note cleaned, capped and answered through `asData`; the call record and audit log holding no email text; nothing under `ops/src/` naming a mail host, library or protocol; `rpcGetReceiptEmails` per role, no token, paging |
 | `ops/test/receipt-drafts.test.ts` | card P5-05a: `receipt_propose` through the SDK's own client (its description's rules, its exact answer keys, a failed check in words then a correction that replaces the draft, bad input and refusals as tool errors with nothing written, a read key refused, the daily cap, planted fields refused as bad input, hostile text cleaned through `asData`), `my_proposals` for drafts (waiting, replaced by the key itself or by another assistant, followed through a person's reading, original set aside); see [receipts](receipts.md) |
 | `ops/test/receipt-review.test.ts` | card P5-05b: `my_proposals` waiting → confirmed with `fields_changed` and no values, refused once voided; `receipt_propose` and `receipt_original` refused on a confirmed original, `receipts_to_read` without it; the tool list unchanged, no tool that confirms, corrects or voids, and nothing under `ops/src/mcp/` importing the review |
 | `ops/test/cutover-tool.test.ts`, `ops/test/db-migrate.test.ts` | the new tables are not loaded, read or reported by the cutover tools |
 
 ## History
+
+- **Nov 2026 (card P5-13):** emailed invoices through the assistant: one
+  tool, `receipt_email_done` (records every email dealt with, including the ones
+  with nothing to file); `receipt_upload_start` says which attachment a file is
+  or that it is a print of the email's own text; `receipts_from_email` answers
+  the whole picture per email and compares message ids in one normal form
+  (brackets and spaces ignored); `receipts_to_read` shows the attachment or the
+  print. The app still has no access to email. The owner's instructions are in
+  [Scan the mailbox for invoices](../guides/email-invoice-scan.md).
 
 - **Nov 2026 (card P5-05b):** no new tool, and none can confirm, correct or
   void. `my_proposals` follows a draft through a person's corrections: it is

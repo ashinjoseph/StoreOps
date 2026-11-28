@@ -8,6 +8,7 @@ import { NOT_LOGGED_IN, type Session } from "../../auth/types";
 import * as businesses from "../../receipts/businesses";
 import * as costs from "../../receipts/costs";
 import * as drafts from "../../receipts/drafts";
+import * as emails from "../../receipts/emails";
 import * as legacy from "../../receipts/legacy";
 import * as originals from "../../receipts/originals";
 import * as review from "../../receipts/review";
@@ -27,6 +28,13 @@ export const rpcGetReceiptInbox: RpcHandler = async (ctx, input) => {
   const o = fields(input);
   const inbox = await originals.inbox(ctx.db, viewer(s), { status: o["status"], before: o["before"], limit: o["limit"] }, ctx.now);
   return { ...inbox, maxMb: originals.maxBytes(await ctx.config()) / originals.MB };
+};
+
+/** Admin, manager, payroll admin: the emails an assistant has dealt with (card P5-13), could_not_read first, then the email's date, newest first. `{ before, limit }` (limit 1 to 50, default 20); answers `{ items, counts, next }`. */
+export const rpcGetReceiptEmails: RpcHandler = async (ctx, input) => {
+  caller(ctx, originals.SEE_ALL);
+  const o = fields(input);
+  return emails.list(ctx.db, { before: o["before"], limit: o["limit"] });
 };
 
 /** Admin or manager: `{ id, aside, reason }`. */

@@ -113,8 +113,8 @@ describe("handshake and tools/list through the SDK client", () => {
   });
 
   it("the allowlist in tools.ts is exactly these names (card P5-12b added the four receipt tools, P5-05a receipt_propose)", () => {
-    expect(TOOLS.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "receipts_to_read", "receipt_original", "receipt_upload_start", "receipts_from_email", "receipt_propose"]);
-    expect(TOOLS.map((t) => t.right)).toEqual(["read", "read", "read", "read", "read", "propose", "read", "propose"]);
+    expect(TOOLS.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "receipts_to_read", "receipt_original", "receipt_upload_start", "receipts_from_email", "receipt_email_done", "receipt_propose"]);
+    expect(TOOLS.map((t) => t.right)).toEqual(["read", "read", "read", "read", "read", "propose", "read", "propose", "propose"]);
   });
 
   it("a key sees the tools its right allows: a read key does not see a propose tool, a propose key does", async () => {
@@ -122,7 +122,7 @@ describe("handshake and tools/list through the SDK client", () => {
     const read = await sdkClient(w, (await makeKey(w, { right: "read" })).key);
     expect((await read.listTools()).tools.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "receipts_to_read", "receipt_original", "receipts_from_email"]);
     const propose = await sdkClient(w, (await makeKey(w, { right: "propose" })).key);
-    expect((await propose.listTools()).tools.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "receipts_to_read", "receipt_original", "receipt_upload_start", "receipts_from_email", "receipt_propose", "test_propose"]);
+    expect((await propose.listTools()).tools.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "receipts_to_read", "receipt_original", "receipt_upload_start", "receipts_from_email", "receipt_email_done", "receipt_propose", "test_propose"]);
     await read.close();
     await propose.close();
   });

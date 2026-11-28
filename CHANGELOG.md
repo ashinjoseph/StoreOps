@@ -1840,3 +1840,47 @@ In the Operations app only; the Apps Script app is unchanged
 New: `ops/test/no-rate.test.ts` (with the pre-change answers pinned in
 `ops/test/fixtures/no-rate/pre-change.json`) and `tests/suites/ui-no-rate.js`,
 both seen failing against the code before the change.
+
+### Emailed invoices through the assistant (card P5-13)
+
+- **Every email the assistant has dealt with is remembered**, including the ones
+  with nothing to file, so tomorrow's scan skips them: the new tool
+  `receipt_email_done` records an email as *filed*, *nothing to file* or *could
+  not be read*, with a note. *Filed* is refused when no receipt from that email
+  is on file, *nothing to file* when one is. Recording an email again updates it
+  and keeps the time it was first seen; each recording is audited.
+- **One spelling of a message id.** `<abc@x>` and `abc@x` are the same email:
+  surrounding white space, direction marks and one pair of angle brackets are
+  ignored when ids are compared; case is kept. Receipts already filed with their
+  brackets are still found, and no old row is rewritten. The tool descriptions
+  and the instructions say to use the email's Message-ID header, never a mail
+  provider's own id.
+- **Several attachments of one email** are several originals that can be told
+  apart: each keeps the attachment's name as the email gives it and its place
+  among the attachments. `receipts_from_email` now answers the whole picture per
+  email (recorded or not, its originals with their attachment and status, any
+  open upload address).
+- **An invoice that is the email's own text** is kept as a **PDF print** of the
+  email, marked as one: *A print of the email itself, made by the assistant: not
+  the original message.* It must really be a PDF. The review repeats the notice
+  above the original: a print can be wrong or incomplete.
+- **More → Receipts → Emails checked** (admin, manager, payroll admin): every
+  email, newest first, a page at a time, with who sent it, its subject, what came
+  of it, how many receipts, and which assistant recorded it. The ones that could
+  not be read are on top, in red: *A person should look at this one.* An emailed
+  original's row says which attachment it was.
+- **Nothing in an email is trusted.** The subject, sender, attachment name and
+  note are cleaned, capped, stored as text and shown escaped; no tool takes an
+  instruction. **The app still has no access to email**: a test reads every file
+  under `ops/src/` for a mail host, library or protocol.
+- A new guide, [Scan the mailbox for invoices](docs/guides/email-invoice-scan.md):
+  what to connect (the mailbox read only, and the Operations app, nothing else),
+  the instructions to paste into the scheduled task, what a day of ten invoices
+  costs against the key's limits, and what to check after the first run.
+- Migration 0017 (`receipt_emails`; the attachment, subject and print columns on
+  originals and upload addresses; `ops.message_key`), one new RPC
+  (`rpcGetReceiptEmails`) and one new tool; `receipt_upload_start` now needs
+  `attachment` or `print: true` for an emailed file.
+
+New: `ops/test/receipt-emails.test.ts`, checked against ten deliberate mutations
+(each restored byte for byte), and new assertions in `tests/suites/ui-receipts.js`.

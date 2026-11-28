@@ -94,7 +94,7 @@ hand one out.
 | P5-11 | The MCP door: keys, read and propose rights, limits, audit | T3 | | security | done (switched off; questions for the trial and the owner, in the card) |
 | P5-12a | The two businesses and the receipt inbox (originals kept) | T3 | | money, security | done (to try on a real phone; notes in the card) |
 | P5-12b | The assistant's tools for the inbox: hand over an original, see one, list those waiting | T3 | P5-12a, P5-11 | security | done (questions for the trial and the owner, in the card) |
-| P5-13 | Emailed invoices through the assistant | T2 | P5-05b | security | in progress (an email with no attachment is kept as a PDF print of it: the owner, Nov 28) |
+| P5-13 | Emailed invoices through the assistant | T2 | P5-05b | security | done (the scan itself is tried with Muse at the hosted rehearsal, P5-10) |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
 | P5-05c | Receipts of every kind in one form: credit notes, statements, other currencies, tax inside the price, typed extra charges | T3 | P5-05b | money | in progress |
 | P5-12c | Older receipt files move to cheaper storage; the app says which are archived | T1 | P5-12a | money | todo |
@@ -1528,6 +1528,43 @@ day the suite runs.
    rate recorded". Should they read "no rate set" too?
 3. `rpcGetAllStaff` (admin only, called by no screen) still answers 0 for a
    blank rate.
+
+**P5-13 · emailed invoices through the assistant · done.** The app still
+has no access to email. What it gained is what a daily scan needs: a record
+of every email an assistant has dealt with (*filed*, *nothing to file*,
+*could not be read*), one spelling for a message id (`<abc@x>` and `abc@x`
+are the same email; no old row is rewritten), the attachment each emailed
+file was (name and place among the attachments), and **a PDF print of the
+email** for an invoice that is only the email's text, marked as a print on
+the Receipts screen and above the original in the review. One new tool
+(`receipt_email_done`), `receipts_from_email` now answers the whole picture
+per email, and **More → Receipts → Emails checked** lists them, the ones
+that could not be read on top in red. Migration 0017. The guide with the
+instructions to paste into the assistant's scheduled task:
+[Scan the mailbox for invoices](../guides/email-invoice-scan.md).
+A day of ten invoice emails and five others costs about 36 calls and 25
+proposals against the key's 200 a day (57 and 35 if the assistant also reads
+what it filed).
+**For the owner:**
+1. **The same invoice sent twice** (two emails, the same file): the second
+   file is "already on file", and the second email is recorded as *nothing
+   to file* with the note "same invoice as …". Should it read *filed*
+   instead?
+2. **An email that could not be read** is looked at again on each run while
+   it is inside the days the scan looks back (3 by default). Is that wanted,
+   or should a person clear it first?
+3. **A supplier's statement** by email: the instructions say *nothing to
+   file* for now. Once statements can be kept on file without counting
+   (P5-05c), say whether the scan should hand them over.
+4. What a real mailbox will hold, and what the instructions say for each: a
+   forwarded invoice (the forwarding email's id counts; the sender shown is
+   the forwarder); an invoice behind a link (never followed: *could not be
+   read*, "a person should fetch it"); a password-protected PDF (kept as
+   received, then *could not be read*); an invoice as a picture in the body
+   (an attachment if it can be fetched as a file, else a print); a thread of
+   replies (each message alone); a spreadsheet or a zip (never opened);
+   text written to steer the assistant (not followed, *could not be read*,
+   named in the summary).
 
 ## Phase 6 — App
 

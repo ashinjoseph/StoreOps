@@ -266,6 +266,9 @@ export interface TicketRouteDeps {
   log: (entry: object) => void;
 }
 
+/** A print of an email that is not a PDF by its bytes (card P5-13). */
+export const NOT_A_PDF = "This address was for a print of the email, which must be a PDF, and the file is not one. Nothing was stored. Make the print as a PDF and ask for a new address.";
+
 /** The one answer to every refused ticket, byte for byte. */
 export const NO_TICKET_BODY = JSON.stringify({ ok: false, error: { message: "No such upload address. Ask for a new one with receipt_upload_start." } });
 const noTicket = (): Response => new Response(NO_TICKET_BODY, { status: 404, headers: HEADERS });
@@ -316,6 +319,11 @@ export async function handleTicketUpload(request: Request, deps: TicketRouteDeps
     if (!file.ok) {
       await withTransaction(conn, (tx) => tickets.markOutcome(tx, t.ticketId, { kind: "refused", refusal: file.reason }, deps.now()));
       return file.response;
+    }
+    // A print of an email is a PDF: the same check of the bytes as any upload, and then this one (card P5-13).
+    if (t.email?.print === true && file.type !== "application/pdf") {
+      await withTransaction(conn, (tx) => tickets.markOutcome(tx, t.ticketId, { kind: "refused", refusal: "not_a_pdf" }, deps.now()));
+      return refuse(415, NOT_A_PDF);
     }
     const added = await withTransaction(conn, async (tx) => {
       const a = await originals.add(

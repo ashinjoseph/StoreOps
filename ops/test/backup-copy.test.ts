@@ -50,6 +50,13 @@ beforeAll(async () => {
   // A table a later migration might add: neither database's code knows it.
   for (const db of [src, target]) await ddl(db, CODEC_DDL);
   await ddl(src, CODEC_ROWS);
+  // Card P5-13: emails an assistant has dealt with, one of each outcome, with text the copy has to carry exactly.
+  await ddl(src, `insert into ops.assistant_keys (key_id, staff_id, label, key_right, key_hash, created_by, created_at, expires_at)
+    values ('ak0000000000000001', 'S_001', 'Fictional Muse', 'propose', decode(repeat('cd', 32), 'hex'), 'S_001', now(), now() + interval '90 days')`);
+  await ddl(src, `insert into ops.receipt_emails (email_id, message_id, sender, email_date, subject, outcome, originals, note, key_id, staff_id, first_seen_at, recorded_at) values
+    ('re000000000000000000000001', 'inv-1@mail.example.org', 'Fictional Supply <billing@example.org>', '2026-11-26 14:14:00+00', 'Invoice 1042: <b>Nov</b> "quoted" \u2028 x', 'filed', 2, null, 'ak0000000000000001', 'S_001', '2026-11-27 13:00:00+00', '2026-11-27 13:00:00+00'),
+    ('re000000000000000000000002', 'promo-9@mail.example.org', 'Fictional Shop <news@example.org>', '2026-11-25 10:00:00+00', null, 'nothing_to_file', 0, 'marketing', 'ak0000000000000001', 'S_001', '2026-11-27 13:01:00+00', '2026-11-27 13:02:00+00'),
+    ('re000000000000000000000003', 'bad-3@mail.example.org', 'Fictional Wholesale <ar@example.org>', '2026-11-24 09:00:00+00', 'Statement', 'could_not_read', 0, 'the PDF is password protected', 'ak0000000000000001', 'S_001', '2026-11-27 13:03:00+00', '2026-11-27 13:03:00+00')`);
 }, 240_000);
 
 afterAll(async () => {
@@ -106,6 +113,19 @@ describe("the round trip: copy the fixture database, restore it into an empty on
     for (const e of manifest.excluded) if (e.table !== "schema_migrations") expect(b[e.table]).toEqual([]);
     expect(manifest.tables.find((t) => t.name === "audit_log")?.rows).toBeGreaterThan(100);
     expect(manifest.tables.find((t) => t.name === "sales")?.rows).toBeGreaterThan(20);
+  });
+
+  it("the emails an assistant has dealt with (card P5-13) are in the copy and come back exactly: three rows, one of each outcome, awkward text included", async () => {
+    const a = await dumpAll(src.appUrl, ["receipt_emails"]);
+    const b = await dumpAll(target.appUrl, ["receipt_emails"]);
+    expect(a["receipt_emails"]).toHaveLength(3);
+    expect(b["receipt_emails"]).toEqual(a["receipt_emails"]);
+    const { bucket, folder } = await theFirstCopy();
+    const m = manifestOf(bucket, folder) as Manifest;
+    expect(m.tables.find((t) => t.name === "receipt_emails")?.rows).toBe(3);
+    expect(m.excluded.map((e) => e.table)).not.toContain("receipt_emails");
+    const rows = await owner<{ subject: string | null }>(target, "select subject from ops.receipt_emails order by email_id");
+    expect(rows[0]?.subject).toBe('Invoice 1042: <b>Nov</b> "quoted" \u2028 x');
   });
 
   it("the awkward values in the codec table came through exactly (NULL, '', 'null', newlines, U+2028, NUL-like, midnights of both clock changes, bytea, nested JSON, a bigint past 2^53)", async () => {

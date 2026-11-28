@@ -873,7 +873,7 @@ describe("an assistant", () => {
   });
 
   it("no tool can confirm, correct or void, and the door does not import the review", () => {
-    expect(TOOLS.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "receipts_to_read", "receipt_original", "receipt_upload_start", "receipts_from_email", "receipt_propose"]);
+    expect(TOOLS.map((t) => t.name)).toEqual(["whoami", "businesses", "my_proposals", "receipts_to_read", "receipt_original", "receipt_upload_start", "receipts_from_email", "receipt_email_done", "receipt_propose"]);
     for (const t of TOOLS) expect(t.name).not.toMatch(/confirm|correct|void|review|supplier/);
     const dir = new URL("../src/mcp/", import.meta.url);
     for (const f of readdirSync(dir)) {

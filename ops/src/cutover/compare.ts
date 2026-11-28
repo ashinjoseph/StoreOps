@@ -70,6 +70,8 @@ export const LATER_OPS_TABLES: readonly string[] = [
   "item_costs",
   "receipt_observations",
   "price_flags",
+  // card P5-13, the emails an assistant has dealt with (0017_receipt_emails.sql)
+  "receipt_emails",
 ];
 
 /** The column each table's rows are grouped by, per month (America/Toronto). null: the table has no date. */

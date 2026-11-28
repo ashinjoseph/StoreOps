@@ -67,6 +67,7 @@ flowchart LR
 | try a nightly copy of the app's records | [Restore a nightly copy](guides/restore-a-nightly-copy.md): download one, load it into an empty local database, and see every table match |
 | change it safely | [Testing](guides/testing.md) and [keeping the docs current](guides/docs-process.md) |
 | let an AI assistant in | [Connect an assistant](guides/connect-an-assistant.md): open the door, make a key, check it, withdraw it |
+| have an assistant file the invoices that arrive by email | [Scan the mailbox for invoices](guides/email-invoice-scan.md): what to connect, the instructions to paste, what a run costs, what to check after the first run |
 | present it | [Showcase](showcase.md): a ten-minute tour for an interview or a management review |
 | find a module, RPC or column fast | [Code map](reference/code-map.md) and [schema](reference/schema.md), both generated from the code |
 | work on it as an AI agent | [AGENTS.md](../AGENTS.md), then [llms.txt](../llms.txt) for the full index |
@@ -92,7 +93,8 @@ docs/
 │   ├── testing.md            how the suites run the real code
 │   ├── docs-process.md       the docs checklist, enforced by CI
 │   ├── whatsapp-templates.md template bodies to submit to Meta
-│   └── connect-an-assistant.md  give an AI assistant a key to the Operations app
+│   ├── connect-an-assistant.md  give an AI assistant a key to the Operations app
+│   └── email-invoice-scan.md    the daily mailbox scan: connections, instructions, limits, first-run checks
 ├── reference/
 │   ├── code-map.md           every module, RPC (with roles) and enum (generated)
 │   └── schema.md             every tab, column and config key (generated)

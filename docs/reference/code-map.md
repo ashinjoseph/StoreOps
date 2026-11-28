@@ -126,7 +126,7 @@ Roles: `admin`, `manager`, `payroll_admin`, `employee`.
 
 | File | Lines | Served by | Client functions |
 |---|---:|---|---:|
-| `src/Index.html` | 10381 | `doGet` (no `?v`) | 347 |
+| `src/Index.html` | 10469 | `doGet` (no `?v`) | 353 |
 | `src/Public.html` | 340 | `doGet` `?v=recon` | 9 |
 | `src/PublicSales.html` | 357 | `doGet` `?v=sales` | 9 |
 
