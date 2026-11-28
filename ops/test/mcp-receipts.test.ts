@@ -194,7 +194,7 @@ describe("the whole flow", () => {
     const list = jsonOf(await client.callTool({ name: "receipts_to_read", arguments: {} })) as any;
     expect(list.waiting).toBe(3);
     expect(list.receipts.map((r: any) => r.id)).toEqual([ids["jpeg"], ids["pdf"], ids["heic"]]);
-    expect(Object.keys(list.receipts[0]).sort()).toEqual(["added_at", "business", "email", "file_name", "id", "note", "size", "source", "type"]);
+    expect(Object.keys(list.receipts[0]).sort()).toEqual(["added_at", "archived", "business", "email", "file_name", "id", "note", "size", "source", "type"]);
     expect(list.receipts[1].email).toEqual({ from: EMAIL(1).from, date: "2026-11-26T14:14:00.000Z", attachment: { name: "invoice-1.pdf", position: 1 } });
     expect(list.receipts[0].email).toBeNull();
     expect(list.next).toBeNull();
@@ -207,7 +207,7 @@ describe("the whole flow", () => {
       expect(f.mimeType).toBe(KIND_TYPES[kind]);
       expect(await sha(new Uint8Array(f.bytes))).toBe(await sha(files[kind]));
       const data = jsonOf({ content: [(shown.content as any[])[0]] }) as any;
-      expect(Object.keys(data).sort()).toEqual(["added_at", "business", "file_name", "id", "note", "size", "source", "too_large_to_show", "type"]);
+      expect(Object.keys(data).sort()).toEqual(["added_at", "archived", "business", "file_name", "id", "note", "size", "source", "too_large_to_show", "type"]);
       expect(data).toMatchObject({ id: ids[kind], type: KIND_TYPES[kind], size: files[kind].byteLength, too_large_to_show: false });
       if (kind === "pdf") expect(f.uri).toBe(`storeops://receipt-original/${ids["pdf"]}`);
     }

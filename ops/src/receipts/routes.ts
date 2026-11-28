@@ -17,14 +17,18 @@
 // store, row, audit) in one transaction.
 //
 // The view: an original is a file somebody uploaded, sent to a signed-in person's browser. It goes out
-// with the type decided at upload, nosniff, inline under a generated name, never cached, and a
+// with the type decided at upload, nosniff, inline under a generated name, never cached (an archived
+// original, card P5-12c, is kept private for a day, and opening it is audited once a day), and a
 // sandboxing policy, so that a hostile PDF or image cannot run script on the app's origin. An id the
 // session may not see answers exactly as an id that does not exist.
 import { NOT_LOGGED_IN, type Session } from "../auth/types";
 import type { Db } from "../db/client";
-import { withTransaction } from "../db/tx";
+import { withTransaction, type Tx } from "../db/tx";
+import * as audit from "../lib/audit";
 import { loadConfig } from "../lib/config";
+import { addDays, formatDate, todayMidnight } from "../lib/dates";
 import { callerHash, floodAllows, recordCall } from "../mcp/limits";
+import { archiveAfterDays, isArchived } from "./archive";
 import * as originals from "./originals";
 import { NOT_ACCEPTED, sniff, type ContentType } from "./sniff";
 import type { ReceiptStorage } from "./storage";
@@ -205,6 +209,7 @@ export async function handleUpload(request: Request, deps: ReceiptRouteDeps): Pr
         },
         { staffId: session.staffId, role: session.role },
         now,
+        archiveAfterDays(config),
       ),
     );
     return answer(added.duplicate ? 200 : 201, { ok: true, result: added });
@@ -215,6 +220,28 @@ export async function handleUpload(request: Request, deps: ReceiptRouteDeps): Pr
 /** A file name for the browser, made here: the date and the id, and the type's extension. */
 const EXT: Readonly<Record<ContentType, string>> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic", "application/pdf": "pdf" };
 
+/** What an archived original is served with: the same person opening it again within a day does not fetch it twice. */
+export const ARCHIVED_CACHE_CONTROL = "private, max-age=86400";
+/** The audit action written when a signed-in person opens an archived original. */
+export const OPEN_ARCHIVED_ACTION = "receipt_original.open_archived";
+
+/**
+ * One audit row for this person opening this archived original, at most one per Toronto day: the log shows
+ * who is using the archive without filling up. Serialised per person, file and day so two opens at the
+ * same moment write one row.
+ */
+async function recordArchivedOpen(tx: Tx, staffId: string, originalId: string, now: Date): Promise<void> {
+  const dayStart = todayMidnight(now);
+  const dayEnd = addDays(dayStart, 1);
+  await tx.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`${OPEN_ARCHIVED_ACTION}:${staffId}:${originalId}:${formatDate(now)}`]);
+  const already = await tx.maybeOne<{ n: number }>(
+    `select 1 as n from ops.audit_log where action = $1 and actor_id = $2 and target_type = 'receipt_originals' and target_id = $3 and "timestamp" >= $4 and "timestamp" < $5 limit 1`,
+    [OPEN_ARCHIVED_ACTION, staffId, originalId, dayStart, dayEnd],
+  );
+  if (already !== null) return;
+  await audit.write(tx, { actorId: staffId, action: OPEN_ARCHIVED_ACTION, targetType: "receipt_originals", targetId: originalId, details: "opened an archived original" }, { now });
+}
+
 /** GET /files/receipt-original/<id>. */
 export async function handleView(request: Request, deps: ReceiptRouteDeps): Promise<Response> {
   if (request.method !== "GET") return new Response(JSON.stringify({ ok: false, error: { message: "METHOD_NOT_ALLOWED" } }), { status: 405, headers: { ...HEADERS, allow: "GET" } });
@@ -222,13 +249,23 @@ export async function handleView(request: Request, deps: ReceiptRouteDeps): Prom
   const id = new URL(request.url).pathname.slice(VIEW_PREFIX.length);
   const result = await withSession(deps, request, async (conn, session, now) => {
     if (deps.storage === null) return refuse(503, "Receipt storage is not set up on this server.");
-    const found = await withTransaction(conn, (tx) => originals.forView(tx, { staffId: session.staffId, role: session.role }, id, now));
-    if (found === null) return refuse(404, "No such receipt original.");
+    const looked = await withTransaction(conn, async (tx) => {
+      const original = await originals.forView(tx, { staffId: session.staffId, role: session.role }, id, now);
+      return original === null ? null : { original, days: archiveAfterDays(await loadConfig(tx)) };
+    });
+    if (looked === null) return refuse(404, "No such receipt original.");
+    const found = looked.original;
     const object = await deps.storage.get(found.storageKey);
     if (object === null) {
       deps.log({ route: VIEW_PREFIX, where: "missing object", id: found.id });
       return refuse(404, "No such receipt original.");
     }
+    // An archived file costs a little each time it is opened (card P5-12c): the same person opening it
+    // again within a day may keep it for a day, and who is using the archive is written down (at most
+    // one row for a person, a file and a Toronto day). The route cannot tell the page from another
+    // client holding a session, so every archived read by a signed-in person is counted.
+    const archived = isArchived(found.addedAt, now, looked.days);
+    if (archived) await withTransaction(conn, (tx) => recordArchivedOpen(tx, session.staffId, found.id, now));
     return new Response(object.bytes, {
       status: 200,
       headers: {
@@ -236,7 +273,7 @@ export async function handleView(request: Request, deps: ReceiptRouteDeps): Prom
         "content-length": String(object.bytes.byteLength),
         "x-content-type-options": "nosniff",
         "content-disposition": `inline; filename="receipt-${found.id}.${EXT[found.contentType]}"`,
-        "cache-control": "private, no-store",
+        "cache-control": archived ? ARCHIVED_CACHE_CONTROL : "private, no-store",
         "content-security-policy": VIEW_CSP,
       },
     });
@@ -332,6 +369,7 @@ export async function handleTicketUpload(request: Request, deps: TicketRouteDeps
         { bytes: file.bytes, sha256: file.sha256, contentType: file.type, business: t.business, source: t.source, fileName: t.fileName, note: t.note, from: { keyId: t.keyId, source: t.source, email: t.email } },
         { staffId: t.staffId, role: "assistant" },
         now,
+        archiveAfterDays(config),
       );
       await tickets.markOutcome(tx, t.ticketId, { kind: a.duplicate ? "duplicate" : "kept", receiptId: a.record.id }, now);
       return a;

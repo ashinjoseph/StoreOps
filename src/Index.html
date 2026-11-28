@@ -6999,6 +6999,51 @@
     return d.toLocaleString('en-CA', { timeZone: 'America/Toronto', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
+  // ── Archived files (card P5-12c) ──
+  //  After a month a file moves to the cheaper archive storage, and every opening costs a little. The server
+  //  says which originals are archived (`archived`, worked out with its own clock: nothing here does date
+  //  arithmetic to decide it). The page never fetches an archived file unasked: it shows a plain tile and a
+  //  button, and fetches (as it always did) only when the button is pressed.
+  const RECEIPT_ARCHIVE_NOTICE = 'This file is in the archive. Opening it costs a little; open it when you need to check the figures.';
+  function receiptMonthYear_(iso) {
+    const d = new Date(iso);
+    if (!iso || isNaN(d.getTime())) return '';
+    return d.toLocaleString('en-US', { timeZone: 'America/Toronto', month: 'long', year: 'numeric' });
+  }
+  // "Archived November 2026 · image/jpeg, 2.4 MB". o: { addedAt, contentType, size }.
+  function receiptArchiveWords_(o) {
+    return 'Archived ' + receiptMonthYear_(o.addedAt) + ' · ' + o.contentType + ', ' + receiptSizeText_(o.size);
+  }
+  // The tile: the words and the button (and, in the review, the notice). o: { id, addedAt, contentType, size }.
+  function receiptArchiveTileHTML_(o, notice, noButton, inRow) {
+    return '<div data-archive-tile="' + esc(o.id) + '" style="' + (inRow ? 'padding:2px 0;text-align:left' : 'padding:12px;text-align:center') + ';font-size:12px;color:#4a4e59">' +
+      (notice ? '<div id="rvArchiveNotice" style="margin-bottom:6px">' + esc(RECEIPT_ARCHIVE_NOTICE) + '</div>' : '') +
+      '<div class="payroll-rate" data-archive-words="1">' + esc(receiptArchiveWords_(o)) + '</div>' +
+      (noButton ? '' : '<button class="payroll-btn payroll-btn-secondary" data-archive-open="' + esc(o.id) + '" style="margin-top:8px">Open the original</button>' +
+        '<div data-archive-error="1" style="color:#b91c1c;font-weight:600;margin-top:6px"></div>') +
+    '</div>';
+  }
+  // Wire the buttons under `root`: `open(button, id)` does the fetch; a failure shows its words and lets it be pressed again.
+  function receiptArchiveWire_(root, open) {
+    root.querySelectorAll('[data-archive-open]').forEach(btn => {
+      btn.onclick = async ev => {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        haptic();
+        btn.disabled = true;
+        const prev = btn.textContent;
+        btn.textContent = 'Opening…';
+        try {
+          await open(btn, btn.dataset.archiveOpen);
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = prev;
+          const slot = btn.parentNode && btn.parentNode.querySelector ? btn.parentNode.querySelector('[data-archive-error]') : null;
+          if (slot) slot.textContent = (e && e.message) || 'This original could not be shown.';
+        }
+      };
+    });
+  }
+
   // Refused on the device, before anything is sent: the page never shrinks a photo.
   function receiptTooLarge_(file, maxMb) {
     if (!file) return '';
@@ -7113,6 +7158,9 @@
     if (it.contentType === 'application/pdf') {
       return '<div style="width:48px;height:48px;flex:0 0 48px;border-radius:6px;background:#fee2e2;color:#b91c1c;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center">PDF</div>';
     }
+    if (it.archived) {
+      return '<div data-archived-thumb="' + esc(it.id) + '" style="width:48px;height:48px;flex:0 0 48px;border-radius:6px;background:#f0f1f5;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:10px;color:#6a6e79">Archive</div>';
+    }
     return '<div data-receipt-thumb="' + esc(it.id) + '" style="width:48px;height:48px;flex:0 0 48px;border-radius:6px;background:#f0f1f5;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:10px;color:#6a6e79">' +
       (it.contentType === 'image/heic' ? 'HEIC' : '…') + '</div>';
   }
@@ -7204,6 +7252,7 @@
           '<div style="font-size:13px;font-weight:600;overflow-wrap:anywhere">' + esc(it.fileName || (it.email && it.email.attachment && it.email.attachment.name) || (it.email && it.email.print ? 'Print of an email' : it.contentType === 'application/pdf' ? 'PDF' : 'Photo')) + '</div>' +
           '<div class="payroll-rate">' + (it.assistant ? 'added by ' + esc(it.addedBy) + '\'s assistant (' + esc(it.assistant.label) + ')' : esc(it.addedBy)) + ' · ' + esc(receiptWhen_(it.addedAt)) + ' · ' + esc(receiptSizeText_(it.size)) + (it.email ? ' · from ' + esc(it.email.from) + ', sent ' + esc(receiptWhen_(it.email.date)) : '') + '</div>' +
           receiptEmailLines_(it) +
+          (it.archived ? receiptArchiveTileHTML_(it, false, it.contentType === 'application/pdf', true) : '') +
           '<div class="payroll-rate">' + esc(receiptBusinessLabel_(it.business)) + (it.note ? ' · ' + esc(it.note) : '') + '</div>' +
           (aside ? '<div class="payroll-rate">Set aside by ' + esc(it.setAside.by) + ': ' + esc(it.setAside.reason) + '</div>' : '') +
           (it.draft ? receiptDraftHeadHTML_(it.draft) : (it.status === 'drafted' ? '<div class="payroll-rate">It has been read.</div>' : it.status === 'confirmed' ? '<div class="payroll-rate">It is on the books.</div>' : '')) +
@@ -7271,6 +7320,17 @@
       el.onclick = () => { haptic(); legacyToggle_(); };
     });
     loadReceiptThumbs_(view);
+    // An archived image's preview is fetched only when its button is pressed (card P5-12c).
+    receiptArchiveWire_(view, async (btn, id) => {
+      const o = await fetchReceiptOriginal_(id);
+      const slot = Array.from(view.querySelectorAll('[data-archived-thumb]')).find(x => x.dataset.archivedThumb === id);
+      if (slot) {
+        slot.innerHTML = '<img alt="" src="' + esc(o.url) + '" style="width:100%;height:100%;object-fit:cover">';
+        const img = slot.querySelector('img');
+        if (img) img.onerror = () => { slot.textContent = 'no preview'; };
+      }
+      btn.remove();
+    });
   }
 
   // Small previews, a few at a time, as they come into sight.
@@ -7436,24 +7496,31 @@
         backBtn.disabled = false;
       }
     };
-    try {
-      const o = await fetchReceiptOriginal_(it.id);
-      if (!open) { revokeReceiptUrl_(o.url); return; }
-      holdReceiptUrl_(o.url);
-      url = o.url;
-      const big = $('rcptBig');
-      if (isPdf) {
-        big.innerHTML = '<button class="btn-primary" id="rcptOpenPdf" style="margin:16px">Open the PDF</button>';
-        $('rcptOpenPdf').onclick = () => { haptic(); window.open(url, '_blank', 'noopener'); };
-      } else {
-        big.innerHTML = '<img alt="Receipt original" src="' + esc(url) + '" style="max-width:100%;max-height:60vh;display:block">';
-        const img = big.querySelector('img');
-        if (img) img.onerror = () => { big.textContent = 'This device cannot show this kind of photo (' + it.contentType + '). It is kept as it was sent.'; };
+    const showBig = async () => {
+      try {
+        const o = await fetchReceiptOriginal_(it.id);
+        if (!open) { revokeReceiptUrl_(o.url); return; }
+        holdReceiptUrl_(o.url);
+        url = o.url;
+        const big = $('rcptBig');
+        if (isPdf) {
+          big.innerHTML = '<button class="btn-primary" id="rcptOpenPdf" style="margin:16px">Open the PDF</button>';
+          $('rcptOpenPdf').onclick = () => { haptic(); window.open(url, '_blank', 'noopener'); };
+        } else {
+          big.innerHTML = '<img alt="Receipt original" src="' + esc(url) + '" style="max-width:100%;max-height:60vh;display:block">';
+          const img = big.querySelector('img');
+          if (img) img.onerror = () => { big.textContent = 'This device cannot show this kind of photo (' + it.contentType + '). It is kept as it was sent.'; };
+        }
+      } catch (e) {
+        const big = $('rcptBig');
+        if (big && open) big.textContent = e.message;
       }
-    } catch (e) {
-      const big = $('rcptBig');
-      if (big && open) big.textContent = e.message;
-    }
+    };
+    // An archived file is fetched only when asked (card P5-12c).
+    if (it.archived) {
+      $('rcptBig').innerHTML = receiptArchiveTileHTML_(it, false, false);
+      receiptArchiveWire_($('rcptBig'), () => showBig());
+    } else await showBig();
   }
 
   function openReceiptAsideSheet_(it) {
@@ -7916,8 +7983,19 @@
     const st = { it, rv, url: null, open: true, large: !!(window.innerWidth && window.innerWidth >= 760), lines: [], other: [] };
     receiptState_.review = st;
     drawReceiptReview_(st);
+    // An archived file is not loaded until asked (card P5-12c): the tile is drawn by showReceiptReviewOriginal_.
+    if (receiptReviewArchived_(st)) return;
+    await loadReceiptReviewOriginal_(st);
+  }
+
+  // The server's word on the original (the review's own answer), not the list's.
+  function receiptReviewArchived_(st) {
+    return !!(st.rv && st.rv.original && st.rv.original.archived);
+  }
+
+  async function loadReceiptReviewOriginal_(st) {
     try {
-      const o = await fetchReceiptOriginal_(it.id);
+      const o = await fetchReceiptOriginal_(st.it.id);
       if (!st.open) { revokeReceiptUrl_(o.url); return; }
       holdReceiptUrl_(o.url);
       st.url = o.url;
@@ -7931,7 +8009,14 @@
 
   function showReceiptReviewOriginal_(st) {
     const box = $('rvOrig');
-    if (!box || !st.url) return;
+    if (!box) return;
+    if (!st.url) {
+      if (receiptReviewArchived_(st)) {
+        box.innerHTML = receiptArchiveTileHTML_(st.rv.original, true, false);
+        receiptArchiveWire_(box, () => loadReceiptReviewOriginal_(st));
+      }
+      return;
+    }
     if (st.it.contentType === 'application/pdf') {
       box.innerHTML = '<button class="btn-primary" id="rvOpenPdf" style="margin:16px">Open the PDF</button>';
       $('rvOpenPdf').onclick = () => { haptic(); window.open(st.url, '_blank', 'noopener'); };
@@ -8466,16 +8551,23 @@
     const ab = $('rbAddCad');
     if (ab) ab.onclick = () => { haptic(); close(); openReceiptCadSheet_(rc); };
     if (!rc.originalId) return;
-    try {
-      const o = await fetchReceiptOriginal_(rc.originalId);
-      holdReceiptUrl_(o.url);
-      url = o.url;
-      const box = $('rbOrig');
-      if (o.type === 'application/pdf') {
-        box.innerHTML = '<button class="btn-primary" id="rbOpenPdf" style="margin:16px">Open the PDF</button>';
-        $('rbOpenPdf').onclick = () => { haptic(); window.open(url, '_blank', 'noopener'); };
-      } else box.innerHTML = '<img alt="Receipt original" src="' + esc(url) + '" style="width:100%;display:block">';
-    } catch (e) { const box = $('rbOrig'); if (box) box.textContent = e.message; }
+    const showOrig = async () => {
+      try {
+        const o = await fetchReceiptOriginal_(rc.originalId);
+        holdReceiptUrl_(o.url);
+        url = o.url;
+        const box = $('rbOrig');
+        if (o.type === 'application/pdf') {
+          box.innerHTML = '<button class="btn-primary" id="rbOpenPdf" style="margin:16px">Open the PDF</button>';
+          $('rbOpenPdf').onclick = () => { haptic(); window.open(url, '_blank', 'noopener'); };
+        } else box.innerHTML = '<img alt="Receipt original" src="' + esc(url) + '" style="width:100%;display:block">';
+      } catch (e) { const box = $('rbOrig'); if (box) box.textContent = e.message; }
+    };
+    // An archived file is fetched only when asked (card P5-12c).
+    if (rc.original && rc.original.archived) {
+      $('rbOrig').innerHTML = receiptArchiveTileHTML_(rc.original, false, false);
+      receiptArchiveWire_($('rbOrig'), () => showOrig());
+    } else await showOrig();
   }
 
   // Add the Canadian amount paid to a confirmed receipt in another currency: once (card P5-05c).

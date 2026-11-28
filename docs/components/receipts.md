@@ -10,7 +10,7 @@
 
 ## What it does
 
-Built so far (cards P5-12a, P5-12b, P5-05a, P5-05b, P5-15, P5-16 and P5-05c), in the Operations app only (inside
+Built so far (cards P5-12a, P5-12b, P5-05a, P5-05b, P5-15, P5-16, P5-05c and P5-12c), in the Operations app only (inside
 Apps Script neither entry exists). The old spreadsheet's purchase list, kept as
 history and never among the receipts, has its own section,
 [The old purchase list](#the-old-purchase-list-card-p5-16).
@@ -30,7 +30,9 @@ history and never among the receipts, has its own section,
   aside**, newest first, each row with a small preview (images, fetched a few
   at a time as they come into sight) or a PDF mark, who added it and when, its
   size, the business or *business not known*, and the note. Tapping opens the
-  original large (a PDF opens in a new tab).
+  original large (a PDF opens in a new tab). A file older than a month is
+  **archived** and is not opened unasked: see
+  [Archived files](#archived-files-card-p5-12c).
 - **Admin and manager**, in that view: **Set aside** (it is not a receipt; a
   reason of 3 to 300 characters; it stays on file under *Set aside*),
   **Put back**, and **Change business** (cstore, vape or not known) on a
@@ -880,6 +882,95 @@ reader to report them as printed and to work nothing out (no conversion, no
 splitting a tax-included price, no sign changed); its answer has them and the
 new checks' words.
 
+### Archived files (card P5-12c)
+
+The owner's choice (Nov 28): recent receipt files stay at hand, and **after one
+month they move to cheaper archive storage**, the way a bank shows older
+statements. The move is **not the app's work**. It is a rule set on the
+storage: R2 moves a file to its "infrequent access" class after 30 days. An
+archived file still opens at once, but **each opening is charged a small
+retrieval fee**, and a rule cannot move a file back. So the app does what the
+bank's page does: it **says which files are archived, does not open them
+unasked, and opens one when a person asks**. It never moves, copies, deletes or
+re-classes a file, and it asks the storage nothing new (a structural test holds
+that).
+
+**Which files.** One pure function, `isArchived(addedAt, now, afterDays)` in
+`ops/src/receipts/archive.ts`, decides from age. The app does not ask the
+storage which class a file is in: that would itself be a request per file.
+The setting **`receipt_archive_after_days`** (Settings, group *Other*; default
+30; a whole number from 1 to 3650; blank means 30) must simply be the same
+number of days as the storage rule.
+
+- **The boundary, exactly:** by Toronto calendar days. An original is archived
+  when **more than N Toronto calendar days** have passed since the day it was
+  added. With 30: added on Oct 28, it is still recent all through Nov 27
+  (30 days on) and archived from **Nov 28 00:00 Toronto** (31 days on). The
+  hour of the day it was added does not matter, and a clock change never moves
+  the boundary (days are counted on the calendar, not in blocks of 24 hours).
+- **Switching it off:** there is no "off". An admin sets a large number (3650,
+  ten years). The Settings screen says so.
+- **A bad stored value** (0, a fraction, text, over 3650: Settings refuses
+  them, but a row edited by hand could hold one) reads as 30.
+- **If the app's number and the storage rule disagree.** The app counts whole
+  calendar days after the day added, so it already lags a storage rule of the
+  same number of days by up to a day; the storage applies a rule on its own
+  schedule too (to be seen in the hosted rehearsal). *The app's number is
+  larger than the rule's:* files the storage has archived still look recent, so
+  the page opens their previews unasked and each costs the small fee. This is
+  the direction that costs money. *The app's number is smaller than the rule's:*
+  the page holds back previews of files that are still at hand; harmless, one
+  more press. If the day of lag matters, set the app's number one lower than
+  the rule's.
+
+**Every answer that lists or describes an original carries `archived: true |
+false`**, worked out on the server with the call's own `now`, never on the page:
+
+| Answer | Where |
+|---|---|
+| The inbox: Waiting, Read, Set aside, an employee's own list; and the record that Set aside, Put back and Change business answer | `rpcGetReceiptInbox`, `rpcSetReceiptAside`, `rpcSetReceiptBusiness`: `archived` on each item |
+| The review's original part | `rpcGetReceiptReview` (and the correction's answer): `original: { …, size, archived }` |
+| A confirmed receipt's view (and what Confirm, Void and Add the Canadian amount answer) | `receipt.original: { id, contentType, size, addedAt, archived }`, or null |
+| What an assistant lists | `receipts_to_read`: `archived` on each, and in `receipt_original`'s data |
+
+The *On the books* list's rows carry only the original's id (never its
+details), so they carry no flag; opening one is the confirmed receipt's view.
+
+**What the page does.** Where a preview or the original used to be loaded
+automatically, an archived one shows a plain tile instead, **Archived
+November 2026 · image/jpeg, 2.4 MB** (the Toronto month it was added, its type,
+its size), with a button **Open the original**. Pressing it fetches and shows
+the file exactly as before. A screen of only recent files makes exactly the
+requests it made before.
+
+| Place | Before | Now, for an archived original |
+|---|---|---|
+| A row's small preview (images; a PDF never had one) | fetched as it came into sight | the words and the button in the row; the button fetches it into the preview slot. A row's PDF shows its words and the PDF mark, no button (the large view has it) |
+| The large view | fetched on opening | the tile and the button; pressing fetches and shows it (a PDF: *Open the PDF* after the press) |
+| The review | fetched beside the figures | the notice *This file is in the archive. Opening it costs a little; open it when you need to check the figures.*, the tile and the button. **Confirming does not require having opened it**: nothing new is enforced. The review's own answer decides, not the list's, so a review opened from *Review the next one* is held back too |
+| A confirmed receipt's view | fetched on opening | the tile and the button |
+
+**The file route** (`GET /files/receipt-original/<id>`) is unchanged in who may
+and what it returns, with one addition: for an archived original it also sends
+`Cache-Control: private, max-age=86400` (the same person opening it again
+within a day does not fetch it twice); for a recent one the header is still
+`private, no-store`. It uses the same `isArchived`.
+
+**One audit row when a person opens an archived original**:
+`receipt_original.open_archived` (the original's id, and who), at most one per
+person per original per Toronto day, so the log shows who is using the archive
+without filling up. None for a recent file, none when the open is refused or the
+object is missing. The route cannot tell the page from another client holding a
+session, so every archived read by a signed-in person is counted. An
+assistant's `receipt_original` call writes nothing of its own: the door already
+records every call.
+
+**For an assistant**: `receipts_to_read` says `archived` for each original, and
+`receipt_original` on an archived one works as before, but its description and
+its answer's summary say that the file is archived and that showing it uses the
+archive, so a scheduled task does not sweep the archive unasked. No new refusal,
+no new right, no new limit.
+
 ### What the model still does not hold
 
 Card P5-05c holds a credit note (either sign), tax included in the price, a
@@ -1021,6 +1112,11 @@ settings, so the screen shows the setting's name until one is typed.
 
 ## Rules it must not break
 
+- **An archived file is never opened unasked** (card P5-12c): the page shows a
+  tile and a button instead; the server, not the page, says which files are
+  archived; the app never moves, copies, deletes or re-classes a file, and
+  asks the storage nothing about its class.
+
 - **An original is never erased, overwritten or converted**
   ([ADR-0026](../adr/0026-receipt-originals-are-kept-as-received.md)). No
   `delete` under `ops/src/receipts/`; a `put` never reuses a key; the app's
@@ -1129,7 +1225,8 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 | RPCs | `ops/src/rpc/handlers/receipts.ts`: `rpcGetReceiptInbox`, `rpcSetReceiptAside`, `rpcSetReceiptBusiness`, `rpcGetBusinesses`, `rpcUpdateBusiness`, `rpcAddBusinessSign`, `rpcRemoveBusinessSign`, `rpcGetReceiptDraft`, `rpcEnterReceiptDraft` (card P5-05a); `rpcGetReceiptReview`, `rpcSaveReceiptCorrection`, `rpcConfirmReceipt`, `rpcVoidReceipt`, `rpcGetReceiptSuppliers`, `rpcCreateReceiptSupplier`, `rpcUpdateReceiptSupplier`, `rpcGetReceiptBooks` (card P5-05b); `rpcAddReceiptCanadianAmount` (card P5-05c); listed in `ops/contracts/rpc-ops.json` |
 | Tables | `ops/migrations/0010_receipt_inbox.sql`; `ops/migrations/0012_receipt_upload_tickets.sql` (the tickets); `ops/migrations/0013_receipt_drafts.sql` (drafts, lines, suppliers and their spellings; `drafted`); `ops/migrations/0014_receipt_review.sql` (`confirmed`, the confirm record, what the signs said, `redo_of`, learnt-from links, the supplier's display key, the trigger `purchase_receipts_final`); `ops/migrations/0018_receipt_kinds.sql` (the four facts, `total_cad_by`, `total_cad_at`, the trigger's one addition) |
 | The old purchase list (card P5-16) | `ops/src/receipts/legacy.ts`: the pure `judgeRow`, `readRows`, `findColumns`, `centsText`, `cleanFileName`; `loadFile` (one insert, `--replace-file` carry-over), `getPurchases`, `getSpellings`, `setBusiness`, `linkSupplier`; `addSpelling` is `review.ts`'s own, exported; the tool `ops/tools/import-purchases.ts` (`npm --prefix ops run import:purchases`); the workbook reader's `headerRow` option and `tableOf` in `ops/src/export/xlsx.ts`; the RPCs `rpcGetLegacyPurchases`, `rpcGetLegacySpellings`, `rpcSetLegacyBusiness`, `rpcLinkLegacySupplier` in `ops/src/rpc/handlers/receipts.ts`; `src/Index.html`: `legacyToggle_`, `legacyLoad_`, `legacyHTML_`, `openLegacySpellingSheet_` |
-| Setting | `receipt_max_mb` and `hst_rate_percent` in `ops/src/lib/config-keys.ts` (`OPS_ONLY_KEYS`) and `ops/src/modules/settings.ts` (group *Other*) |
+| Setting | `receipt_max_mb`, `receipt_archive_after_days` and `hst_rate_percent` in `ops/src/lib/config-keys.ts` (`OPS_ONLY_KEYS`) and `ops/src/modules/settings.ts` (group *Other*) |
+| Archived files (card P5-12c) | `ops/src/receipts/archive.ts`: the pure `isArchived`, `archiveAfterDays`, `tileWords`, `monthYear` and the fixed words; `archived` in `originals.ts` (`view`), `review.ts` (`getReview`, `receiptDetail`) and the two tools; `ops/src/receipts/routes.ts`: `ARCHIVED_CACHE_CONTROL`, `OPEN_ARCHIVED_ACTION`, `recordArchivedOpen`; `src/Index.html`: `receiptArchiveTileHTML_`, `receiptArchiveWire_`, `receiptArchiveWords_`, `receiptMonthYear_`, `receiptReviewArchived_`, `loadReceiptReviewOriginal_` |
 | The assistant's view | the `businesses`, `receipts_to_read`, `receipt_original`, `receipt_upload_start`, `receipts_from_email` and `receipt_propose` tools in `ops/src/mcp/tools.ts` ([assistants](assistants.md)) |
 | UI | `src/Index.html`: `loadReceiptsTab`, `renderReceiptsTab`, `sendReceiptOriginal_`, `fetchReceiptOriginal_`, `receiptTooLarge_`, `openReceiptSheet_`, `revokeReceiptBlobs_`, `receiptDraftHeadHTML_`, `receiptDraftHTML_`, `openReceiptDraftEntry_`, `receiptDraftInput_`, `receiptDraftLineHTML_`; card P5-05b: `openReceiptReview_`, `drawReceiptReview_`, `receiptReviewHTML_`, `receiptReviewInput_`, `saveReceiptReview_`, `openReceiptConfirmSheet_`, `loadReceiptBooks_`, `receiptBooksHTML_`, `openReceiptOnBooks_`, `receiptChangesHTML_`, `openReceiptVoidSheet_`; `loadBusinessesTab`, `renderBusinessesTab`, `openBusinessSignSheet_`; the `receipts` and `businesses` entries of `MORE_ITEMS` (`opsOnly`) |
 
@@ -1137,6 +1234,7 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
 
 | Suite | Holds down |
 |---|---|
+| `ops/test/receipt-archive.test.ts` | card P5-12c, against a real database with the in-memory bucket, the RPCs through the real router, the file route's handler with an injected clock and the tools through the SDK client: `isArchived` as a table at its edges (the day before, the day of and the day after the boundary, the hour of the day added, the November and March clock changes, the setting at 1, 30 and 3650, a bad setting reading as 30, an invalid date); the setting's reader; the tile's words; `archived` right for a recent and an archived original in the same list for the inbox, an employee's own list, Set aside, Put back, Change business, the review and a confirmed receipt's view, changing at once with the setting; no storage call to list; the setting on the Settings screen (listed, validated in words, admin only); the file route's headers for a recent original pinned byte for byte and an archived one's with the one cache header, who may unchanged for every role and for no session; the audit row once per person, original and Toronto day (not for a recent file, a refusal or a missing object; one row for opens at the same moment); `receipts_to_read`'s flag, `receipt_original`'s words and data on an archived original, the descriptions, the tool list unchanged; nothing under `ops/src/receipts/` deleting, copying or moving a file |
 | `ops/test/receipt-inbox.test.ts` | through the Worker's own `fetch` with the in-memory bucket: each of the five types kept with the type its bytes say, whatever was sent; the exact signatures; SVG, HTML, zip, GIF, empty, cut-short refused with nothing stored or written; over the limit refused before the body is read, a lying `Content-Length` stopped at its claim, the limit following the setting; byte for byte and the real SHA-256; the same bytes twice (and twice at once on two connections) one object and one row; no `delete` under `src/receipts/`, no key reused, the database role unable to remove or rewrite; set aside and put back leaving the object and hash; who may add, list, view, set aside and change business; a foreign `Origin`; the view's headers for an image and a PDF, no cookie, no CORS, the same 404 for a forbidden and a missing id, no answer without the header; the audit rows; names and notes cleaned and kept out of the key; a failure after the object was stored; no other table moved |
 | `ops/test/receipt-emails.test.ts` | card P5-13: the message id's normal form (a table, and the SQL function agreeing); one email found in both spellings and an original stored before the card; a whole scan over five fictional emails played as the assistant and a second scan that is a no-op; `receipt_email_done` (refusals both ways, again keeps the first-seen time, audit rows, a read key refused, the daily cap); the attachment and print rules, a print that is not a PDF refused at the PUT, the database's checks and grants; hostile subject, sender, attachment name and note; the call record and audit log without email text; nothing under `ops/src/` naming a mail host, library or protocol; `rpcGetReceiptEmails` per role and paging. See [assistants](assistants.md) |
 | `ops/test/mcp-receipts.test.ts` | card P5-12b: an assistant's originals by ticket through the Worker's `fetch` and the tools through the SDK client: the whole flow; byte for byte both ways for the five kinds; the ticket single use, 10 minutes exactly, the same 404 for every refused ticket, one file from two PUTs at once, nowhere stored or answered but once; the page's file rules on this route; who it belongs to and what is recorded; email ids; planted text cleaned; nothing else moved. The refactor of the upload path (`checkLength`, `receiveFile`) is held by `ops/test/receipt-inbox.test.ts`, unchanged |
@@ -1161,6 +1259,14 @@ Read from the code and the platforms' documentation, not yet tried on a phone:
   corrections*: the redraw of the list behind it had revoked its object URL;
   a sheet now holds its own. The review is tighter and its original can be
   folded to a thin bar. No server change.
+- **Nov 2026 (card P5-12c):** archived files. After a month (the setting
+  `receipt_archive_after_days`, which must match the storage's own rule) a
+  file counts as archived: every answer that describes an original says so
+  (`archived`), the Receipts screen shows a tile and a button **Open the
+  original** instead of fetching it unasked (the row's preview, the large view,
+  the review, a confirmed receipt), the file route adds a one-day private cache
+  header and one audit row a day per person, and an assistant is told. The move
+  itself is a rule on the storage, not the app's. No migration.
 
 - **Nov 2026 (card P5-05c):** receipts of every kind in one form: four optional
   facts about the document (what it is, the currency, tax inside the price, the

@@ -23,6 +23,7 @@ import { z } from "zod";
 import type { Tx } from "../db/tx";
 import type { Config } from "../lib/config";
 import { formatDate, formatDateTime } from "../lib/dates";
+import * as archive from "../receipts/archive";
 import { list as listBusinesses } from "../receipts/businesses";
 import * as drafts from "../receipts/drafts";
 import * as emails from "../receipts/emails";
@@ -154,16 +155,19 @@ const receiptsToRead: ToolDef = {
   title: "Receipts waiting to be read",
   description:
     "The receipt originals (photos and PDFs) waiting to be read, oldest first, a page at a time: each with its id, when it was added, its source (photo, upload, assistant, email), its type and size, the business if somebody said (else null: not known), its file name and note as sent, and for one from an email the sender, date and subject and which attachment it was (its name and position) or print: true when it is a print of the email's own text. Also how many are waiting in all. Optional: after (the next value of the previous page), limit (1 to 50, default 20). Use receipt_original to be shown one. " +
+    `Each carries archived (true or false): ${archive.TOOL_DESCRIPTION_WORDS} ` +
     DATA_SENTENCE,
   input: z.object({ after: RECEIPT_ID.optional(), limit: z.number().int().min(1).max(50).optional() }).strict(),
   async run(ctx, input) {
     const page = await originals.toRead(ctx.db, { after: input["after"] as string | undefined, limit: (input["limit"] as number | undefined) ?? 20 });
+    const days = archive.archiveAfterDays(ctx.config);
     const receipts = page.items.map((o) => ({
       id: o.id,
       added_at: o.addedAt.toISOString(),
       source: o.source,
       type: o.contentType,
       size: o.size,
+      archived: archive.isArchived(o.addedAt, ctx.now, days),
       business: o.business,
       file_name: textOrNull(o.fileName),
       note: textOrNull(o.note, 300),
@@ -195,6 +199,7 @@ const receiptOriginal: ToolDef = {
   title: "Be shown one receipt original",
   description:
     "One receipt original that is waiting to be read (or was read already and its draft not yet reviewed, so a draft can be looked at again and corrected with receipt_propose), as it was received; one whose receipt a person has confirmed onto the books is not shown (nothing is left to do with it): a text block (a summary line, then JSON: id, type, size, added_at, source, business, file_name, note), then the file itself, byte for byte: an image block for a JPEG, PNG, WebP or HEIC photo, an embedded resource with a blob for a PDF. An original larger than the setting assistant_show_max_mb is not shortened or resized: the answer says too_large_to_show and its size, with no file. Input: id (from receipts_to_read). " +
+    `An archived original (see archived in receipts_to_read) is shown as before, but its answer says so: ${archive.TOOL_DESCRIPTION_WORDS} ` +
     DATA_SENTENCE,
   input: z.object({ id: RECEIPT_ID }).strict(),
   async run(ctx, input) {
@@ -202,10 +207,12 @@ const receiptOriginal: ToolDef = {
     if (found === null) return { error: NO_SUCH_ORIGINAL };
     const max = showMaxBytes(ctx.config);
     const tooLarge = found.size > max;
+    const archived = archive.isArchived(found.addedAt, ctx.now, archive.archiveAfterDays(ctx.config));
     const data = {
       id: found.id,
       type: found.contentType,
       size: found.size,
+      archived,
       added_at: found.addedAt.toISOString(),
       source: found.source,
       business: found.business,
@@ -215,14 +222,15 @@ const receiptOriginal: ToolDef = {
       ...(tooLarge ? { show_max_bytes: max } : {}),
     };
     const size = originals.sizeText(found.size);
+    const archiveWords = archived ? ` ${archive.ASSISTANT_WORDS}` : "";
     if (tooLarge) {
-      return { summary: `Receipt original ${found.id} is ${size}, more than the ${Math.round(max / MB)} MB that can be shown in one answer; it is kept as received, but not shown here.`, data };
+      return { summary: `Receipt original ${found.id} is ${size}, more than the ${Math.round(max / MB)} MB that can be shown in one answer; it is kept as received, but not shown here.${archiveWords}`, data };
     }
     if (ctx.storage === null) throw new Error("receipt storage is not bound");
     const object = await ctx.storage.get(found.storageKey);
     if (object === null) throw new Error("a receipt original's object is missing");
     return {
-      summary: `Receipt original ${found.id}: ${size}, ${found.contentType}, added ${when(found.addedAt)} (Toronto); the file follows, as received.`,
+      summary: `Receipt original ${found.id}: ${size}, ${found.contentType}, added ${when(found.addedAt)} (Toronto); the file follows, as received.${archiveWords}`,
       data,
       file: { bytes: object.bytes, contentType: found.contentType, uri: `storeops://receipt-original/${found.id}` },
     };

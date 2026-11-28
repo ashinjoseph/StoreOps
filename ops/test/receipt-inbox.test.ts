@@ -473,7 +473,7 @@ describe("the inbox list", () => {
       expect(text).not.toMatch(/originals\/|storage|https?:|sha/i);
     }
     const one = (await call("rpcGetReceiptInbox", [tokens["S_001"], {}])).result.items[1];
-    expect(Object.keys(one).sort()).toEqual(["addedAt", "addedBy", "business", "contentType", "fileName", "id", "mine", "note", "setAside", "size", "source", "status"]);
+    expect(Object.keys(one).sort()).toEqual(["addedAt", "addedBy", "archived", "business", "contentType", "fileName", "id", "mine", "note", "setAside", "size", "source", "status"]);
     expect(one).toMatchObject({ addedBy: "Cleo Marsh", business: "cstore", source: "photo", contentType: "image/png", fileName: "cleo-1.png", note: "Fictional Grocer", status: "waiting", setAside: null, mine: false });
   });
 

@@ -1944,3 +1944,37 @@ and thirteen deliberate mutations, each restored byte for byte.
 
 New: `tests/suites/ui-card-pad.js`, and assertions in
 `tests/suites/ui-receipts.js` (all seen failing before the change).
+
+### Archived receipt files are shown as archived, and opened only when asked (P5-12c)
+
+The owner's choice (Nov 28): receipt files from the last month stay at hand;
+older ones move to cheaper archive storage, the way a bank shows older
+statements. The move is a rule on the storage, not the app's work. An archived
+file still opens at once, but each opening costs a little, so the app now
+behaves like the bank's page.
+
+- **The setting `receipt_archive_after_days`** (Settings, *Other*; default 30;
+  1 to 3650; Operations only) says after how many days a file counts as
+  archived. It must be the same number as the storage rule: the app does not
+  ask the storage, it counts Toronto calendar days (added Oct 28 with 30: recent
+  through Nov 27, archived from Nov 28 00:00). There is no "off": set 3650.
+- **Every answer that describes an original says `archived`**, worked out on the
+  server: the inbox lists, the record after Set aside, Put back and Change
+  business, the review, a confirmed receipt's view, and `receipts_to_read`.
+- **The Receipts screen no longer fetches an archived file unasked.** Where a
+  preview or the original was loaded automatically, it shows *Archived November
+  2026 · image/jpeg, 2.4 MB* and a button **Open the original**; in the review
+  it adds *This file is in the archive. Opening it costs a little; open it when
+  you need to check the figures.* Confirming does not require opening it. A
+  screen of only recent files makes exactly the requests it made before.
+- **The file route** sends `Cache-Control: private, max-age=86400` for an
+  archived file (a recent one is unchanged), and writes one audit row,
+  `receipt_original.open_archived`, per person, file and Toronto day.
+- **For an assistant**, `receipt_original` on an archived file works as before
+  and says the file is archived and that showing it uses the archive. No new
+  refusal, right or limit.
+- No migration. The app still never deletes, moves, copies or re-classes a file.
+
+New: `ops/test/receipt-archive.test.ts` and archive assertions in
+`tests/suites/ui-receipts.js`, seen failing before the change and with ten
+deliberate mutations, each restored byte for byte.

@@ -101,6 +101,7 @@ const SCREEN = ['receiptSizeText_', 'receiptBusinessLabel_', 'receiptWhen_', 're
   'receiptPickHTML_', 'wireReceiptAdd_', 'submitReceipt_', 'openReceiptSheet_', 'openReceiptAsideSheet_', 'openReceiptBusinessSheet_',
   'receiptDraftHeadHTML_', 'receiptDraftPaid_', 'receiptUnitPrice_', 'receiptDraftHTML_', 'receiptDraftInput_', 'receiptDraftLineHTML_', 'openReceiptDraftEntry_',
   'receiptBusinessName_', 'receiptFailedHTML_', 'receiptLineValues_', 'receiptReviewLinesHTML_', 'receiptReviewOtherHTML_', 'receiptReviewInput_', 'receiptReviewKeep_', 'receiptReviewHTML_',
+  'receiptMonthYear_', 'receiptArchiveWords_', 'receiptArchiveTileHTML_', 'receiptArchiveWire_', 'receiptReviewArchived_', 'loadReceiptReviewOriginal_',
   'openReceiptReview_', 'showReceiptReviewOriginal_', 'drawReceiptReview_', 'closeReceiptReview_', 'wireReceiptReview_', 'wireReceiptReviewRows_', 'saveReceiptReview_', 'openReceiptConfirmSheet_',
   'loadReceiptBooks_', 'receiptBooksHTML_', 'wireReceiptBooks_', 'receiptChangesHTML_', 'openReceiptOnBooks_', 'openReceiptVoidSheet_',
   'receiptEmailLines_', 'receiptPrintNotice_', 'receiptEmailRowHTML_', 'receiptEmailMoreHTML_', 'receiptEmailsHTML_', 'wireReceiptEmails_',
@@ -166,7 +167,7 @@ H.uiScripts().forEach(([label, js]) => {
         return (String(this.innerHTML).match(new RegExp('data-' + attr[1] + '="([^"]*)"', 'g')) || []).map(m => {
           const v = /"([^"]*)"/.exec(m)[1];
           const k = sel + v;
-          if (!found.has(k)) found.set(k, { innerHTML: '', textContent: '', dataset: { [key]: v }, querySelector: () => null });
+          if (!found.has(k)) found.set(k, { innerHTML: '', textContent: '', dataset: { [key]: v }, querySelector: () => null, remove() { this.removed = true; } });
           return found.get(k);
         });
       },
@@ -202,7 +203,7 @@ H.uiScripts().forEach(([label, js]) => {
       window: { open: (u, n, f) => { w.opened.push([u, n, f]); return null; } },
     };
     const names = Object.keys(deps);
-    const consts = ['RECEIPT_ACCEPT', 'RECEIPT_MB', 'RECEIPT_PRINT_WORDS', 'RECEIPT_EMAIL_WORDS', 'receiptState_', 'BUSINESS_SIGN_KINDS', 'RECEIPT_KINDS', 'RECEIPT_DOC_KINDS', 'RECEIPT_CHARGE_KINDS', 'legacyState_', 'LEGACY_VIEWS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
+    const consts = ['RECEIPT_ACCEPT', 'RECEIPT_MB', 'RECEIPT_ARCHIVE_NOTICE', 'RECEIPT_PRINT_WORDS', 'RECEIPT_EMAIL_WORDS', 'receiptState_', 'BUSINESS_SIGN_KINDS', 'RECEIPT_KINDS', 'RECEIPT_DOC_KINDS', 'RECEIPT_CHARGE_KINDS', 'legacyState_', 'LEGACY_VIEWS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
     w.fns = new Function(...names, consts + '\n' + H.fnSource(js, 'esc') + '\n' + H.fnSource(js, 'money') + '\n' + own + '; return { receiptState_, legacyState_, ' + SCREEN.join(', ') + ' };')(...names.map(n => deps[n]));
     return w;
   }
@@ -1073,6 +1074,204 @@ H.uiScripts().forEach(([label, js]) => {
       return !/id="rvOrig"[^>]*display:none/.test(f.sheets[f.sheets.length - 1].bodyHTML) && />Hide the original</.test(f.sheets[f.sheets.length - 1].bodyHTML);
     })());
   })());
+
+  // ── Archived files (card P5-12c) ──────────────────────────
+  //  The server says which originals are archived (`archived`). The page never fetches an archived file
+  //  unasked: a plain tile ("Archived <month year> · <type>, <size>") and a button "Open the original" take
+  //  the place of the preview, the large view, the review's original and the confirmed receipt's original.
+  //  Pressing the button fetches and shows the file exactly as before. A screen of recent files makes exactly
+  //  the requests it made before the card.
+  pending.push((async () => {
+    const A = 'ro' + 'a'.repeat(24);
+    const C = 'ro' + 'c'.repeat(24);
+    const OLDJ = 'ro' + 'd'.repeat(24);
+    const OLDP = 'ro' + 'e'.repeat(24);
+    const fileUrl = id => '/files/receipt-original/' + id;
+    const archivedJpeg = item({ id: OLDJ, archived: true, addedAt: '2026-10-02T15:00:00.000Z', contentType: 'image/jpeg', size: 2516582, fileName: 'old-photo.jpg' });
+    const archivedPdf = item({ id: OLDP, archived: true, addedAt: '2026-10-03T15:00:00.000Z', contentType: 'application/pdf', size: 849920, fileName: 'old-invoice.pdf' });
+    const WORDS_JPEG = 'Archived October 2026 · image/jpeg, 2.4 MB';
+    const WORDS_PDF = 'Archived October 2026 · application/pdf, 830 KB';
+    const withItems = (base, items) => Object.assign({}, base, { items });
+    const asked = w => w.fetches.map(f => f.url);
+
+    const ORIG = (extra) => Object.assign({ id: OLDJ, status: 'drafted', business: null, contentType: 'image/jpeg', size: 2516582, fileName: 'old-photo.jpg', addedBy: 'Jordan Reyes', addedAt: '2026-10-02T15:00:00.000Z', archived: true }, extra || {});
+    const RDX = { id: 'pr' + '5'.repeat(24), originalId: OLDJ, status: 'draft', readBy: { kind: 'person', name: 'Priya Nair', keyLabel: null }, readAt: '2026-11-27T15:05:00.000Z',
+      supplier: { id: null, name: 'Fictional Grocer', hstNumber: null, onList: false, listedName: null }, invoiceNumber: null, date: '2026-11-02', dateAsRead: '2026-11-02', paid: null,
+      amounts: { subtotal: '10.00', hst: '1.30', otherTotal: null, other: [], total: '11.30' }, kind: null, buyer: { name: null, hstNumber: null, accountNumber: null, cardLast4: null }, suggestedBusiness: null,
+      business: { key: 'cstore', decidedBy: ['person'], why: 'chosen by a person', signs: [], personSaid: null, agreesWithPerson: null, signsSaid: null }, lines: [], needsAttention: false, failed: 0, checks: [], whereRead: {}, note: null, supersedes: null, redoOf: null, hstRatePercent: '13' };
+    const RVX = (over) => Object.assign({ original: ORIG(), draft: RDX, first: RDX, changes: null, readings: [], supplierCandidates: [], signOffers: null, spelling: null,
+      confirm: { allowed: true, why: [], missing: [], checks: [], failed: [], reasonNeeded: false, adminOnly: false }, canEdit: true, canLearnSigns: false, onBooks: null, businessNames: { cstore: 'Fictional Corner Mart', vape: 'Fictional Vape Co' } }, over || {});
+
+    // 1. Only recent originals: exactly the requests the page made before the card (the same two thumbnails, in order),
+    //    whether or not the server's answer says archived: false.
+    {
+      const explicit = x => Object.assign({}, x, { items: x.items.map(i => Object.assign({}, i, { archived: false })) });
+      for (const [what, all, aside] of [['no flag in the answer', ALL, ASIDE], ['archived: false on every one', explicit(ALL), explicit(ASIDE)]]) {
+        const r = world({ role: 'admin', answers: { rpcGetReceiptInbox: (tok, input) => (input.status === 'set_aside' ? aside : all) } });
+        await r.fns.loadReceiptsTab();
+        await tick();
+        t.eq(label + ': archive: recent only (' + what + '): the thumbnails fetched are the same two as before the card', asked(r), [fileUrl(A), fileUrl(C)]);
+        const html = r.els['view-receipts'].innerHTML;
+        t.ok(label + ': archive: recent only (' + what + '): no tile, no button, no archive words', !/data-archive|data-archived-thumb|Open the original|Archived /.test(html));
+        await r.fns.openReceiptSheet_(all.items[0], true);
+        t.eq(label + ': archive: recent only (' + what + '): the large view fetches at once, as before', asked(r), [fileUrl(A), fileUrl(C), fileUrl(A)]);
+        t.ok(label + ': archive: recent only (' + what + '): and shows the image', /<img alt="Receipt original" src="blob:/.test(r.els.rcptBig.innerHTML) && !/Open the original/.test(r.els.rcptBig.innerHTML));
+      }
+    }
+
+    // 2. The list: a recent and an archived image and an archived PDF in one list.
+    {
+      const mixed = withItems(ALL, [ALL.items[0], archivedJpeg, archivedPdf]);
+      const r = world({ role: 'admin', answers: { rpcGetReceiptInbox: (tok, input) => (input.status === 'set_aside' ? { scope: 'all', status: 'set_aside', items: [], counts: {}, next: null, canSetAside: true, maxMb: 10 } : mixed) } });
+      await r.fns.loadReceiptsTab();
+      await tick();
+      const html = r.els['view-receipts'].innerHTML;
+      t.eq(label + ': archive: list: only the recent image is fetched; neither archived file is asked for', asked(r), [fileUrl(A)]);
+      t.ok(label + ': archive: list: the archived image has a plain tile in place of a preview (no thumbnail to fill)', html.indexOf('data-archived-thumb="' + OLDJ + '"') !== -1 && html.indexOf('data-receipt-thumb="' + OLDJ + '"') === -1);
+      t.ok(label + ': archive: list: the tile\'s words are "Archived <month year> · <type>, <size>"', html.indexOf('data-archive-words="1">' + WORDS_JPEG + '<') !== -1 && html.indexOf('data-archive-words="1">' + WORDS_PDF + '<') !== -1);
+      t.ok(label + ': archive: list: a button "Open the original" on the archived image', count(html, 'data-archive-open="' + OLDJ + '"') === 1 && />Open the original</.test(html));
+      t.ok(label + ': archive: list: an archived PDF never had a preview: its words, the PDF mark, no button', html.indexOf('data-archive-open="' + OLDP + '"') === -1 && />PDF</.test(html));
+      t.ok(label + ': archive: list: the recent one has no tile', count(html, 'data-archive-tile=') === 2 && html.indexOf('data-archive-tile="' + A + '"') === -1);
+      // Pressing the button fetches that one file, shows it in the row's slot, and takes the button away.
+      const btn = r.els['view-receipts'].querySelectorAll('[data-archive-open]')[0];
+      let stopped = 0;
+      await btn.onclick({ stopPropagation: () => { stopped++; } });
+      t.eq(label + ': archive: list: pressing Open the original fetches that file, once, with the session header', asked(r), [fileUrl(A), fileUrl(OLDJ)]);
+      t.ok(label + ': archive: list: the press does not also open the row', stopped === 1);
+      const slot = r.els['view-receipts'].querySelectorAll('[data-archived-thumb]')[0];
+      t.ok(label + ': archive: list: the preview now fills the slot from a blob URL', /<img alt="" src="blob:https:\/\/ops\.test\/\d+"/.test(slot.innerHTML));
+      t.ok(label + ': archive: list: the request carries the Bearer header, never the token in an address', r.fetches.every(f => f.url.indexOf(TOKEN) === -1 && f.init.headers && f.init.headers.authorization === 'Bearer ' + TOKEN));
+      r.fns.revokeReceiptBlobs_();
+      t.ok(label + ': archive: list: leaving the screen revokes the blob URLs of both', r.created.length === 2 && r.created.every(u => r.revoked.indexOf(u) !== -1));
+      // A failed open lets the button be pressed again.
+      const f = world({ role: 'admin', answers: { rpcGetReceiptInbox: (tok, input) => (input.status === 'set_aside' ? { scope: 'all', status: 'set_aside', items: [], counts: {}, next: null, canSetAside: true, maxMb: 10 } : withItems(ALL, [archivedJpeg])) },
+        fetch: () => ({ ok: false, status: 404, json: async () => ({ ok: false, error: { message: 'No such receipt original.' } }) }) });
+      await f.fns.loadReceiptsTab();
+      const fb = f.els['view-receipts'].querySelectorAll('[data-archive-open]')[0];
+      await fb.onclick({ stopPropagation() {} });
+      t.ok(label + ': archive: list: a refused open leaves the button usable', fb.disabled === false && fb.textContent !== 'Opening…' && f.fetches.length === 1);
+    }
+
+    // 3. The employee's own list.
+    {
+      const e = world({ role: 'employee', answers: { rpcGetReceiptInbox: { scope: 'own', days: 7, items: [Object.assign({}, archivedJpeg, { mine: true })], maxMb: 10 } } });
+      await e.fns.loadReceiptsTab();
+      await tick();
+      t.ok(label + ': archive: employee: their own archived file shows the tile too, and nothing is fetched', e.fetches.length === 0 && e.els['view-receipts'].innerHTML.indexOf('data-archive-open="' + OLDJ + '"') !== -1);
+    }
+
+    // 4. The large view.
+    {
+      const m = world({ role: 'manager', answers: {} });
+      await m.fns.openReceiptSheet_(archivedJpeg, true);
+      t.eq(label + ': archive: large view: nothing is fetched until asked', asked(m), []);
+      const big = m.els.rcptBig.innerHTML;
+      t.ok(label + ': archive: large view: the tile and the button stand where "Loading the original…" was', big.indexOf(WORDS_JPEG) !== -1 && />Open the original</.test(big) && big.indexOf('Loading the original') === -1);
+      await m.els.rcptBig.querySelectorAll('[data-archive-open]')[0].onclick({ stopPropagation() {} });
+      t.eq(label + ': archive: large view: pressing fetches that file once', asked(m), [fileUrl(OLDJ)]);
+      t.ok(label + ': archive: large view: and shows it exactly as before', /<img alt="Receipt original" src="blob:https:\/\/ops\.test\/\d+" style="max-width:100%;max-height:60vh;display:block">/.test(m.els.rcptBig.innerHTML));
+      const url = m.created[m.created.length - 1];
+      m.els.sheetClose.onclick();
+      t.ok(label + ': archive: large view: closing revokes its blob URL', m.revoked.indexOf(url) !== -1);
+      // Closed without pressing: nothing was ever fetched or made.
+      const n = world({ role: 'manager', answers: {} });
+      await n.fns.openReceiptSheet_(archivedJpeg, true);
+      n.els.sheetClose.onclick();
+      t.ok(label + ': archive: large view: closed unopened, no request and no blob', n.fetches.length === 0 && n.created.length === 0);
+      // A PDF: the tile, then the "Open the PDF" button after the press, as before.
+      const d = world({ role: 'admin', answers: {}, fetch: () => ({ ok: true, status: 200, blob: async () => ({ type: 'application/pdf' }) }) });
+      await d.fns.openReceiptSheet_(archivedPdf, true);
+      t.ok(label + ': archive: large view: an archived PDF has its tile and no request yet', d.fetches.length === 0 && d.els.rcptBig.innerHTML.indexOf(WORDS_PDF) !== -1);
+      await d.els.rcptBig.querySelectorAll('[data-archive-open]')[0].onclick({ stopPropagation() {} });
+      d.els.rcptOpenPdf.onclick();
+      t.ok(label + ': archive: large view: the press fetches it and the PDF opens in a new tab, no opener', d.fetches.length === 1 && d.opened.length === 1 && /^blob:/.test(d.opened[0][0]) && d.opened[0][2] === 'noopener');
+    }
+
+    // 5. The review.
+    {
+      const stub = { id: OLDJ, fileName: '', contentType: '' };
+      const m = world({ role: 'manager', answers: { rpcGetReceiptReview: RVX() } });
+      await m.fns.openReceiptReview_(Object.assign({}, archivedJpeg, { status: 'drafted' }));
+      await tick();
+      t.eq(label + ': archive: review: the original is not fetched unasked', asked(m), []);
+      const box = m.els.rvOrig.innerHTML;
+      t.ok(label + ': archive: review: the notice, word for word', box.indexOf('This file is in the archive. Opening it costs a little; open it when you need to check the figures.') !== -1);
+      t.ok(label + ': archive: review: the tile\'s words and the button', box.indexOf(WORDS_JPEG) !== -1 && />Open the original</.test(box));
+      t.ok(label + ': archive: review: the fields, Save and Confirm are all there without the original being opened', /id="rdSupplier"/.test(m.sheets[m.sheets.length - 1].bodyHTML) && /id="rvSave"/.test(m.sheets[m.sheets.length - 1].actionsHTML) && /id="rvConfirm"/.test(m.sheets[m.sheets.length - 1].actionsHTML));
+      m.fns.openReceiptConfirmSheet_(m.fns.receiptState_.review);
+      t.ok(label + ': archive: review: confirming does not need the original to have been opened (nothing new is enforced), and asks for no file', /This goes on the books of/.test(m.sheets[m.sheets.length - 1].bodyHTML) && m.fetches.length === 0);
+      const rv = m.fns.receiptState_.review;
+      rv.open = true;
+      m.fns.drawReceiptReview_(rv);
+      t.ok(label + ': archive: review: drawn again (after a save) it is still the tile, still no request', m.fetches.length === 0 && m.els.rvOrig.innerHTML.indexOf(WORDS_JPEG) !== -1);
+      await m.els.rvOrig.querySelectorAll('[data-archive-open]')[0].onclick({ stopPropagation() {} });
+      t.eq(label + ': archive: review: pressing fetches that file once', asked(m), [fileUrl(OLDJ)]);
+      t.ok(label + ': archive: review: and shows it exactly as before', /<img alt="Receipt original" src="blob:https:\/\/ops\.test\/\d+" style="width:100%;display:block">/.test(m.els.rvOrig.innerHTML));
+      // The server's word in the review answer decides, not the list's, and not a stub's: the next original is opened from an id alone.
+      const s = world({ role: 'manager', answers: { rpcGetReceiptReview: RVX() } });
+      await s.fns.openReceiptReview_(stub);
+      t.ok(label + ': archive: review: opened from an id alone (the "next" button), the review\'s own flag still holds the file back', s.fetches.length === 0 && s.els.rvOrig.innerHTML.indexOf(WORDS_JPEG) !== -1);
+      // A recent original in the review: fetched at once, as before.
+      const rn = world({ role: 'manager', answers: { rpcGetReceiptReview: RVX({ original: ORIG({ archived: false }) }) } });
+      await rn.fns.openReceiptReview_(Object.assign({}, archivedJpeg, { archived: false, status: 'drafted' }));
+      await tick();
+      t.eq(label + ': archive: review: a recent original is fetched at once, as before', asked(rn), [fileUrl(OLDJ)]);
+      t.ok(label + ': archive: review: and shows no tile or notice', !/data-archive|This file is in the archive/.test(rn.els.rvOrig.innerHTML) && /<img alt="Receipt original"/.test(rn.els.rvOrig.innerHTML));
+      // A list that says recent but a review that says archived (the setting changed between): the review wins, nothing is fetched.
+      const mid = world({ role: 'manager', answers: { rpcGetReceiptReview: RVX() } });
+      await mid.fns.openReceiptReview_(Object.assign({}, archivedJpeg, { archived: false, status: 'drafted' }));
+      t.ok(label + ': archive: review: the review\'s own answer decides when the list was out of date', mid.fetches.length === 0);
+    }
+
+    // 6. A confirmed receipt's view.
+    {
+      const RC = (orig) => Object.assign({}, RDX, { id: 'pr' + '7'.repeat(24), originalId: OLDJ, status: 'confirmed', businessName: 'Fictional Vape Co', document: {},
+        confirmed: { by: 'Daniel Okafor', at: '2026-11-27T15:00:00.000Z', reason: null, failed: [], checks: [] }, voided: null, changes: null, readings: [], counts: { words: '' }, learnt: { signs: [], spellings: [] }, redo: null, original: orig });
+      const archivedOrig = { id: OLDJ, contentType: 'image/jpeg', size: 2516582, addedAt: '2026-10-02T15:00:00.000Z', archived: true };
+      const m = world({ role: 'manager', answers: { rpcGetReceiptBooks: { receipt: RC(archivedOrig) } } });
+      await m.fns.openReceiptOnBooks_('pr' + '7'.repeat(24));
+      t.eq(label + ': archive: confirmed view: the original is not fetched unasked', asked(m), []);
+      t.ok(label + ': archive: confirmed view: the tile and the button stand in place of "Loading the original…"', m.els.rbOrig.innerHTML.indexOf(WORDS_JPEG) !== -1 && />Open the original</.test(m.els.rbOrig.innerHTML) && m.els.rbOrig.innerHTML.indexOf('Loading the original') === -1);
+      await m.els.rbOrig.querySelectorAll('[data-archive-open]')[0].onclick({ stopPropagation() {} });
+      t.eq(label + ': archive: confirmed view: pressing fetches that file once', asked(m), [fileUrl(OLDJ)]);
+      t.ok(label + ': archive: confirmed view: and shows it exactly as before', /<img alt="Receipt original" src="blob:https:\/\/ops\.test\/\d+" style="width:100%;display:block">/.test(m.els.rbOrig.innerHTML));
+      const recent = world({ role: 'manager', answers: { rpcGetReceiptBooks: { receipt: RC(Object.assign({}, archivedOrig, { archived: false })) } } });
+      await recent.fns.openReceiptOnBooks_('pr' + '7'.repeat(24));
+      t.eq(label + ': archive: confirmed view: a recent original is fetched at once, as before', asked(recent), [fileUrl(OLDJ)]);
+      const none = world({ role: 'manager', answers: { rpcGetReceiptBooks: { receipt: Object.assign(RC(null), { originalId: null }) } } });
+      await none.fns.openReceiptOnBooks_('pr' + '7'.repeat(24));
+      t.ok(label + ': archive: confirmed view: with no original there is nothing to fetch and no tile', none.fetches.length === 0 && none.els.rbOrig.innerHTML.indexOf('data-archive') === -1);
+    }
+
+    // 7. Hostile text is escaped; the page does no date arithmetic to decide.
+    {
+      const HOSTILE = '<img src=x onerror=alert(1)>';
+      const bad = item({ id: 'ro"><script>x</script>', archived: true, addedAt: '2026-10-02T15:00:00.000Z', contentType: HOSTILE, size: 100, fileName: HOSTILE + ' <b>name</b>' });
+      const r = world({ role: 'admin', answers: { rpcGetReceiptInbox: (tok, input) => (input.status === 'set_aside' ? { scope: 'all', status: 'set_aside', items: [], counts: {}, next: null, canSetAside: true, maxMb: 10 } : withItems(ALL, [bad])) } });
+      await r.fns.loadReceiptsTab();
+      const html = r.els['view-receipts'].innerHTML;
+      t.ok(label + ': archive: hostile text in a file name, a type and an id is escaped everywhere the tile shows it', html.indexOf('<img src=x') === -1 && html.indexOf('<script>') === -1 && html.indexOf('&lt;img src=x onerror=alert(1)&gt;') !== -1 && html.indexOf('data-archive-open="ro&quot;&gt;&lt;script&gt;') !== -1 && html.indexOf('<b>name') === -1);
+      const sheet = world({ role: 'admin', answers: {} });
+      await sheet.fns.openReceiptSheet_(bad, true);
+      t.ok(label + ': archive: and in the large view', sheet.els.rcptBig.innerHTML.indexOf('<img src=x') === -1 && sheet.els.rcptBig.innerHTML.indexOf('<script>') === -1);
+      const w0 = Object.assign({}, archivedJpeg, { archived: false, addedAt: '2020-01-01T00:00:00.000Z' });
+      const old = world({ role: 'admin', answers: {} });
+      await old.fns.openReceiptSheet_(w0, true);
+      t.ok(label + ': archive: the page does no date arithmetic: a file from 2020 the server calls recent is fetched at once', old.fetches.length === 1 && old.els.rcptBig.innerHTML.indexOf('data-archive') === -1);
+      const fresh = world({ role: 'admin', answers: {} });
+      await fresh.fns.openReceiptSheet_(Object.assign({}, archivedJpeg, { addedAt: new Date().toISOString() }), true);
+      t.ok(label + ': archive: and a file added now that the server calls archived is held back', fresh.fetches.length === 0 && fresh.els.rcptBig.innerHTML.indexOf('data-archive-open') !== -1);
+    }
+
+    // 8. The source: the archive code lives only in the Receipts screen, and says nothing the card did not.
+    {
+      const names = ['receiptMonthYear_', 'receiptArchiveWords_', 'receiptArchiveTileHTML_', 'receiptArchiveWire_', 'receiptReviewArchived_', 'loadReceiptReviewOriginal_', 'RECEIPT_ARCHIVE_NOTICE'];
+      t.ok(label + ': archive: every new name is used only inside the Receipts screen\'s own functions', names.every(n => count(js, n) > 0 && count(js, n) === count(own, n) + (n === 'RECEIPT_ARCHIVE_NOTICE' ? 1 : 0)));
+      t.ok(label + ': archive: the words "Open the original" and "in the archive" appear only there', count(js, 'Open the original') === count(own, 'Open the original') && count(js, 'This file is in the archive') === count(own, 'This file is in the archive') + 1);
+      t.ok(label + ': archive: no file is fetched but through fetchReceiptOriginal_ (one place builds the address)', count(js, "'/files/receipt-original/'") === count(own, "'/files/receipt-original/'"));
+      t.ok(label + ': archive: nothing in it measures time (no Date.now, no new Date() with no argument)', !/Date\.now\(|new Date\(\)/.test(own));
+    }
+  })());
 });
 
 
@@ -1136,7 +1335,7 @@ pending.push(...H.uiScripts().map(([label, js]) => ({ label, js })).map(async ({
       URL: { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} }, IntersectionObserver: undefined, window: { open: () => null },
     };
     const names = Object.keys(deps);
-    const consts = ['RECEIPT_ACCEPT', 'RECEIPT_MB', 'RECEIPT_PRINT_WORDS', 'RECEIPT_EMAIL_WORDS', 'receiptState_', 'BUSINESS_SIGN_KINDS', 'RECEIPT_KINDS', 'RECEIPT_DOC_KINDS', 'RECEIPT_CHARGE_KINDS', 'legacyState_', 'LEGACY_VIEWS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
+    const consts = ['RECEIPT_ACCEPT', 'RECEIPT_MB', 'RECEIPT_ARCHIVE_NOTICE', 'RECEIPT_PRINT_WORDS', 'RECEIPT_EMAIL_WORDS', 'receiptState_', 'BUSINESS_SIGN_KINDS', 'RECEIPT_KINDS', 'RECEIPT_DOC_KINDS', 'RECEIPT_CHARGE_KINDS', 'legacyState_', 'LEGACY_VIEWS'].map(n => new RegExp('  const ' + n + ' [^\\n]*').exec(js)[0]).join('\n');
     w.fns = new Function(...names, consts + '\n' + H.fnSource(js, 'esc') + '\n' + H.fnSource(js, 'money') + '\n' + own + '; return { legacyState_, ' + SCREEN.join(', ') + ' };')(...names.map(n => deps[n]));
     return w;
   }
@@ -1278,10 +1477,17 @@ pending.push(...H.uiScripts().map(([label, js]) => ({ label, js })).map(async ({
     ['Purchases from the old spreadsheet. No original is on file for any of these, and they are not part of the books below.', 'async function legacyLoad_(', 'function openLegacySpellingSheet_(', "'rpcGetLegacyPurchases'", "'rpcGetLegacySpellings'", "'rpcSetLegacyBusiness'", "'rpcLinkLegacySupplier'", 'supplier not written'].every(x => built.indexOf(x) !== -1));
   t.ok('the built page has the emails checked and the attachment and print lines (card P5-13), with the call',
     ['function receiptEmailsHTML_(', 'function receiptEmailLines_(', 'function receiptPrintNotice_(', "'rpcGetReceiptEmails'", 'Emails checked (', 'A print of the email itself, made by the assistant: not the original message.', 'A person should look at this one.'].every(x => built.indexOf(x) !== -1));
+  t.ok('the built page has the archived-file tile and button and the review notice (card P5-12c)',
+    ['function receiptArchiveTileHTML_(', 'function receiptArchiveWire_(', 'function receiptReviewArchived_(', 'data-archived-thumb', 'Open the original', 'This file is in the archive. Opening it costs a little; open it when you need to check the figures.'].every(x => built.indexOf(x) !== -1));
   const src = fs.readFileSync(path.join(H.SRC, 'Index.html'), 'utf8');
   t.ok('the Apps Script page never shows them: the Receipts screen is opsOnly, and they are drawn only inside it',
     /\{ tab: 'receipts'[^\n]*opsOnly: true/.test(src) && /receiptEmailsHTML_\(emails\)/.test(H.fnSource(src, 'renderReceiptsTab')) && (src.match(/receiptEmailsHTML_\(/g) || []).length === 2);
   t.ok('the old list is reachable only from the Receipts screen, which is opsOnly: the Apps Script page never shows it', (src.match(/legacyToggle_\(\)/g) || []).length === 2 && /legacyToggle_\(\)/.test(H.fnSource(src, 'renderReceiptsTab')));
+  t.ok('the Apps Script page is unchanged in what it shows: its Receipts screen is still opsOnly, and the archive tile is drawn only by functions of that screen',
+    /\{ tab: 'receipts'[^\n]*opsOnly: true/.test(src) && ['receiptArchiveTileHTML_(', 'receiptArchiveWire_('].every(n => {
+      const outside = src.split('\n').filter(l => l.indexOf(n) !== -1 && !/^\s*(async )?function /.test(l));
+      return outside.length > 0 && outside.every(l => /receipt|Receipt/.test(l));
+    }));
   t.ok('the Apps Script page never loads the transport, so the entries are hidden there', src.indexOf('/transport.js') === -1);
   t.ok('no template tag in the page', src.indexOf('<?') === -1);
 }

@@ -33,6 +33,7 @@ import type { Db } from "../db/client";
 import type { Tx } from "../db/tx";
 import * as audit from "../lib/audit";
 import type { Config } from "../lib/config";
+import { archiveAfterDays, isArchived } from "./archive";
 import { type Business, type SignKind, type SignView, SIGN_KINDS, addSign, checkHst, checkLine, checkNotes, checkSign, describeSign, displayName, isBusiness, normalise, signKey } from "./businesses";
 import * as costs from "./costs";
 import * as drafts from "./drafts";
@@ -523,7 +524,7 @@ async function readingsOf(db: Db, originalId: string): Promise<Array<{ id: strin
 }
 
 export interface ReviewView {
-  original: { id: string; status: string; business: Business | null; contentType: string; fileName: string | null; addedBy: string; addedAt: string };
+  original: { id: string; status: string; business: Business | null; contentType: string; size: number; fileName: string | null; addedBy: string; addedAt: string; /** Card P5-12c: in the archive, so the page does not open it unasked. */ archived: boolean };
   draft: drafts.DraftView | null;
   first: drafts.DraftView | null;
   changes: Changes | null;
@@ -548,8 +549,8 @@ export async function getReview(db: Db, originalId: unknown, actor: Actor, confi
   const o =
     id === null
       ? null
-      : await db.maybeOne<{ receipt_id: string; status: string; business: Business | null; content_type: string; file_name: string | null; added_by: string; name: string | null; added_at: Date }>(
-          "select o.receipt_id, o.status, o.business, o.content_type, o.file_name, o.added_by, st.name, o.added_at from ops.receipt_originals o left join ops.staff st on st.staff_id = o.added_by where o.receipt_id = $1",
+      : await db.maybeOne<{ receipt_id: string; status: string; business: Business | null; content_type: string; size_bytes: number; file_name: string | null; added_by: string; name: string | null; added_at: Date }>(
+          "select o.receipt_id, o.status, o.business, o.content_type, o.size_bytes, o.file_name, o.added_by, st.name, o.added_at from ops.receipt_originals o left join ops.staff st on st.staff_id = o.added_by where o.receipt_id = $1",
           [id],
         );
   if (o === null) throw new Error("No such receipt original.");
@@ -561,7 +562,7 @@ export async function getReview(db: Db, originalId: unknown, actor: Actor, confi
   if (draft?.supplier.id) candidates.push(draft.supplier.id);
   if (draft?.supplier.name) for (const s of (await listSuppliers(db, { q: draft.supplier.name, limit: 8 })).suppliers) if (!candidates.includes(s.id)) candidates.push(s.id);
   return {
-    original: { id: o.receipt_id, status: o.status, business: o.business, contentType: o.content_type, fileName: o.file_name, addedBy: (o.name ?? o.added_by).trim(), addedAt: o.added_at.toISOString() },
+    original: { id: o.receipt_id, status: o.status, business: o.business, contentType: o.content_type, size: o.size_bytes, fileName: o.file_name, addedBy: (o.name ?? o.added_by).trim(), addedAt: o.added_at.toISOString(), archived: isArchived(o.added_at, now, archiveAfterDays(config)) },
     draft,
     first,
     changes: draft !== null && first !== null ? compareReadings(first, draft) : null,
@@ -618,6 +619,8 @@ export interface ReceiptDetail extends drafts.DraftView {
   redo: string | null;
   /** Card P5-05c: what it adds to the books (nothing when voided), in words. */
   counts: CountsView;
+  /** Card P5-12c: the original file, described without opening it; `archived` says whether the page may open it unasked. Null when there is none. */
+  original: { id: string; contentType: string; size: number; addedAt: string; archived: boolean } | null;
 }
 
 async function learntFrom(db: Db, receiptId: string): Promise<ReceiptDetail["learnt"]> {
@@ -629,8 +632,15 @@ async function learntFrom(db: Db, receiptId: string): Promise<ReceiptDetail["lea
   return { signs, spellings: spellings.map((s) => s.name) };
 }
 
+/** The original of a receipt, described (never opened): its type, size, day added, and whether it is archived (card P5-12c). */
+async function originalOf(db: Db, originalId: string | null, config: Config, now: Date): Promise<ReceiptDetail["original"]> {
+  if (originalId === null) return null;
+  const o = await db.maybeOne<{ receipt_id: string; content_type: string; size_bytes: number; added_at: Date }>("select receipt_id, content_type, size_bytes, added_at from ops.receipt_originals where receipt_id = $1", [originalId]);
+  return o === null ? null : { id: o.receipt_id, contentType: o.content_type, size: o.size_bytes, addedAt: o.added_at.toISOString(), archived: isArchived(o.added_at, now, archiveAfterDays(config)) };
+}
+
 /** One receipt (confirmed or voided, or any reading) read only, with its confirm and void record, what was changed, its readings and what was learnt from it. */
-export async function receiptDetail(db: Db, purchaseId: string, config: Config): Promise<ReceiptDetail> {
+export async function receiptDetail(db: Db, purchaseId: string, config: Config, now: Date): Promise<ReceiptDetail> {
   const view = await drafts.loadDraft(db, purchaseId);
   const r = await db.one<{
     confirmed_by: string | null;
@@ -670,6 +680,7 @@ export async function receiptDetail(db: Db, purchaseId: string, config: Config):
     learnt: await learntFrom(db, purchaseId),
     redo: r.redo,
     counts: countsView(view, view.business.key === null ? "the business not chosen yet" : displayName(config, view.business.key), false),
+    original: await originalOf(db, view.originalId, config, now),
   };
 }
 
@@ -770,7 +781,7 @@ export async function confirm(tx: Tx, input: ConfirmInput, actor: Actor, config:
   );
   const observed = await costs.observeReceipt(tx, draft.id, actor, config, now);
   const next = await tx.maybeOne<{ receipt_id: string }>("select receipt_id from ops.receipt_originals where status = 'drafted' order by added_at, receipt_id limit 1");
-  return { receipt: await receiptDetail(tx, draft.id, config), message: `On the books of ${displayName(config, business)}.`, learnt: { signs, spelling }, next: next === null ? null : { originalId: next.receipt_id }, costs: observed };
+  return { receipt: await receiptDetail(tx, draft.id, config, now), message: `On the books of ${displayName(config, business)}.`, learnt: { signs, spelling }, next: next === null ? null : { originalId: next.receipt_id }, costs: observed };
 }
 
 // ── Voiding (decision 10) ─────────────────────────────────
@@ -805,7 +816,7 @@ export async function voidReceipt(tx: Tx, input: { receiptId?: unknown; reason?:
   );
   const unobserved = await costs.unobserveReceipt(tx, id, actor, now);
   return {
-    receipt: await receiptDetail(tx, id, config),
+    receipt: await receiptDetail(tx, id, config, now),
     redo: redo.draft,
     learnt: { ...learnt, words },
     costs: unobserved,
@@ -921,13 +932,13 @@ export function totalsNotes(t: { voided: number; statements: number; waiting: nu
 }
 
 /** One business's books, newest on the books first, a page at a time, with the totals of the filter; or, with `receiptId`, one receipt. */
-export async function books(db: Db, input: Record<string, unknown>, actor: Actor, config: Config): Promise<Books | { receipt: ReceiptDetail }> {
+export async function books(db: Db, input: Record<string, unknown>, actor: Actor, config: Config, now: Date): Promise<Books | { receipt: ReceiptDetail }> {
   if (!READ_ROLES.includes(actor.role)) throw new Error("Only an admin, a manager or a payroll admin can see the books.");
   if (input["receiptId"] !== undefined) {
     const rid = input["receiptId"];
     const ok = typeof rid === "string" && PURCHASE_ID.test(rid) ? await db.maybeOne<{ n: number }>("select 1 as n from ops.purchase_receipts where purchase_id = $1 and status in ('confirmed', 'voided')", [rid]) : null;
     if (ok === null) throw new Error("No such receipt on the books.");
-    return { receipt: await receiptDetail(db, rid as string, config) };
+    return { receipt: await receiptDetail(db, rid as string, config, now) };
   }
   const business = input["business"];
   if (!isBusiness(business)) throw new Error("Choose one business: cstore or vape. The two are never listed together.");
@@ -1116,6 +1127,6 @@ export async function addCanadianAmount(tx: Tx, input: { receiptId?: unknown; to
     { actorId: actor.staffId, action: "receipt.add_canadian_amount", targetType: "purchase_receipts", targetId: id, before: { totalCad: null }, after: { totalCad: drafts.centsText(cents), currency: row.currency, total: row.total, business: row.business } },
     { now },
   );
-  const receipt = await receiptDetail(tx, id, config);
+  const receipt = await receiptDetail(tx, id, config, now);
   return { receipt, message: `Added. ${receipt.counts.words}` };
 }

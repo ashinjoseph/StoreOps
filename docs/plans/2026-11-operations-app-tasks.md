@@ -97,7 +97,7 @@ hand one out.
 | P5-13 | Emailed invoices through the assistant | T2 | P5-05b | security | done (the scan itself is tried with Muse at the hosted rehearsal, P5-10) |
 | P5-14 | Delivery planning tools for an assistant | T2 | P5-07, P5-11 | | todo |
 | P5-05c | Receipts of every kind in one form: credit notes, statements, other currencies, tax inside the price, typed extra charges | T3 | P5-05b | money | done |
-| P5-12c | Older receipt files move to cheaper storage; the app says which are archived | T1 | P5-12a | money | in progress |
+| P5-12c | Older receipt files move to cheaper storage; the app says which are archived | T1 | P5-12a | money | done (the storage rule itself is set at the hosted setup) |
 | P5-17 | The receipt screens on a phone: cards with no inner margin clip their text; the original turns into a broken image after "Save corrections" | T1 | P5-05c | - | done |
 | P5-15 | Cost history from receipt lines, and price-rise flags for a manager | T2 | P5-05b | money | done (where "an item" breaks on real receipts, for the owner, in the card) |
 | P5-16 | The old purchase list brought in as history | T2 | P5-05b | money | done (the owner runs the import; things to check in the real file, in the card) |
@@ -1635,6 +1635,30 @@ text straight into a card without the margin.
 **For the owner:** the live app's Suppliers and Product Master screens have
 the same clipped-edge fault; they were left alone because the live app is
 not changed by these cards. Say if they should be fixed there too.
+
+**P5-12c · the app says which receipt files are archived · done.** The
+move to cheaper storage is a rule on the storage, set at the hosted setup;
+the app does not ask the storage anything new and never moves or deletes a
+file. A new setting, `receipt_archive_after_days` (default 30), says when a
+file counts as archived: more than that many Toronto calendar days after
+the day it was added (with 30, a receipt added on Oct 28 is archived from
+Nov 28). Every answer that describes an original says `archived`, and the
+Receipts screen never fetches an archived file unasked: the row, the large
+view, the review and a confirmed receipt's view show "Archived October
+2026 · image/jpeg, 2.4 MB" and **Open the original**. The review says
+opening it costs a little; confirming does not require it. An assistant is
+told which files are archived. A person's opening of an archived file is in
+the audit log once per file per day. No migration.
+**For the owner:**
+1. **The app's number must match the storage rule's days**
+   ([the checklist](../guides/hosted-setup-checklist.md) says so). If the
+   app's number is larger than the rule's, files the storage has already
+   archived look recent and their previews load unasked, each with the small
+   fee. If it is smaller, a few cheap files wait for a press. Because the app
+   counts whole days, it can lag a same-numbered rule by up to a day: set
+   the app's number one lower than the rule if that matters.
+2. A manager opening many old receipts at tax time writes one audit row per
+   file per day. That is intended; say if it is too much.
 
 ## Phase 6 — App
 

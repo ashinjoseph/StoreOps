@@ -98,6 +98,7 @@ roles `["admin"]`. The handlers check the role again themselves.
 | `assistant_calls_per_minute`, `assistant_proposals_per_day` | number | 30, 200 | not a whole number from 1 to 600, or from 1 to 5000 | the door's limits per key |
 | `assistant_show_max_mb` | number | 8 | not a whole number from 1 to 25 | the largest receipt original an assistant is shown in one answer (card P5-12b); a larger one is not shown, never shrunk |
 | `receipt_max_mb` | number | 10 | not a whole number from 1 to 25 | the largest receipt original (photo or PDF) the app keeps (card P5-12a; [receipts](receipts.md)) |
+| `receipt_archive_after_days` | number | 30 | not a whole number from 1 to 3650 | after this many Toronto calendar days a receipt file counts as **archived** and the Receipts screen no longer opens it unasked (card P5-12c; [receipts](receipts.md#archived-files-card-p5-12c)). **It must match the days of the rule on the receipt storage that moves files to the archive**: the app does not ask the storage. There is no "off": set a large number such as 3650. Operations only (`OPS_ONLY_KEYS`), group *Other*; blank reads as 30 |
 | `hst_rate_percent` | number | 13 | below 0, above 30, more than three decimals | the HST rate a receipt draft's tax is checked against (card P5-05a; [receipts](receipts.md)); read as exact text, so 0 means 0% (not the default), in group *Other* and `OPS_ONLY_KEYS` |
 | `price_rise_flag_percent` | number | 5 | below 0.1, above 500, more than two decimals | a cost more than this percent above the one before it, from the same supplier, is flagged on the Costs screen (card P5-15; [costs](costs.md)); read as exact text; a change applies to receipts confirmed after it and never rewrites a flag already raised; in group *Other* and `OPS_ONLY_KEYS` |
 | business names, template names and language, merchant ids, `timezone` | text | | over 500 characters, or a line break or other control character | a newline in a name would break a WhatsApp template parameter; `timezone` must also be a real zone |
@@ -163,6 +164,9 @@ letting "default: No" stand for something the app does not do.
   Operations app, so they are listed in `OPS_ONLY_KEYS` rather than in Setup.gs.
 - **Nov 2026 (cards P5-12a, P5-12b):** `receipt_max_mb` in *Other* and
   `assistant_show_max_mb` in *Assistants*.
+- **Nov 2026 (card P5-12c):** `receipt_archive_after_days` in *Other* (also in
+  `OPS_ONLY_KEYS`), 1 to 3650 days, to match the storage rule
+  ([receipts](receipts.md#archived-files-card-p5-12c)).
 - **Nov 2026 (card P5-15):** `price_rise_flag_percent` in *Other* (also in
   `OPS_ONLY_KEYS`), 0.1 to 500 with at most two decimals ([costs](costs.md)).
 - **Nov 2026 (card P5-05a):** `hst_rate_percent` in *Other* (also in

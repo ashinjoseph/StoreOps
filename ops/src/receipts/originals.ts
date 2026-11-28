@@ -22,6 +22,7 @@ import type { Tx } from "../db/tx";
 import * as audit from "../lib/audit";
 import type { Config } from "../lib/config";
 import { formatDate, formatDateTime } from "../lib/dates";
+import { DEFAULT_DAYS, isArchived } from "./archive";
 import { type Business, isBusiness } from "./businesses";
 import * as drafts from "./drafts";
 import { type ContentType } from "./sniff";
@@ -106,6 +107,8 @@ export interface OriginalView {
   fileName: string | null;
   note: string | null;
   status: Status;
+  /** Card P5-12c: the file is in the archive (older than receipt_archive_after_days): the page does not open it unasked. Worked out here, with the call's `now`. */
+  archived: boolean;
   setAside: { reason: string; by: string; at: string } | null;
   /** Only on an original an assistant handed over (card P5-12b): the label of the key it used. */
   assistant?: { label: string };
@@ -184,7 +187,7 @@ function emailOf(r: Row): { from: string; date: string; subject?: string; attach
   };
 }
 
-function view(r: Row, viewer: Viewer): OriginalView {
+function view(r: Row, viewer: Viewer, now: Date, days: number): OriginalView {
   return {
     id: r.receipt_id,
     addedAt: r.added_at.toISOString(),
@@ -197,6 +200,7 @@ function view(r: Row, viewer: Viewer): OriginalView {
     fileName: r.file_name,
     note: r.note,
     status: r.status,
+    archived: isArchived(r.added_at, now, days),
     setAside: r.status === "set_aside" && r.set_aside_at !== null ? { reason: r.set_aside_reason ?? "", by: nameOr(r.set_aside_by_name, r.set_aside_by ?? ""), at: r.set_aside_at.toISOString() } : null,
     ...(r.assistant_key_id !== null ? { assistant: { label: r.key_label ?? r.assistant_key_id } } : {}),
     ...(r.email_sender !== null && r.email_date !== null ? { email: emailOf(r) } : {}),
@@ -241,7 +245,7 @@ const when = (d: Date): string => formatDateTime(d).slice(0, 16);
  * already on file: nothing is stored or written, and the answer names the first. `business` is cstore,
  * vape, or anything else for "not sure" (stored as NULL). `source` is photo or upload (default upload).
  */
-export async function add(tx: Tx, storage: ReceiptStorage, input: AddInput, viewer: Viewer, now: Date): Promise<AddResult> {
+export async function add(tx: Tx, storage: ReceiptStorage, input: AddInput, viewer: Viewer, now: Date, days: number = DEFAULT_DAYS): Promise<AddResult> {
   if (input.sha256.byteLength !== 32) throw new TypeError("sha256 must be 32 bytes");
   const business: Business | null = isBusiness(input.business) ? input.business : null;
   const from = input.from;
@@ -257,7 +261,7 @@ export async function add(tx: Tx, storage: ReceiptStorage, input: AddInput, view
   const existing = await tx.maybeOne<Row>(`${SELECT} where o.sha256 = $1`, [input.sha256]);
   if (existing !== null) {
     const message = `Already on file, added ${when(existing.added_at)} by ${nameOr(existing.added_by_name, existing.added_by)}.`;
-    const record = maySee(viewer, existing, now) ? view(existing, viewer) : { id: existing.receipt_id, addedAt: existing.added_at.toISOString(), addedBy: nameOr(existing.added_by_name, existing.added_by) };
+    const record = maySee(viewer, existing, now) ? view(existing, viewer, now, days) : { id: existing.receipt_id, addedAt: existing.added_at.toISOString(), addedBy: nameOr(existing.added_by_name, existing.added_by) };
     return { duplicate: true, message, record };
   }
 
@@ -277,7 +281,7 @@ export async function add(tx: Tx, storage: ReceiptStorage, input: AddInput, view
   if (from !== undefined) after["assistantKeyId"] = from.keyId;
   await audit.write(tx, { actorId: viewer.staffId, action: "receipt_original.add", targetType: "receipt_originals", targetId: id, after }, { now });
   const row = await tx.one<Row>(`${SELECT} where o.receipt_id = $1`, [id]);
-  return { duplicate: false, message: `Kept. ${sizeText(row.size_bytes)}, added ${when(now)}.`, record: view(row, viewer) };
+  return { duplicate: false, message: `Kept. ${sizeText(row.size_bytes)}, added ${when(now)}.`, record: view(row, viewer, now, days) };
 }
 
 /** "2.4 MB", "830 KB", "512 bytes". */
@@ -300,11 +304,11 @@ export type Inbox =
   | { scope: "own"; days: number; items: OriginalView[] };
 
 /** The inbox as `viewer` may see it. Never a storage key, never a URL. */
-export async function inbox(db: Db, viewer: Viewer, input: InboxInput, now: Date): Promise<Inbox> {
+export async function inbox(db: Db, viewer: Viewer, input: InboxInput, now: Date, days: number = DEFAULT_DAYS): Promise<Inbox> {
   if (!SEE_ALL.includes(viewer.role)) {
     const since = new Date(now.getTime() - EMPLOYEE_DAYS * DAY_MS);
     const rows = await db.query<Row>(`${SELECT} where o.added_by = $1 and o.added_at > $2 order by o.added_at desc, o.receipt_id desc limit $3`, [viewer.staffId, since, PAGE_MAX]);
-    return { scope: "own", days: EMPLOYEE_DAYS, items: rows.map((r) => view(r, viewer)) };
+    return { scope: "own", days: EMPLOYEE_DAYS, items: rows.map((r) => view(r, viewer, now, days)) };
   }
   const status: Status = input.status === "set_aside" ? "set_aside" : input.status === "drafted" ? "drafted" : input.status === "confirmed" ? "confirmed" : "waiting";
   const limitIn = typeof input.limit === "number" && Number.isInteger(input.limit) ? input.limit : PAGE_DEFAULT;
@@ -328,7 +332,7 @@ export async function inbox(db: Db, viewer: Viewer, input: InboxInput, now: Date
     scope: "all",
     status,
     items: page.map((r) => {
-      const v = view(r, viewer);
+      const v = view(r, viewer, now, days);
       const h = heads.get(r.receipt_id);
       return h === undefined ? v : { ...v, draft: h };
     }),
@@ -355,11 +359,11 @@ async function headlines(db: Db, ids: readonly string[]): Promise<Map<string, Dr
 }
 
 /** What the view route needs to serve an original, or null: no such id, or one `viewer` may not see (the same answer). */
-export async function forView(db: Db, viewer: Viewer, id: unknown, now: Date): Promise<{ id: string; storageKey: string; contentType: ContentType; size: number } | null> {
+export async function forView(db: Db, viewer: Viewer, id: unknown, now: Date): Promise<{ id: string; storageKey: string; contentType: ContentType; size: number; addedAt: Date } | null> {
   if (typeof id !== "string" || !ID.test(id)) return null;
   const row = await db.maybeOne<Row>(`${SELECT} where o.receipt_id = $1`, [id]);
   if (row === null || !maySee(viewer, row, now)) return null;
-  return { id: row.receipt_id, storageKey: row.storage_key, contentType: row.content_type, size: row.size_bytes };
+  return { id: row.receipt_id, storageKey: row.storage_key, contentType: row.content_type, size: row.size_bytes, addedAt: row.added_at };
 }
 
 // ── What an assistant reads (card P5-12b) ─────────────────
@@ -436,11 +440,11 @@ async function lockOne(tx: Tx, id: unknown): Promise<Row> {
 }
 
 /** Set an original aside (it is not a receipt: a reason of 3 to 300 characters) or put it back. Doing it twice changes nothing. */
-export async function setAside(tx: Tx, input: { id?: unknown; aside?: unknown; reason?: unknown }, viewer: Viewer, now: Date): Promise<{ record: OriginalView; changed: boolean }> {
+export async function setAside(tx: Tx, input: { id?: unknown; aside?: unknown; reason?: unknown }, viewer: Viewer, now: Date, days: number = DEFAULT_DAYS): Promise<{ record: OriginalView; changed: boolean }> {
   if (typeof input.aside !== "boolean") throw new Error("aside must be true (set aside) or false (put back).");
   const row = await lockOne(tx, input.id);
   if (input.aside) {
-    if (row.status === "set_aside") return { record: view(row, viewer), changed: false };
+    if (row.status === "set_aside") return { record: view(row, viewer, now, days), changed: false };
     // A confirmed original's receipt is on the books (card P5-05b): it is voided first, then set aside if need be.
     if (row.status === "confirmed") throw new Error("This receipt is on the books: it cannot be set aside. Void it first (it goes back to Read, waiting for review); then it can be set aside if it is not a receipt.");
     if (row.status !== "waiting" && row.status !== "drafted") throw new Error("Only an original that is waiting or read can be set aside.");
@@ -454,7 +458,7 @@ export async function setAside(tx: Tx, input: { id?: unknown; aside?: unknown; r
     // A drafted original's draft leaves the live list with it (kept, unchanged; card P5-05a).
     if (row.status === "drafted") await drafts.takenOut(tx, row.receipt_id, viewer.staffId, now);
   } else {
-    if (row.status !== "set_aside") return { record: view(row, viewer), changed: false };
+    if (row.status !== "set_aside") return { record: view(row, viewer, now, days), changed: false };
     // Back to drafted when it has a draft (restored to the live list), else to waiting.
     const back: Status = (await drafts.restore(tx, row.receipt_id, viewer.staffId, now)) ? "drafted" : "waiting";
     await tx.query("update ops.receipt_originals set status = $2, set_aside_reason = null, set_aside_by = null, set_aside_at = null where receipt_id = $1", [row.receipt_id, back]);
@@ -464,17 +468,17 @@ export async function setAside(tx: Tx, input: { id?: unknown; aside?: unknown; r
       { now },
     );
   }
-  return { record: view(await tx.one<Row>(`${SELECT} where o.receipt_id = $1`, [row.receipt_id]), viewer), changed: true };
+  return { record: view(await tx.one<Row>(`${SELECT} where o.receipt_id = $1`, [row.receipt_id]), viewer, now, days), changed: true };
 }
 
 /** Say which business a waiting original belongs to (cstore, vape, or null for "not known"). */
-export async function setBusiness(tx: Tx, input: { id?: unknown; business?: unknown }, viewer: Viewer, now: Date): Promise<{ record: OriginalView; changed: boolean }> {
+export async function setBusiness(tx: Tx, input: { id?: unknown; business?: unknown }, viewer: Viewer, now: Date, days: number = DEFAULT_DAYS): Promise<{ record: OriginalView; changed: boolean }> {
   const b = input.business;
   if (!(b === null || isBusiness(b))) throw new Error("Business must be cstore, vape, or null for not known.");
   const row = await lockOne(tx, input.id);
   if (row.status !== "waiting") throw new Error("Only an original that is waiting can have its business changed. Put it back first.");
-  if (row.business === b) return { record: view(row, viewer), changed: false };
+  if (row.business === b) return { record: view(row, viewer, now, days), changed: false };
   await tx.query("update ops.receipt_originals set business = $2 where receipt_id = $1", [row.receipt_id, b]);
   await audit.write(tx, { actorId: viewer.staffId, action: "receipt_original.set_business", targetType: "receipt_originals", targetId: row.receipt_id, before: { business: row.business }, after: { business: b } }, { now });
-  return { record: view(await tx.one<Row>(`${SELECT} where o.receipt_id = $1`, [row.receipt_id]), viewer), changed: true };
+  return { record: view(await tx.one<Row>(`${SELECT} where o.receipt_id = $1`, [row.receipt_id]), viewer, now, days), changed: true };
 }

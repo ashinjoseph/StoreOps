@@ -46,7 +46,7 @@ To confirm in the rehearsal:
 |---|---|---|
 | The app | `storeops-ops` | Deployed by a workflow, never by hand from a laptop |
 | Database connection (Hyperdrive) | binding `HYPERDRIVE` | Made with the **app** role's password. Its id replaces the placeholder in `ops/wrangler.toml` |
-| Receipt files | bucket `storeops-receipts` | Private. **Put a retention lock on it** for seven years: the app cannot be denied the right to erase from its own storage, so the lock is the real guard. (The CRA's guide says six years from the end of the tax year a record belongs to, which can be nearly seven years after the purchase; confirm with the bookkeeper.) **Add a rule that moves a file to the cheaper "infrequent access" storage after 30 days** (the owner's choice, Nov 28: recent receipts at hand, older ones archived). An archived file still opens at once; opening it costs a little, and it cannot be moved back by a rule. Ask the bookkeeper whether the files must be stored in Canada: the bucket's location is chosen when it is created |
+| Receipt files | bucket `storeops-receipts` | Private. **Put a retention lock on it** for seven years: the app cannot be denied the right to erase from its own storage, so the lock is the real guard. (The CRA's guide says six years from the end of the tax year a record belongs to, which can be nearly seven years after the purchase; confirm with the bookkeeper.) **Add a rule that moves a file to the cheaper "infrequent access" storage after 30 days** (the owner's choice, Nov 28: recent receipts at hand, older ones archived). An archived file still opens at once; opening it costs a little, and it cannot be moved back by a rule. **The app's setting `receipt_archive_after_days` (Settings, *Other*; default 30) must be the same number of days as this rule**: the app does not ask the storage which class a file is in, it counts days. If the app's number is the larger, the page opens previews of archived files unasked and each costs the small fee; if it is smaller, it only holds back previews it could have shown. Ask the bookkeeper whether the files must be stored in Canada: the bucket's location is chosen when it is created |
 | Nightly copies | bucket `storeops-backups` | Private. **Add a rule that removes copies after 90 days**: the app never deletes one, so without the rule they pile up |
 | Schedules | four, already in `ops/wrangler.toml` | Two for the Monday commission run, two for the nightly copy at 03:00 Toronto. Two each so the hour is right in winter and summer |
 
@@ -84,7 +84,9 @@ On the Settings screen, as an admin:
 - check every setting that came over from the Sheet;
 - press **Make a copy now** and see "Last copy: …" turn green;
 - leave **the till link** and **the assistants' door** switched off until
-  each has been tried on purpose.
+  each has been tried on purpose;
+- check that **`receipt_archive_after_days`** (Other) is the same number of days as the
+  rule on the receipt bucket that moves files to the archive.
 
 ## 6. What to try in the rehearsal
 

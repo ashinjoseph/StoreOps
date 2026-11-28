@@ -5,6 +5,7 @@
 // Adding an original is not an RPC: it is PUT /files/receipt-original (receipts/routes.ts).
 import { requireRole } from "../../auth/roles";
 import { NOT_LOGGED_IN, type Session } from "../../auth/types";
+import { archiveAfterDays } from "../../receipts/archive";
 import * as businesses from "../../receipts/businesses";
 import * as costs from "../../receipts/costs";
 import * as drafts from "../../receipts/drafts";
@@ -26,8 +27,9 @@ const viewer = (s: Session): originals.Viewer => ({ staffId: s.staffId, role: s.
 export const rpcGetReceiptInbox: RpcHandler = async (ctx, input) => {
   const s = caller(ctx, null);
   const o = fields(input);
-  const inbox = await originals.inbox(ctx.db, viewer(s), { status: o["status"], before: o["before"], limit: o["limit"] }, ctx.now);
-  return { ...inbox, maxMb: originals.maxBytes(await ctx.config()) / originals.MB };
+  const config = await ctx.config();
+  const inbox = await originals.inbox(ctx.db, viewer(s), { status: o["status"], before: o["before"], limit: o["limit"] }, ctx.now, archiveAfterDays(config));
+  return { ...inbox, maxMb: originals.maxBytes(config) / originals.MB };
 };
 
 /** Admin, manager, payroll admin: the emails an assistant has dealt with (card P5-13), could_not_read first, then the email's date, newest first. `{ before, limit }` (limit 1 to 50, default 20); answers `{ items, counts, next }`. */
@@ -41,14 +43,14 @@ export const rpcGetReceiptEmails: RpcHandler = async (ctx, input) => {
 export const rpcSetReceiptAside: RpcHandler = async (ctx, input) => {
   const s = caller(ctx, originals.SET_ASIDE_ROLES);
   const o = fields(input);
-  return originals.setAside(ctx.db, { id: o["id"], aside: o["aside"], reason: o["reason"] }, viewer(s), ctx.now);
+  return originals.setAside(ctx.db, { id: o["id"], aside: o["aside"], reason: o["reason"] }, viewer(s), ctx.now, archiveAfterDays(await ctx.config()));
 };
 
 /** Admin or manager: `{ id, business }`, business cstore, vape or null, on a waiting original. */
 export const rpcSetReceiptBusiness: RpcHandler = async (ctx, input) => {
   const s = caller(ctx, originals.SET_ASIDE_ROLES);
   const o = fields(input);
-  return originals.setBusiness(ctx.db, { id: o["id"], business: o["business"] }, viewer(s), ctx.now);
+  return originals.setBusiness(ctx.db, { id: o["id"], business: o["business"] }, viewer(s), ctx.now, archiveAfterDays(await ctx.config()));
 };
 
 /** Admin, manager, payroll admin: `{ id }` (an original's id). `{ draft }`: its live draft with lines, checks and business decision, or null (card P5-05a). */
@@ -154,7 +156,7 @@ export const rpcAddReceiptCanadianAmount: RpcHandler = async (ctx, input) => {
 /** Admin, manager, payroll admin: `{ business, from, to, supplierId, kind, before, limit }`, one business at a time; or `{ receiptId }` for one receipt. */
 export const rpcGetReceiptBooks: RpcHandler = async (ctx, input) => {
   const s = caller(ctx, review.READ_ROLES);
-  return review.books(ctx.db, fields(input), actor(s), await ctx.config());
+  return review.books(ctx.db, fields(input), actor(s), await ctx.config(), ctx.now);
 };
 
 // ── The old purchase list, as history (card P5-16) ──
